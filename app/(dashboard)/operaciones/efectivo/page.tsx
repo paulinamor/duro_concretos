@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Banknote, TrendingUp, TrendingDown, DollarSign, Plus } from "lucide-react";
+import { TrendingUp, TrendingDown, DollarSign, Plus } from "lucide-react";
 import StatusBadge from "@/components/StatusBadge";
+import FormModal from "@/components/FormModal";
 
 interface Transaccion {
   hora: string;
@@ -51,7 +52,7 @@ export default function EfectivoPage() {
             className="bg-[#1A1A1A] border border-[#3A3A3A] text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
           />
           <button
-            onClick={() => setShowForm((v) => !v)}
+            onClick={() => setShowForm(true)}
             className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#991A1E] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
           >
             <Plus size={16} />
@@ -80,10 +81,17 @@ export default function EfectivoPage() {
         </div>
       </div>
 
-      {/* Form */}
-      {showForm && (
-        <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl p-6">
-          <h3 className="text-white font-semibold mb-4">Registrar movimiento</h3>
+      <FormModal
+        open={showForm}
+        title="Registrar movimiento"
+        onClose={() => setShowForm(false)}
+        footer={
+          <>
+            <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-[#3A3A3A] rounded-lg transition-colors">Cancelar</button>
+            <button className="px-4 py-2 text-sm bg-[#CC2229] hover:bg-[#991A1E] text-white rounded-lg transition-colors">Guardar</button>
+          </>
+        }
+      >
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm text-gray-400 mb-1">Tipo</label>
@@ -105,12 +113,7 @@ export default function EfectivoPage() {
               <input type="text" placeholder="Concepto del movimiento" className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]" />
             </div>
           </div>
-          <div className="flex justify-end gap-3 mt-4">
-            <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-[#3A3A3A] rounded-lg transition-colors">Cancelar</button>
-            <button className="px-4 py-2 text-sm bg-[#CC2229] hover:bg-[#991A1E] text-white rounded-lg transition-colors">Guardar</button>
-          </div>
-        </div>
-      )}
+      </FormModal>
 
       {/* Transaction Table */}
       <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">

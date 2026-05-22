@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Wallet, Plus, RefreshCw, CheckCircle, Clock } from "lucide-react";
+import { Wallet, Plus, RefreshCw } from "lucide-react";
 import StatusBadge from "@/components/StatusBadge";
+import FormModal from "@/components/FormModal";
 import {
   PieChart,
   Pie,
@@ -71,7 +72,7 @@ export default function CajaChicaPage() {
             Reposición de Fondo
           </button>
           <button
-            onClick={() => setShowForm((v) => !v)}
+            onClick={() => setShowForm(true)}
             className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#991A1E] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
           >
             <Plus size={16} />
@@ -113,10 +114,17 @@ export default function CajaChicaPage() {
         <p className="text-gray-500 text-xs mt-2">{porcentajeGastado}% del fondo utilizado</p>
       </div>
 
-      {/* Form */}
-      {showForm && (
-        <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl p-6">
-          <h3 className="text-white font-semibold mb-4">Registrar gasto de caja chica</h3>
+      <FormModal
+        open={showForm}
+        title="Registrar gasto de caja chica"
+        onClose={() => setShowForm(false)}
+        footer={
+          <>
+            <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-[#3A3A3A] rounded-lg transition-colors">Cancelar</button>
+            <button className="px-4 py-2 text-sm bg-[#CC2229] hover:bg-[#991A1E] text-white rounded-lg transition-colors">Guardar</button>
+          </>
+        }
+      >
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm text-gray-400 mb-1">Fecha</label>
@@ -145,12 +153,7 @@ export default function CajaChicaPage() {
               <input type="text" placeholder="Concepto del gasto" className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]" />
             </div>
           </div>
-          <div className="flex justify-end gap-3 mt-4">
-            <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-[#3A3A3A] rounded-lg transition-colors">Cancelar</button>
-            <button className="px-4 py-2 text-sm bg-[#CC2229] hover:bg-[#991A1E] text-white rounded-lg transition-colors">Guardar</button>
-          </div>
-        </div>
-      )}
+      </FormModal>
 
       {/* Chart + Table */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Package, ArrowDownCircle, ArrowUpCircle, DollarSign, Plus, X } from "lucide-react";
+import { Package, ArrowDownCircle, ArrowUpCircle, DollarSign, Plus } from "lucide-react";
 import KPICard from "@/components/KPICard";
 import StatusBadge from "@/components/StatusBadge";
+import FormModal from "@/components/FormModal";
 
 interface Movimiento {
   fecha: string;
@@ -59,7 +60,7 @@ export default function InventarioPage() {
           <p className="text-gray-500 text-sm mt-0.5">Control de materiales y existencias</p>
         </div>
         <button
-          onClick={() => setShowForm((v) => !v)}
+          onClick={() => setShowForm(true)}
           className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#991A1E] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
         >
           <Plus size={16} />
@@ -75,15 +76,17 @@ export default function InventarioPage() {
         <KPICard title="Alertas stock" value={String(stockData.filter(s => s.status === "Stock bajo").length)} icon={DollarSign} iconColor="text-orange-400" />
       </div>
 
-      {/* Form */}
-      {showForm && (
-        <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-white font-semibold">Registrar movimiento</h3>
-            <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-white">
-              <X size={18} />
-            </button>
-          </div>
+      <FormModal
+        open={showForm}
+        title="Registrar movimiento"
+        onClose={() => setShowForm(false)}
+        footer={
+          <>
+            <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-[#3A3A3A] rounded-lg transition-colors">Cancelar</button>
+            <button className="px-4 py-2 text-sm bg-[#CC2229] hover:bg-[#991A1E] text-white rounded-lg transition-colors">Guardar</button>
+          </>
+        }
+      >
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm text-gray-400 mb-1">Tipo</label>
@@ -113,12 +116,7 @@ export default function InventarioPage() {
               <input type="text" placeholder="Notas..." className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]" />
             </div>
           </div>
-          <div className="flex justify-end gap-3 mt-4">
-            <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-[#3A3A3A] rounded-lg transition-colors">Cancelar</button>
-            <button className="px-4 py-2 text-sm bg-[#CC2229] hover:bg-[#991A1E] text-white rounded-lg transition-colors">Guardar</button>
-          </div>
-        </div>
-      )}
+      </FormModal>
 
       {/* Tabs */}
       <div className="flex gap-1 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg p-1 w-fit">

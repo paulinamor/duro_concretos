@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Wrench, AlertTriangle, DollarSign, Plus } from "lucide-react";
+import { AlertTriangle, DollarSign, Plus } from "lucide-react";
 import KPICard from "@/components/KPICard";
 import StatusBadge from "@/components/StatusBadge";
+import FormModal from "@/components/FormModal";
 
 interface Mantenimiento {
   fecha: string;
@@ -48,6 +49,7 @@ const pendientes = mantenimientosData.filter(m => m.status === "Pendiente" || m.
 
 export default function MantenimientoPage() {
   const [activeTab, setActiveTab] = useState<"mantenimientos" | "refacciones">("mantenimientos");
+  const [showForm, setShowForm] = useState(false);
 
   return (
     <div className="space-y-6">
@@ -57,7 +59,10 @@ export default function MantenimientoPage() {
           <h1 className="text-xl font-bold text-white">Mantenimiento</h1>
           <p className="text-gray-500 text-sm mt-0.5">Control de mantenimientos y refacciones</p>
         </div>
-        <button className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#991A1E] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+        <button
+          onClick={() => setShowForm(true)}
+          className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#991A1E] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+        >
           <Plus size={16} />
           Registrar
         </button>
@@ -79,6 +84,72 @@ export default function MantenimientoPage() {
           subtitle="Requieren atención"
         />
       </div>
+
+      <FormModal
+        open={showForm}
+        title={activeTab === "mantenimientos" ? "Registrar mantenimiento" : "Registrar refacción"}
+        onClose={() => setShowForm(false)}
+        footer={
+          <>
+            <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-[#3A3A3A] rounded-lg transition-colors">
+              Cancelar
+            </button>
+            <button className="px-4 py-2 text-sm bg-[#CC2229] hover:bg-[#991A1E] text-white rounded-lg transition-colors">
+              Guardar
+            </button>
+          </>
+        }
+      >
+        {activeTab === "mantenimientos" ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[
+              { label: "Fecha", type: "date" },
+              { label: "Unidad", type: "text", placeholder: "Ej. DC-03" },
+              { label: "Tipo", type: "text", placeholder: "Preventivo / Correctivo" },
+              { label: "Costo ($)", type: "number", placeholder: "0.00" },
+              { label: "Taller", type: "text", placeholder: "Nombre del taller" },
+              { label: "Status", type: "text", placeholder: "Pendiente / En proceso" },
+            ].map((f) => (
+              <div key={f.label}>
+                <label className="block text-sm text-gray-400 mb-1">{f.label}</label>
+                <input
+                  type={f.type}
+                  placeholder={f.placeholder ?? ""}
+                  className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
+                />
+              </div>
+            ))}
+            <div className="sm:col-span-2 lg:col-span-3">
+              <label className="block text-sm text-gray-400 mb-1">Descripción</label>
+              <input
+                type="text"
+                placeholder="Detalle del mantenimiento"
+                className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[
+              { label: "Fecha", type: "date" },
+              { label: "Unidad", type: "text", placeholder: "Ej. DC-03" },
+              { label: "Refacción", type: "text", placeholder: "Nombre de la refacción" },
+              { label: "Cantidad", type: "number", placeholder: "0" },
+              { label: "Costo unitario ($)", type: "number", placeholder: "0.00" },
+              { label: "Proveedor", type: "text", placeholder: "Nombre del proveedor" },
+            ].map((f) => (
+              <div key={f.label}>
+                <label className="block text-sm text-gray-400 mb-1">{f.label}</label>
+                <input
+                  type={f.type}
+                  placeholder={f.placeholder ?? ""}
+                  className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </FormModal>
 
       {/* Tabs */}
       <div className="flex gap-1 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg p-1 w-fit">

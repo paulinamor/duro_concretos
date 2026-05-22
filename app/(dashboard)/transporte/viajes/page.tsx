@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Truck, Package, Calendar, Filter, X } from "lucide-react";
+import { Plus, Truck, Package, Calendar, Filter } from "lucide-react";
 import StatusBadge from "@/components/StatusBadge";
 import KPICard from "@/components/KPICard";
+import FormModal from "@/components/FormModal";
 
 interface Viaje {
   folio: string;
@@ -58,7 +59,7 @@ export default function ViajesPage() {
           <p className="text-gray-500 text-sm mt-0.5">Registro y seguimiento de viajes</p>
         </div>
         <button
-          onClick={() => setShowForm((v) => !v)}
+          onClick={() => setShowForm(true)}
           className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#991A1E] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
         >
           <Plus size={16} />
@@ -73,15 +74,21 @@ export default function ViajesPage() {
         <KPICard title="Viajes hoy" value={String(hoy)} icon={Calendar} iconColor="text-green-400" />
       </div>
 
-      {/* Form */}
-      {showForm && (
-        <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-white font-semibold">Registrar nuevo viaje</h3>
-            <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-white">
-              <X size={18} />
+      <FormModal
+        open={showForm}
+        title="Registrar nuevo viaje"
+        onClose={() => setShowForm(false)}
+        footer={
+          <>
+            <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-[#3A3A3A] rounded-lg transition-colors">
+              Cancelar
             </button>
-          </div>
+            <button className="px-4 py-2 text-sm bg-[#CC2229] hover:bg-[#991A1E] text-white rounded-lg transition-colors">
+              Guardar viaje
+            </button>
+          </>
+        }
+      >
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {[
               { label: "Fecha", type: "date", placeholder: "" },
@@ -109,16 +116,7 @@ export default function ViajesPage() {
               />
             </div>
           </div>
-          <div className="flex justify-end gap-3 mt-4">
-            <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-[#3A3A3A] rounded-lg transition-colors">
-              Cancelar
-            </button>
-            <button className="px-4 py-2 text-sm bg-[#CC2229] hover:bg-[#991A1E] text-white rounded-lg transition-colors">
-              Guardar viaje
-            </button>
-          </div>
-        </div>
-      )}
+      </FormModal>
 
       {/* Filters */}
       <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl p-4 flex flex-wrap gap-3 items-center">
