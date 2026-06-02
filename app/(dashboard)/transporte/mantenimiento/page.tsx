@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Car, DollarSign, Plus, Wrench } from "lucide-react";
+import { AlertTriangle, Car, CheckCircle, DollarSign, Plus, Wrench } from "lucide-react";
 import KPICard from "@/components/KPICard";
 import StatusBadge from "@/components/StatusBadge";
 import FormModal from "@/components/FormModal";
@@ -112,6 +112,25 @@ export default function MantenimientoPage() {
   const historialUnidad = unidadesData.find((u) => u.unidad === selectedUnidadHistorial);
   const costoHistorialMantenimiento = historialMantenimientos.reduce((sum, item) => sum + item.costo, 0);
   const costoHistorialRefacciones = historialRefacciones.reduce((sum, item) => sum + item.total, 0);
+
+  function showToast(type: "success" | "error", title: string, message: string) {
+    window.dispatchEvent(new CustomEvent("duro:toast", {
+      detail: { type, title, message },
+    }));
+  }
+
+  function markMantenimientoCompletado(target: Mantenimiento) {
+    setMantenimientos((current) => current.map((item) => {
+      const isSameRecord =
+        item.fecha === target.fecha &&
+        item.unidad === target.unidad &&
+        item.descripcion === target.descripcion &&
+        item.costo === target.costo;
+
+      return isSameRecord ? { ...item, status: "Completado" } : item;
+    }));
+    showToast("success", "Mantenimiento completado", `${target.unidad} quedó marcado como completado.`);
+  }
 
   useEffect(() => {
     function handleOutsideClick(event: MouseEvent) {
@@ -252,16 +271,23 @@ export default function MantenimientoPage() {
               {activeInsight === "pendientes" && mantenimientosPendientes.map((item) => {
                 const unidad = unidadesData.find((u) => u.unidad === item.unidad);
                 return (
-                  <div key={`${item.fecha}-${item.unidad}-${item.status}`} className="grid grid-cols-1 md:grid-cols-[120px_1fr_auto] gap-2 px-5 py-3">
-                    <p className="text-sm font-semibold text-white">{item.unidad}</p>
-                    <div>
-                      <p className="text-sm text-gray-200">{item.descripcion}</p>
-                      <p className="text-xs text-gray-500">Toca atender el {unidad?.proximoServicioFecha ?? item.fecha} · {item.taller}</p>
-                    </div>
-                    <StatusBadge status={item.status} />
+                <div key={`${item.fecha}-${item.unidad}-${item.status}`} className="grid grid-cols-1 md:grid-cols-[120px_1fr_auto_auto] gap-2 px-5 py-3">
+                  <p className="text-sm font-semibold text-white">{item.unidad}</p>
+                  <div>
+                    <p className="text-sm text-gray-200">{item.descripcion}</p>
+                    <p className="text-xs text-gray-500">Toca atender el {unidad?.proximoServicioFecha ?? item.fecha} · {item.taller}</p>
                   </div>
-                );
-              })}
+                  <StatusBadge status={item.status} />
+                  <button
+                    onClick={() => markMantenimientoCompletado(item)}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-green-700/60 bg-green-950/30 px-3 py-1.5 text-xs font-medium text-green-300 transition-colors hover:bg-green-900/40"
+                  >
+                    <CheckCircle size={14} />
+                    Completar
+                  </button>
+                </div>
+              );
+            })}
 
               {activeInsight === "taller" && unidadesTallerDetalle.map((item) => (
                 <div key={item.unidad} className="grid grid-cols-1 md:grid-cols-[120px_1fr_auto] gap-2 px-5 py-3">
@@ -535,7 +561,7 @@ export default function MantenimientoPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-[#1A1A1A] border-b border-[#3A3A3A]">
-                  {["Fecha", "Unidad", "Tipo", "Descripción", "Costo", "Taller", "Status"].map((h) => (
+                  {["Fecha", "Unidad", "Tipo", "Descripción", "Costo", "Taller", "Status", "Acción"].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">
                       {h}
                     </th>
@@ -552,6 +578,22 @@ export default function MantenimientoPage() {
                     <td className="px-4 py-3 text-white font-semibold">${m.costo.toLocaleString()}</td>
                     <td className="px-4 py-3 text-gray-300">{m.taller}</td>
                     <td className="px-4 py-3"><StatusBadge status={m.status} /></td>
+                    <td className="px-4 py-3">
+                      {m.status === "Completado" ? (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-green-400">
+                          <CheckCircle size={14} />
+                          Completado
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => markMantenimientoCompletado(m)}
+                          className="inline-flex items-center gap-2 rounded-lg border border-green-700/60 bg-green-950/30 px-3 py-1.5 text-xs font-medium text-green-300 transition-colors hover:bg-green-900/40"
+                        >
+                          <CheckCircle size={14} />
+                          Marcar completado
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
