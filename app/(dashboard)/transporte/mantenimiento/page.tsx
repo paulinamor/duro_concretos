@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Car, CheckCircle, DollarSign, Plus, Wrench } from "lucide-react";
+import { AlertTriangle, Car, DollarSign, Plus, Wrench } from "lucide-react";
 import KPICard from "@/components/KPICard";
 import StatusBadge from "@/components/StatusBadge";
 import FormModal from "@/components/FormModal";
@@ -280,10 +280,9 @@ export default function MantenimientoPage() {
                   <StatusBadge status={item.status} />
                   <button
                     onClick={() => markMantenimientoCompletado(item)}
-                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-green-700/60 bg-green-950/30 px-3 py-1.5 text-xs font-medium text-green-300 transition-colors hover:bg-green-900/40"
+                    className="inline-flex min-w-32 items-center justify-center rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-4 py-2 text-center text-sm font-medium leading-tight text-gray-200 transition-colors hover:border-[#CC2229] hover:text-white"
                   >
-                    <CheckCircle size={14} />
-                    Completar
+                    Marcar<br />completado
                   </button>
                 </div>
               );
@@ -580,17 +579,15 @@ export default function MantenimientoPage() {
                     <td className="px-4 py-3"><StatusBadge status={m.status} /></td>
                     <td className="px-4 py-3">
                       {m.status === "Completado" ? (
-                        <span className="inline-flex items-center gap-1 text-xs font-medium text-green-400">
-                          <CheckCircle size={14} />
-                          Completado
+                        <span className="text-sm text-gray-500">
+                          Listo
                         </span>
                       ) : (
                         <button
                           onClick={() => markMantenimientoCompletado(m)}
-                          className="inline-flex items-center gap-2 rounded-lg border border-green-700/60 bg-green-950/30 px-3 py-1.5 text-xs font-medium text-green-300 transition-colors hover:bg-green-900/40"
+                          className="inline-flex min-w-32 items-center justify-center rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-4 py-2 text-center text-sm font-medium leading-tight text-gray-200 transition-colors hover:border-[#CC2229] hover:text-white"
                         >
-                          <CheckCircle size={14} />
-                          Marcar completado
+                          Marcar<br />completado
                         </button>
                       )}
                     </td>
