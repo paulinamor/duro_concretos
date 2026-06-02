@@ -15,26 +15,48 @@ interface Transaccion {
 }
 
 const transaccionesData: Transaccion[] = [
-  { hora: "08:15", descripcion: "Saldo inicial del día", tipo: "Ingreso", monto: 15000, responsable: "Admin", saldo: 15000 },
-  { hora: "09:30", descripcion: "Cobro viaje VJ-2026-140 (Apodaca)", tipo: "Ingreso", monto: 15200, responsable: "José García", saldo: 30200 },
-  { hora: "10:45", descripcion: "Pago diesel DC-03", tipo: "Egreso", monto: 4050, responsable: "Luis Ramírez", saldo: 26150 },
-  { hora: "11:20", descripcion: "Cobro viaje VJ-2026-138 (Guadalupe)", tipo: "Ingreso", monto: 13300, responsable: "Roberto Flores", saldo: 39450 },
-  { hora: "12:00", descripcion: "Pago refacciones Taller MTY", tipo: "Egreso", monto: 3200, responsable: "Admin", saldo: 36250 },
-  { hora: "13:30", descripcion: "Cobro viaje VJ-2026-137 (Sta. Catarina)", tipo: "Ingreso", monto: 12025, responsable: "Alejandro Reyes", saldo: 48275 },
-  { hora: "14:00", descripcion: "Gastos varios operación", tipo: "Egreso", monto: 850, responsable: "Admin", saldo: 47425 },
-  { hora: "15:30", descripcion: "Cobro viaje VJ-2026-136 (Escobedo)", tipo: "Ingreso", monto: 16150, responsable: "Fernando Castillo", saldo: 63575 },
-  { hora: "16:00", descripcion: "Pago diesel DC-07", tipo: "Egreso", monto: 3375, responsable: "Carlos Mendoza", saldo: 60200 },
-  { hora: "17:45", descripcion: "Cobro pendiente cliente Grupo Alfa", tipo: "Ingreso", monto: 22000, responsable: "Admin", saldo: 82200 },
+  { hora: "20/03/26", descripcion: "ABRAHAM ARRIAGA - 4.5 m³ - Colinas del Aeropuerto", tipo: "Ingreso", monto: 16920, responsable: "SAM", saldo: 16920 },
+  { hora: "21/03/26", descripcion: "PATRICIO BENAVIDES - 00 de 50kg", tipo: "Ingreso", monto: 8000, responsable: "SAM", saldo: 24920 },
+  { hora: "09/04/26", descripcion: "JORGE ESTEBAN REYES - Residencial El Barrito", tipo: "Ingreso", monto: 9000, responsable: "SAM", saldo: 33920 },
+  { hora: "14/04/26", descripcion: "ADRIAN LEAL - 36 m³ - Col. Terminal Monterrey", tipo: "Ingreso", monto: 29200, responsable: "SAM", saldo: 63120 },
+  { hora: "16/04/26", descripcion: "CRISTO VIVE - 7 m³ - Camino Agua Fría Apodaca", tipo: "Ingreso", monto: 20300, responsable: "SAM", saldo: 83420 },
+  { hora: "17/04/26", descripcion: "GABRIEL FRAGOSO - Dr. González", tipo: "Ingreso", monto: 10700, responsable: "SAM", saldo: 94120 },
+  { hora: "18/04/26", descripcion: "MARIA SANTOS CANTU - 27 m³ - Pesquería NL", tipo: "Ingreso", monto: 71820, responsable: "SAM", saldo: 165940 },
+  { hora: "18/04/26", descripcion: "CRISTO VIVE - 10 m³ - Camino Agua Fría Apodaca", tipo: "Ingreso", monto: 29000, responsable: "SAM", saldo: 194940 },
+  { hora: "NO COLADO", descripcion: "MARIA SANTOS CANTU - Pesquería NL", tipo: "Ingreso", monto: 50000, responsable: "RAFA", saldo: 244940 },
+  { hora: "04/26", descripcion: "GABRIEL FRAGOSO - 17 m³ - Mil Encinos", tipo: "Ingreso", monto: 52870, responsable: "RAFA", saldo: 297810 },
+  { hora: "15/05/26", descripcion: "JIME GONZALEZ CISNEROS - Universo #3318", tipo: "Ingreso", monto: 21450, responsable: "GAYTAN", saldo: 319260 },
+  { hora: "18/04/26", descripcion: "Robo de efectivo - salida de Samantha y Angel", tipo: "Egreso", monto: 4500, responsable: "SAMANTHA/ANGEL", saldo: 314760 },
 ];
 
-const saldoInicial = 15000;
-const ingresos = transaccionesData.filter(t => t.tipo === "Ingreso").reduce((s, t) => s + t.monto, 0);
-const egresos = transaccionesData.filter(t => t.tipo === "Egreso").reduce((s, t) => s + t.monto, 0);
-const saldoFinal = transaccionesData[transaccionesData.length - 1].saldo;
+const saldoInicial = 0;
 
 export default function EfectivoPage() {
+  const [transacciones, setTransacciones] = useState(transaccionesData);
   const [selectedDate, setSelectedDate] = useState("2026-05-20");
   const [showForm, setShowForm] = useState(false);
+  const ingresos = transacciones.filter(t => t.tipo === "Ingreso").reduce((s, t) => s + t.monto, 0);
+  const egresos = transacciones.filter(t => t.tipo === "Egreso").reduce((s, t) => s + t.monto, 0);
+  const saldoFinal = transacciones[transacciones.length - 1]?.saldo ?? saldoInicial;
+
+  function handleSave(values: Record<string, string>) {
+    const monto = Number(values["Monto ($)"]?.replace(/[$,]/g, "") || 0);
+    const tipo = values.Tipo || "Ingreso";
+    const saldoActual = transacciones[transacciones.length - 1]?.saldo ?? saldoInicial;
+    const descripcion = values.Descripción || "Cobro viaje";
+
+    setTransacciones((current) => [
+      {
+        hora: new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit", hour12: false }),
+        descripcion,
+        tipo,
+        monto,
+        responsable: values.Responsable || "Admin",
+        saldo: tipo === "Ingreso" ? saldoActual + monto : saldoActual - monto,
+      },
+      ...current,
+    ]);
+  }
 
   return (
     <div className="space-y-6">
@@ -85,6 +107,7 @@ export default function EfectivoPage() {
         open={showForm}
         title="Registrar movimiento"
         onClose={() => setShowForm(false)}
+        onSave={handleSave}
         footer={
           <>
             <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-[#3A3A3A] rounded-lg transition-colors">Cancelar</button>
@@ -102,15 +125,21 @@ export default function EfectivoPage() {
             </div>
             <div>
               <label className="block text-sm text-gray-400 mb-1">Monto ($)</label>
-              <input type="number" placeholder="0.00" className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]" />
+              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+                {[850, 3200, 3375, 4050, 12025, 13300, 15200, 16150, 22000].map((monto) => <option key={monto}>${monto.toLocaleString()}</option>)}
+              </select>
             </div>
             <div>
               <label className="block text-sm text-gray-400 mb-1">Responsable</label>
-              <input type="text" placeholder="Nombre" className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]" />
+              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+                {["Admin", "José García", "Luis Ramírez", "Roberto Flores", "Alejandro Reyes", "Fernando Castillo", "Carlos Mendoza"].map((responsable) => <option key={responsable}>{responsable}</option>)}
+              </select>
             </div>
             <div className="sm:col-span-2 lg:col-span-3">
               <label className="block text-sm text-gray-400 mb-1">Descripción</label>
-              <input type="text" placeholder="Concepto del movimiento" className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]" />
+              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+                {["Cobro viaje", "Cobro pendiente cliente", "Pago diesel", "Pago refacciones", "Gastos varios operación", "Saldo inicial del día"].map((descripcion) => <option key={descripcion}>{descripcion}</option>)}
+              </select>
             </div>
           </div>
       </FormModal>
@@ -130,7 +159,7 @@ export default function EfectivoPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#3A3A3A]">
-              {transaccionesData.map((t, i) => (
+              {transacciones.map((t, i) => (
                 <tr key={i} className="hover:bg-[#2A2A2A] transition-colors">
                   <td className="px-4 py-3 text-gray-400 font-mono text-xs">{t.hora}</td>
                   <td className="px-4 py-3 text-gray-200">{t.descripcion}</td>

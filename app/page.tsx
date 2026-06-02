@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import Image from "next/image";
+import { findUserByCredentials, recordAuthEvent, saveSession } from "@/lib/auth";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -11,15 +13,48 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  function showErrorToast(message: string) {
+    window.dispatchEvent(
+      new CustomEvent("duro:toast", {
+        detail: {
+          type: "error",
+          title: "No se pudo iniciar sesión",
+          message,
+        },
+      })
+    );
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     if (!email || !password) {
-      setError("Por favor ingresa tus credenciales.");
+      const message = "Por favor ingresa tus credenciales.";
+      setError(message);
+      recordAuthEvent({ type: "login_failed", email: email || "sin correo", message });
+      showErrorToast(message);
       return;
     }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      const message = "El correo electrónico no tiene un formato válido.";
+      setError(message);
+      recordAuthEvent({ type: "login_failed", email, message });
+      showErrorToast(message);
+      return;
+    }
+    const user = findUserByCredentials(email, password);
+    if (!user) {
+      const message = "Correo o contraseña incorrectos. Verifica tus datos.";
+      setError(message);
+      recordAuthEvent({ type: "login_failed", email, message });
+      showErrorToast(message);
+      return;
+    }
+
     setLoading(true);
     setTimeout(() => {
+      saveSession(user);
+      recordAuthEvent({ type: "login_success", email: user.email, message: `Acceso autorizado como ${user.role}.` });
       router.push("/dashboard");
     }, 800);
   };
@@ -110,6 +145,11 @@ export default function LoginPage() {
                 )}
               </button>
             </form>
+            <div className="mt-5 text-center">
+              <Link href="/users/password/new" className="text-sm text-gray-400 hover:text-[#CC2229] transition-colors">
+                Recuperar contraseña
+              </Link>
+            </div>
 
           </div>
         </div>

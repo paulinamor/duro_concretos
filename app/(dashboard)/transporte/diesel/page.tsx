@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Fuel, DollarSign, Gauge, Plus } from "lucide-react";
+import { AlertTriangle, DollarSign, Filter, Fuel, Gauge, Plus } from "lucide-react";
 import KPICard from "@/components/KPICard";
 import FormModal from "@/components/FormModal";
 import {
@@ -19,24 +19,28 @@ interface CargaDiesel {
   fecha: string;
   unidad: string;
   operador: string;
+  combustible: string;
   litros: number;
   precioL: number;
   total: number;
   kmRecorridos: number;
   rendimiento: string;
+  recibo: string;
 }
 
 const dieselData: CargaDiesel[] = [
-  { fecha: "20/05/2026", unidad: "DC-03", operador: "Luis Ramírez", litros: 180, precioL: 22.5, total: 4050, kmRecorridos: 540, rendimiento: "3.0 km/L" },
-  { fecha: "20/05/2026", unidad: "DC-07", operador: "Carlos Mendoza", litros: 150, precioL: 22.5, total: 3375, kmRecorridos: 420, rendimiento: "2.8 km/L" },
-  { fecha: "19/05/2026", unidad: "DC-01", operador: "José García", litros: 200, precioL: 22.3, total: 4460, kmRecorridos: 620, rendimiento: "3.1 km/L" },
-  { fecha: "19/05/2026", unidad: "DC-05", operador: "Miguel Torres", litros: 140, precioL: 22.3, total: 3122, kmRecorridos: 390, rendimiento: "2.8 km/L" },
-  { fecha: "18/05/2026", unidad: "DC-02", operador: "Roberto Flores", litros: 165, precioL: 22.1, total: 3647, kmRecorridos: 480, rendimiento: "2.9 km/L" },
-  { fecha: "18/05/2026", unidad: "DC-06", operador: "Alejandro Reyes", litros: 155, precioL: 22.1, total: 3426, kmRecorridos: 460, rendimiento: "3.0 km/L" },
-  { fecha: "17/05/2026", unidad: "DC-04", operador: "Fernando Castillo", litros: 190, precioL: 22.0, total: 4180, kmRecorridos: 570, rendimiento: "3.0 km/L" },
-  { fecha: "17/05/2026", unidad: "DC-08", operador: "Eduardo López", litros: 170, precioL: 22.0, total: 3740, kmRecorridos: 510, rendimiento: "3.0 km/L" },
-  { fecha: "16/05/2026", unidad: "DC-03", operador: "Luis Ramírez", litros: 175, precioL: 21.9, total: 3833, kmRecorridos: 490, rendimiento: "2.8 km/L" },
-  { fecha: "15/05/2026", unidad: "DC-01", operador: "José García", litros: 195, precioL: 21.8, total: 4251, kmRecorridos: 600, rendimiento: "3.1 km/L" },
+  { fecha: "10/02/2025", unidad: "115", operador: "Registro PDF", combustible: "DIESEL", litros: 226.43, precioL: 24.78, total: 5613, kmRecorridos: 6348, rendimiento: "28.04 km/L", recibo: "273278" },
+  { fecha: "11/03/2025", unidad: "AVANZA AZUL", operador: "Registro PDF", combustible: "GASOLINA", litros: 17.63, precioL: 22.69, total: 400, kmRecorridos: 132974, rendimiento: "0.00 km/L", recibo: "1400809" },
+  { fecha: "12/06/2025", unidad: "VOLTEO", operador: "Registro PDF", combustible: "DIESEL", litros: 194.81, precioL: 24.49, total: 4770.9, kmRecorridos: 0, rendimiento: "0.00 km/L", recibo: "298386" },
+  { fecha: "29/07/2025", unidad: "HYLUX COMBUSTIBLE", operador: "Registro PDF", combustible: "GASOLINA", litros: 66.97, precioL: 22.68, total: 1519, kmRecorridos: 0, rendimiento: "0.00 km/L", recibo: "86658" },
+  { fecha: "05/08/2025", unidad: "117", operador: "Registro PDF", combustible: "DIESEL", litros: 177.29, precioL: 24.19, total: 4288, kmRecorridos: 14155, rendimiento: "0.00 km/L", recibo: "24026" },
+  { fecha: "05/08/2025", unidad: "BOMBA-36 B03", operador: "Registro PDF", combustible: "DIESEL", litros: 233.87, precioL: 24.19, total: 5657, kmRecorridos: 3570107, rendimiento: "0.00 km/L", recibo: "242024" },
+  { fecha: "07/08/2025", unidad: "107", operador: "Registro PDF", combustible: "DIESEL", litros: 256, precioL: 24.19, total: 6192.64, kmRecorridos: 127431, rendimiento: "0.00 km/L", recibo: "242987" },
+  { fecha: "07/08/2025", unidad: "117", operador: "Registro PDF", combustible: "DIESEL", litros: 162.54, precioL: 0, total: 0, kmRecorridos: 189, rendimiento: "1.16 km/L", recibo: "-" },
+  { fecha: "08/08/2025", unidad: "111", operador: "Registro PDF", combustible: "DIESEL", litros: 263.11, precioL: 24.19, total: 6364.56, kmRecorridos: 155305.4, rendimiento: "0.00 km/L", recibo: "243499" },
+  { fecha: "08/08/2025", unidad: "112", operador: "Registro PDF", combustible: "DIESEL", litros: 307.18, precioL: 24.19, total: 7430.78, kmRecorridos: 155504.4, rendimiento: "0.00 km/L", recibo: "243513" },
+  { fecha: "13/08/2025", unidad: "112", operador: "Registro PDF", combustible: "DIESEL", litros: 248.74, precioL: 24.29, total: 6041.94, kmRecorridos: 384.2, rendimiento: "1.54 km/L", recibo: "346073" },
+  { fecha: "23/08/2025", unidad: "TR-02 ALFA 2013", operador: "Registro PDF", combustible: "DIESEL", litros: 304.44, precioL: 23.99, total: 7303.4, kmRecorridos: 0, rendimiento: "0.00 km/L", recibo: "102216" },
 ];
 
 const costosPorDia = [
@@ -48,8 +52,6 @@ const costosPorDia = [
   { dia: "20/05", DC01: 0, DC03: 4050, DC07: 3375 },
 ];
 
-const totalLitros = dieselData.reduce((s, d) => s + d.litros, 0);
-const totalCosto = dieselData.reduce((s, d) => s + d.total, 0);
 const promedioRendimiento = "2.95 km/L";
 
 const tooltipStyle = {
@@ -60,7 +62,56 @@ const tooltipStyle = {
 };
 
 export default function DieselPage() {
+  const [cargas, setCargas] = useState(dieselData);
   const [showForm, setShowForm] = useState(false);
+  const [showCostoUnidad, setShowCostoUnidad] = useState(false);
+  const [filterUnidad, setFilterUnidad] = useState("Todas");
+
+  const totalLitros = cargas.reduce((s, d) => s + d.litros, 0);
+  const totalCosto = cargas.reduce((s, d) => s + d.total, 0);
+  const unidadesDiesel = ["Todas", ...Array.from(new Set(cargas.map((d) => d.unidad)))];
+  const bajoRendimiento = cargas.filter((d) => Number(d.rendimiento.split(" ")[0]) < 2.9).length;
+  const filteredDiesel = cargas.filter((d) => {
+    return filterUnidad === "Todas" || d.unidad === filterUnidad;
+  });
+  const costoPorUnidad = Array.from(
+    cargas.reduce((summary, carga) => {
+      const current = summary.get(carga.unidad) ?? { unidad: carga.unidad, litros: 0, costo: 0, cargas: 0 };
+      summary.set(carga.unidad, {
+        unidad: carga.unidad,
+        litros: current.litros + carga.litros,
+        costo: current.costo + carga.total,
+        cargas: current.cargas + 1,
+      });
+      return summary;
+    }, new Map<string, { unidad: string; litros: number; costo: number; cargas: number }>()),
+  )
+    .map(([, value]) => value)
+    .sort((a, b) => b.costo - a.costo);
+
+  function handleSave(values: Record<string, string>) {
+    const litros = Number(values["Litros cargados"]?.replace(" L", "") || 0);
+    const precioL = Number(values["Precio por litro ($)"] || 0);
+    const kmRecorridos = Number(values["Km recorridos"]?.replace(" km", "") || 0);
+    const rendimiento = litros > 0 ? `${(kmRecorridos / litros).toFixed(1)} km/L` : "0.0 km/L";
+    const fecha = values.Fecha ? values.Fecha.split("-").reverse().join("/") : "20/05/2026";
+
+    setCargas((current) => [
+      {
+        fecha,
+        unidad: values.Unidad || "DC-03",
+        operador: values.Operador || "Luis Ramírez",
+        combustible: "DIESEL",
+        litros,
+        precioL,
+        total: Math.round(litros * precioL),
+        kmRecorridos,
+        rendimiento,
+        recibo: "Nuevo",
+      },
+      ...current,
+    ]);
+  }
 
   return (
     <div className="space-y-6">
@@ -80,16 +131,18 @@ export default function DieselPage() {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <KPICard title="Total litros del mes" value={`${totalLitros.toLocaleString()} L`} icon={Fuel} iconColor="text-yellow-400" />
         <KPICard title="Costo total del mes" value={`$${totalCosto.toLocaleString()}`} icon={DollarSign} iconColor="text-[#CC2229]" />
         <KPICard title="Promedio rendimiento" value={promedioRendimiento} icon={Gauge} iconColor="text-blue-400" />
+        <KPICard title="Bajo rendimiento" value={String(bajoRendimiento)} icon={AlertTriangle} iconColor="text-orange-400" subtitle="Menor a 2.9 km/L" />
       </div>
 
       <FormModal
         open={showForm}
         title="Registrar carga de diesel"
         onClose={() => setShowForm(false)}
+        onSave={handleSave}
         footer={
           <>
             <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-[#3A3A3A] rounded-lg transition-colors">
@@ -102,25 +155,104 @@ export default function DieselPage() {
         }
       >
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[
-              { label: "Fecha", type: "date" },
-              { label: "Unidad", type: "text", placeholder: "Ej. DC-01" },
-              { label: "Operador", type: "text", placeholder: "Nombre del operador" },
-              { label: "Litros cargados", type: "number", placeholder: "0.0" },
-              { label: "Precio por litro ($)", type: "number", placeholder: "22.50" },
-              { label: "Km recorridos", type: "number", placeholder: "0" },
-            ].map((f) => (
-              <div key={f.label}>
-                <label className="block text-sm text-gray-400 mb-1">{f.label}</label>
-                <input
-                  type={f.type}
-                  placeholder={f.placeholder ?? ""}
-                  className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-                />
-              </div>
-            ))}
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Fecha</label>
+              <input type="date" className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]" />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Unidad</label>
+              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+                {unidadesDiesel.filter((u) => u !== "Todas").map((u) => <option key={u}>{u}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Operador</label>
+              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+                {["Luis Ramírez", "Carlos Mendoza", "José García", "Miguel Torres", "Roberto Flores", "Alejandro Reyes"].map((o) => <option key={o}>{o}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Litros cargados</label>
+              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+                {["140", "150", "165", "180", "190", "200"].map((l) => <option key={l}>{l} L</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Precio por litro ($)</label>
+              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+                {["21.80", "21.90", "22.00", "22.10", "22.30", "22.50"].map((p) => <option key={p}>{p}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Km recorridos</label>
+              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+                {["390", "420", "480", "540", "600", "620"].map((km) => <option key={km}>{km} km</option>)}
+              </select>
+            </div>
           </div>
       </FormModal>
+
+      <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl p-4 flex flex-wrap gap-3 items-center">
+        <Filter size={16} className="text-gray-400" />
+        <select
+          value={filterUnidad}
+          onChange={(e) => setFilterUnidad(e.target.value)}
+          className="bg-[#1A1A1A] border border-[#3A3A3A] text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
+        >
+          {unidadesDiesel.map((unidad) => <option key={unidad}>{unidad}</option>)}
+        </select>
+        <button
+          onClick={() => setShowCostoUnidad((value) => !value)}
+          className="flex items-center gap-2 rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-3 py-2 text-sm text-gray-300 transition-colors hover:border-[#CC2229] hover:text-white"
+        >
+          <DollarSign size={15} />
+          {showCostoUnidad ? "Ocultar costo por unidad" : "Ver costo por unidad"}
+        </button>
+        <span className="text-gray-500 text-xs ml-auto">{filteredDiesel.length} cargas</span>
+      </div>
+
+      {showCostoUnidad && (
+        <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
+          <div className="px-5 py-4 border-b border-[#3A3A3A] flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-white font-semibold">Costo por unidad</h3>
+              <p className="text-gray-500 text-xs mt-1">Resumen acumulado de litros, cargas y costo total por unidad.</p>
+            </div>
+            <button
+              onClick={() => setShowCostoUnidad(false)}
+              className="rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-3 py-2 text-sm text-gray-300 transition-colors hover:border-[#CC2229] hover:text-white"
+            >
+              Cerrar resumen
+            </button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-[#1A1A1A] border-b border-[#3A3A3A]">
+                  {["Unidad", "Cargas", "Litros", "Costo total", "Costo promedio/L"].map((h) => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#3A3A3A]">
+                {costoPorUnidad.map((item) => (
+                  <tr key={item.unidad} className="hover:bg-[#2A2A2A] transition-colors">
+                    <td className="px-4 py-3 text-white font-semibold">{item.unidad}</td>
+                    <td className="px-4 py-3 text-gray-300">{item.cargas}</td>
+                    <td className="px-4 py-3 text-yellow-400">{item.litros.toLocaleString(undefined, { maximumFractionDigits: 2 })} L</td>
+                    <td className="px-4 py-3 text-white font-semibold">${item.costo.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                    <td className="px-4 py-3 text-gray-300">
+                      ${item.litros > 0 ? (item.costo / item.litros).toFixed(2) : "0.00"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Chart */}
       <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl p-5">
@@ -148,7 +280,7 @@ export default function DieselPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-[#1A1A1A] border-b border-[#3A3A3A]">
-                {["Fecha", "Unidad", "Operador", "Litros", "Precio/L", "Total", "Km Recorridos", "Rendimiento"].map((h) => (
+                {["Fecha", "Unidad", "Combustible", "Litros", "Precio/L", "Total", "Km Recorridos", "Rendimiento", "Recibo"].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">
                     {h}
                   </th>
@@ -156,16 +288,17 @@ export default function DieselPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#3A3A3A]">
-              {dieselData.map((d, i) => (
+              {filteredDiesel.map((d, i) => (
                 <tr key={i} className="hover:bg-[#2A2A2A] transition-colors">
                   <td className="px-4 py-3 text-gray-400 text-xs">{d.fecha}</td>
                   <td className="px-4 py-3 text-white font-semibold">{d.unidad}</td>
-                  <td className="px-4 py-3 text-gray-200">{d.operador}</td>
+                  <td className="px-4 py-3 text-gray-200">{d.combustible}</td>
                   <td className="px-4 py-3 text-yellow-400">{d.litros} L</td>
                   <td className="px-4 py-3 text-gray-300">${d.precioL.toFixed(2)}</td>
                   <td className="px-4 py-3 text-white font-semibold">${d.total.toLocaleString()}</td>
                   <td className="px-4 py-3 text-gray-300">{d.kmRecorridos} km</td>
-                  <td className="px-4 py-3 text-blue-400">{d.rendimiento}</td>
+                  <td className={`px-4 py-3 ${Number(d.rendimiento.split(" ")[0]) < 2.9 ? "text-orange-400 font-semibold" : "text-blue-400"}`}>{d.rendimiento}</td>
+                  <td className="px-4 py-3 text-gray-300 font-mono text-xs">{d.recibo}</td>
                 </tr>
               ))}
             </tbody>

@@ -1,61 +1,83 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, Truck, Package, Calendar, Filter } from "lucide-react";
 import StatusBadge from "@/components/StatusBadge";
 import KPICard from "@/components/KPICard";
 import FormModal from "@/components/FormModal";
-
-interface Viaje {
-  folio: string;
-  fecha: string;
-  unidad: string;
-  operador: string;
-  destino: string;
-  m3: number;
-  precioPorM3: number;
-  total: number;
-  estado: string;
-}
-
-const viajesData: Viaje[] = [
-  { folio: "VJ-2026-142", fecha: "20/05/2026", unidad: "DC-03 · NMY-1042", operador: "Luis Ramírez", destino: "Monterrey Centro", m3: 7.5, precioPorM3: 1850, total: 13875, estado: "Completado" },
-  { folio: "VJ-2026-141", fecha: "20/05/2026", unidad: "DC-07 · PMH-3310", operador: "Carlos Mendoza", destino: "San Nicolás", m3: 6.0, precioPorM3: 1850, total: 11100, estado: "En ruta" },
-  { folio: "VJ-2026-140", fecha: "20/05/2026", unidad: "DC-01 · KLJ-8821", operador: "José García", destino: "Apodaca Industrial", m3: 8.0, precioPorM3: 1900, total: 15200, estado: "Completado" },
-  { folio: "VJ-2026-139", fecha: "19/05/2026", unidad: "DC-05 · HJK-4459", operador: "Miguel Torres", destino: "García NL", m3: 5.5, precioPorM3: 1850, total: 10175, estado: "Cancelado" },
-  { folio: "VJ-2026-138", fecha: "19/05/2026", unidad: "DC-02 · XPW-7734", operador: "Roberto Flores", destino: "Guadalupe NL", m3: 7.0, precioPorM3: 1900, total: 13300, estado: "Completado" },
-  { folio: "VJ-2026-137", fecha: "19/05/2026", unidad: "DC-06 · TNB-2281", operador: "Alejandro Reyes", destino: "Santa Catarina", m3: 6.5, precioPorM3: 1850, total: 12025, estado: "Completado" },
-  { folio: "VJ-2026-136", fecha: "18/05/2026", unidad: "DC-04 · RPL-5590", operador: "Fernando Castillo", destino: "Escobedo NL", m3: 8.5, precioPorM3: 1900, total: 16150, estado: "Completado" },
-  { folio: "VJ-2026-135", fecha: "18/05/2026", unidad: "DC-08 · ZXC-9012", operador: "Eduardo López", destino: "Cadereyta", m3: 7.0, precioPorM3: 2000, total: 14000, estado: "Completado" },
-  { folio: "VJ-2026-134", fecha: "17/05/2026", unidad: "DC-03 · NMY-1042", operador: "Luis Ramírez", destino: "Monterrey Oriente", m3: 6.0, precioPorM3: 1850, total: 11100, estado: "Completado" },
-  { folio: "VJ-2026-133", fecha: "17/05/2026", unidad: "DC-01 · KLJ-8821", operador: "José García", destino: "Juárez NL", m3: 7.5, precioPorM3: 1900, total: 14250, estado: "Completado" },
-  { folio: "VJ-2026-132", fecha: "16/05/2026", unidad: "DC-07 · PMH-3310", operador: "Carlos Mendoza", destino: "Monterrey Sur", m3: 5.0, precioPorM3: 1850, total: 9250, estado: "Pendiente" },
-];
+import { loadViajes, saveViajes, viajesIniciales } from "@/lib/viajes";
 
 const operadores = ["Todos", "Luis Ramírez", "Carlos Mendoza", "José García", "Miguel Torres", "Roberto Flores", "Alejandro Reyes", "Fernando Castillo", "Eduardo López"];
 const estados = ["Todos", "Completado", "En ruta", "Cancelado", "Pendiente"];
 
-const totalM3 = viajesData.filter(v => v.estado === "Completado").reduce((s, v) => s + v.m3, 0);
-const hoy = viajesData.filter(v => v.fecha === "20/05/2026").length;
+function formatDate(date: string) {
+  if (!date) return "20/05/2026";
+  const [year, month, day] = date.split("-");
+  return `${day}/${month}/${year}`;
+}
 
 export default function ViajesPage() {
+  const [viajes, setViajes] = useState(viajesIniciales);
   const [showForm, setShowForm] = useState(false);
   const [filterEstado, setFilterEstado] = useState("Todos");
   const [filterOperador, setFilterOperador] = useState("Todos");
 
-  const filtered = viajesData.filter((v) => {
+  useEffect(() => {
+    const frameId = window.requestAnimationFrame(() => setViajes(loadViajes()));
+    return () => window.cancelAnimationFrame(frameId);
+  }, []);
+
+  const totalM3 = viajes.filter(v => v.estado === "Completado").reduce((s, v) => s + v.m3, 0);
+  const hoy = viajes.filter(v => v.fecha === "20/05/2026").length;
+  const filtered = viajes.filter((v) => {
     return (
       (filterEstado === "Todos" || v.estado === filterEstado) &&
       (filterOperador === "Todos" || v.operador === filterOperador)
     );
   });
 
+  function handleSave(values: Record<string, string>) {
+    const m3 = Number(values["M3 a entregar"] || 0);
+    const precioPorM3 = Number(values["Precio por M3 ($)"] || 0);
+    const nextNumber = viajes.length + 143;
+    const fecha = formatDate(values.Fecha);
+
+    setViajes((current) => {
+      const next = [
+      {
+        folio: `VJ-2026-${nextNumber}`,
+        fecha,
+        unidad: values.Unidad || "DC-03 · NMY-1042",
+        operador: values.Chofer || "Luis Ramírez",
+        destino: values.Destino || "Monterrey Centro",
+        m3,
+        precioPorM3,
+        total: m3 * precioPorM3,
+        estado: values.Estado || "Pendiente",
+      },
+      ...current,
+      ];
+      saveViajes(next);
+      return next;
+    });
+  }
+
+  function updateViajeEstado(folio: string, estado: string) {
+    setViajes((current) => {
+      const next = current.map((viaje) => (
+        viaje.folio === folio ? { ...viaje, estado } : viaje
+      ));
+      saveViajes(next);
+      return next;
+    });
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-white">Viajes y Operadores</h1>
+          <h1 className="text-xl font-bold text-white">Viajes y choferes</h1>
           <p className="text-gray-500 text-sm mt-0.5">Registro y seguimiento de viajes</p>
         </div>
         <button
@@ -69,7 +91,7 @@ export default function ViajesPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <KPICard title="Total viajes del mes" value={String(viajesData.length)} icon={Truck} iconColor="text-[#CC2229]" />
+        <KPICard title="Total viajes del mes" value={String(viajes.length)} icon={Truck} iconColor="text-[#CC2229]" />
         <KPICard title="M3 entregados" value={`${totalM3} m³`} icon={Package} iconColor="text-blue-400" />
         <KPICard title="Viajes hoy" value={String(hoy)} icon={Calendar} iconColor="text-green-400" />
       </div>
@@ -78,6 +100,7 @@ export default function ViajesPage() {
         open={showForm}
         title="Registrar nuevo viaje"
         onClose={() => setShowForm(false)}
+        onSave={handleSave}
         footer={
           <>
             <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-[#3A3A3A] rounded-lg transition-colors">
@@ -90,23 +113,48 @@ export default function ViajesPage() {
         }
       >
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[
-              { label: "Fecha", type: "date", placeholder: "" },
-              { label: "Unidad", type: "text", placeholder: "Ej. DC-01 · KLJ-8821" },
-              { label: "Operador", type: "text", placeholder: "Nombre del operador" },
-              { label: "Destino", type: "text", placeholder: "Dirección de entrega" },
-              { label: "M3 a entregar", type: "number", placeholder: "0.0" },
-              { label: "Precio por M3 ($)", type: "number", placeholder: "1850" },
-            ].map((f) => (
-              <div key={f.label}>
-                <label className="block text-sm text-gray-400 mb-1">{f.label}</label>
-                <input
-                  type={f.type}
-                  placeholder={f.placeholder}
-                  className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-                />
-              </div>
-            ))}
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Fecha</label>
+              <input type="date" className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]" />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Unidad</label>
+              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+                {["DC-01 · KLJ-8821", "DC-02 · XPW-7734", "DC-03 · NMY-1042", "DC-05 · HJK-4459", "DC-07 · PMH-3310"].map((u) => <option key={u}>{u}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Chofer</label>
+              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+                {operadores.filter((o) => o !== "Todos").map((o) => <option key={o}>{o}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Destino</label>
+              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+                {["Monterrey Centro", "San Nicolás", "Apodaca Industrial", "García NL", "Guadalupe NL", "Santa Catarina"].map((d) => <option key={d}>{d}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">M3 a entregar</label>
+              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+                {["5.0", "5.5", "6.0", "6.5", "7.0", "7.5", "8.0", "8.5"].map((m3) => <option key={m3}>{m3}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Precio por M3 ($)</label>
+              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+                {["1850", "1900", "2000"].map((precio) => <option key={precio}>{precio}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Estado</label>
+              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+                <option>Pendiente</option>
+                <option>En ruta</option>
+                <option>Completado</option>
+              </select>
+            </div>
             <div className="sm:col-span-2 lg:col-span-3">
               <label className="block text-sm text-gray-400 mb-1">Observaciones</label>
               <textarea
@@ -146,7 +194,7 @@ export default function ViajesPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-[#1A1A1A] border-b border-[#3A3A3A]">
-                {["Folio", "Fecha", "Unidad", "Operador", "Destino", "M3", "Precio/M3", "Total", "Estado"].map((h) => (
+                {["Folio", "Fecha", "Unidad", "Chofer", "Destino", "M3", "Precio/M3", "Total", "Estado", "Acción"].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">
                     {h}
                   </th>
@@ -165,6 +213,18 @@ export default function ViajesPage() {
                   <td className="px-4 py-3 text-gray-300">${v.precioPorM3.toLocaleString()}</td>
                   <td className="px-4 py-3 text-white font-semibold">${v.total.toLocaleString()}</td>
                   <td className="px-4 py-3"><StatusBadge status={v.estado} /></td>
+                  <td className="px-4 py-3">
+                    {v.estado !== "Completado" ? (
+                      <button
+                        onClick={() => updateViajeEstado(v.folio, "Completado")}
+                        className="rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-2.5 py-1.5 text-xs text-gray-300 transition-colors hover:border-[#CC2229] hover:text-white"
+                      >
+                        Marcar completado
+                      </button>
+                    ) : (
+                      <span className="text-xs text-gray-500">Listo para pago</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -19,6 +19,10 @@ const statusMap: Record<string, { label: string; className: string }> = {
   egreso: { label: "Egreso", className: "bg-red-900/40 text-red-400 border border-red-700" },
   aprobado: { label: "Aprobado", className: "bg-green-900/40 text-green-400 border border-green-700" },
   revision: { label: "Revisión", className: "bg-yellow-900/40 text-yellow-400 border border-yellow-700" },
+  completo: { label: "Completo", className: "bg-green-900/40 text-green-400 border border-green-700" },
+  registro: { label: "Registro", className: "bg-blue-900/40 text-blue-400 border border-blue-700" },
+  consulta: { label: "Consulta", className: "bg-yellow-900/40 text-yellow-400 border border-yellow-700" },
+  bloqueado: { label: "Bloqueado", className: "bg-gray-800 text-gray-400 border border-gray-700" },
 };
 
 export default function StatusBadge({ status }: StatusBadgeProps) {
