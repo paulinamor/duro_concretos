@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import Header from "@/components/Header";
-import { getStoredSession } from "@/lib/auth";
+import { getAllowedModuleSet, getStoredSession } from "@/lib/auth";
 
 const pageTitles: Record<string, string> = {
   "/dashboard": "Dashboard operativo",
@@ -39,19 +39,36 @@ export default function DashboardLayout({
   const title = pageTitles[pathname] ?? "ERP Duro Concretos";
 
   useEffect(() => {
-    if (getStoredSession()) return;
+    const session = getStoredSession();
+    if (!session) {
+      window.dispatchEvent(
+        new CustomEvent("duro:toast", {
+          detail: {
+            type: "error",
+            title: "Sesión requerida",
+            message: "Inicia sesión con un usuario autorizado para entrar al ERP.",
+          },
+        }),
+      );
+      router.push("/");
+      return;
+    }
+
+    const allowedModules = getAllowedModuleSet(session);
+    const isAllowed = pathname === "/perfil" || allowedModules.has(pathname);
+    if (isAllowed) return;
 
     window.dispatchEvent(
       new CustomEvent("duro:toast", {
         detail: {
           type: "error",
-          title: "Sesión requerida",
-          message: "Inicia sesión con un usuario autorizado para entrar al ERP.",
+          title: "Módulo bloqueado",
+          message: "Tu usuario no tiene acceso a este módulo.",
         },
       }),
     );
-    router.push("/");
-  }, [router]);
+    router.push("/dashboard");
+  }, [pathname, router]);
 
   return (
     <div className="flex min-h-screen bg-[#1A1A1A]">

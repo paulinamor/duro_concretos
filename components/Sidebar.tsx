@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
@@ -27,31 +27,7 @@ import {
   Lock,
   ShieldCheck,
 } from "lucide-react";
-import { getStoredSession } from "@/lib/auth";
-
-const enabledModules = new Set([
-  "/configuracion",
-  "/dashboard",
-  "/transporte/viajes",
-  "/transporte/pagos",
-  "/transporte/diesel",
-  "/transporte/mantenimiento",
-  "/operaciones/inventario",
-  "/operaciones/efectivo",
-  "/crm/pipeline",
-  "/crm/seguimiento",
-]);
-
-const operatorModules = new Set([
-  "/configuracion",
-  "/dashboard",
-  "/transporte/viajes",
-  "/transporte/diesel",
-  "/transporte/mantenimiento",
-  "/operaciones/inventario",
-  "/operaciones/efectivo",
-  "/crm/seguimiento",
-]);
+import { getAllowedModuleSet, getStoredSession } from "@/lib/auth";
 
 const navItems = [
   {
@@ -185,14 +161,14 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
-  const [role] = useState(() => getStoredSession()?.role ?? "admin");
+  const [session, setSession] = useState(() => getStoredSession());
   const [transporteOpen, setTransporteOpen] = useState(true);
   const [administracionOpen, setAdministracionOpen] = useState(true);
   const [operacionesOpen, setOperacionesOpen] = useState(true);
   const [ventasOpen, setVentasOpen] = useState(true);
   const [finanzasOpen, setFinanzasOpen] = useState(true);
   const [recursosHumanosOpen, setRecursosHumanosOpen] = useState(true);
-  const enabledSet = useMemo(() => (role === "operador" ? operatorModules : enabledModules), [role]);
+  const enabledSet = useMemo(() => getAllowedModuleSet(session), [session]);
   const hasEnabledItems = (items: Array<{ href: string }>) => items.some((item) => enabledSet.has(item.href));
   const transporteLocked = !hasEnabledItems(transporteItems);
   const administracionLocked = !hasEnabledItems(administracionItems);
@@ -200,6 +176,15 @@ export default function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
   const ventasLocked = !hasEnabledItems(ventasItems);
   const finanzasLocked = !hasEnabledItems(finanzasItems);
   const recursosHumanosLocked = !hasEnabledItems(recursosHumanosItems);
+
+  useEffect(() => {
+    function handleSessionUpdate() {
+      setSession(getStoredSession());
+    }
+
+    window.addEventListener("duro:session-updated", handleSessionUpdate);
+    return () => window.removeEventListener("duro:session-updated", handleSessionUpdate);
+  }, []);
 
   const content = (
     <div className="flex flex-col h-full">

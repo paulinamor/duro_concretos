@@ -5,43 +5,19 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Bell, Bot, CircleDollarSign, Fuel, LogOut, Settings, Truck, User, UserCircle, Wallet } from "lucide-react";
 import { MobileMenuButton } from "./Sidebar";
-import { getStoredSession } from "@/lib/auth";
+import { getAllowedModuleSet, getStoredSession } from "@/lib/auth";
 
 interface HeaderProps {
   title: string;
   onMobileMenu: () => void;
 }
 
-const adminNotificationModules = new Set([
-  "/configuracion",
-  "/dashboard",
-  "/transporte/viajes",
-  "/transporte/pagos",
-  "/transporte/diesel",
-  "/transporte/mantenimiento",
-  "/operaciones/inventario",
-  "/operaciones/efectivo",
-  "/crm/pipeline",
-  "/crm/seguimiento",
-]);
-
-const operatorNotificationModules = new Set([
-  "/configuracion",
-  "/dashboard",
-  "/transporte/viajes",
-  "/transporte/diesel",
-  "/transporte/mantenimiento",
-  "/operaciones/inventario",
-  "/operaciones/efectivo",
-  "/crm/seguimiento",
-]);
-
 export default function Header({ title, onMobileMenu }: HeaderProps) {
   const router = useRouter();
   const headerActionsRef = useRef<HTMLDivElement>(null);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [session] = useState(() => getStoredSession());
+  const [session, setSession] = useState(() => getStoredSession());
   const [notifications, setNotifications] = useState([
     { title: "Caja chica requiere reposición", detail: "Disponible bajo el punto definido", href: "/operaciones/caja-chica", read: false, icon: Wallet, tag: "Operaciones" },
     { title: "Unidad DC-02 próxima a servicio", detail: "Restan menos de 2,000 km", href: "/transporte/mantenimiento", read: false, icon: Truck, tag: "Transporte" },
@@ -49,7 +25,7 @@ export default function Header({ title, onMobileMenu }: HeaderProps) {
     { title: "Rendimiento bajo de diésel", detail: "DC-07 reportó 2.8 km/L", href: "/transporte/diesel", read: false, icon: Fuel, tag: "Transporte" },
     { title: "Automatización pausada", detail: "Timbrado de nómina requiere autorización", href: "/automatizaciones", read: false, icon: Bot, tag: "Sistema" },
   ]);
-  const enabledNotificationModules = session?.role === "operador" ? operatorNotificationModules : adminNotificationModules;
+  const enabledNotificationModules = getAllowedModuleSet(session);
   const visibleNotifications = notifications.filter((item) => enabledNotificationModules.has(item.href));
   const unreadCount = visibleNotifications.filter((item) => !item.read).length;
 
@@ -70,6 +46,10 @@ export default function Header({ title, onMobileMenu }: HeaderProps) {
   }
 
   useEffect(() => {
+    function handleSessionUpdate() {
+      setSession(getStoredSession());
+    }
+
     function handleOutsideClick(event: MouseEvent) {
       if (
         headerActionsRef.current &&
@@ -80,8 +60,12 @@ export default function Header({ title, onMobileMenu }: HeaderProps) {
       }
     }
 
+    window.addEventListener("duro:session-updated", handleSessionUpdate);
     document.addEventListener("mousedown", handleOutsideClick);
-    return () => document.removeEventListener("mousedown", handleOutsideClick);
+    return () => {
+      window.removeEventListener("duro:session-updated", handleSessionUpdate);
+      document.removeEventListener("mousedown", handleOutsideClick);
+    };
   }, []);
 
   const displayName = session?.name ?? "Admin";

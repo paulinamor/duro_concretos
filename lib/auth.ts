@@ -5,6 +5,8 @@ export interface AppUser {
   password: string;
   name: string;
   role: UserRole;
+  modules?: "all" | string[];
+  status?: "Activo" | "Inactivo";
 }
 
 export type AuthEventType = "login_success" | "login_failed" | "password_recovery" | "role_update";
@@ -19,6 +21,20 @@ export interface AuthEvent {
 
 const SESSION_KEY = "duro_concretos_session";
 const AUTH_EVENTS_KEY = "duro_concretos_auth_events";
+const USERS_KEY = "duro_concretos_users";
+
+export const moduleCatalog = [
+  { href: "/configuracion", label: "Autenticación y roles" },
+  { href: "/dashboard", label: "Dashboard operativo" },
+  { href: "/transporte/viajes", label: "Control de viajes y choferes" },
+  { href: "/transporte/pagos", label: "Pago por viaje / m³" },
+  { href: "/transporte/diesel", label: "Consumo de diésel" },
+  { href: "/transporte/mantenimiento", label: "Mantenimiento + refacciones" },
+  { href: "/operaciones/inventario", label: "Inventarios básicos" },
+  { href: "/operaciones/efectivo", label: "Control de efectivo" },
+  { href: "/crm/pipeline", label: "CRM con pipeline de 5 etapas" },
+  { href: "/crm/seguimiento", label: "Seguimiento de clientes y oportunidades" },
+];
 
 export const appUsers: AppUser[] = [
   {
@@ -26,12 +42,33 @@ export const appUsers: AppUser[] = [
     password: "Admin2026!",
     name: "Admin",
     role: "admin",
+    modules: "all",
+    status: "Activo",
   },
   {
     email: "operador@duroconcretos.mx",
     password: "Operador2026!",
     name: "Operador",
     role: "operador",
+    modules: [
+      "/configuracion",
+      "/dashboard",
+      "/transporte/viajes",
+      "/transporte/diesel",
+      "/transporte/mantenimiento",
+      "/operaciones/inventario",
+      "/operaciones/efectivo",
+      "/crm/seguimiento",
+    ],
+    status: "Activo",
+  },
+  {
+    email: "paulina.morales@duroconcretos.mx",
+    password: "Paulina2026!",
+    name: "Paulina Morales",
+    role: "admin",
+    modules: "all",
+    status: "Activo",
   },
 ];
 
@@ -63,15 +100,16 @@ export const accessProfiles: Record<UserRole, Array<{ module: string; access: "C
 };
 
 export function findUserByCredentials(email: string, password: string) {
-  return appUsers.find(
+  return getManagedUsers().find(
     (user) =>
       user.email.toLowerCase() === email.trim().toLowerCase() &&
-      user.password === password,
+      user.password === password &&
+      (user.status ?? "Activo") === "Activo",
   );
 }
 
 export function isRegisteredEmail(email: string) {
-  return appUsers.some((user) => user.email.toLowerCase() === email.trim().toLowerCase());
+  return getManagedUsers().some((user) => user.email.toLowerCase() === email.trim().toLowerCase());
 }
 
 export function getStoredSession() {
@@ -81,7 +119,7 @@ export function getStoredSession() {
   if (!raw) return null;
 
   try {
-    return JSON.parse(raw) as Pick<AppUser, "email" | "name" | "role">;
+    return JSON.parse(raw) as Pick<AppUser, "email" | "name" | "role" | "modules" | "status">;
   } catch {
     localStorage.removeItem(SESSION_KEY);
     return null;
@@ -95,8 +133,55 @@ export function saveSession(user: AppUser) {
       email: user.email,
       name: user.name,
       role: user.role,
+      modules: user.modules ?? getDefaultModulesForRole(user.role),
+      status: user.status ?? "Activo",
     }),
   );
+  window.dispatchEvent(new CustomEvent("duro:session-updated"));
+}
+
+export function getDefaultModulesForRole(role: UserRole) {
+  if (role === "admin") return "all" as const;
+  return [
+    "/configuracion",
+    "/dashboard",
+    "/transporte/viajes",
+    "/transporte/diesel",
+    "/transporte/mantenimiento",
+    "/operaciones/inventario",
+    "/operaciones/efectivo",
+    "/crm/seguimiento",
+  ];
+}
+
+export function getManagedUsers() {
+  if (typeof window === "undefined") return appUsers;
+
+  const raw = localStorage.getItem(USERS_KEY);
+  if (!raw) {
+    saveManagedUsers(appUsers);
+    return appUsers;
+  }
+
+  try {
+    const users = JSON.parse(raw) as AppUser[];
+    return users.length > 0 ? users : appUsers;
+  } catch {
+    localStorage.removeItem(USERS_KEY);
+    saveManagedUsers(appUsers);
+    return appUsers;
+  }
+}
+
+export function saveManagedUsers(users: AppUser[]) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(USERS_KEY, JSON.stringify(users));
+}
+
+export function getAllowedModuleSet(user: Pick<AppUser, "role" | "modules"> | null) {
+  const modules = user?.modules ?? getDefaultModulesForRole(user?.role ?? "admin");
+  if (modules === "all") return new Set(moduleCatalog.map((module) => module.href));
+  return new Set(modules);
 }
 
 export function getAuthEvents() {
