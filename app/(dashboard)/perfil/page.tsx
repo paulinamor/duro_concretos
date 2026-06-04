@@ -4,7 +4,6 @@ export default function PerfilPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-white">Mi perfil</h1>
         <p className="text-gray-500 text-sm mt-0.5">Información del usuario administrador</p>
       </div>
 

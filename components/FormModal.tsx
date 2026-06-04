@@ -130,27 +130,30 @@ export default function FormModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex min-h-dvh w-screen items-center justify-center overflow-y-auto bg-black/75 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[100] flex min-h-dvh w-screen items-center justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-md">
       <button
         type="button"
         aria-label="Cerrar formulario"
         onClick={onClose}
         className="absolute inset-0"
       />
-      <div className="relative z-10 my-8 w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-[#242424] border border-[#3A3A3A] rounded-xl shadow-2xl">
-        <div className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-[#3A3A3A] bg-[#242424] px-6 py-4">
-          <h3 className="text-white font-semibold">{title}</h3>
+      <div className="relative z-10 my-8 w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl border border-white/10 bg-[#181b20] shadow-2xl shadow-black/40">
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-white/10 bg-[#181b20]/95 px-6 py-4 backdrop-blur">
+          <div>
+            <h3 className="text-base font-semibold text-white">{title}</h3>
+            <p className="mt-0.5 text-xs text-gray-500">Completa la información para actualizar el módulo.</p>
+          </div>
           <button
             type="button"
             onClick={onClose}
-            className="text-gray-400 hover:text-white transition-colors"
+            className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-white/8 hover:text-white"
             aria-label="Cerrar"
           >
             <X size={18} />
           </button>
         </div>
         <div ref={bodyRef} className="p-6">{children}</div>
-        <div onClickCapture={handleFooterClick} className="sticky bottom-0 flex justify-end gap-3 border-t border-[#3A3A3A] bg-[#242424] px-6 py-4">
+        <div onClickCapture={handleFooterClick} className="sticky bottom-0 flex justify-end gap-3 border-t border-white/10 bg-[#181b20]/95 px-6 py-4 backdrop-blur">
           {footer}
         </div>
       </div>

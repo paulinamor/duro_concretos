@@ -67,7 +67,6 @@ export default function CrmSeguimientoPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-white">Seguimiento CRM</h1>
           <p className="text-gray-500 text-sm mt-0.5">Clientes, oportunidades y próximas acciones comerciales</p>
         </div>
         <button

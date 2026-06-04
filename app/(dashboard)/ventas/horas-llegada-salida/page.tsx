@@ -80,7 +80,6 @@ export default function HorasLlegadaSalidaPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-white">Documento de Llegada y Salida</h1>
           <p className="text-gray-500 text-sm mt-0.5">Ventas con validación de hora de llegada por GPS</p>
         </div>
         <div className="flex flex-wrap gap-2">

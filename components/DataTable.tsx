@@ -1,3 +1,12 @@
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+
 interface Column<T> {
   header: string;
   accessor: keyof T | ((row: T) => React.ReactNode);
@@ -16,51 +25,51 @@ export default function DataTable<T>({
   emptyMessage = "Sin datos",
 }: DataTableProps<T>) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-[#3A3A3A]">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="bg-[#1A1A1A] border-b border-[#3A3A3A]">
+    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+      <Table>
+        <TableHeader>
+          <TableRow className="bg-muted/40 hover:bg-muted/40">
             {columns.map((col, i) => (
-              <th
+              <TableHead
                 key={i}
-                className={`px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap ${col.className ?? ""}`}
+                className={`px-4 py-3 align-top text-xs font-semibold uppercase tracking-wider text-muted-foreground whitespace-normal ${col.className ?? ""}`}
               >
                 {col.header}
-              </th>
+              </TableHead>
             ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-[#3A3A3A]">
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {data.length === 0 ? (
-            <tr>
-              <td
+            <TableRow>
+              <TableCell
                 colSpan={columns.length}
-                className="px-4 py-8 text-center text-gray-500"
+                className="px-4 py-8 text-center text-muted-foreground"
               >
                 {emptyMessage}
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ) : (
             data.map((row, ri) => (
-              <tr
+              <TableRow
                 key={ri}
-                className="bg-[#242424] hover:bg-[#2A2A2A] transition-colors"
+                className="hover:bg-muted/40"
               >
                 {columns.map((col, ci) => (
-                  <td
+                  <TableCell
                     key={ci}
-                    className={`px-4 py-3 text-gray-200 whitespace-nowrap ${col.className ?? ""}`}
+                    className={`px-4 py-3 align-top text-foreground whitespace-normal break-words ${col.className ?? ""}`}
                   >
                     {typeof col.accessor === "function"
                       ? col.accessor(row)
                       : (row[col.accessor] as React.ReactNode)}
-                  </td>
+                  </TableCell>
                 ))}
-              </tr>
+              </TableRow>
             ))
           )}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }

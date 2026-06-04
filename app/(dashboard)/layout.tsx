@@ -8,10 +8,12 @@ import { getAllowedModuleSet, getStoredSession } from "@/lib/auth";
 
 const pageTitles: Record<string, string> = {
   "/dashboard": "Dashboard operativo",
+  "/reportes": "Reportes",
   "/perfil": "Mi Perfil",
   "/configuracion": "Autenticación y roles",
   "/automatizaciones": "Automatizaciones",
   "/transporte/viajes": "Control de viajes y choferes",
+  "/transporte/disponibilidad": "Disponibilidad de cargas",
   "/transporte/pagos": "Pago por viaje / m³",
   "/transporte/diesel": "Consumo de diésel",
   "/transporte/mantenimiento": "Mantenimiento + refacciones",
@@ -21,6 +23,7 @@ const pageTitles: Record<string, string> = {
   "/operaciones/caja-chica": "Caja Chica",
   "/crm/pipeline": "CRM con pipeline de 5 etapas",
   "/crm/seguimiento": "Seguimiento de clientes y oportunidades",
+  "/crm/clientes-vendedor": "Clientes por vendedor",
   "/ventas/horas-llegada-salida": "Horas de Llegada y Salida",
   "/finanzas/cxc": "Cuentas por Cobrar",
   "/finanzas/cxp": "Cuentas por Pagar",
@@ -71,11 +74,15 @@ export default function DashboardLayout({
   }, [pathname, router]);
 
   return (
-    <div className="flex min-h-screen bg-[#1A1A1A]">
+    <div className="flex min-h-screen bg-background text-foreground">
       <Sidebar mobileOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="flex flex-col flex-1 min-w-0">
         <Header title={title} onMobileMenu={() => setSidebarOpen(true)} />
-        <main className="flex-1 p-4 lg:p-6 overflow-auto">{children}</main>
+        <main id="duro-module-content" className="flex-1 overflow-auto bg-[#1A1A1A] p-3 lg:p-5">
+          <div className="w-full min-w-0">
+            {children}
+          </div>
+        </main>
       </div>
     </div>
   );

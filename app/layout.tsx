@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import ToastCenter from "@/components/ToastCenter";
 import ThemeSync from "@/components/ThemeSync";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -27,12 +28,14 @@ export default function RootLayout({
   return (
     <html
       lang="es"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} dark h-full antialiased`}
     >
-      <body className="min-h-full bg-[#1A1A1A] text-white">
-        <ThemeSync />
-        {children}
-        <ToastCenter />
+      <body className="min-h-full bg-background text-foreground">
+        <TooltipProvider>
+          <ThemeSync />
+          {children}
+          <ToastCenter />
+        </TooltipProvider>
       </body>
     </html>
   );

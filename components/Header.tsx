@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bell, Bot, CircleDollarSign, Fuel, LogOut, Settings, Truck, User, UserCircle, Wallet } from "lucide-react";
+import { Bell, Bot, CircleDollarSign, FileSpreadsheet, FileText, Fuel, LogOut, Settings, Truck, User, UserCircle, Wallet } from "lucide-react";
 import { MobileMenuButton } from "./Sidebar";
 import { getAllowedModuleSet, getStoredSession } from "@/lib/auth";
 
@@ -45,6 +45,75 @@ export default function Header({ title, onMobileMenu }: HeaderProps) {
     router.push("/");
   }
 
+  function getModuleExportMarkup() {
+    const content = document.getElementById("duro-module-content");
+    if (!content) return "";
+
+    const clone = content.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll("button, input, select, textarea, svg, [data-export-ignore]").forEach((node) => node.remove());
+    return clone.innerHTML;
+  }
+
+  function downloadFile(filename: string, content: string, mimeType: string) {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  function exportCurrentModuleExcel() {
+    const markup = getModuleExportMarkup();
+    const html = `
+      <html>
+        <head><meta charset="UTF-8" /></head>
+        <body>
+          <h1>${title}</h1>
+          <p>Duro Concretos · ${new Date().toLocaleDateString("es-MX")}</p>
+          ${markup}
+        </body>
+      </html>
+    `;
+    const filename = `${title.toLowerCase().replace(/[^a-z0-9]+/gi, "-") || "reporte"}.xls`;
+    downloadFile(filename, html, "application/vnd.ms-excel;charset=utf-8");
+  }
+
+  function exportCurrentModulePdf() {
+    const markup = getModuleExportMarkup();
+    const printable = window.open("", "_blank", "width=1200,height=800");
+    if (!printable) return;
+
+    printable.document.write(`
+      <html>
+        <head>
+          <title>${title}</title>
+          <style>
+            body { font-family: Arial, sans-serif; color: #111827; padding: 24px; }
+            h1 { margin: 0 0 6px; font-size: 24px; }
+            .meta { margin: 0 0 20px; color: #6B7280; }
+            table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+            th, td { border-bottom: 1px solid #E5E7EB; padding: 8px; text-align: left; vertical-align: top; }
+            th { background: #111827; color: white; }
+            div { break-inside: avoid; }
+            [class] { box-shadow: none !important; }
+            @media print { body { padding: 16px; } }
+          </style>
+        </head>
+        <body>
+          <h1>${title}</h1>
+          <p class="meta">Duro Concretos · ${new Date().toLocaleDateString("es-MX")}</p>
+          ${markup}
+          <script>window.onload = () => window.print();</script>
+        </body>
+      </html>
+    `);
+    printable.document.close();
+  }
+
   useEffect(() => {
     function handleSessionUpdate() {
       setSession(getStoredSession());
@@ -72,19 +141,37 @@ export default function Header({ title, onMobileMenu }: HeaderProps) {
   const displayRole = session?.role === "operador" ? "Operador" : "Administrador";
 
   return (
-    <header className="relative z-40 bg-[#242424] border-b border-[#3A3A3A] px-4 py-3 flex items-center justify-between shrink-0">
+    <header className="relative z-40 flex shrink-0 items-center justify-between border-b border-[#1E293B] bg-[#0B1220] px-4 py-3">
       <div className="flex items-center gap-3">
         <MobileMenuButton onClick={onMobileMenu} />
         <h2 className="text-lg font-semibold text-white">{title}</h2>
       </div>
       <div ref={headerActionsRef} className="flex items-center gap-2">
+        <div data-export-ignore className="hidden items-center gap-2 md:flex">
+          <button
+            type="button"
+            onClick={exportCurrentModuleExcel}
+            className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 transition-colors hover:border-green-500/50 hover:text-green-300"
+          >
+            <FileSpreadsheet size={15} />
+            Excel
+          </button>
+          <button
+            type="button"
+            onClick={exportCurrentModulePdf}
+            className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 transition-colors hover:border-[#CC2229]/60 hover:text-[#CC2229]"
+          >
+            <FileText size={15} />
+            PDF
+          </button>
+        </div>
         <div className="relative">
         <button
           onClick={() => {
             setNotificationsOpen((open) => !open);
             setUserMenuOpen(false);
           }}
-          className="p-2 text-gray-400 hover:text-white transition-colors relative rounded-lg hover:bg-[#1A1A1A]"
+          className="relative rounded-lg p-2 text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
           aria-label="Notificaciones"
         >
           <Bell size={18} />
@@ -93,12 +180,12 @@ export default function Header({ title, onMobileMenu }: HeaderProps) {
           )}
         </button>
         {notificationsOpen && (
-          <div className="absolute right-0 mt-3 w-96 max-w-[calc(100vw-2rem)] bg-[#242424] border border-[#3A3A3A] rounded-xl shadow-2xl overflow-hidden">
-            <div className="bg-[#1A1A1A] px-4 py-4 border-b border-[#3A3A3A]">
+          <div className="absolute right-0 mt-3 w-96 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/15">
+            <div className="border-b border-slate-200 bg-slate-50 px-4 py-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-white font-semibold text-sm">Notificaciones</p>
-                  <p className="text-gray-500 text-xs mt-0.5">Alertas operativas del ERP</p>
+                  <p className="text-slate-950 font-semibold text-sm">Notificaciones</p>
+                  <p className="text-slate-500 text-xs mt-0.5">Alertas operativas del ERP</p>
                 </div>
                 <span className="rounded-full bg-[#CC2229]/15 px-2.5 py-1 text-xs font-semibold text-[#CC2229]">
                   {unreadCount} nuevas
@@ -113,41 +200,41 @@ export default function Header({ title, onMobileMenu }: HeaderProps) {
                   onClick={() => markNotificationAsRead(item.title)}
                   className={`block rounded-lg border px-3 py-3 transition-colors ${
                     item.read
-                      ? "border-[#3A3A3A] bg-[#1A1A1A]/60 opacity-60"
-                      : "border-[#CC2229]/30 bg-[#1A1A1A] hover:border-[#CC2229]"
+                      ? "border-slate-200 bg-slate-50 opacity-70"
+                      : "border-slate-200 bg-white hover:border-[#CC2229]"
                   }`}
                 >
                   <div className="flex items-start gap-3">
                     <div className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
-                      item.read ? "bg-[#242424] text-gray-500" : "bg-[#CC2229]/15 text-[#CC2229]"
+                      item.read ? "bg-slate-100 text-slate-500" : "bg-[#CC2229]/10 text-[#CC2229]"
                     }`}>
                       <item.icon size={17} />
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">
-                        <p className="text-sm font-medium text-white">{item.title}</p>
+                        <p className="text-sm font-medium text-slate-950">{item.title}</p>
                         {!item.read && <span className="mt-1.5 h-2 w-2 rounded-full bg-[#CC2229] shrink-0" />}
                       </div>
-                      <p className="text-xs text-gray-500 mt-1">{item.detail}</p>
-                      <span className="mt-2 inline-flex rounded-full bg-[#242424] px-2 py-0.5 text-[11px] text-gray-400">
+                      <p className="text-xs text-slate-500 mt-1">{item.detail}</p>
+                      <span className="mt-2 inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
                         {item.tag}
                       </span>
                     </div>
                   </div>
                 </Link>
               )) : (
-                <div className="rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-3 py-4">
-                  <p className="text-sm font-medium text-white">Sin notificaciones activas</p>
-                  <p className="mt-1 text-xs text-gray-500">Las alertas de módulos bloqueados no se muestran.</p>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-4">
+                  <p className="text-sm font-medium text-slate-950">Sin notificaciones activas</p>
+                  <p className="mt-1 text-xs text-slate-500">Las alertas de módulos bloqueados no se muestran.</p>
                 </div>
               )}
             </div>
-            <div className="border-t border-[#3A3A3A] px-4 py-3">
+            <div className="border-t border-slate-200 px-4 py-3">
               <button
                 onClick={() => setNotifications((current) => current.map((item) => (
                   enabledNotificationModules.has(item.href) ? { ...item, read: true } : item
                 )))}
-                className="w-full rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-3 py-2 text-sm text-gray-300 hover:border-[#CC2229] hover:text-white transition-colors"
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition-colors hover:border-[#CC2229] hover:text-[#CC2229]"
               >
                 Marcar todas como leídas
               </button>
@@ -155,34 +242,34 @@ export default function Header({ title, onMobileMenu }: HeaderProps) {
           </div>
         )}
         </div>
-        <div className="relative pl-2 border-l border-[#3A3A3A]">
+        <div className="relative border-l border-white/10 pl-2">
         <button
           onClick={() => {
             setUserMenuOpen((open) => !open);
             setNotificationsOpen(false);
           }}
-          className="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-[#1A1A1A] transition-colors"
+          className="flex items-center gap-2 rounded-lg px-2 py-1 transition-colors hover:bg-white/10"
           aria-label="Menú de usuario"
         >
-          <div className="w-8 h-8 bg-[#CC2229] rounded-full flex items-center justify-center">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#CC2229] shadow-lg shadow-[#CC2229]/20">
             <User size={16} className="text-white" />
           </div>
           <div className="hidden sm:block">
             <p className="text-sm text-white font-medium leading-none">{displayName}</p>
-            <p className="text-xs text-gray-500 mt-0.5">{displayRole}</p>
+            <p className="text-xs text-slate-300 mt-0.5">{displayRole}</p>
           </div>
         </button>
         {userMenuOpen && (
-          <div className="absolute right-0 mt-3 w-56 bg-[#242424] border border-[#3A3A3A] rounded-xl shadow-2xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-[#3A3A3A]">
-              <p className="text-white text-sm font-semibold">{displayName}</p>
-              <p className="text-gray-500 text-xs mt-0.5">{displayRole}</p>
+          <div className="absolute right-0 mt-3 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/15">
+            <div className="border-b border-slate-200 px-4 py-3">
+              <p className="text-slate-950 text-sm font-semibold">{displayName}</p>
+              <p className="text-slate-500 text-xs mt-0.5">{displayRole}</p>
             </div>
             <div className="p-1">
               <Link
                 href="/perfil"
                 onClick={() => setUserMenuOpen(false)}
-                className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-[#1A1A1A] hover:text-white transition-colors"
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-100 hover:text-slate-950"
               >
                 <UserCircle size={15} />
                 Mi perfil
@@ -190,14 +277,14 @@ export default function Header({ title, onMobileMenu }: HeaderProps) {
               <Link
                 href="/configuracion"
                 onClick={() => setUserMenuOpen(false)}
-                className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-[#1A1A1A] hover:text-white transition-colors"
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-100 hover:text-slate-950"
               >
                 <Settings size={15} />
                 Configuración
               </Link>
               <button
                 onClick={handleLogout}
-                className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-300 hover:bg-[#1A1A1A] hover:text-white transition-colors"
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-100 hover:text-slate-950"
               >
                 <LogOut size={15} />
                 Cerrar sesión

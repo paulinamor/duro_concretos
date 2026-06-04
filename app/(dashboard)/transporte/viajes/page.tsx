@@ -6,6 +6,7 @@ import StatusBadge from "@/components/StatusBadge";
 import KPICard from "@/components/KPICard";
 import FormModal from "@/components/FormModal";
 import { loadViajes, saveViajes, viajesIniciales } from "@/lib/viajes";
+import { unidadesDisponibilidad } from "@/lib/disponibilidadCargas";
 
 const operadores = ["Todos", "Luis Ramírez", "Carlos Mendoza", "José García", "Miguel Torres", "Roberto Flores", "Alejandro Reyes", "Fernando Castillo", "Eduardo López"];
 const estados = ["Todos", "Completado", "En ruta", "Cancelado", "Pendiente"];
@@ -77,7 +78,6 @@ export default function ViajesPage() {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-white">Viajes y choferes</h1>
           <p className="text-gray-500 text-sm mt-0.5">Registro y seguimiento de viajes</p>
         </div>
         <button
@@ -120,7 +120,7 @@ export default function ViajesPage() {
             <div>
               <label className="block text-sm text-gray-400 mb-1">Unidad</label>
               <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
-                {["DC-01 · KLJ-8821", "DC-02 · XPW-7734", "DC-03 · NMY-1042", "DC-05 · HJK-4459", "DC-07 · PMH-3310"].map((u) => <option key={u}>{u}</option>)}
+                {unidadesDisponibilidad.map((u) => <option key={u}>{u}</option>)}
               </select>
             </div>
             <div>

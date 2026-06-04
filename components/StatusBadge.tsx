@@ -1,28 +1,32 @@
+import { Badge } from "@/components/ui/badge";
+
 interface StatusBadgeProps {
   status: string;
 }
 
 const statusMap: Record<string, { label: string; className: string }> = {
-  completado: { label: "Completado", className: "bg-green-900/40 text-green-400 border border-green-700" },
-  "en ruta": { label: "En ruta", className: "bg-yellow-900/40 text-yellow-400 border border-yellow-700" },
-  cancelado: { label: "Cancelado", className: "bg-red-900/40 text-red-400 border border-red-700" },
-  pendiente: { label: "Pendiente", className: "bg-orange-900/40 text-orange-400 border border-orange-700" },
-  activo: { label: "Activo", className: "bg-green-900/40 text-green-400 border border-green-700" },
-  inactivo: { label: "Inactivo", className: "bg-gray-800 text-gray-400 border border-gray-700" },
-  preventivo: { label: "Preventivo", className: "bg-blue-900/40 text-blue-400 border border-blue-700" },
-  correctivo: { label: "Correctivo", className: "bg-red-900/40 text-red-400 border border-red-700" },
-  entrada: { label: "Entrada", className: "bg-green-900/40 text-green-400 border border-green-700" },
-  salida: { label: "Salida", className: "bg-red-900/40 text-red-400 border border-red-700" },
-  "stock bajo": { label: "Stock bajo", className: "bg-orange-900/40 text-orange-400 border border-orange-700" },
-  normal: { label: "Normal", className: "bg-green-900/40 text-green-400 border border-green-700" },
-  ingreso: { label: "Ingreso", className: "bg-green-900/40 text-green-400 border border-green-700" },
-  egreso: { label: "Egreso", className: "bg-red-900/40 text-red-400 border border-red-700" },
-  aprobado: { label: "Aprobado", className: "bg-green-900/40 text-green-400 border border-green-700" },
-  revision: { label: "Revisión", className: "bg-yellow-900/40 text-yellow-400 border border-yellow-700" },
-  completo: { label: "Completo", className: "bg-green-900/40 text-green-400 border border-green-700" },
-  registro: { label: "Registro", className: "bg-blue-900/40 text-blue-400 border border-blue-700" },
-  consulta: { label: "Consulta", className: "bg-yellow-900/40 text-yellow-400 border border-yellow-700" },
-  bloqueado: { label: "Bloqueado", className: "bg-gray-800 text-gray-400 border border-gray-700" },
+  completado: { label: "Completado", className: "border-emerald-500/25 bg-emerald-500/10 text-emerald-300" },
+  "en ruta": { label: "En ruta", className: "border-amber-500/25 bg-amber-500/10 text-amber-300" },
+  cancelado: { label: "Cancelado", className: "border-red-500/25 bg-red-500/10 text-red-300" },
+  pendiente: { label: "Pendiente", className: "border-orange-500/25 bg-orange-500/10 text-orange-300" },
+  activo: { label: "Activo", className: "border-emerald-500/25 bg-emerald-500/10 text-emerald-300" },
+  inactivo: { label: "Inactivo", className: "border-white/10 bg-white/5 text-gray-400" },
+  prospecto: { label: "Prospecto", className: "border-blue-500/25 bg-blue-500/10 text-blue-300" },
+  "en riesgo": { label: "En riesgo", className: "border-orange-500/25 bg-orange-500/10 text-orange-300" },
+  preventivo: { label: "Preventivo", className: "border-blue-500/25 bg-blue-500/10 text-blue-300" },
+  correctivo: { label: "Correctivo", className: "border-red-500/25 bg-red-500/10 text-red-300" },
+  entrada: { label: "Entrada", className: "border-emerald-500/25 bg-emerald-500/10 text-emerald-300" },
+  salida: { label: "Salida", className: "border-red-500/25 bg-red-500/10 text-red-300" },
+  "stock bajo": { label: "Stock bajo", className: "border-orange-500/25 bg-orange-500/10 text-orange-300" },
+  normal: { label: "Normal", className: "border-emerald-500/25 bg-emerald-500/10 text-emerald-300" },
+  ingreso: { label: "Ingreso", className: "border-emerald-500/25 bg-emerald-500/10 text-emerald-300" },
+  egreso: { label: "Egreso", className: "border-red-500/25 bg-red-500/10 text-red-300" },
+  aprobado: { label: "Aprobado", className: "border-emerald-500/25 bg-emerald-500/10 text-emerald-300" },
+  revision: { label: "Revisión", className: "border-amber-500/25 bg-amber-500/10 text-amber-300" },
+  completo: { label: "Completo", className: "border-emerald-500/25 bg-emerald-500/10 text-emerald-300" },
+  registro: { label: "Registro", className: "border-blue-500/25 bg-blue-500/10 text-blue-300" },
+  consulta: { label: "Consulta", className: "border-amber-500/25 bg-amber-500/10 text-amber-300" },
+  bloqueado: { label: "Bloqueado", className: "border-white/10 bg-white/5 text-gray-400" },
 };
 
 export default function StatusBadge({ status }: StatusBadgeProps) {
@@ -33,10 +37,8 @@ export default function StatusBadge({ status }: StatusBadgeProps) {
   };
 
   return (
-    <span
-      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${config.className}`}
-    >
+    <Badge variant="outline" className={config.className}>
       {config.label}
-    </span>
+    </Badge>
   );
 }

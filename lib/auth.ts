@@ -26,7 +26,9 @@ const USERS_KEY = "duro_concretos_users";
 export const moduleCatalog = [
   { href: "/configuracion", label: "Autenticación y roles" },
   { href: "/dashboard", label: "Dashboard operativo" },
+  { href: "/reportes", label: "Reportes gerenciales" },
   { href: "/transporte/viajes", label: "Control de viajes y choferes" },
+  { href: "/transporte/disponibilidad", label: "Disponibilidad de cargas" },
   { href: "/transporte/pagos", label: "Pago por viaje / m³" },
   { href: "/transporte/diesel", label: "Consumo de diésel" },
   { href: "/transporte/mantenimiento", label: "Mantenimiento + refacciones" },
@@ -34,6 +36,7 @@ export const moduleCatalog = [
   { href: "/operaciones/efectivo", label: "Control de efectivo" },
   { href: "/crm/pipeline", label: "CRM con pipeline de 5 etapas" },
   { href: "/crm/seguimiento", label: "Seguimiento de clientes y oportunidades" },
+  { href: "/crm/clientes-vendedor", label: "Clientes por vendedor" },
 ];
 
 export const appUsers: AppUser[] = [
@@ -53,12 +56,15 @@ export const appUsers: AppUser[] = [
     modules: [
       "/configuracion",
       "/dashboard",
+      "/reportes",
       "/transporte/viajes",
+      "/transporte/disponibilidad",
       "/transporte/diesel",
       "/transporte/mantenimiento",
       "/operaciones/inventario",
       "/operaciones/efectivo",
       "/crm/seguimiento",
+      "/crm/clientes-vendedor",
     ],
     status: "Activo",
   },
@@ -76,7 +82,9 @@ export const accessProfiles: Record<UserRole, Array<{ module: string; access: "C
   admin: [
     { module: "Autenticación y roles", access: "Completo" },
     { module: "Dashboard operativo", access: "Completo" },
+    { module: "Reportes gerenciales", access: "Completo" },
     { module: "Control de viajes y operadores", access: "Completo" },
+    { module: "Disponibilidad de cargas", access: "Completo" },
     { module: "Pago por viaje / m³", access: "Completo" },
     { module: "Consumo de diésel", access: "Completo" },
     { module: "Mantenimiento + refacciones", access: "Completo" },
@@ -84,11 +92,14 @@ export const accessProfiles: Record<UserRole, Array<{ module: string; access: "C
     { module: "Control de efectivo", access: "Completo" },
     { module: "CRM con pipeline de 5 etapas", access: "Completo" },
     { module: "Seguimiento de clientes y oportunidades", access: "Completo" },
+    { module: "Clientes por vendedor", access: "Completo" },
   ],
   operador: [
     { module: "Autenticación y roles", access: "Consulta" },
     { module: "Dashboard operativo", access: "Consulta" },
+    { module: "Reportes gerenciales", access: "Consulta" },
     { module: "Control de viajes y operadores", access: "Registro" },
+    { module: "Disponibilidad de cargas", access: "Consulta" },
     { module: "Pago por viaje / m³", access: "Bloqueado" },
     { module: "Consumo de diésel", access: "Registro" },
     { module: "Mantenimiento + refacciones", access: "Registro" },
@@ -96,6 +107,7 @@ export const accessProfiles: Record<UserRole, Array<{ module: string; access: "C
     { module: "Control de efectivo", access: "Registro" },
     { module: "CRM con pipeline de 5 etapas", access: "Bloqueado" },
     { module: "Seguimiento de clientes y oportunidades", access: "Consulta" },
+    { module: "Clientes por vendedor", access: "Consulta" },
   ],
 };
 
@@ -145,12 +157,15 @@ export function getDefaultModulesForRole(role: UserRole) {
   return [
     "/configuracion",
     "/dashboard",
+    "/reportes",
     "/transporte/viajes",
+    "/transporte/disponibilidad",
     "/transporte/diesel",
     "/transporte/mantenimiento",
     "/operaciones/inventario",
     "/operaciones/efectivo",
     "/crm/seguimiento",
+    "/crm/clientes-vendedor",
   ];
 }
 

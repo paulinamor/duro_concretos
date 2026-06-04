@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import {
   CalendarDays,
   DollarSign,
+  FileSpreadsheet,
+  FileText,
   Phone,
   Plus,
   Search,
@@ -23,6 +25,16 @@ export default function CrmPipelinePage() {
   const [opportunities, setOpportunities] = useState(crmOpportunities);
   const [query, setQuery] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dragOverStage, setDragOverStage] = useState<PipelineStage | null>(null);
+
+  const probabilidadPorEtapa: Record<PipelineStage, number> = {
+    Prospecto: 20,
+    Calificado: 35,
+    Cotización: 55,
+    Negociación: 70,
+    Cierre: 90,
+  };
 
   const filtered = useMemo(() => {
     const term = query.toLowerCase();
@@ -43,13 +55,6 @@ export default function CrmPipelinePage() {
   function handleSave(values: Record<string, string>) {
     const next = opportunities.length + 1;
     const etapa = (values.Etapa || "Prospecto") as PipelineStage;
-    const probabilidadPorEtapa: Record<PipelineStage, number> = {
-      Prospecto: 20,
-      Calificado: 35,
-      Cotización: 55,
-      Negociación: 70,
-      Cierre: 90,
-    };
 
     setOpportunities((current) => [
       {
@@ -70,11 +75,176 @@ export default function CrmPipelinePage() {
     ]);
   }
 
+  function handleDragStart(opportunityId: string) {
+    setDraggedId(opportunityId);
+  }
+
+  function handleDragOver(event: React.DragEvent<HTMLDivElement>, stage: PipelineStage) {
+    event.preventDefault();
+    setDragOverStage(stage);
+  }
+
+  function handleDrop(stage: PipelineStage) {
+    if (!draggedId) return;
+
+    setOpportunities((current) => {
+      const dragged = current.find((item) => item.id === draggedId);
+      if (!dragged) return current;
+
+      const updated = {
+        ...dragged,
+        etapa: stage,
+        probabilidad: probabilidadPorEtapa[stage],
+      };
+
+      return [
+        updated,
+        ...current.filter((item) => item.id !== draggedId),
+      ];
+    });
+
+    setDraggedId(null);
+    setDragOverStage(null);
+  }
+
+  function handleDragEnd() {
+    setDraggedId(null);
+    setDragOverStage(null);
+  }
+
+  function downloadFile(filename: string, content: string, mimeType: string) {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  function exportPipelineExcel() {
+    const rows = opportunities.map((item) => `
+      <tr>
+        <td>${item.id}</td>
+        <td>${item.cliente}</td>
+        <td>${item.obra}</td>
+        <td>${item.contacto}</td>
+        <td>${item.telefono}</td>
+        <td>${item.etapa}</td>
+        <td>${item.valorEstimado}</td>
+        <td>${item.m3Estimados}</td>
+        <td>${item.probabilidad}%</td>
+        <td>${item.fechaSeguimiento}</td>
+        <td>${item.responsable}</td>
+        <td>${item.proximaAccion}</td>
+      </tr>
+    `).join("");
+
+    const html = `
+      <html>
+        <head><meta charset="UTF-8" /></head>
+        <body>
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Cliente</th>
+                <th>Obra</th>
+                <th>Contacto</th>
+                <th>Teléfono</th>
+                <th>Etapa</th>
+                <th>Valor estimado</th>
+                <th>M3 estimados</th>
+                <th>Probabilidad</th>
+                <th>Fecha seguimiento</th>
+                <th>Responsable</th>
+                <th>Próxima acción</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </body>
+      </html>
+    `;
+
+    downloadFile("reporte-crm-pipeline.xls", html, "application/vnd.ms-excel;charset=utf-8");
+  }
+
+  function exportPipelinePdf() {
+    const rows = opportunities.map((item) => `
+      <tr>
+        <td>${item.id}</td>
+        <td>${item.cliente}</td>
+        <td>${item.obra}</td>
+        <td>${item.etapa}</td>
+        <td>$${item.valorEstimado.toLocaleString()}</td>
+        <td>${item.probabilidad}%</td>
+        <td>${item.fechaSeguimiento}</td>
+        <td>${item.responsable}</td>
+      </tr>
+    `).join("");
+
+    const printable = window.open("", "_blank", "width=1200,height=800");
+    if (!printable) return;
+
+    printable.document.write(`
+      <html>
+        <head>
+          <title>Reporte CRM Pipeline</title>
+          <style>
+            body { font-family: Arial, sans-serif; color: #111827; padding: 24px; }
+            h1 { margin: 0 0 8px; font-size: 24px; }
+            p { margin: 0 0 20px; color: #6B7280; }
+            table { width: 100%; border-collapse: collapse; font-size: 12px; }
+            th { background: #111827; color: white; text-align: left; padding: 10px; }
+            td { border-bottom: 1px solid #E5E7EB; padding: 10px; }
+            .summary { display: flex; gap: 18px; margin: 18px 0 24px; }
+            .summary div { border: 1px solid #E5E7EB; border-radius: 8px; padding: 10px 12px; }
+            .summary strong { display: block; font-size: 16px; }
+            @media print { button { display: none; } }
+          </style>
+        </head>
+        <body>
+          <h1>Reporte CRM Pipeline</h1>
+          <p>Duro Concretos · ${new Date().toLocaleDateString("es-MX")}</p>
+          <div class="summary">
+            <div><span>Valor pipeline</span><strong>$${Math.round(totalPipeline).toLocaleString()}</strong></div>
+            <div><span>Pipeline ponderado</span><strong>$${Math.round(weightedPipeline).toLocaleString()}</strong></div>
+            <div><span>M3 estimados</span><strong>${totalM3.toLocaleString()} m3</strong></div>
+            <div><span>Oportunidades</span><strong>${opportunities.length}</strong></div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Cliente</th>
+                <th>Obra</th>
+                <th>Etapa</th>
+                <th>Valor</th>
+                <th>Prob.</th>
+                <th>Seguimiento</th>
+                <th>Responsable</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+          <script>
+            window.onload = () => {
+              window.print();
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    printable.document.close();
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-white">CRM</h1>
           <p className="text-gray-500 text-sm mt-0.5">Pipeline comercial de 5 etapas</p>
         </div>
         <button
@@ -104,6 +274,22 @@ export default function CrmPipelinePage() {
           />
         </div>
         <span className="text-gray-500 text-xs ml-auto">{filtered.length} oportunidades</span>
+        <button
+          type="button"
+          onClick={exportPipelineExcel}
+          className="flex items-center gap-2 rounded-lg border border-[#3A3A3A] px-3 py-2 text-sm text-gray-300 transition-colors hover:border-green-500/50 hover:text-green-300"
+        >
+          <FileSpreadsheet size={15} />
+          Excel
+        </button>
+        <button
+          type="button"
+          onClick={exportPipelinePdf}
+          className="flex items-center gap-2 rounded-lg border border-[#3A3A3A] px-3 py-2 text-sm text-gray-300 transition-colors hover:border-[#CC2229]/60 hover:text-[#CC2229]"
+        >
+          <FileText size={15} />
+          PDF
+        </button>
       </div>
 
       <FormModal
@@ -178,7 +364,17 @@ export default function CrmPipelinePage() {
         {pipelineStages.map((stage: PipelineStage) => {
           const stageItems = filtered.filter((opportunity) => opportunity.etapa === stage);
           return (
-            <div key={stage} className="bg-[#242424] border border-[#3A3A3A] rounded-xl min-h-[420px]">
+            <div
+              key={stage}
+              onDragOver={(event) => handleDragOver(event, stage)}
+              onDragLeave={() => setDragOverStage((current) => current === stage ? null : current)}
+              onDrop={() => handleDrop(stage)}
+              className={`bg-[#242424] border rounded-xl min-h-[420px] transition-colors ${
+                dragOverStage === stage
+                  ? "border-[#CC2229] bg-[#CC2229]/10"
+                  : "border-[#3A3A3A]"
+              }`}
+            >
               <div className="px-4 py-3 border-b border-[#3A3A3A]">
                 <div className="flex items-center justify-between gap-2">
                   <h3 className="text-white font-semibold text-sm">{stage}</h3>
@@ -188,7 +384,17 @@ export default function CrmPipelinePage() {
               </div>
               <div className="p-3 space-y-3">
                 {stageItems.map((opportunity) => (
-                  <div key={opportunity.id} className="bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg p-3 hover:border-[#CC2229]/60 transition-colors">
+                  <div
+                    key={opportunity.id}
+                    draggable
+                    onDragStart={() => handleDragStart(opportunity.id)}
+                    onDragEnd={handleDragEnd}
+                    className={`cursor-grab active:cursor-grabbing bg-[#1A1A1A] border rounded-lg p-3 transition-colors ${
+                      draggedId === opportunity.id
+                        ? "border-[#CC2229] opacity-60"
+                        : "border-[#3A3A3A] hover:border-[#CC2229]/60"
+                    }`}
+                  >
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="text-white font-semibold text-sm">{opportunity.cliente}</p>

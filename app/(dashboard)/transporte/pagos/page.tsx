@@ -184,7 +184,6 @@ export default function PagosPage() {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-white">Pago de Operadores</h1>
           <p className="text-gray-500 text-sm mt-0.5">Cálculo automático desde viajes completados</p>
         </div>
         <div className="flex flex-wrap gap-2">

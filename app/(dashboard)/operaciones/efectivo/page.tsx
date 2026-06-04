@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { TrendingUp, TrendingDown, DollarSign, Plus } from "lucide-react";
+import { TrendingUp, TrendingDown, DollarSign, Plus, WalletCards } from "lucide-react";
 import StatusBadge from "@/components/StatusBadge";
 import FormModal from "@/components/FormModal";
 
 interface Transaccion {
-  hora: string;
+  fecha: string;
+  cliente: string;
   descripcion: string;
   tipo: string;
   monto: number;
@@ -15,39 +16,101 @@ interface Transaccion {
 }
 
 const transaccionesData: Transaccion[] = [
-  { hora: "20/03/26", descripcion: "ABRAHAM ARRIAGA - 4.5 m³ - Colinas del Aeropuerto", tipo: "Ingreso", monto: 16920, responsable: "SAM", saldo: 16920 },
-  { hora: "21/03/26", descripcion: "PATRICIO BENAVIDES - 00 de 50kg", tipo: "Ingreso", monto: 8000, responsable: "SAM", saldo: 24920 },
-  { hora: "09/04/26", descripcion: "JORGE ESTEBAN REYES - Residencial El Barrito", tipo: "Ingreso", monto: 9000, responsable: "SAM", saldo: 33920 },
-  { hora: "14/04/26", descripcion: "ADRIAN LEAL - 36 m³ - Col. Terminal Monterrey", tipo: "Ingreso", monto: 29200, responsable: "SAM", saldo: 63120 },
-  { hora: "16/04/26", descripcion: "CRISTO VIVE - 7 m³ - Camino Agua Fría Apodaca", tipo: "Ingreso", monto: 20300, responsable: "SAM", saldo: 83420 },
-  { hora: "17/04/26", descripcion: "GABRIEL FRAGOSO - Dr. González", tipo: "Ingreso", monto: 10700, responsable: "SAM", saldo: 94120 },
-  { hora: "18/04/26", descripcion: "MARIA SANTOS CANTU - 27 m³ - Pesquería NL", tipo: "Ingreso", monto: 71820, responsable: "SAM", saldo: 165940 },
-  { hora: "18/04/26", descripcion: "CRISTO VIVE - 10 m³ - Camino Agua Fría Apodaca", tipo: "Ingreso", monto: 29000, responsable: "SAM", saldo: 194940 },
-  { hora: "NO COLADO", descripcion: "MARIA SANTOS CANTU - Pesquería NL", tipo: "Ingreso", monto: 50000, responsable: "RAFA", saldo: 244940 },
-  { hora: "04/26", descripcion: "GABRIEL FRAGOSO - 17 m³ - Mil Encinos", tipo: "Ingreso", monto: 52870, responsable: "RAFA", saldo: 297810 },
-  { hora: "15/05/26", descripcion: "JIME GONZALEZ CISNEROS - Universo #3318", tipo: "Ingreso", monto: 21450, responsable: "GAYTAN", saldo: 319260 },
-  { hora: "18/04/26", descripcion: "Robo de efectivo - salida de Samantha y Angel", tipo: "Egreso", monto: 4500, responsable: "SAMANTHA/ANGEL", saldo: 314760 },
+  { fecha: "20/03/26", cliente: "ABRAHAM ARRIAGA", descripcion: "4.5 m³ - Colinas del Aeropuerto", tipo: "Ingreso", monto: 16920, responsable: "SAM", saldo: 16920 },
+  { fecha: "21/03/26", cliente: "PATRICIO BENAVIDES", descripcion: "00 de 50kg", tipo: "Ingreso", monto: 8000, responsable: "SAM", saldo: 24920 },
+  { fecha: "09/04/26", cliente: "JORGE ESTEBAN REYES", descripcion: "Residencial El Barrito", tipo: "Ingreso", monto: 9000, responsable: "SAM", saldo: 33920 },
+  { fecha: "14/04/26", cliente: "ADRIAN LEAL", descripcion: "36 m³ - Col. Terminal Monterrey", tipo: "Ingreso", monto: 29200, responsable: "SAM", saldo: 63120 },
+  { fecha: "16/04/26", cliente: "CRISTO VIVE", descripcion: "7 m³ - Camino Agua Fría Apodaca", tipo: "Ingreso", monto: 20300, responsable: "SAM", saldo: 83420 },
+  { fecha: "17/04/26", cliente: "GABRIEL FRAGOSO", descripcion: "Dr. González", tipo: "Ingreso", monto: 10700, responsable: "SAM", saldo: 94120 },
+  { fecha: "18/04/26", cliente: "MARIA SANTOS CANTU", descripcion: "27 m³ - Pesquería NL", tipo: "Ingreso", monto: 71820, responsable: "SAM", saldo: 165940 },
+  { fecha: "18/04/26", cliente: "CRISTO VIVE", descripcion: "10 m³ - Camino Agua Fría Apodaca", tipo: "Ingreso", monto: 29000, responsable: "SAM", saldo: 194940 },
+  { fecha: "NO COLADO", cliente: "MARIA SANTOS CANTU", descripcion: "Pesquería NL", tipo: "Ingreso", monto: 50000, responsable: "RAFA", saldo: 244940 },
+  { fecha: "04/26", cliente: "GABRIEL FRAGOSO", descripcion: "17 m³ - Mil Encinos", tipo: "Ingreso", monto: 52870, responsable: "RAFA", saldo: 297810 },
+  { fecha: "15/05/26", cliente: "JIME GONZALEZ CISNEROS", descripcion: "Universo #3318", tipo: "Ingreso", monto: 21450, responsable: "GAYTAN", saldo: 319260 },
+  { fecha: "18/04/26", cliente: "Robo de efectivo", descripcion: "Salida de Samantha y Angel", tipo: "Egreso", monto: 4500, responsable: "SAMANTHA/ANGEL", saldo: 314760 },
 ];
 
 const saldoInicial = 0;
 
+function parseFecha(fecha: string) {
+  if (fecha === "NO COLADO") return null;
+
+  const parts = fecha.split("/");
+  if (parts.length === 2) {
+    const [month, year] = parts;
+    return new Date(Number(`20${year}`), Number(month) - 1, 1);
+  }
+
+  if (parts.length === 3) {
+    const [day, month, year] = parts;
+    return new Date(Number(`20${year}`), Number(month) - 1, Number(day));
+  }
+
+  return null;
+}
+
 export default function EfectivoPage() {
   const [transacciones, setTransacciones] = useState(transaccionesData);
-  const [selectedDate, setSelectedDate] = useState("2026-05-20");
+  const [clienteFiltro, setClienteFiltro] = useState("todos");
+  const [fechaInicio, setFechaInicio] = useState("");
+  const [fechaFin, setFechaFin] = useState("");
   const [showForm, setShowForm] = useState(false);
-  const ingresos = transacciones.filter(t => t.tipo === "Ingreso").reduce((s, t) => s + t.monto, 0);
-  const egresos = transacciones.filter(t => t.tipo === "Egreso").reduce((s, t) => s + t.monto, 0);
-  const saldoFinal = transacciones[transacciones.length - 1]?.saldo ?? saldoInicial;
+  const [showSaldos, setShowSaldos] = useState(true);
+  const clientes = Array.from(new Set(transacciones.map((t) => t.cliente))).sort();
+  const filteredTransacciones = transacciones.filter((t) => {
+    const fecha = parseFecha(t.fecha);
+    const matchesCliente = clienteFiltro === "todos" || t.cliente === clienteFiltro;
+    const matchesInicio = !fechaInicio || (fecha ? fecha >= new Date(`${fechaInicio}T00:00:00`) : false);
+    const matchesFin = !fechaFin || (fecha ? fecha <= new Date(`${fechaFin}T23:59:59`) : false);
+
+    return matchesCliente && matchesInicio && matchesFin;
+  });
+  const ingresos = filteredTransacciones.filter(t => t.tipo === "Ingreso").reduce((s, t) => s + t.monto, 0);
+  const egresos = filteredTransacciones.filter(t => t.tipo === "Egreso").reduce((s, t) => s + t.monto, 0);
+  const saldoFinal = filteredTransacciones[filteredTransacciones.length - 1]?.saldo ?? saldoInicial;
+  const saldoCalculado = saldoInicial + ingresos - egresos;
+  const saldosPorProveedor = Object.values(filteredTransacciones.reduce<Record<string, { proveedor: string; ingresos: number; egresos: number; saldo: number }>>((acc, item) => {
+    if (!acc[item.cliente]) {
+      acc[item.cliente] = { proveedor: item.cliente, ingresos: 0, egresos: 0, saldo: 0 };
+    }
+
+    if (item.tipo === "Ingreso") {
+      acc[item.cliente].ingresos += item.monto;
+      acc[item.cliente].saldo += item.monto;
+    } else {
+      acc[item.cliente].egresos += item.monto;
+      acc[item.cliente].saldo -= item.monto;
+    }
+
+    return acc;
+  }, {})).sort((a, b) => b.saldo - a.saldo);
+  const saldosPorResponsable = Object.values(filteredTransacciones.reduce<Record<string, { responsable: string; ingresos: number; egresos: number; saldo: number }>>((acc, item) => {
+    if (!acc[item.responsable]) {
+      acc[item.responsable] = { responsable: item.responsable, ingresos: 0, egresos: 0, saldo: 0 };
+    }
+
+    if (item.tipo === "Ingreso") {
+      acc[item.responsable].ingresos += item.monto;
+      acc[item.responsable].saldo += item.monto;
+    } else {
+      acc[item.responsable].egresos += item.monto;
+      acc[item.responsable].saldo -= item.monto;
+    }
+
+    return acc;
+  }, {})).sort((a, b) => b.saldo - a.saldo);
 
   function handleSave(values: Record<string, string>) {
     const monto = Number(values["Monto ($)"]?.replace(/[$,]/g, "") || 0);
     const tipo = values.Tipo || "Ingreso";
     const saldoActual = transacciones[transacciones.length - 1]?.saldo ?? saldoInicial;
+    const cliente = values.Proveedor || "Proveedor general";
     const descripcion = values.Descripción || "Cobro viaje";
 
     setTransacciones((current) => [
       {
-        hora: new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit", hour12: false }),
+        fecha: new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "2-digit" }),
+        cliente,
         descripcion,
         tipo,
         monto,
@@ -63,16 +126,16 @@ export default function EfectivoPage() {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-white">Control de Efectivo</h1>
           <p className="text-gray-500 text-sm mt-0.5">Seguimiento de ingresos y egresos diarios</p>
         </div>
-        <div className="flex items-center gap-3">
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="bg-[#1A1A1A] border border-[#3A3A3A] text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-          />
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setShowSaldos((value) => !value)}
+            className="flex items-center gap-2 rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-4 py-2 text-sm font-medium text-gray-300 transition-colors hover:border-[#CC2229] hover:text-white"
+          >
+            <WalletCards size={16} />
+            {showSaldos ? "Ocultar saldos" : "Ver saldos"}
+          </button>
           <button
             onClick={() => setShowForm(true)}
             className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#991A1E] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
@@ -80,6 +143,52 @@ export default function EfectivoPage() {
             <Plus size={16} />
             Registrar
           </button>
+        </div>
+      </div>
+
+      <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl p-4">
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_180px_180px_auto] gap-3">
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">Proveedor</label>
+            <select
+              value={clienteFiltro}
+              onChange={(event) => setClienteFiltro(event.target.value)}
+              className="date-input-white w-full bg-[#1A1A1A] border border-[#3A3A3A] text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
+            >
+              <option value="todos">Todos</option>
+              {clientes.map((cliente) => <option key={cliente} value={cliente}>{cliente}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">Fecha inicio</label>
+            <input
+              type="date"
+              value={fechaInicio}
+              onChange={(event) => setFechaInicio(event.target.value)}
+              className="date-input-white w-full bg-[#1A1A1A] border border-[#3A3A3A] text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">Fecha fin</label>
+            <input
+              type="date"
+              value={fechaFin}
+              onChange={(event) => setFechaFin(event.target.value)}
+              className="w-full bg-[#1A1A1A] border border-[#3A3A3A] text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
+            />
+          </div>
+          <div className="flex items-end">
+            <button
+              onClick={() => {
+                setClienteFiltro("todos");
+                setFechaInicio("");
+                setFechaFin("");
+              }}
+              className="w-full rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-4 py-2 text-sm text-gray-300 transition-colors hover:border-[#CC2229] hover:text-white"
+            >
+              Limpiar
+            </button>
+          </div>
         </div>
       </div>
 
@@ -102,6 +211,92 @@ export default function EfectivoPage() {
           <p className="text-xl font-bold text-[#CC2229]">${saldoFinal.toLocaleString()}</p>
         </div>
       </div>
+
+      {showSaldos && (
+        <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
+          <div className="px-5 py-4 border-b border-[#3A3A3A] flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-white font-semibold">Saldos de efectivo</h3>
+              <p className="text-xs text-gray-500 mt-1">Resumen calculado con los filtros activos.</p>
+            </div>
+            <div className="rounded-lg border border-[#CC2229]/30 bg-[#CC2229]/10 px-4 py-2">
+              <p className="text-xs text-gray-400">Saldo disponible</p>
+              <p className="text-lg font-bold text-[#CC2229]">${saldoCalculado.toLocaleString()}</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-[#3A3A3A]">
+            <div className="p-5">
+              <p className="text-xs uppercase tracking-widest text-gray-500">Saldo inicial</p>
+              <p className="mt-2 text-xl font-bold text-white">${saldoInicial.toLocaleString()}</p>
+            </div>
+            <div className="p-5">
+              <p className="text-xs uppercase tracking-widest text-gray-500">Neto filtrado</p>
+              <p className={`mt-2 text-xl font-bold ${saldoCalculado >= 0 ? "text-green-400" : "text-red-400"}`}>
+                ${saldoCalculado.toLocaleString()}
+              </p>
+              <p className="mt-1 text-xs text-gray-500">Ingresos menos egresos</p>
+            </div>
+            <div className="p-5">
+              <p className="text-xs uppercase tracking-widest text-gray-500">Saldo último movimiento</p>
+              <p className="mt-2 text-xl font-bold text-white">${saldoFinal.toLocaleString()}</p>
+              <p className="mt-1 text-xs text-gray-500">Según la columna Saldo</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 divide-y xl:divide-y-0 xl:divide-x divide-[#3A3A3A]">
+            <div className="p-5">
+              <h4 className="text-white font-semibold mb-3">Saldo por proveedor</h4>
+              <div className="overflow-x-auto rounded-lg border border-[#3A3A3A]">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-[#1A1A1A] border-b border-[#3A3A3A]">
+                      {["Proveedor", "Ingresos", "Egresos", "Saldo"].map((header) => (
+                        <th key={header} className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">{header}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#3A3A3A]">
+                    {saldosPorProveedor.map((item) => (
+                      <tr key={item.proveedor}>
+                        <td className="px-3 py-2 font-semibold text-white">{item.proveedor}</td>
+                        <td className="px-3 py-2 text-green-400">${item.ingresos.toLocaleString()}</td>
+                        <td className="px-3 py-2 text-red-400">${item.egresos.toLocaleString()}</td>
+                        <td className={`px-3 py-2 font-bold ${item.saldo >= 0 ? "text-white" : "text-red-400"}`}>${item.saldo.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="p-5">
+              <h4 className="text-white font-semibold mb-3">Saldo por responsable</h4>
+              <div className="overflow-x-auto rounded-lg border border-[#3A3A3A]">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-[#1A1A1A] border-b border-[#3A3A3A]">
+                      {["Responsable", "Ingresos", "Egresos", "Saldo"].map((header) => (
+                        <th key={header} className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">{header}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#3A3A3A]">
+                    {saldosPorResponsable.map((item) => (
+                      <tr key={item.responsable}>
+                        <td className="px-3 py-2 font-semibold text-white">{item.responsable}</td>
+                        <td className="px-3 py-2 text-green-400">${item.ingresos.toLocaleString()}</td>
+                        <td className="px-3 py-2 text-red-400">${item.egresos.toLocaleString()}</td>
+                        <td className={`px-3 py-2 font-bold ${item.saldo >= 0 ? "text-white" : "text-red-400"}`}>${item.saldo.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <FormModal
         open={showForm}
@@ -136,6 +331,12 @@ export default function EfectivoPage() {
               </select>
             </div>
             <div className="sm:col-span-2 lg:col-span-3">
+              <label className="block text-sm text-gray-400 mb-1">Proveedor</label>
+              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+                {["Proveedor general", ...clientes].map((cliente) => <option key={cliente}>{cliente}</option>)}
+              </select>
+            </div>
+            <div className="sm:col-span-2 lg:col-span-3">
               <label className="block text-sm text-gray-400 mb-1">Descripción</label>
               <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
                 {["Cobro viaje", "Cobro pendiente cliente", "Pago diesel", "Pago refacciones", "Gastos varios operación", "Saldo inicial del día"].map((descripcion) => <option key={descripcion}>{descripcion}</option>)}
@@ -147,21 +348,23 @@ export default function EfectivoPage() {
       {/* Transaction Table */}
       <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
         <div className="px-5 py-4 border-b border-[#3A3A3A]">
-          <h3 className="text-white font-semibold">Movimientos del día — {selectedDate}</h3>
+          <h3 className="text-white font-semibold">Movimientos de efectivo</h3>
+          <p className="text-xs text-gray-500 mt-1">{filteredTransacciones.length} movimientos encontrados</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-[#1A1A1A] border-b border-[#3A3A3A]">
-                {["Hora", "Descripción", "Tipo", "Monto", "Responsable", "Saldo"].map((h) => (
+                {["Fecha", "Proveedor", "Descripción", "Tipo", "Monto", "Responsable", "Saldo"].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-[#3A3A3A]">
-              {transacciones.map((t, i) => (
+              {filteredTransacciones.map((t, i) => (
                 <tr key={i} className="hover:bg-[#2A2A2A] transition-colors">
-                  <td className="px-4 py-3 text-gray-400 font-mono text-xs">{t.hora}</td>
+                  <td className="px-4 py-3 text-gray-400 font-mono text-xs">{t.fecha}</td>
+                  <td className="px-4 py-3 text-white font-semibold">{t.cliente}</td>
                   <td className="px-4 py-3 text-gray-200">{t.descripcion}</td>
                   <td className="px-4 py-3"><StatusBadge status={t.tipo} /></td>
                   <td className={`px-4 py-3 font-semibold ${t.tipo === "Ingreso" ? "text-green-400" : "text-red-400"}`}>
@@ -171,6 +374,13 @@ export default function EfectivoPage() {
                   <td className="px-4 py-3 text-white font-bold">${t.saldo.toLocaleString()}</td>
                 </tr>
               ))}
+              {filteredTransacciones.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-500">
+                    No hay movimientos con esos filtros.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

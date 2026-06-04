@@ -41,7 +41,6 @@ export default function EstadoCuentaClientesPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-white">Estados de Cuenta por Cliente</h1>
           <p className="text-gray-500 text-sm mt-0.5">Saldos, cargos, abonos y vencimientos de CxC</p>
         </div>
         <button

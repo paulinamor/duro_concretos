@@ -1,5 +1,6 @@
 import { LucideIcon } from "lucide-react";
 import { TrendingUp, TrendingDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface KPICardProps {
   title: string;
@@ -52,9 +53,10 @@ export default function KPICard({
       <button
         type="button"
         onClick={onClick}
-        className={`bg-[#242424] border rounded-xl p-5 flex items-start gap-4 transition-colors hover:border-[#CC2229] ${
-          active ? "border-[#CC2229]" : "border-[#3A3A3A]"
-        }`}
+        className={cn(
+          "group flex w-full items-start gap-4 rounded-xl border bg-[#181b20] p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#CC2229]/70 hover:bg-[#1c2027] hover:shadow-lg hover:shadow-black/20",
+          active ? "border-[#CC2229] ring-2 ring-[#CC2229]/15" : "border-white/10",
+        )}
       >
         {content}
       </button>
@@ -62,7 +64,7 @@ export default function KPICard({
   }
 
   return (
-    <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl p-5 flex items-start gap-4">
+    <div className="flex items-start gap-4 rounded-xl border border-white/10 bg-[#181b20] p-5 shadow-sm">
       {content}
     </div>
   );

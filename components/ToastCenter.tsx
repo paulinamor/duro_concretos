@@ -42,7 +42,7 @@ export default function ToastCenter() {
 
   return (
     <div className="fixed right-4 top-4 z-[120] w-[calc(100vw-2rem)] max-w-sm" role={isError ? "alert" : "status"} aria-live={isError ? "assertive" : "polite"}>
-      <div className={`flex items-start gap-3 rounded-xl border px-4 py-3 text-white shadow-2xl ${isError ? "border-red-700/60 bg-[#2a1f1f]" : "border-green-700/50 bg-[#1f2a22]"}`}>
+      <div className={`flex items-start gap-3 rounded-xl border px-4 py-3 text-white shadow-2xl shadow-black/35 backdrop-blur ${isError ? "border-red-500/30 bg-red-950/80" : "border-emerald-500/30 bg-emerald-950/80"}`}>
         <Icon className={`mt-0.5 shrink-0 ${isError ? "text-red-400" : "text-green-400"}`} size={20} />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold">{title}</p>

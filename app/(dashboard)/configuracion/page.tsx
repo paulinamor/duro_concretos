@@ -155,7 +155,6 @@ export default function ConfiguracionPage() {
     <div className="space-y-6">
       <div>
         <p className="text-xs uppercase tracking-widest text-gray-500">Plataforma</p>
-        <h1 className="text-xl font-bold text-white">Usuarios</h1>
         <p className="text-gray-500 text-sm mt-0.5">Control de acceso a módulos por usuario.</p>
       </div>
 

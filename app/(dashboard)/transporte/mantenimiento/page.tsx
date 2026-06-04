@@ -183,7 +183,6 @@ export default function MantenimientoPage() {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-white">Mantenimiento</h1>
           <p className="text-gray-500 text-sm mt-0.5">Control de mantenimientos y refacciones</p>
         </div>
         {activeTab !== "seguros" && (
