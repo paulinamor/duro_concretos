@@ -141,7 +141,7 @@ export default function Header({ title, onMobileMenu }: HeaderProps) {
   const displayRole = session?.role === "operador" ? "Operador" : "Administrador";
 
   return (
-    <header className="relative z-40 flex shrink-0 items-center justify-between border-b border-[#1E293B] bg-[#0B1220] px-4 py-3">
+    <header className="sticky top-0 z-50 flex shrink-0 items-center justify-between border-b border-[#1E293B] bg-[#0B1220] px-4 py-3">
       <div className="flex items-center gap-3">
         <MobileMenuButton onClick={onMobileMenu} />
         <h2 className="text-lg font-semibold text-white">{title}</h2>
