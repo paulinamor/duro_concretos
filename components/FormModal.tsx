@@ -12,6 +12,40 @@ interface FormModalProps {
   footer: React.ReactNode;
 }
 
+const CUSTOM_SELECT_VALUE = "__duro_custom_select_value__";
+
+function getCustomOptionKey(formTitle: string, fieldLabel: string) {
+  return `duro_custom_options:${formTitle}:${fieldLabel}`;
+}
+
+function readCustomOptions(formTitle: string, fieldLabel: string) {
+  if (typeof window === "undefined") return [];
+
+  const raw = localStorage.getItem(getCustomOptionKey(formTitle, fieldLabel));
+  if (!raw) return [];
+
+  try {
+    const options = JSON.parse(raw) as string[];
+    return Array.isArray(options) ? options : [];
+  } catch {
+    localStorage.removeItem(getCustomOptionKey(formTitle, fieldLabel));
+    return [];
+  }
+}
+
+function saveCustomOption(formTitle: string, fieldLabel: string, value: string) {
+  const cleanValue = value.trim();
+  if (!cleanValue) return;
+
+  const current = readCustomOptions(formTitle, fieldLabel);
+  if (current.some((item) => item.toLowerCase() === cleanValue.toLowerCase())) return;
+
+  localStorage.setItem(
+    getCustomOptionKey(formTitle, fieldLabel),
+    JSON.stringify([...current, cleanValue]),
+  );
+}
+
 export default function FormModal({
   title,
   open,
@@ -32,6 +66,82 @@ export default function FormModal({
       document.body.style.overflow = previousOverflow;
     };
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const selects = Array.from(bodyRef.current?.querySelectorAll("select") ?? []) as HTMLSelectElement[];
+    const cleanups: Array<() => void> = [];
+
+    selects.forEach((select) => {
+      const fieldLabel = select.parentElement?.querySelector("label")?.textContent?.trim();
+      if (!fieldLabel) return;
+      const labelText = fieldLabel;
+
+      const existingValues = new Set(Array.from(select.options).map((option) => option.value.toLowerCase()));
+      readCustomOptions(title, labelText).forEach((customOption) => {
+        if (existingValues.has(customOption.toLowerCase())) return;
+
+        const option = document.createElement("option");
+        option.value = customOption;
+        option.textContent = customOption;
+        select.appendChild(option);
+        existingValues.add(customOption.toLowerCase());
+      });
+
+      if (!Array.from(select.options).some((option) => option.value === CUSTOM_SELECT_VALUE)) {
+        const option = document.createElement("option");
+        option.value = CUSTOM_SELECT_VALUE;
+        option.textContent = "Escribir nuevo...";
+        select.appendChild(option);
+      }
+
+      function handleFocus() {
+        select.dataset.previousValue = select.value;
+      }
+
+      function handleChange() {
+        if (select.value !== CUSTOM_SELECT_VALUE) {
+          select.dataset.previousValue = select.value;
+          return;
+        }
+
+        const newValue = window.prompt(`Escribe una nueva opción para "${labelText}"`);
+        const cleanValue = newValue?.trim();
+        if (!cleanValue) {
+          select.value = select.dataset.previousValue ?? select.options[0]?.value ?? "";
+          return;
+        }
+
+        const duplicate = Array.from(select.options).some((option) => (
+          option.value.toLowerCase() === cleanValue.toLowerCase()
+        ));
+
+        if (!duplicate) {
+          const customOption = document.createElement("option");
+          customOption.value = cleanValue;
+          customOption.textContent = cleanValue;
+          const customTrigger = Array.from(select.options).find((option) => option.value === CUSTOM_SELECT_VALUE);
+          select.insertBefore(customOption, customTrigger ?? null);
+          saveCustomOption(title, labelText, cleanValue);
+        }
+
+        select.value = cleanValue;
+        select.dataset.previousValue = cleanValue;
+      }
+
+      select.addEventListener("focus", handleFocus);
+      select.addEventListener("change", handleChange);
+      cleanups.push(() => {
+        select.removeEventListener("focus", handleFocus);
+        select.removeEventListener("change", handleChange);
+      });
+    });
+
+    return () => {
+      cleanups.forEach((cleanup) => cleanup());
+    };
+  }, [open, title]);
 
   if (!open) return null;
 
