@@ -120,23 +120,52 @@ export default function RecibosConcretoPage() {
     window.print();
   }
 
-  function sendWhatsApp() {
-    saveReceipt();
+  function getTicketAmounts(targetReceipt: ConcreteReceipt) {
+    const realAmounts = {
+      total: targetReceipt.total,
+      resta: targetReceipt.resta,
+    };
 
+    return {
+      realTotal: realAmounts.total,
+      realResta: realAmounts.resta,
+      ticketTotal: realAmounts.total / 10,
+      ticketResta: realAmounts.resta / 10,
+    };
+  }
+
+  function sendWhatsApp(targetReceipt = receipt, shouldSave = true) {
+    if (shouldSave) saveReceipt();
+    const amounts = targetReceipt.id === receipt.id
+      ? { ticketTotal, ticketResta }
+      : getTicketAmounts(targetReceipt);
     const message = [
-      `Recibo concreto premezclado No. ${receipt.receiptNumber}`,
-      `Cliente: ${receipt.cliente}`,
-      `Obra: ${receipt.direccionObra}`,
-      `M3: ${receipt.m3}`,
-      `Resistencia: ${receipt.resistencia}`,
-      `Suministro: ${receipt.supplyType}`,
-      `Precio/m3: ${money(receipt.precioPorM3)}`,
-      `Total: ${money(ticketTotal)}`,
-      `Resta: ${money(ticketResta)}`,
-      `Nota: ${receipt.nota || "Sin nota"}`,
+      `Recibo concreto premezclado No. ${targetReceipt.receiptNumber}`,
+      `Cliente: ${targetReceipt.cliente}`,
+      `Obra: ${targetReceipt.direccionObra}`,
+      `M3: ${targetReceipt.m3}`,
+      `Resistencia: ${targetReceipt.resistencia}`,
+      `Suministro: ${targetReceipt.supplyType}`,
+      `Precio/m3: ${money(targetReceipt.precioPorM3)}`,
+      `Total: ${money(amounts.ticketTotal)}`,
+      `Resta: ${money(amounts.ticketResta)}`,
+      `Nota: ${targetReceipt.nota || "Sin nota"}`,
     ].join("\n");
 
     window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+  }
+
+  function loadSavedReceipt(savedReceipt: ConcreteReceipt) {
+    setReceipt({
+      ...savedReceipt,
+      total: savedReceipt.total / 10,
+      resta: savedReceipt.resta / 10,
+    });
+  }
+
+  function printSavedReceipt(savedReceipt: ConcreteReceipt) {
+    loadSavedReceipt(savedReceipt);
+    window.requestAnimationFrame(() => window.print());
   }
 
   return (
@@ -184,7 +213,7 @@ export default function RecibosConcretoPage() {
           </button>
           <button
             type="button"
-            onClick={sendWhatsApp}
+            onClick={() => sendWhatsApp()}
             className="flex items-center gap-2 rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-4 py-2 text-sm text-gray-300 transition-colors hover:border-green-500/60 hover:text-green-300"
           >
             <MessageCircle size={16} />
@@ -502,6 +531,68 @@ export default function RecibosConcretoPage() {
             </div>
           </div>
       </div>
+
+      <section className="overflow-hidden rounded-xl border border-[#3A3A3A] bg-[#242424] print:hidden">
+        <div className="border-b border-[#3A3A3A] px-5 py-4">
+          <h3 className="font-semibold text-white">Recibos guardados</h3>
+          <p className="mt-1 text-xs text-gray-500">Consulta, carga, reimprime o manda por WhatsApp los recibos registrados.</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-[#3A3A3A] bg-[#1A1A1A]">
+                {["No.", "Fecha", "Cliente", "Obra", "M3", "Total real", "Total ticket", "Resta ticket", "Acciones"].map((header) => (
+                  <th key={header} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">
+                    {header}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#3A3A3A]">
+              {receipts.map((savedReceipt) => {
+                const amounts = getTicketAmounts(savedReceipt);
+                return (
+                  <tr key={savedReceipt.id} className="transition-colors hover:bg-[#2A2A2A]">
+                    <td className="px-4 py-3 font-mono text-xs text-[#CC2229]">{savedReceipt.receiptNumber}</td>
+                    <td className="px-4 py-3 text-xs text-gray-400">{savedReceipt.fecha}</td>
+                    <td className="px-4 py-3 font-medium text-white">{savedReceipt.cliente}</td>
+                    <td className="px-4 py-3 text-gray-300">{savedReceipt.direccionObra}</td>
+                    <td className="px-4 py-3 text-gray-300">{savedReceipt.m3} m³</td>
+                    <td className="px-4 py-3 font-semibold text-white">{money(amounts.realTotal)}</td>
+                    <td className="px-4 py-3 font-semibold text-[#CC2229]">{money(amounts.ticketTotal)}</td>
+                    <td className="px-4 py-3 text-gray-300">{money(amounts.ticketResta)}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => loadSavedReceipt(savedReceipt)}
+                          className="rounded-lg border border-[#3A3A3A] px-3 py-1.5 text-xs text-gray-300 transition-colors hover:border-[#CC2229] hover:text-white"
+                        >
+                          Cargar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => printSavedReceipt(savedReceipt)}
+                          className="rounded-lg border border-[#3A3A3A] px-3 py-1.5 text-xs text-gray-300 transition-colors hover:border-[#CC2229] hover:text-white"
+                        >
+                          Imprimir
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => sendWhatsApp(savedReceipt, false)}
+                          className="rounded-lg border border-[#3A3A3A] px-3 py-1.5 text-xs text-gray-300 transition-colors hover:border-green-500/60 hover:text-green-300"
+                        >
+                          WhatsApp
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       <style jsx>{`
         .receipt-line {

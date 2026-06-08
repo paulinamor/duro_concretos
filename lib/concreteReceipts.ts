@@ -87,8 +87,8 @@ export const concreteReceiptsBase: ConcreteReceipt[] = [
     recibidoPor: "Jere",
     fecha: "2026-06-02",
     extras: defaultConcreteExtras,
-    total: 1305,
-    resta: 1305,
+    total: 13050,
+    resta: 13050,
     viajeFolio: "VJ-2026-157",
   },
 ];
