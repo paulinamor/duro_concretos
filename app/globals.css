@@ -157,21 +157,21 @@ body.duro-theme-light [class*="border-white/10"] {
   border-color: #D7DEE8 !important;
 }
 
-body.duro-theme-light [class*="text-white"]:not([class*="bg-[#CC2229]"]):not([class*="bg-[#991A1E]"]) {
+body.duro-theme-light main [class*="text-white"]:not([class*="bg-[#CC2229]"]):not([class*="bg-[#991A1E]"]) {
   color: #111827 !important;
 }
 
-body.duro-theme-light [class*="text-gray-100"],
-body.duro-theme-light [class*="text-gray-200"] {
+body.duro-theme-light main [class*="text-gray-100"],
+body.duro-theme-light main [class*="text-gray-200"] {
   color: #1F2937 !important;
 }
 
-body.duro-theme-light [class*="text-gray-300"],
-body.duro-theme-light [class*="text-gray-400"] {
+body.duro-theme-light main [class*="text-gray-300"],
+body.duro-theme-light main [class*="text-gray-400"] {
   color: #4B5563 !important;
 }
 
-body.duro-theme-light [class*="text-gray-500"] {
+body.duro-theme-light main [class*="text-gray-500"] {
   color: #6B7280 !important;
 }
 
@@ -314,21 +314,6 @@ body.duro-theme-light ::-webkit-scrollbar-thumb {
 body.duro-theme-light .duro-sidebar {
   background-color: #0B1220 !important;
   border-color: #1E293B !important;
-}
-
-body.duro-theme-light .duro-sidebar a,
-body.duro-theme-light .duro-sidebar button,
-body.duro-theme-light .duro-sidebar span {
-  color: #FFFFFF !important;
-}
-
-body.duro-theme-light .duro-sidebar [class*="text-slate-400"] {
-  color: #94A3B8 !important;
-}
-
-body.duro-theme-light .duro-sidebar [class*="text-slate-500"],
-body.duro-theme-light .duro-sidebar [class*="text-slate-600"] {
-  color: #64748B !important;
 }
 
 /* ── Header: blanco en light mode ── */
