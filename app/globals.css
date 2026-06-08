@@ -310,23 +310,20 @@ body.duro-theme-light ::-webkit-scrollbar-thumb {
   }
 }
 
-body.duro-theme-light .duro-sidebar,
-body.duro-theme-light header[class*="bg-[#0B1220]"] {
+/* ── Sidebar: siempre oscuro ── */
+body.duro-theme-light .duro-sidebar {
   background-color: #0B1220 !important;
   border-color: #1E293B !important;
 }
 
 body.duro-theme-light .duro-sidebar a,
 body.duro-theme-light .duro-sidebar button,
-body.duro-theme-light .duro-sidebar span,
-body.duro-theme-light header[class*="bg-[#0B1220]"] h2,
-body.duro-theme-light header[class*="bg-[#0B1220]"] [class*="text-white"] {
+body.duro-theme-light .duro-sidebar span {
   color: #FFFFFF !important;
 }
 
-body.duro-theme-light .duro-sidebar [class*="text-slate-400"],
-body.duro-theme-light header[class*="bg-[#0B1220]"] [class*="text-slate-300"] {
-  color: #CBD5E1 !important;
+body.duro-theme-light .duro-sidebar [class*="text-slate-400"] {
+  color: #94A3B8 !important;
 }
 
 body.duro-theme-light .duro-sidebar [class*="text-slate-500"],
@@ -334,8 +331,36 @@ body.duro-theme-light .duro-sidebar [class*="text-slate-600"] {
   color: #64748B !important;
 }
 
+/* ── Header: blanco en light mode ── */
+body.duro-theme-light header[class*="bg-[#0B1220]"] {
+  background-color: #FFFFFF !important;
+  border-color: #E2E8F0 !important;
+}
+
+body.duro-theme-light header[class*="bg-[#0B1220]"] h2 {
+  color: #111827 !important;
+}
+
+body.duro-theme-light header[class*="bg-[#0B1220]"] [class*="text-white"] {
+  color: #374151 !important;
+}
+
+body.duro-theme-light header[class*="bg-[#0B1220]"] [class*="text-slate-300"],
+body.duro-theme-light header[class*="bg-[#0B1220]"] [class*="text-slate-400"] {
+  color: #64748B !important;
+}
+
+body.duro-theme-light header[class*="bg-[#0B1220]"] [class*="border-white/10"] {
+  border-color: #E2E8F0 !important;
+}
+
+body.duro-theme-light header[class*="bg-[#0B1220]"] button:hover {
+  background-color: #F1F5F9 !important;
+}
+
+/* ── Contenido principal ── */
 body.duro-theme-light main {
-  background-color: #EEF3F8 !important;
+  background-color: #F1F5F9 !important;
 }
 
 body.duro-theme-light [data-slot="card"],

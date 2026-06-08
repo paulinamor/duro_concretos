@@ -19,8 +19,8 @@ export function applyTheme(theme: AppTheme) {
 }
 
 export function getStoredTheme(): AppTheme {
-  if (typeof window === "undefined") return "dark";
-  return (localStorage.getItem(THEME_KEY) as AppTheme) ?? "dark";
+  if (typeof window === "undefined") return "light";
+  return (localStorage.getItem(THEME_KEY) as AppTheme) ?? "light";
 }
 
 export function setStoredTheme(theme: AppTheme) {

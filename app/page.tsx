@@ -76,16 +76,15 @@ export default function LoginPage() {
         {/* Card */}
         <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#181b20] shadow-2xl shadow-black/45">
           {/* Logo area */}
-          <div className="flex flex-col items-center justify-center bg-white px-8 py-10">
-            <div className="relative h-24 w-56">
-              <Image
-                src="/LOGO_DC.png"
-                alt="Duro Concretos"
-                fill
-                style={{ objectFit: "contain" }}
-                priority
-              />
-            </div>
+          <div className="flex flex-col items-center justify-center bg-white px-8 py-8">
+            <Image
+              src="/DC_LOGO-removebg-preview.png"
+              alt="Duro Concretos"
+              width={220}
+              height={80}
+              style={{ objectFit: "contain" }}
+              priority
+            />
           </div>
 
           {/* Red divider */}

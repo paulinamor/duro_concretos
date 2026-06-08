@@ -202,17 +202,25 @@ export default function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
   const content = (
     <div className="flex flex-col h-full">
       {/* Logo */}
-      <div className="flex items-center justify-between border-b border-white/10 px-4 py-4">
-        <div className="relative h-10 w-32">
-          <Image
-            src="/LOGO_DC.png"
-            alt="Duro Concretos"
-            fill
-            style={{ objectFit: "contain", objectPosition: "left" }}
-          />
+      <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white p-1.5 shadow-sm">
+            <Image
+              src="/DC_LOGO-removebg-preview.png"
+              alt="Duro Concretos"
+              width={36}
+              height={36}
+              style={{ objectFit: "contain" }}
+              priority
+            />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-white leading-tight truncate">Duro Concretos</p>
+            <p className="text-xs text-slate-400 leading-tight">Sistema ERP</p>
+          </div>
         </div>
         {onClose && (
-          <button onClick={onClose} className="text-gray-400 hover:text-white lg:hidden">
+          <button onClick={onClose} className="shrink-0 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-white/10 hover:text-white lg:hidden">
             <X size={18} />
           </button>
         )}
