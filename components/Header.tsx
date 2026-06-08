@@ -45,13 +45,379 @@ export default function Header({ title, onMobileMenu }: HeaderProps) {
     router.push("/");
   }
 
-  function getModuleExportMarkup() {
+  function cleanText(value: string) {
+    return value.replace(/\s+/g, " ").trim();
+  }
+
+  function escapeHtml(value: string) {
+    return value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function getModuleExportElement() {
     const content = document.getElementById("duro-module-content");
-    if (!content) return "";
+    if (!content) return null;
 
     const clone = content.cloneNode(true) as HTMLElement;
-    clone.querySelectorAll("button, input, select, textarea, svg, [data-export-ignore]").forEach((node) => node.remove());
-    return clone.innerHTML;
+    clone.querySelectorAll("button, input, select, textarea, svg, [data-export-ignore], [id^='printable']").forEach((node) => node.remove());
+    return clone;
+  }
+
+  function getTextLines(element: Element) {
+    const rawLines = Array.from(element.querySelectorAll("h1, h2, h3, h4, p, li, span, td"))
+      .map((node) => cleanText(node.textContent ?? ""))
+      .filter(Boolean);
+
+    return rawLines.filter((line, index) => rawLines.indexOf(line) === index);
+  }
+
+  function getReportCards(content: HTMLElement) {
+    const candidates = Array.from(content.querySelectorAll("a, section, article, div"))
+      .filter((element) => {
+        const className = element.getAttribute("class") ?? "";
+        const text = cleanText(element.textContent ?? "");
+        return (
+          text.length >= 6 &&
+          text.length <= 360 &&
+          !element.querySelector("table") &&
+          /rounded|border|card|shadow|bg-\[/.test(className)
+        );
+      });
+
+    return candidates
+      .filter((element) => !candidates.some((other) => other !== element && element.contains(other)))
+      .map((element) => {
+        const lines = getTextLines(element).slice(0, 5);
+        const [titleLine, ...detailLines] = lines;
+        return {
+          title: titleLine || cleanText(element.textContent ?? ""),
+          details: detailLines.length > 0 ? detailLines : lines.slice(1),
+        };
+      })
+      .filter((card) => card.title)
+      .filter((card, index, all) => all.findIndex((item) => item.title === card.title && item.details.join("|") === card.details.join("|")) === index)
+      .slice(0, 24);
+  }
+
+  function getReportListSections(content: HTMLElement) {
+    return Array.from(content.querySelectorAll("section"))
+      .filter((section) => !section.querySelector("table"))
+      .map((section) => {
+        const title = cleanText(section.querySelector("h2, h3")?.textContent ?? "");
+        const body = Array.from(section.children).find((child) => (
+          child !== section.querySelector("div") &&
+          child.children.length >= 2 &&
+          cleanText(child.textContent ?? "").length > 20
+        ));
+        const rowSource = body ?? section;
+        const rows = Array.from(rowSource.children)
+          .filter((child) => !child.querySelector("h2, h3"))
+          .map((child) => getTextLines(child).slice(0, 4))
+          .filter((lines) => lines.length >= 2);
+
+        return {
+          title,
+          rows,
+          columns: Math.max(2, ...rows.map((row) => row.length)),
+        };
+      })
+      .filter((section) => section.title && section.rows.length > 0)
+      .filter((section, index, all) => all.findIndex((item) => item.title === section.title) === index);
+  }
+
+  function getReportTables(content: HTMLElement) {
+    return Array.from(content.querySelectorAll("table")).map((table, tableIndex) => {
+      const nearestSection = table.closest("section, article, div");
+      const sectionTitle = cleanText(nearestSection?.querySelector("h2, h3")?.textContent ?? "");
+      const rows = Array.from(table.querySelectorAll("tr"))
+        .map((row) => {
+          const cells = Array.from(row.querySelectorAll("th, td"))
+            .map((cell) => {
+              const tag = cell.tagName.toLowerCase() === "th" ? "th" : "td";
+              return `<${tag}>${escapeHtml(cleanText(cell.textContent ?? ""))}</${tag}>`;
+            })
+            .join("");
+
+          return cells ? `<tr>${cells}</tr>` : "";
+        })
+        .join("");
+
+      return {
+        title: sectionTitle || `Tabla ${tableIndex + 1}`,
+        rows,
+      };
+    }).filter((table) => table.rows);
+  }
+
+  function buildCardGrid(cards: Array<{ title: string; details: string[] }>, forExcel: boolean) {
+    if (cards.length === 0) return "";
+
+    if (forExcel) {
+      const rows = [];
+      for (let index = 0; index < cards.length; index += 3) {
+        const group = cards.slice(index, index + 3);
+        rows.push(`
+          <tr>
+            ${group.map((card) => `
+              <td class="card-cell">
+                <strong>${escapeHtml(card.title)}</strong>
+                ${card.details.length > 0 ? `<br />${escapeHtml(card.details.join(" · "))}` : ""}
+              </td>
+            `).join("")}
+            ${Array.from({ length: 3 - group.length }).map(() => "<td></td>").join("")}
+          </tr>
+        `);
+      }
+
+      return `
+        <h2>Resumen del módulo</h2>
+        <table class="cards-table">
+          ${rows.join("")}
+        </table>
+      `;
+    }
+
+    return `
+      <h2>Resumen del módulo</h2>
+      <div class="cards-grid">
+        ${cards.map((card) => `
+          <div class="report-card">
+            <p class="card-title">${escapeHtml(card.title)}</p>
+            ${card.details.map((detail) => `<p class="card-detail">${escapeHtml(detail)}</p>`).join("")}
+          </div>
+        `).join("")}
+      </div>
+    `;
+  }
+
+  function buildProfessionalReportHtml(forExcel = false) {
+    const content = getModuleExportElement();
+    if (!content) return "";
+
+    const exportedAt = new Date().toLocaleString("es-MX", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+    const cards = getReportCards(content);
+    const tables = getReportTables(content);
+    const listSections = getReportListSections(content);
+    const fallbackLines = getTextLines(content)
+      .filter(Boolean)
+      .filter((line, index, all) => all.indexOf(line) === index)
+      .slice(0, 80);
+
+    const tableMarkup = [
+      ...listSections.map((section) => {
+        const headers = section.columns === 2
+          ? ["Concepto", "Detalle"]
+          : Array.from({ length: section.columns }).map((_, index) => (
+            index === 0 ? "Concepto" : `Dato ${index}`
+          ));
+
+        return `
+          <section class="report-section">
+            <h2>${escapeHtml(section.title)}</h2>
+            <table class="data-table">
+              <tr>
+                ${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}
+              </tr>
+              ${section.rows.map((row) => `
+                <tr>
+                  ${Array.from({ length: section.columns }).map((_, index) => (
+                    `<td>${escapeHtml(row[index] ?? "")}</td>`
+                  )).join("")}
+                </tr>
+              `).join("")}
+            </table>
+          </section>
+        `;
+      }),
+      ...tables.map((table) => `
+      <section class="report-section">
+        <h2>${escapeHtml(table.title)}</h2>
+        <table class="data-table">${table.rows}</table>
+      </section>
+    `),
+    ].join("");
+
+    return `
+      <html>
+        <head>
+          <meta charset="UTF-8" />
+          <title>${escapeHtml(title)}</title>
+          <style>
+            body {
+              margin: 0;
+              background: #F4F7FB;
+              color: #111827;
+              font-family: Arial, Helvetica, sans-serif;
+              padding: 28px;
+            }
+            .report-shell {
+              max-width: 1180px;
+              margin: 0 auto;
+            }
+            .report-header {
+              background: #0B1220;
+              color: #FFFFFF;
+              border-radius: 18px;
+              padding: 24px 28px;
+              margin-bottom: 22px;
+            }
+            .eyebrow {
+              color: #CBD5E1;
+              font-size: 11px;
+              font-weight: 700;
+              letter-spacing: 2px;
+              margin: 0 0 8px;
+              text-transform: uppercase;
+            }
+            h1 {
+              font-size: 28px;
+              line-height: 1.15;
+              margin: 0;
+            }
+            .meta {
+              color: #CBD5E1;
+              font-size: 13px;
+              margin: 8px 0 0;
+            }
+            h2 {
+              color: #111827;
+              font-size: 16px;
+              margin: 24px 0 12px;
+            }
+            .cards-grid {
+              display: grid;
+              grid-template-columns: repeat(3, minmax(0, 1fr));
+              gap: 14px;
+              margin-bottom: 18px;
+            }
+            .report-card {
+              background: #FFFFFF;
+              border: 1px solid #D8E0EA;
+              border-radius: 16px;
+              padding: 18px;
+              min-height: 96px;
+              box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+              break-inside: avoid;
+            }
+            .card-title {
+              color: #111827;
+              font-size: 15px;
+              font-weight: 700;
+              margin: 0 0 8px;
+            }
+            .card-detail {
+              color: #64748B;
+              font-size: 13px;
+              line-height: 1.35;
+              margin: 3px 0;
+            }
+            .cards-table {
+              width: 100%;
+              border-collapse: separate;
+              border-spacing: 10px;
+              margin-bottom: 18px;
+            }
+            .card-cell {
+              width: 33%;
+              background: #FFFFFF;
+              border: 1px solid #D8E0EA;
+              color: #111827;
+              padding: 14px;
+              mso-number-format: "\\@";
+              vertical-align: top;
+            }
+            .report-section {
+              background: #FFFFFF;
+              border: 1px solid #D8E0EA;
+              border-radius: 16px;
+              padding: 18px;
+              margin-top: 18px;
+              break-inside: avoid;
+            }
+            .data-table {
+              width: 100%;
+              border-collapse: collapse;
+              font-size: 12px;
+            }
+            .data-table th {
+              background: #0B1220;
+              color: #FFFFFF;
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+            }
+            .data-table td,
+            .data-table th {
+              border: 1px solid #D8E0EA;
+              padding: 9px 10px;
+              text-align: left;
+              vertical-align: top;
+              mso-number-format: "\\@";
+            }
+            .data-table td {
+              background: #FFFFFF;
+              color: #334155;
+            }
+            .data-table tr:nth-child(even) td {
+              background: #F8FAFC;
+            }
+            .fallback-table {
+              width: 100%;
+              border-collapse: collapse;
+              background: #FFFFFF;
+            }
+            .fallback-table th {
+              background: #0B1220;
+              color: #FFFFFF;
+            }
+            .fallback-table th,
+            .fallback-table td {
+              border: 1px solid #D8E0EA;
+              padding: 9px 10px;
+              text-align: left;
+            }
+            @media print {
+              body {
+                background: #FFFFFF;
+                padding: 16px;
+              }
+              .report-header {
+                border-radius: 0;
+              }
+              .cards-grid {
+                grid-template-columns: repeat(3, 1fr);
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <main class="report-shell">
+            <header class="report-header">
+              <p class="eyebrow">Duro Concretos · Reporte ${forExcel ? "Excel" : "PDF"}</p>
+              <h1>${escapeHtml(title)}</h1>
+              <p class="meta">Exportado ${escapeHtml(exportedAt)}</p>
+            </header>
+            ${buildCardGrid(cards, forExcel)}
+            ${tableMarkup || `
+              <section class="report-section">
+                <h2>Información visible</h2>
+                <table class="fallback-table">
+                  <tr><th>Contenido</th></tr>
+                  ${fallbackLines.map((line) => `<tr><td>${escapeHtml(line)}</td></tr>`).join("")}
+                </table>
+              </section>
+            `}
+          </main>
+        </body>
+      </html>
+    `;
   }
 
   function downloadFile(filename: string, content: string, mimeType: string) {
@@ -67,50 +433,19 @@ export default function Header({ title, onMobileMenu }: HeaderProps) {
   }
 
   function exportCurrentModuleExcel() {
-    const markup = getModuleExportMarkup();
-    const html = `
-      <html>
-        <head><meta charset="UTF-8" /></head>
-        <body>
-          <h1>${title}</h1>
-          <p>Duro Concretos · ${new Date().toLocaleDateString("es-MX")}</p>
-          ${markup}
-        </body>
-      </html>
-    `;
+    const html = buildProfessionalReportHtml(true);
+    if (!html) return;
     const filename = `${title.toLowerCase().replace(/[^a-z0-9]+/gi, "-") || "reporte"}.xls`;
     downloadFile(filename, html, "application/vnd.ms-excel;charset=utf-8");
   }
 
   function exportCurrentModulePdf() {
-    const markup = getModuleExportMarkup();
+    const html = buildProfessionalReportHtml(false);
+    if (!html) return;
     const printable = window.open("", "_blank", "width=1200,height=800");
     if (!printable) return;
 
-    printable.document.write(`
-      <html>
-        <head>
-          <title>${title}</title>
-          <style>
-            body { font-family: Arial, sans-serif; color: #111827; padding: 24px; }
-            h1 { margin: 0 0 6px; font-size: 24px; }
-            .meta { margin: 0 0 20px; color: #6B7280; }
-            table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-            th, td { border-bottom: 1px solid #E5E7EB; padding: 8px; text-align: left; vertical-align: top; }
-            th { background: #111827; color: white; }
-            div { break-inside: avoid; }
-            [class] { box-shadow: none !important; }
-            @media print { body { padding: 16px; } }
-          </style>
-        </head>
-        <body>
-          <h1>${title}</h1>
-          <p class="meta">Duro Concretos · ${new Date().toLocaleDateString("es-MX")}</p>
-          ${markup}
-          <script>window.onload = () => window.print();</script>
-        </body>
-      </html>
-    `);
+    printable.document.write(html.replace("</body>", "<script>window.onload = () => window.print();</script></body>"));
     printable.document.close();
   }
 
