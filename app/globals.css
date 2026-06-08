@@ -479,3 +479,71 @@ body.duro-theme-light [class*="bg-[#181b20]"] label[class*="text-gray-400"],
 body.duro-theme-light [class*="bg-[#181b20]"] label[class*="text-sm"] {
   color: #374151 !important;
 }
+
+/* ── Colores semi-transparentes en light mode (opacity variants) ── */
+
+/* Verde: disponible, activo */
+body.duro-theme-light main [class*="bg-green-500/10"],
+body.duro-theme-light main [class*="bg-green-500/15"] {
+  background-color: #F0FDF4 !important;
+}
+body.duro-theme-light main [class*="border-green-500/20"],
+body.duro-theme-light main [class*="border-green-500/30"],
+body.duro-theme-light main [class*="border-green-400/50"] {
+  border-color: #86EFAC !important;
+}
+body.duro-theme-light main [class*="text-green-300"] {
+  color: #15803D !important;
+}
+
+/* Azul: unidades disponibles */
+body.duro-theme-light main [class*="bg-blue-500/10"],
+body.duro-theme-light main [class*="bg-blue-500/15"] {
+  background-color: #EFF6FF !important;
+}
+body.duro-theme-light main [class*="border-blue-500/20"],
+body.duro-theme-light main [class*="border-blue-400/50"] {
+  border-color: #93C5FD !important;
+}
+body.duro-theme-light main [class*="text-blue-300"] {
+  color: #1D4ED8 !important;
+}
+
+/* Rojo: ocupado, cancelado */
+body.duro-theme-light main [class*="bg-red-500/10"],
+body.duro-theme-light main [class*="bg-red-500/15"] {
+  background-color: #FEF2F2 !important;
+}
+body.duro-theme-light main [class*="border-red-500/20"],
+body.duro-theme-light main [class*="border-red-500/30"] {
+  border-color: #FCA5A5 !important;
+}
+body.duro-theme-light main [class*="text-red-300"] {
+  color: #DC2626 !important;
+}
+body.duro-theme-light main [class*="text-red-100"] {
+  color: #7F1D1D !important;
+}
+
+/* Amber: advertencias, demoras */
+body.duro-theme-light main [class*="bg-amber-500/10"],
+body.duro-theme-light main [class*="bg-amber-500/15"] {
+  background-color: #FFFBEB !important;
+}
+body.duro-theme-light main [class*="border-amber-500/30"] {
+  border-color: #FCD34D !important;
+}
+body.duro-theme-light main [class*="text-amber-300"] {
+  color: #D97706 !important;
+}
+
+/* Primario semi-transparente (seleccionado) */
+body.duro-theme-light main [class*="bg-[#CC2229]/10"],
+body.duro-theme-light main [class*="bg-[#CC2229]/15"] {
+  background-color: #FEE2E2 !important;
+}
+
+/* Divisores dark en contenido */
+body.duro-theme-light main [class*="divide-[#3A3A3A]"] > * + * {
+  border-color: #E5E7EB !important;
+}
