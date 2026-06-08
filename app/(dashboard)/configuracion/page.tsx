@@ -169,7 +169,7 @@ export default function ConfiguracionPage() {
   function handleThemeSelect(theme: AppTheme) {
     setStoredTheme(theme);
     setCurrentTheme(theme);
-    showToast("success", theme === "dark" ? "Modo oscuro activado" : "Modo claro activado", "El tema se aplicó correctamente.");
+    showToast("success", theme === "dark" ? "Modo oscuro activado" : "Modo noche activado", "El tema se aplicó correctamente.");
   }
 
   return (
@@ -283,7 +283,7 @@ export default function ConfiguracionPage() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Dark */}
+              {/* Oscuro: hybrid Grill Team */}
               <button
                 onClick={() => handleThemeSelect("dark")}
                 className={`group relative flex flex-col gap-3 rounded-xl border-2 p-4 text-left transition-all duration-200 cursor-pointer ${
@@ -299,7 +299,7 @@ export default function ConfiguracionPage() {
                     </div>
                     <div>
                       <p className="text-white text-sm font-semibold">Oscuro</p>
-                      <p className="text-gray-500 text-xs">OLED Dark</p>
+                      <p className="text-gray-500 text-xs">Sidebar dark · contenido claro</p>
                     </div>
                   </div>
                   <div className={`h-4 w-4 rounded-full border-2 transition-colors ${
@@ -308,17 +308,24 @@ export default function ConfiguracionPage() {
                       : "border-[#3A3A3A]"
                   }`} />
                 </div>
-                <div className="rounded-lg overflow-hidden border border-white/10 bg-[#0B1220] p-2.5 space-y-1.5 pointer-events-none select-none">
-                  <div className="h-2 w-16 rounded-full bg-white/20" />
-                  <div className="h-2 w-24 rounded-full bg-white/10" />
-                  <div className="flex gap-1.5 pt-0.5">
-                    <div className="h-6 w-12 rounded bg-[#CC2229]/80" />
-                    <div className="h-6 w-16 rounded bg-white/10" />
+                {/* Preview: sidebar strip izquierda dark + contenido derecha claro */}
+                <div className="rounded-lg overflow-hidden border border-white/10 pointer-events-none select-none flex h-16">
+                  <div className="w-8 bg-[#0B1220] flex flex-col gap-1 p-1.5">
+                    <div className="h-1.5 w-full rounded-full bg-white/20" />
+                    <div className="h-1.5 w-full rounded-full bg-white/10" />
+                    <div className="h-1.5 w-3/4 rounded-full bg-white/10" />
+                  </div>
+                  <div className="flex-1 bg-[#F1F5F9] p-2 space-y-1.5">
+                    <div className="h-2 w-full rounded bg-white border border-slate-200/80" />
+                    <div className="flex gap-1">
+                      <div className="h-5 w-10 rounded bg-[#CC2229]/80" />
+                      <div className="h-5 flex-1 rounded bg-white border border-slate-200/80" />
+                    </div>
                   </div>
                 </div>
               </button>
 
-              {/* Light */}
+              {/* Noche: todo oscuro */}
               <button
                 onClick={() => handleThemeSelect("light")}
                 className={`group relative flex flex-col gap-3 rounded-xl border-2 p-4 text-left transition-all duration-200 cursor-pointer ${
@@ -329,12 +336,12 @@ export default function ConfiguracionPage() {
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#EEF3F8] border border-slate-200">
-                      <Sun size={18} className="text-amber-500" />
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#111318] border border-white/10">
+                      <Sun size={18} className="text-slate-400" />
                     </div>
                     <div>
-                      <p className="text-white text-sm font-semibold">Claro</p>
-                      <p className="text-gray-500 text-xs">Modo día</p>
+                      <p className="text-white text-sm font-semibold">Noche</p>
+                      <p className="text-gray-500 text-xs">Todo oscuro · OLED</p>
                     </div>
                   </div>
                   <div className={`h-4 w-4 rounded-full border-2 transition-colors ${
@@ -343,19 +350,26 @@ export default function ConfiguracionPage() {
                       : "border-[#3A3A3A]"
                   }`} />
                 </div>
-                <div className="rounded-lg overflow-hidden border border-slate-200 bg-[#EEF3F8] p-2.5 space-y-1.5 pointer-events-none select-none">
-                  <div className="h-2 w-16 rounded-full bg-slate-400/50" />
-                  <div className="h-2 w-24 rounded-full bg-slate-300/60" />
-                  <div className="flex gap-1.5 pt-0.5">
-                    <div className="h-6 w-12 rounded bg-[#CC2229]/80" />
-                    <div className="h-6 w-16 rounded bg-slate-200" />
+                {/* Preview: todo oscuro */}
+                <div className="rounded-lg overflow-hidden border border-white/10 pointer-events-none select-none flex h-16">
+                  <div className="w-8 bg-[#0B1220] flex flex-col gap-1 p-1.5">
+                    <div className="h-1.5 w-full rounded-full bg-white/20" />
+                    <div className="h-1.5 w-full rounded-full bg-white/10" />
+                    <div className="h-1.5 w-3/4 rounded-full bg-white/10" />
+                  </div>
+                  <div className="flex-1 bg-[#111318] p-2 space-y-1.5">
+                    <div className="h-2 w-full rounded bg-[#1A1A1A] border border-white/10" />
+                    <div className="flex gap-1">
+                      <div className="h-5 w-10 rounded bg-[#CC2229]/80" />
+                      <div className="h-5 flex-1 rounded bg-[#242424] border border-white/10" />
+                    </div>
                   </div>
                 </div>
               </button>
             </div>
 
             <p className="text-xs text-gray-600">
-              El sidebar siempre permanece en modo oscuro independientemente del tema seleccionado.
+              El sidebar permanece oscuro en ambos modos.
             </p>
           </div>
         </div>
