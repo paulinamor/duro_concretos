@@ -353,3 +353,60 @@ body.duro-theme-light [class*="bg-card"] {
   background-color: #FFFFFF !important;
   color: #111827 !important;
 }
+
+/* ── Cards y tablas en light mode — profundidad Grill Team ── */
+body.duro-theme-light main .rounded-xl.border,
+body.duro-theme-light main .rounded-xl.border-border {
+  box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.07), 0 1px 2px -1px rgba(15, 23, 42, 0.05) !important;
+}
+
+body.duro-theme-light main table thead tr {
+  background-color: #F8FAFC !important;
+}
+
+body.duro-theme-light main table thead th {
+  color: #64748B !important;
+  border-bottom-color: #E2E8F0 !important;
+}
+
+body.duro-theme-light main table tbody tr {
+  border-bottom-color: #F1F5F9 !important;
+}
+
+body.duro-theme-light main table tbody td {
+  color: #374151 !important;
+}
+
+body.duro-theme-light main table tbody tr:hover {
+  background-color: #F8FAFC !important;
+}
+
+/* ── Acento izquierdo en títulos de módulo (Grill Team style) ── */
+body.duro-theme-light header[class*="bg-[#0B1220]"] .duro-page-title {
+  border-left: 3px solid #CC2229;
+  padding-left: 10px;
+}
+
+/* ── Select/inputs en contenido — look limpio ── */
+body.duro-theme-light main select,
+body.duro-theme-light main input[type="text"],
+body.duro-theme-light main input[type="email"],
+body.duro-theme-light main input[type="search"],
+body.duro-theme-light main input[type="number"] {
+  background-color: #FFFFFF !important;
+  border-color: #E2E8F0 !important;
+  color: #111827 !important;
+}
+
+/* ── Recharts tooltip en light mode ── */
+body.duro-theme-light .recharts-tooltip-wrapper .recharts-default-tooltip {
+  background-color: #FFFFFF !important;
+  border: 1px solid #E2E8F0 !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.12) !important;
+  color: #111827 !important;
+}
+
+body.duro-theme-light .recharts-tooltip-wrapper .recharts-tooltip-label {
+  color: #374151 !important;
+}
