@@ -517,7 +517,7 @@ export default function RecibosConcretoPage() {
                 </div>
               </div>
 
-              <div className="mt-4 grid grid-cols-[1fr_170px] items-end gap-4 text-[17px] font-black uppercase">
+              <div className="mt-4 grid grid-cols-[1fr_240px] items-end gap-4 text-[17px] font-black uppercase">
                 <p>
                   Allende, N.L. a
                   <span className="short-line handwritten">{receiptDate.day}</span>
@@ -526,7 +526,7 @@ export default function RecibosConcretoPage() {
                   del 20
                   <span className="short-line handwritten">{receiptDate.year.slice(-2)}</span>
                 </p>
-                <p>R: <span className="receipt-line handwritten">{receipt.recibidoPor}</span></p>
+                <p className="flex items-end gap-2 whitespace-nowrap">R: <span className="r-line handwritten">{receipt.recibidoPor}</span></p>
               </div>
             </div>
           </div>
@@ -618,6 +618,17 @@ export default function RecibosConcretoPage() {
           border-bottom: 2px solid #111;
           padding: 0 6px;
           text-transform: none;
+        }
+
+        .r-line {
+          display: inline-block;
+          width: 185px;
+          max-width: 185px;
+          min-height: 24px;
+          border-bottom: 2px solid #111;
+          overflow: hidden;
+          text-transform: none;
+          white-space: nowrap;
         }
 
         .line-only {
