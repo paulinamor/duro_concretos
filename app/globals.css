@@ -410,3 +410,72 @@ body.duro-theme-light .recharts-tooltip-wrapper .recharts-default-tooltip {
 body.duro-theme-light .recharts-tooltip-wrapper .recharts-tooltip-label {
   color: #374151 !important;
 }
+
+/* ── Recharts chart elements en light mode ── */
+body.duro-theme-light .recharts-cartesian-grid line {
+  stroke: #E5E7EB !important;
+}
+
+body.duro-theme-light .recharts-xAxis .recharts-cartesian-axis-line,
+body.duro-theme-light .recharts-yAxis .recharts-cartesian-axis-line,
+body.duro-theme-light .recharts-xAxis .recharts-cartesian-axis-tick-line,
+body.duro-theme-light .recharts-yAxis .recharts-cartesian-axis-tick-line {
+  stroke: #D1D5DB !important;
+}
+
+body.duro-theme-light .recharts-xAxis .recharts-cartesian-axis-tick text,
+body.duro-theme-light .recharts-yAxis .recharts-cartesian-axis-tick text {
+  fill: #6B7280 !important;
+}
+
+body.duro-theme-light .recharts-legend-item-text {
+  color: #374151 !important;
+}
+
+/* ── Botones de tabla (Marcar completado, etc.) ── */
+body.duro-theme-light main button[class*="border-[#3A3A3A]"] {
+  border-color: #E2E8F0 !important;
+  background-color: #F8FAFC !important;
+  color: #374151 !important;
+}
+
+body.duro-theme-light main button[class*="border-[#3A3A3A]"]:hover {
+  border-color: #CC2229 !important;
+  color: #CC2229 !important;
+}
+
+/* ── Divisores de tabla en light mode ── */
+body.duro-theme-light main .divide-\[#3A3A3A\] > * + * {
+  border-color: #F1F5F9 !important;
+}
+
+/* ── FormModal en light mode ── */
+body.duro-theme-light [class*="bg-[#181b20]"] [class*="text-white"],
+body.duro-theme-light [class*="bg-[#181b20]"] h3[class*="text-white"] {
+  color: #111827 !important;
+}
+
+body.duro-theme-light [class*="bg-[#181b20]"] [class*="text-gray-400"] {
+  color: #6B7280 !important;
+}
+
+body.duro-theme-light [class*="bg-[#181b20]"] [class*="text-gray-500"] {
+  color: #9CA3AF !important;
+}
+
+body.duro-theme-light [class*="bg-[#181b20]"] [class*="border-[#3A3A3A]"] {
+  border-color: #E2E8F0 !important;
+}
+
+body.duro-theme-light [class*="bg-[#181b20]"] button[class*="text-gray-400"] {
+  color: #6B7280 !important;
+}
+
+body.duro-theme-light [class*="bg-[#181b20]"] button[class*="text-gray-400"]:hover {
+  color: #111827 !important;
+}
+
+body.duro-theme-light [class*="bg-[#181b20]"] label[class*="text-gray-400"],
+body.duro-theme-light [class*="bg-[#181b20]"] label[class*="text-sm"] {
+  color: #374151 !important;
+}
