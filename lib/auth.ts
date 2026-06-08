@@ -37,6 +37,7 @@ export const moduleCatalog = [
   { href: "/crm/pipeline", label: "CRM con pipeline de 5 etapas" },
   { href: "/crm/seguimiento", label: "Seguimiento de clientes y oportunidades" },
   { href: "/crm/clientes-vendedor", label: "Clientes por vendedor" },
+  { href: "/ventas/recibos-concreto", label: "Recibos de concreto" },
 ];
 
 export const appUsers: AppUser[] = [
@@ -65,6 +66,7 @@ export const appUsers: AppUser[] = [
       "/operaciones/efectivo",
       "/crm/seguimiento",
       "/crm/clientes-vendedor",
+      "/ventas/recibos-concreto",
     ],
     status: "Activo",
   },
@@ -93,6 +95,7 @@ export const accessProfiles: Record<UserRole, Array<{ module: string; access: "C
     { module: "CRM con pipeline de 5 etapas", access: "Completo" },
     { module: "Seguimiento de clientes y oportunidades", access: "Completo" },
     { module: "Clientes por vendedor", access: "Completo" },
+    { module: "Recibos de concreto", access: "Completo" },
   ],
   operador: [
     { module: "Autenticación y roles", access: "Consulta" },
@@ -108,6 +111,7 @@ export const accessProfiles: Record<UserRole, Array<{ module: string; access: "C
     { module: "CRM con pipeline de 5 etapas", access: "Bloqueado" },
     { module: "Seguimiento de clientes y oportunidades", access: "Consulta" },
     { module: "Clientes por vendedor", access: "Consulta" },
+    { module: "Recibos de concreto", access: "Registro" },
   ],
 };
 
@@ -166,6 +170,7 @@ export function getDefaultModulesForRole(role: UserRole) {
     "/operaciones/efectivo",
     "/crm/seguimiento",
     "/crm/clientes-vendedor",
+    "/ventas/recibos-concreto",
   ];
 }
 

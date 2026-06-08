@@ -76,6 +76,7 @@ const ventasItems = [
   { href: "/crm/pipeline", icon: ChartNoAxesColumn, label: "CRM con pipeline de 5 etapas" },
   { href: "/crm/seguimiento", icon: UsersRound, label: "Seguimiento de clientes y oportunidades" },
   { href: "/crm/clientes-vendedor", icon: UsersRound, label: "Clientes por vendedor" },
+  { href: "/ventas/recibos-concreto", icon: ReceiptText, label: "Recibos de concreto" },
   { href: "/ventas/horas-llegada-salida", icon: ClipboardClock, label: "Horas Llegada/Salida" },
 ];
 

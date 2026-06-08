@@ -24,6 +24,7 @@ const pageTitles: Record<string, string> = {
   "/crm/pipeline": "CRM con pipeline de 5 etapas",
   "/crm/seguimiento": "Seguimiento de clientes y oportunidades",
   "/crm/clientes-vendedor": "Clientes por vendedor",
+  "/ventas/recibos-concreto": "Recibos de concreto",
   "/ventas/horas-llegada-salida": "Horas de Llegada y Salida",
   "/finanzas/cxc": "Cuentas por Cobrar",
   "/finanzas/cxp": "Cuentas por Pagar",
