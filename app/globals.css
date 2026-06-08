@@ -485,40 +485,47 @@ body.duro-theme-light [class*="bg-[#181b20]"] label[class*="text-sm"] {
 /* Verde: disponible, activo */
 body.duro-theme-light main [class*="bg-green-500/10"],
 body.duro-theme-light main [class*="bg-green-500/15"] {
-  background-color: #F0FDF4 !important;
+  background-color: #DCFCE7 !important;
 }
 body.duro-theme-light main [class*="border-green-500/20"],
+body.duro-theme-light main [class*="border-green-500/25"],
 body.duro-theme-light main [class*="border-green-500/30"],
+body.duro-theme-light main [class*="border-green-500/50"],
+body.duro-theme-light main [class*="border-green-500/60"],
 body.duro-theme-light main [class*="border-green-400/50"] {
-  border-color: #86EFAC !important;
+  border-color: #4ADE80 !important;
 }
-body.duro-theme-light main [class*="text-green-300"] {
+body.duro-theme-light main [class*="text-green-300"],
+body.duro-theme-light main [class*="text-green-400"] {
   color: #15803D !important;
 }
 
 /* Azul: unidades disponibles */
 body.duro-theme-light main [class*="bg-blue-500/10"],
 body.duro-theme-light main [class*="bg-blue-500/15"] {
-  background-color: #EFF6FF !important;
+  background-color: #DBEAFE !important;
 }
 body.duro-theme-light main [class*="border-blue-500/20"],
+body.duro-theme-light main [class*="border-blue-500/25"],
 body.duro-theme-light main [class*="border-blue-400/50"] {
-  border-color: #93C5FD !important;
+  border-color: #60A5FA !important;
 }
-body.duro-theme-light main [class*="text-blue-300"] {
+body.duro-theme-light main [class*="text-blue-300"],
+body.duro-theme-light main [class*="text-blue-400"] {
   color: #1D4ED8 !important;
 }
 
 /* Rojo: ocupado, cancelado */
 body.duro-theme-light main [class*="bg-red-500/10"],
 body.duro-theme-light main [class*="bg-red-500/15"] {
-  background-color: #FEF2F2 !important;
+  background-color: #FEE2E2 !important;
 }
 body.duro-theme-light main [class*="border-red-500/20"],
 body.duro-theme-light main [class*="border-red-500/30"] {
   border-color: #FCA5A5 !important;
 }
-body.duro-theme-light main [class*="text-red-300"] {
+body.duro-theme-light main [class*="text-red-300"],
+body.duro-theme-light main [class*="text-red-400"] {
   color: #DC2626 !important;
 }
 body.duro-theme-light main [class*="text-red-100"] {
@@ -528,13 +535,26 @@ body.duro-theme-light main [class*="text-red-100"] {
 /* Amber: advertencias, demoras */
 body.duro-theme-light main [class*="bg-amber-500/10"],
 body.duro-theme-light main [class*="bg-amber-500/15"] {
-  background-color: #FFFBEB !important;
+  background-color: #FEF3C7 !important;
 }
 body.duro-theme-light main [class*="border-amber-500/30"] {
   border-color: #FCD34D !important;
 }
-body.duro-theme-light main [class*="text-amber-300"] {
+body.duro-theme-light main [class*="text-amber-300"],
+body.duro-theme-light main [class*="text-amber-400"] {
   color: #D97706 !important;
+}
+
+/* Orange */
+body.duro-theme-light main [class*="text-orange-300"],
+body.duro-theme-light main [class*="text-orange-400"] {
+  color: #C2410C !important;
+}
+
+/* Yellow */
+body.duro-theme-light main [class*="text-yellow-300"],
+body.duro-theme-light main [class*="text-yellow-400"] {
+  color: #B45309 !important;
 }
 
 /* Primario semi-transparente (seleccionado) */
