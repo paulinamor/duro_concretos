@@ -52,7 +52,7 @@ const systemItems = [
   {
     href: "/configuracion",
     icon: ShieldCheck,
-    label: "Autenticación y roles",
+    label: "Configuración",
   },
 ];
 
