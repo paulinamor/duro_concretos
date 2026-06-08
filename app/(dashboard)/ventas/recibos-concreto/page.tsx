@@ -96,7 +96,7 @@ export default function RecibosConcretoPage() {
     });
   }
 
-  function saveReceipt() {
+  function persistReceipt(showToast = true) {
     const nextReceipt = {
       ...receipt,
       total: realTotal,
@@ -107,17 +107,28 @@ export default function RecibosConcretoPage() {
     setReceipts(nextReceipts);
     saveConcreteReceipts(nextReceipts);
     syncReceiptWithTrip(nextReceipt);
-    window.dispatchEvent(new CustomEvent("duro:toast", {
-      detail: {
-        type: "success",
-        message: "Recibo guardado y viaje pendiente creado.",
-      },
-    }));
+
+    if (showToast) {
+      window.dispatchEvent(new CustomEvent("duro:toast", {
+        detail: {
+          type: "success",
+          message: "Recibo guardado y viaje pendiente creado.",
+        },
+      }));
+    }
+
+    return { nextReceipt, nextReceipts };
+  }
+
+  function saveReceipt() {
+    const { nextReceipts } = persistReceipt();
+    setReceipt(createReceipt(nextReceipts));
   }
 
   function printReceipt() {
-    saveReceipt();
+    const { nextReceipts } = persistReceipt();
     window.print();
+    window.setTimeout(() => setReceipt(createReceipt(nextReceipts)), 0);
   }
 
   function getTicketAmounts(targetReceipt: ConcreteReceipt) {
@@ -135,24 +146,26 @@ export default function RecibosConcretoPage() {
   }
 
   function sendWhatsApp(targetReceipt = receipt, shouldSave = true) {
-    if (shouldSave) saveReceipt();
-    const amounts = targetReceipt.id === receipt.id
+    const saved = shouldSave ? persistReceipt() : null;
+    const messageReceipt = saved?.nextReceipt ?? targetReceipt;
+    const amounts = messageReceipt.id === receipt.id
       ? { ticketTotal, ticketResta }
-      : getTicketAmounts(targetReceipt);
+      : getTicketAmounts(messageReceipt);
     const message = [
-      `Recibo concreto premezclado No. ${targetReceipt.receiptNumber}`,
-      `Cliente: ${targetReceipt.cliente}`,
-      `Obra: ${targetReceipt.direccionObra}`,
-      `M3: ${targetReceipt.m3}`,
-      `Resistencia: ${targetReceipt.resistencia}`,
-      `Suministro: ${targetReceipt.supplyType}`,
-      `Precio/m3: ${money(targetReceipt.precioPorM3)}`,
+      `Recibo concreto premezclado No. ${messageReceipt.receiptNumber}`,
+      `Cliente: ${messageReceipt.cliente}`,
+      `Obra: ${messageReceipt.direccionObra}`,
+      `M3: ${messageReceipt.m3}`,
+      `Resistencia: ${messageReceipt.resistencia}`,
+      `Suministro: ${messageReceipt.supplyType}`,
+      `Precio/m3: ${money(messageReceipt.precioPorM3)}`,
       `Total: ${money(amounts.ticketTotal)}`,
       `Resta: ${money(amounts.ticketResta)}`,
-      `Nota: ${targetReceipt.nota || "Sin nota"}`,
+      `Nota: ${messageReceipt.nota || "Sin nota"}`,
     ].join("\n");
 
     window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+    if (saved) setReceipt(createReceipt(saved.nextReceipts));
   }
 
   function loadSavedReceipt(savedReceipt: ConcreteReceipt) {
@@ -243,13 +256,10 @@ export default function RecibosConcretoPage() {
               <input
                 type="number"
                 value={receipt.receiptNumber}
-                onChange={(event) => updateReceipt({
-                  receiptNumber: Number(event.target.value),
-                  id: `REC-${event.target.value}`,
-                  viajeFolio: `VJ-2026-${event.target.value}`,
-                })}
-                className="w-full rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-3 py-2 text-sm text-white"
+                readOnly
+                className="w-full cursor-not-allowed rounded-lg border border-[#3A3A3A] bg-[#101010] px-3 py-2 text-sm text-gray-300"
               />
+              <span className="mt-1 block text-xs text-gray-500">Automático y consecutivo.</span>
             </label>
             <label className="block">
               <span className="mb-1 block text-sm text-gray-400">Fecha</span>

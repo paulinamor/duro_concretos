@@ -13,7 +13,6 @@ import {
   Fuel,
   Wrench,
   Package,
-  Banknote,
   Wallet,
   ReceiptText,
   X,
@@ -33,11 +32,6 @@ import { getAllowedModuleSet, getStoredSession } from "@/lib/auth";
 
 const navItems = [
   {
-    href: "/configuracion",
-    icon: ShieldCheck,
-    label: "Autenticación y roles",
-  },
-  {
     href: "/dashboard",
     icon: LayoutDashboard,
     label: "Dashboard operativo",
@@ -54,6 +48,14 @@ const navItems = [
   },
 ];
 
+const systemItems = [
+  {
+    href: "/configuracion",
+    icon: ShieldCheck,
+    label: "Autenticación y roles",
+  },
+];
+
 const administracionItems = [
   { href: "/administracion/viajes-chofer", icon: UsersRound, label: "Viajes por Chofer" },
 ];
@@ -67,13 +69,12 @@ const transporteItems = [
 ];
 
 const operacionesItems = [
-  { href: "/operaciones/inventario", icon: Package, label: "Inventarios básicos" },
-  { href: "/operaciones/efectivo", icon: Banknote, label: "Control de efectivo" },
+  { href: "/operaciones/inventario", icon: Package, label: "Inventarios" },
   { href: "/operaciones/caja-chica", icon: Wallet, label: "Caja Chica" },
 ];
 
 const ventasItems = [
-  { href: "/crm/pipeline", icon: ChartNoAxesColumn, label: "CRM con pipeline de 5 etapas" },
+  { href: "/crm/pipeline", icon: ChartNoAxesColumn, label: "CRM" },
   { href: "/crm/seguimiento", icon: UsersRound, label: "Seguimiento de clientes y oportunidades" },
   { href: "/crm/clientes-vendedor", icon: UsersRound, label: "Clientes por vendedor" },
   { href: "/ventas/recibos-concreto", icon: ReceiptText, label: "Recibos de concreto" },
@@ -178,6 +179,7 @@ export default function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
   const [ventasOpen, setVentasOpen] = useState(true);
   const [finanzasOpen, setFinanzasOpen] = useState(true);
   const [recursosHumanosOpen, setRecursosHumanosOpen] = useState(true);
+  const [sistemaOpen, setSistemaOpen] = useState(true);
   const enabledSet = useMemo(() => getAllowedModuleSet(session), [session]);
   const hasEnabledItems = (items: Array<{ href: string }>) => items.some((item) => enabledSet.has(item.href));
   const transporteLocked = !hasEnabledItems(transporteItems);
@@ -186,6 +188,7 @@ export default function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
   const ventasLocked = !hasEnabledItems(ventasItems);
   const finanzasLocked = !hasEnabledItems(finanzasItems);
   const recursosHumanosLocked = !hasEnabledItems(recursosHumanosItems);
+  const sistemaLocked = !hasEnabledItems(systemItems);
 
   useEffect(() => {
     function handleSessionUpdate() {
@@ -296,6 +299,19 @@ export default function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
         </div>
         {recursosHumanosOpen && !recursosHumanosLocked &&
           recursosHumanosItems.map((item) => (
+            <NavLink key={item.href} {...item} enabledSet={enabledSet} onClick={onClose} />
+          ))}
+
+        <div className="pt-4 pb-1">
+          <SectionHeader
+            label="Sistema"
+            expanded={sistemaOpen && !sistemaLocked}
+            locked={sistemaLocked}
+            onToggle={() => setSistemaOpen((v) => !v)}
+          />
+        </div>
+        {sistemaOpen && !sistemaLocked &&
+          systemItems.map((item) => (
             <NavLink key={item.href} {...item} enabledSet={enabledSet} onClick={onClose} />
           ))}
       </nav>
