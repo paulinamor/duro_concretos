@@ -240,7 +240,7 @@ export default function ConfiguracionPage() {
                       <td className="px-5 py-4 text-white font-medium">{user.name}</td>
                       <td className="px-5 py-4 text-gray-400">{user.email}</td>
                       <td className="px-5 py-4">
-                        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${user.role === "admin" ? "bg-yellow-900/40 text-yellow-300" : "bg-gray-800 text-gray-300"}`}>
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${user.role === "admin" ? "bg-amber-100 text-amber-800 dark:bg-yellow-900/40 dark:text-yellow-300" : "bg-slate-100 text-slate-600 dark:bg-gray-800 dark:text-gray-300"}`}>
                           {user.role === "admin" ? "Administrador" : "Usuario"}
                         </span>
                       </td>

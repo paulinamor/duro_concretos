@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, Calendar, Clock, Truck, UsersRound } from "lucide-react";
+import { AlertTriangle, Calendar, ChevronDown, Clock, Truck, UsersRound } from "lucide-react";
 import {
   bloquesCarga15Min,
   calcularImpactoDemoras,
@@ -73,14 +73,15 @@ export default function DisponibilidadCargasPage() {
             <label className="block">
               <span className="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500">Hora</span>
               <div className="relative">
-                <Clock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                <Clock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none z-10" />
                 <select
                   value={availabilityHour}
                   onChange={(event) => setAvailabilityHour(event.target.value)}
-                  className="w-full rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] py-2 pl-9 pr-3 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
+                  className="w-full appearance-none rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] py-2 pl-9 pr-8 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
                 >
                   {bloquesCarga15Min.map((hora) => <option key={hora}>{hora}</option>)}
                 </select>
+                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
               </div>
             </label>
           </div>

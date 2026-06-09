@@ -27,6 +27,8 @@ import {
   ShieldCheck,
   CalendarClock,
   BarChart3,
+  HardHat,
+  BookUser,
 } from "lucide-react";
 import { getAllowedModuleSet, getStoredSession } from "@/lib/auth";
 
@@ -62,6 +64,8 @@ const administracionItems = [
 
 const transporteItems = [
   { href: "/transporte/viajes", icon: Truck, label: "Control de viajes y choferes" },
+  { href: "/transporte/operadores", icon: HardHat, label: "Operadores" },
+  { href: "/transporte/unidades", icon: Truck, label: "Unidades / Flota" },
   { href: "/transporte/disponibilidad", icon: CalendarClock, label: "Disponibilidad de cargas" },
   { href: "/transporte/pagos", icon: DollarSign, label: "Pago por viaje / m³" },
   { href: "/transporte/diesel", icon: Fuel, label: "Consumo de diésel" },
@@ -74,8 +78,9 @@ const operacionesItems = [
 ];
 
 const ventasItems = [
-  { href: "/crm/pipeline", icon: ChartNoAxesColumn, label: "CRM" },
-  { href: "/crm/seguimiento", icon: UsersRound, label: "Seguimiento de clientes y oportunidades" },
+  { href: "/crm/clientes", icon: BookUser, label: "Base de clientes" },
+  { href: "/crm/pipeline", icon: ChartNoAxesColumn, label: "Pipeline CRM" },
+  { href: "/crm/seguimiento", icon: UsersRound, label: "Seguimiento de oportunidades" },
   { href: "/crm/clientes-vendedor", icon: UsersRound, label: "Clientes por vendedor" },
   { href: "/ventas/recibos-concreto", icon: ReceiptText, label: "Recibos de concreto" },
   { href: "/ventas/horas-llegada-salida", icon: ClipboardClock, label: "Horas Llegada/Salida" },
