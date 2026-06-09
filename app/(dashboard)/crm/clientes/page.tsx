@@ -295,18 +295,18 @@ export default function CrmClientesPage() {
                           {c.calificacion}
                         </span>
                       </td>
-                      <td className="px-4 py-3">
-                        <p className="text-white font-medium whitespace-nowrap">{c.razonSocial}</p>
-                        <p className="text-gray-500 text-xs font-mono mt-0.5">{c.rfc}</p>
+                      <td className="px-4 py-3 max-w-[240px]">
+                        <p className="text-white font-medium">{c.razonSocial}</p>
+                        <p className="text-gray-500 text-xs font-mono mt-0.5 whitespace-nowrap">{c.rfc}</p>
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1.5 text-gray-400 whitespace-nowrap text-xs">
-                          <MapPin size={11} />
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5 text-gray-400 text-xs">
+                          <MapPin size={11} className="shrink-0" />
                           {c.municipio}
                         </div>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${tipoBadge[c.tipoCliente]}`}>
+                      <td className="px-4 py-3">
+                        <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${tipoBadge[c.tipoCliente]}`}>
                           {c.tipoCliente}
                         </span>
                       </td>

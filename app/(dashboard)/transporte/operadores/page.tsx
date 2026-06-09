@@ -281,7 +281,7 @@ export default function OperadoresPage() {
               ) : (
                 filtered.map((op) => (
                   <tr key={op.id} className="hover:bg-[#2A2A2A] transition-colors">
-                    <td className="px-5 py-3 font-mono text-xs text-[#CC2229]">{op.id}</td>
+                    <td className="px-5 py-3 font-mono text-xs text-[#CC2229] whitespace-nowrap">{op.id}</td>
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-2">
                         <div className="h-8 w-8 rounded-full bg-[#1A1A1A] flex items-center justify-center shrink-0">
@@ -302,8 +302,8 @@ export default function OperadoresPage() {
                         {op.noLicencia}
                       </div>
                     </td>
-                    <td className="px-5 py-3">
-                      <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-xs font-semibold text-blue-300">
+                    <td className="px-5 py-3 whitespace-nowrap">
+                      <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-xs font-semibold text-blue-300 whitespace-nowrap">
                         Tipo {op.tipoLicencia}
                       </span>
                     </td>

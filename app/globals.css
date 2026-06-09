@@ -94,13 +94,8 @@ table td {
   vertical-align: top;
 }
 
-table th {
-  white-space: normal !important;
-}
-
 table td {
-  white-space: normal !important;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .font-heading,

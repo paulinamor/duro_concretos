@@ -293,7 +293,7 @@ export default function UnidadesPage() {
               ) : (
                 filtered.map((u) => (
                   <tr key={u.id} className="hover:bg-[#2A2A2A] transition-colors">
-                    <td className="px-5 py-3">
+                    <td className="px-5 py-3 whitespace-nowrap">
                       <div className="flex items-center gap-2">
                         <div className="h-8 w-8 rounded-full bg-[#1A1A1A] flex items-center justify-center shrink-0">
                           <Truck size={14} className="text-blue-400" />
@@ -301,14 +301,14 @@ export default function UnidadesPage() {
                         <span className="text-white font-bold">{u.noEconomico}</span>
                       </div>
                     </td>
-                    <td className="px-5 py-3">
+                    <td className="px-5 py-3 whitespace-nowrap">
                       <span className="rounded-full bg-[#1A1A1A] border border-[#3A3A3A] px-2.5 py-0.5 text-xs font-mono text-gray-300">
                         {u.placa}
                       </span>
                     </td>
                     <td className="px-5 py-3 text-white whitespace-nowrap">{u.marca} {u.modelo}</td>
-                    <td className="px-5 py-3 text-gray-400">{u.anio}</td>
-                    <td className="px-5 py-3">
+                    <td className="px-5 py-3 text-gray-400 whitespace-nowrap">{u.anio}</td>
+                    <td className="px-5 py-3 whitespace-nowrap">
                       <span className="text-blue-300 font-semibold">{u.capacidadM3}</span>
                       <span className="text-gray-600 text-xs ml-1">m3</span>
                     </td>
