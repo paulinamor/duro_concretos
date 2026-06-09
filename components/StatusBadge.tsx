@@ -1,44 +1,44 @@
-import { Badge } from "@/components/ui/badge";
-
 interface StatusBadgeProps {
   status: string;
 }
 
-const statusMap: Record<string, { label: string; className: string }> = {
-  completado:    { label: "Completado",    className: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/25" },
-  activo:        { label: "Activo",        className: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/25" },
-  entrada:       { label: "Entrada",       className: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/25" },
-  ingreso:       { label: "Ingreso",       className: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/25" },
-  aprobado:      { label: "Aprobado",      className: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/25" },
-  completo:      { label: "Completo",      className: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/25" },
-  normal:        { label: "Normal",        className: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/25" },
-  "en ruta":     { label: "En ruta",       className: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/25" },
-  pendiente:     { label: "Pendiente",     className: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/25" },
-  revision:      { label: "Revisión",      className: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/25" },
-  "en riesgo":   { label: "En riesgo",     className: "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-500/10 dark:text-orange-300 dark:border-orange-500/25" },
-  "stock bajo":  { label: "Stock bajo",    className: "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-500/10 dark:text-orange-300 dark:border-orange-500/25" },
-  cancelado:     { label: "Cancelado",     className: "bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-300 dark:border-red-500/25" },
-  correctivo:    { label: "Correctivo",    className: "bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-300 dark:border-red-500/25" },
-  salida:        { label: "Salida",        className: "bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-300 dark:border-red-500/25" },
-  egreso:        { label: "Egreso",        className: "bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-300 dark:border-red-500/25" },
-  prospecto:     { label: "Prospecto",     className: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-300 dark:border-blue-500/25" },
-  preventivo:    { label: "Preventivo",    className: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-300 dark:border-blue-500/25" },
-  registro:      { label: "Registro",      className: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-300 dark:border-blue-500/25" },
-  consulta:      { label: "Consulta",      className: "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-500/10 dark:text-violet-300 dark:border-violet-500/25" },
-  inactivo:      { label: "Inactivo",      className: "bg-slate-100 text-slate-500 border-slate-200 dark:bg-white/5 dark:text-gray-400 dark:border-white/10" },
-  bloqueado:     { label: "Bloqueado",     className: "bg-slate-100 text-slate-500 border-slate-200 dark:bg-white/5 dark:text-gray-400 dark:border-white/10" },
+const statusMap: Record<string, { label: string; dot: string; text: string }> = {
+  completado:   { label: "Completado",   dot: "bg-emerald-500", text: "text-emerald-600 dark:text-emerald-400" },
+  activo:       { label: "Activo",       dot: "bg-emerald-500", text: "text-emerald-600 dark:text-emerald-400" },
+  entrada:      { label: "Entrada",      dot: "bg-emerald-500", text: "text-emerald-600 dark:text-emerald-400" },
+  ingreso:      { label: "Ingreso",      dot: "bg-emerald-500", text: "text-emerald-600 dark:text-emerald-400" },
+  aprobado:     { label: "Aprobado",     dot: "bg-emerald-500", text: "text-emerald-600 dark:text-emerald-400" },
+  completo:     { label: "Completo",     dot: "bg-emerald-500", text: "text-emerald-600 dark:text-emerald-400" },
+  normal:       { label: "Normal",       dot: "bg-emerald-500", text: "text-emerald-600 dark:text-emerald-400" },
+  "en ruta":    { label: "En ruta",      dot: "bg-amber-500",   text: "text-amber-600 dark:text-amber-400" },
+  pendiente:    { label: "Pendiente",    dot: "bg-amber-500",   text: "text-amber-600 dark:text-amber-400" },
+  revision:     { label: "Revisión",     dot: "bg-amber-500",   text: "text-amber-600 dark:text-amber-400" },
+  "en riesgo":  { label: "En riesgo",    dot: "bg-orange-500",  text: "text-orange-600 dark:text-orange-400" },
+  "stock bajo": { label: "Stock bajo",   dot: "bg-orange-500",  text: "text-orange-600 dark:text-orange-400" },
+  cancelado:    { label: "Cancelado",    dot: "bg-red-500",     text: "text-red-600 dark:text-red-400" },
+  correctivo:   { label: "Correctivo",   dot: "bg-red-500",     text: "text-red-600 dark:text-red-400" },
+  salida:       { label: "Salida",       dot: "bg-red-500",     text: "text-red-600 dark:text-red-400" },
+  egreso:       { label: "Egreso",       dot: "bg-red-500",     text: "text-red-600 dark:text-red-400" },
+  prospecto:    { label: "Prospecto",    dot: "bg-blue-500",    text: "text-blue-600 dark:text-blue-400" },
+  preventivo:   { label: "Preventivo",   dot: "bg-blue-500",    text: "text-blue-600 dark:text-blue-400" },
+  registro:     { label: "Registro",     dot: "bg-blue-500",    text: "text-blue-600 dark:text-blue-400" },
+  consulta:     { label: "Consulta",     dot: "bg-violet-500",  text: "text-violet-600 dark:text-violet-400" },
+  inactivo:     { label: "Inactivo",     dot: "bg-slate-400",   text: "text-slate-500 dark:text-gray-400" },
+  bloqueado:    { label: "Bloqueado",    dot: "bg-slate-400",   text: "text-slate-500 dark:text-gray-400" },
 };
 
 export default function StatusBadge({ status }: StatusBadgeProps) {
   const key = status.toLowerCase();
   const config = statusMap[key] ?? {
     label: status,
-    className: "bg-slate-100 text-slate-600 border-slate-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600",
+    dot: "bg-slate-400",
+    text: "text-slate-600 dark:text-gray-400",
   };
 
   return (
-    <Badge variant="outline" className={config.className}>
+    <span className={`inline-flex items-center gap-1.5 text-xs font-semibold ${config.text}`}>
+      <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${config.dot}`} />
       {config.label}
-    </Badge>
+    </span>
   );
 }

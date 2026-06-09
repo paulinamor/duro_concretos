@@ -110,12 +110,12 @@ h3,
 h4,
 h5,
 h6 {
-  font-family: "Avenir Next", "Inter", var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  font-family: var(--font-manrope), "Avenir Next", "Inter", var(--font-geist-sans), Arial, sans-serif;
   letter-spacing: 0;
 }
 
 body {
-  font-family: "Avenir Next", "Inter", var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  font-family: var(--font-manrope), "Avenir Next", "Inter", var(--font-geist-sans), Arial, sans-serif;
 }
 
 body.duro-theme-light {
@@ -150,11 +150,11 @@ body.duro-theme-light [class*="bg-[#2A2A2A]"] {
 }
 
 body.duro-theme-light [class*="border-[#3A3A3A]"] {
-  border-color: #D7DEE8 !important;
+  border-color: #E2E8F0 !important;
 }
 
 body.duro-theme-light [class*="border-white/10"] {
-  border-color: #D7DEE8 !important;
+  border-color: #E2E8F0 !important;
 }
 
 body.duro-theme-light main [class*="text-white"]:not([class*="bg-[#CC2229]"]):not([class*="bg-[#991A1E]"]) {
@@ -168,11 +168,11 @@ body.duro-theme-light main [class*="text-gray-200"] {
 
 body.duro-theme-light main [class*="text-gray-300"],
 body.duro-theme-light main [class*="text-gray-400"] {
-  color: #4B5563 !important;
+  color: #64748B !important;
 }
 
 body.duro-theme-light main [class*="text-gray-500"] {
-  color: #6B7280 !important;
+  color: #94A3B8 !important;
 }
 
 body.duro-theme-light input,
@@ -354,19 +354,25 @@ body.duro-theme-light [class*="bg-card"] {
   color: #111827 !important;
 }
 
-/* ── Cards y tablas en light mode — profundidad Grill Team ── */
+/* ── Cards y tablas en light mode — Grill Team design system ── */
 body.duro-theme-light main .rounded-xl.border,
-body.duro-theme-light main .rounded-xl.border-border {
-  box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.07), 0 1px 2px -1px rgba(15, 23, 42, 0.05) !important;
+body.duro-theme-light main .rounded-xl.border-border,
+body.duro-theme-light main [class*="bg-[#242424]"],
+body.duro-theme-light main [class*="bg-[#181b20]"] {
+  box-shadow: 0 1px 8px rgba(15, 23, 42, 0.05) !important;
 }
 
 body.duro-theme-light main table thead tr {
   background-color: #F8FAFC !important;
+  border-bottom-color: #F1F5F9 !important;
 }
 
 body.duro-theme-light main table thead th {
-  color: #64748B !important;
-  border-bottom-color: #E2E8F0 !important;
+  color: #94A3B8 !important;
+  font-size: 0.7rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.05em !important;
+  border-bottom-color: #F1F5F9 !important;
 }
 
 body.duro-theme-light main table tbody tr {
@@ -374,11 +380,11 @@ body.duro-theme-light main table tbody tr {
 }
 
 body.duro-theme-light main table tbody td {
-  color: #374151 !important;
+  color: #1E293B !important;
 }
 
 body.duro-theme-light main table tbody tr:hover {
-  background-color: #F8FAFC !important;
+  background-color: rgba(248, 250, 252, 0.7) !important;
 }
 
 /* ── Acento izquierdo en títulos de módulo (Grill Team style) ── */
@@ -392,10 +398,13 @@ body.duro-theme-light main select,
 body.duro-theme-light main input[type="text"],
 body.duro-theme-light main input[type="email"],
 body.duro-theme-light main input[type="search"],
-body.duro-theme-light main input[type="number"] {
+body.duro-theme-light main input[type="number"],
+body.duro-theme-light main input[type="date"],
+body.duro-theme-light main input {
   background-color: #FFFFFF !important;
   border-color: #E2E8F0 !important;
-  color: #111827 !important;
+  color: #1E293B !important;
+  border-radius: 0.75rem !important;
 }
 
 /* ── Recharts tooltip en light mode ── */

@@ -240,30 +240,30 @@ export default function FormModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex min-h-dvh w-screen items-center justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-md">
+    <div className="fixed inset-0 z-[100] flex min-h-dvh w-screen items-center justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-sm">
       <button
         type="button"
         aria-label="Cerrar formulario"
         onClick={onClose}
         className="absolute inset-0"
       />
-      <div className="relative z-10 my-8 w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl border border-white/10 bg-[#181b20] shadow-2xl shadow-black/40">
-        <div className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-white/10 bg-[#181b20]/95 px-6 py-4 backdrop-blur">
+      <div className="relative z-10 my-8 w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white dark:border-white/10 dark:bg-[#181b20] shadow-2xl shadow-slate-900/15 dark:shadow-black/40">
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-slate-200 dark:border-white/10 bg-white/95 dark:bg-[#181b20]/95 px-6 py-4 backdrop-blur">
           <div>
-            <h3 className="text-base font-semibold text-white">{title}</h3>
-            <p className="mt-0.5 text-xs text-gray-500">Completa la información para actualizar el módulo.</p>
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white">{title}</h3>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-gray-500">Completa la información para actualizar el módulo.</p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-white/8 hover:text-white"
+            className="rounded-lg p-1.5 text-slate-400 dark:text-gray-400 transition-colors hover:bg-slate-100 dark:hover:bg-white/8 hover:text-slate-600 dark:hover:text-white"
             aria-label="Cerrar"
           >
             <X size={18} />
           </button>
         </div>
         <div ref={bodyRef} className="p-6">{children}</div>
-        <div onClickCapture={handleFooterClick} className="sticky bottom-0 flex justify-end gap-3 border-t border-white/10 bg-[#181b20]/95 px-6 py-4 backdrop-blur">
+        <div onClickCapture={handleFooterClick} className="sticky bottom-0 flex justify-end gap-3 border-t border-slate-200 dark:border-white/10 bg-white/95 dark:bg-[#181b20]/95 px-6 py-4 backdrop-blur">
           {footer}
         </div>
       </div>

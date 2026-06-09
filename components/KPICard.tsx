@@ -24,25 +24,25 @@ export default function KPICard({
   active = false,
   onClick,
 }: KPICardProps) {
-  const iconBgClass = iconBg ?? "bg-muted";
+  const iconBgClass = iconBg ?? "bg-slate-100 dark:bg-white/8";
 
   const content = (
-    <>
+    <div className="flex items-start gap-4">
       <div className={cn("p-2.5 rounded-xl shrink-0", iconBgClass, iconColor)}>
         <Icon size={20} strokeWidth={2} />
       </div>
       <div className="flex-1 min-w-0 text-left">
-        <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wider mb-1.5 truncate">
+        <p className="text-[0.7rem] font-extrabold uppercase tracking-wider text-slate-400 dark:text-gray-500 mb-1.5 truncate">
           {title}
         </p>
-        <p className="text-2xl font-bold text-foreground leading-none">{value}</p>
+        <p className="text-2xl font-bold text-slate-900 dark:text-white leading-none">{value}</p>
         {subtitle && (
-          <p className="text-muted-foreground text-xs mt-1.5">{subtitle}</p>
+          <p className="text-slate-500 dark:text-gray-400 text-xs mt-1.5">{subtitle}</p>
         )}
         {trend && (
           <div
             className={cn(
-              "flex items-center gap-1 mt-2 text-xs font-medium",
+              "flex items-center gap-1 mt-2 text-xs font-semibold",
               trend.positive
                 ? "text-emerald-600 dark:text-emerald-400"
                 : "text-red-600 dark:text-red-400",
@@ -53,7 +53,7 @@ export default function KPICard({
           </div>
         )}
       </div>
-    </>
+    </div>
   );
 
   if (onClick) {
@@ -62,11 +62,12 @@ export default function KPICard({
         type="button"
         onClick={onClick}
         className={cn(
-          "group flex w-full items-start gap-4 rounded-xl border bg-card p-5 text-left transition-all duration-150",
-          "hover:shadow-md hover:-translate-y-0.5 cursor-pointer",
+          "group w-full rounded-2xl border bg-white dark:bg-[#181b20] p-5 text-left transition-all duration-150",
+          "shadow-[0_1px_8px_rgba(15,23,42,0.05)] dark:shadow-none",
+          "hover:shadow-[0_4px_16px_rgba(15,23,42,0.10)] hover:-translate-y-0.5 cursor-pointer",
           active
-            ? "border-[#CC2229] shadow-sm shadow-[#CC2229]/10 ring-2 ring-[#CC2229]/10"
-            : "border-border shadow-sm hover:border-[#CC2229]/40",
+            ? "border-[#CC2229] ring-2 ring-[#CC2229]/10"
+            : "border-slate-200 dark:border-white/10 hover:border-[#CC2229]/40",
         )}
       >
         {content}
@@ -75,7 +76,7 @@ export default function KPICard({
   }
 
   return (
-    <div className="flex items-start gap-4 rounded-xl border border-border bg-card p-5 shadow-sm">
+    <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#181b20] p-5 shadow-[0_1px_8px_rgba(15,23,42,0.05)] dark:shadow-none">
       {content}
     </div>
   );
