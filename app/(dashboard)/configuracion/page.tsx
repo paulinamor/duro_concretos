@@ -33,18 +33,15 @@ type Tab = "usuarios" | "apariencia";
 
 export default function ConfiguracionPage() {
   const [activeTab, setActiveTab] = useState<Tab>("usuarios");
-  const [session, setSession] = useState<ReturnType<typeof getStoredSession>>(null);
+  const [session, setSession] = useState<ReturnType<typeof getStoredSession>>(() => getStoredSession());
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [savingUser, setSavingUser] = useState(false);
   const [userSearch, setUserSearch] = useState("");
   const [userDraft, setUserDraft] = useState<UserDraft | null>(null);
-  const [currentTheme, setCurrentTheme] = useState<AppTheme>("dark");
+  const [currentTheme, setCurrentTheme] = useState<AppTheme>(() => getStoredTheme());
 
   useEffect(() => {
-    setSession(getStoredSession());
-    setCurrentTheme(getStoredTheme());
-
     getAllUserProfiles()
       .then((list) => setProfiles(list.filter((p) => p.status !== "Inactivo")))
       .catch(() => {/* silently fail - show empty */})

@@ -22,6 +22,7 @@ import { COLLECTIONS, deleteDocument, getCollectionDocs, upsertDocument } from "
 
 const MARCAS = ["Mercedes-Benz", "Volvo", "Kenworth", "Scania", "Freightliner", "Otra"];
 const ESTATUS_OPTIONS: EstatusUnidad[] = ["Activo", "Mantenimiento", "Baja"];
+const CURRENT_TIME = new Date().getTime();
 
 export default function UnidadesPage() {
   const [unidades, setUnidades] = useState<Unidad[]>([]);
@@ -190,7 +191,7 @@ export default function UnidadesPage() {
 
   const documentoVencimiento = (fecha: string) => {
     if (!fecha || fecha === "—") return "text-gray-500";
-    const diff = new Date(fecha).getTime() - Date.now();
+    const diff = new Date(fecha).getTime() - CURRENT_TIME;
     const days = diff / (1000 * 60 * 60 * 24);
     if (days < 0) return "text-red-400";
     if (days < 60) return "text-amber-400";

@@ -25,6 +25,7 @@ import { COLLECTIONS, deleteDocument, getCollectionDocs, upsertDocument } from "
 
 const TIPOS_LICENCIA = ["E", "D", "C", "A", "B"];
 const ESTATUS_OPTIONS: EstatusOperador[] = ["Activo", "Inactivo", "Vacaciones"];
+const CURRENT_TIME = new Date().getTime();
 
 export default function OperadoresPage() {
   const [operadores, setOperadores] = useState<Operador[]>([]);
@@ -177,7 +178,7 @@ export default function OperadoresPage() {
 
   const vencimientoColor = (fecha: string) => {
     if (!fecha) return "text-gray-500";
-    const diff = new Date(fecha).getTime() - Date.now();
+    const diff = new Date(fecha).getTime() - CURRENT_TIME;
     const days = diff / (1000 * 60 * 60 * 24);
     if (days < 0) return "text-red-400";
     if (days < 90) return "text-amber-400";
