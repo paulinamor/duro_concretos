@@ -7,7 +7,7 @@ interface FormModalProps {
   title: string;
   open: boolean;
   onClose: () => void;
-  onSave?: (values: Record<string, string>) => void | false | string;
+  onSave?: (values: Record<string, string>) => void | false | string | Promise<void | false | string>;
   children: React.ReactNode;
   footer: React.ReactNode;
 }
@@ -203,7 +203,7 @@ export default function FormModal({
     return true;
   }
 
-  function handleFooterClick(event: React.MouseEvent<HTMLDivElement>) {
+  async function handleFooterClick(event: React.MouseEvent<HTMLDivElement>) {
     const button = (event.target as HTMLElement).closest("button");
     if (!button || !event.currentTarget.contains(button) || button.disabled) return;
 
@@ -218,7 +218,7 @@ export default function FormModal({
         return;
       }
 
-      const saveResult = onSave?.(values);
+      const saveResult = await Promise.resolve(onSave?.(values));
       if (saveResult === false || typeof saveResult === "string") {
         showErrorToast(typeof saveResult === "string" ? saveResult : "Este registro ya existe o tiene información repetida.");
         return;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   BadgeDollarSign,
   Building2,
@@ -23,7 +23,6 @@ import KPICard from "@/components/KPICard";
 import FormModal from "@/components/FormModal";
 import StatusBadge from "@/components/StatusBadge";
 import {
-  clientes as initialClientes,
   estatusCliente,
   tiposCliente,
   vendedores,
@@ -32,6 +31,7 @@ import {
   type EstatusCliente,
   type TipoCliente,
 } from "@/lib/crmClientes";
+import { COLLECTIONS, deleteDocument, getCollectionDocs, upsertDocument } from "@/lib/db";
 
 const DIAS_CREDITO_OPTIONS = ["0", "15", "30", "45", "60", "90"];
 const CALIFICACION_OPTIONS: CalificacionCliente[] = ["A", "B", "C"];
@@ -51,7 +51,8 @@ const tipoBadge: Record<TipoCliente, string> = {
 };
 
 export default function CrmClientesPage() {
-  const [clientes, setClientes] = useState(initialClientes);
+  const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [filtroEstatus, setFiltroEstatus] = useState<EstatusCliente | "Todos">("Todos");
   const [filtroTipo, setFiltroTipo] = useState<TipoCliente | "Todos">("Todos");
@@ -59,6 +60,12 @@ export default function CrmClientesPage() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Cliente | null>(null);
   const [detail, setDetail] = useState<Cliente | null>(null);
+
+  useEffect(() => {
+    getCollectionDocs<Cliente>(COLLECTIONS.clientes)
+      .then(setClientes)
+      .finally(() => setLoading(false));
+  }, []);
 
   const filtered = useMemo(() => {
     const term = query.toLowerCase();
@@ -93,12 +100,13 @@ export default function CrmClientesPage() {
     setShowForm(true);
   }
 
-  function handleDelete(id: string) {
+  async function handleDelete(id: string) {
     setClientes((current) => current.filter((c) => c.id !== id));
     if (detail?.id === id) setDetail(null);
+    await deleteDocument(COLLECTIONS.clientes, id);
   }
 
-  function handleSave(values: Record<string, string>) {
+  async function handleSave(values: Record<string, string>) {
     const razonSocial = values["Razón social"]?.trim();
     const rfc = values["RFC"]?.trim();
     const contacto = values["Contacto principal"]?.trim();
@@ -110,8 +118,9 @@ export default function CrmClientesPage() {
     );
     if (isDuplicate) return "Ya existe un cliente con ese RFC.";
 
+    const id = editing?.id ?? `CL-${Date.now()}`;
     const next: Cliente = {
-      id: editing?.id ?? `CL-${String(clientes.length + 1).padStart(3, "0")}`,
+      id,
       razonSocial,
       nombreComercial: values["Nombre comercial"] ?? razonSocial,
       rfc,
@@ -143,6 +152,8 @@ export default function CrmClientesPage() {
         ? current.map((c) => (c.id === editing.id ? next : c))
         : [next, ...current],
     );
+    const { id: _id, ...data } = next;
+    await upsertDocument(COLLECTIONS.clientes, _id, data);
     setShowForm(false);
     setEditing(null);
   }
@@ -275,7 +286,13 @@ export default function CrmClientesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#3A3A3A]">
-              {filtered.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={10} className="px-5 py-10 text-center text-gray-500">
+                    Cargando clientes...
+                  </td>
+                </tr>
+              ) : filtered.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="px-5 py-10 text-center text-gray-500">
                     No se encontraron clientes con ese filtro.

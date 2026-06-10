@@ -5,7 +5,8 @@ import { Plus, Truck, Package, Calendar, Filter } from "lucide-react";
 import StatusBadge from "@/components/StatusBadge";
 import KPICard from "@/components/KPICard";
 import FormModal from "@/components/FormModal";
-import { loadViajes, saveViajes, viajesIniciales } from "@/lib/viajes";
+import type { Viaje } from "@/lib/viajes";
+import { COLLECTIONS, getCollectionDocs, upsertDocument } from "@/lib/db";
 import { unidadesDisponibilidad } from "@/lib/disponibilidadCargas";
 
 const operadores = ["Todos", "Luis Ramírez", "Carlos Mendoza", "José García", "Miguel Torres", "Roberto Flores", "Alejandro Reyes", "Fernando Castillo", "Eduardo López"];
@@ -18,14 +19,16 @@ function formatDate(date: string) {
 }
 
 export default function ViajesPage() {
-  const [viajes, setViajes] = useState(viajesIniciales);
+  const [viajes, setViajes] = useState<Viaje[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [filterEstado, setFilterEstado] = useState("Todos");
   const [filterOperador, setFilterOperador] = useState("Todos");
 
   useEffect(() => {
-    const frameId = window.requestAnimationFrame(() => setViajes(loadViajes()));
-    return () => window.cancelAnimationFrame(frameId);
+    getCollectionDocs<Viaje>(COLLECTIONS.viajes)
+      .then(setViajes)
+      .finally(() => setLoading(false));
   }, []);
 
   const totalM3 = viajes.filter(v => v.estado === "Completado").reduce((s, v) => s + v.m3, 0);
@@ -37,40 +40,34 @@ export default function ViajesPage() {
     );
   });
 
-  function handleSave(values: Record<string, string>) {
+  async function handleSave(values: Record<string, string>) {
     const m3 = Number(values["M3 a entregar"] || 0);
     const precioPorM3 = Number(values["Precio por M3 ($)"] || 0);
-    const nextNumber = viajes.length + 143;
+    const folio = `VJ-2026-${Date.now()}`;
     const fecha = formatDate(values.Fecha);
 
-    setViajes((current) => {
-      const next = [
-      {
-        folio: `VJ-2026-${nextNumber}`,
-        fecha,
-        unidad: values.Unidad || "DC-03 · NMY-1042",
-        operador: values.Chofer || "Luis Ramírez",
-        destino: values.Destino || "Monterrey Centro",
-        m3,
-        precioPorM3,
-        total: m3 * precioPorM3,
-        estado: values.Estado || "Pendiente",
-      },
-      ...current,
-      ];
-      saveViajes(next);
-      return next;
-    });
+    const viaje: Viaje = {
+      folio,
+      fecha,
+      unidad: values.Unidad || "DC-03 · NMY-1042",
+      operador: values.Chofer || "Luis Ramírez",
+      destino: values.Destino || "Monterrey Centro",
+      m3,
+      precioPorM3,
+      total: m3 * precioPorM3,
+      estado: values.Estado || "Pendiente",
+    };
+
+    setViajes((current) => [viaje, ...current]);
+    await upsertDocument(COLLECTIONS.viajes, folio, viaje);
   }
 
-  function updateViajeEstado(folio: string, estado: string) {
-    setViajes((current) => {
-      const next = current.map((viaje) => (
-        viaje.folio === folio ? { ...viaje, estado } : viaje
-      ));
-      saveViajes(next);
-      return next;
-    });
+  async function updateViajeEstado(folio: string, estado: string) {
+    setViajes((current) =>
+      current.map((v) => (v.folio === folio ? { ...v, estado } : v)),
+    );
+    const viaje = viajes.find((v) => v.folio === folio);
+    if (viaje) await upsertDocument(COLLECTIONS.viajes, folio, { ...viaje, estado });
   }
 
   return (
@@ -202,7 +199,13 @@ export default function ViajesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#3A3A3A]">
-              {filtered.map((v) => (
+              {loading ? (
+                <tr>
+                  <td colSpan={9} className="px-4 py-10 text-center text-sm text-gray-500">
+                    Cargando viajes...
+                  </td>
+                </tr>
+              ) : filtered.map((v) => (
                 <tr key={v.folio} className="hover:bg-[#2A2A2A] transition-colors">
                   <td className="px-4 py-3 text-[#CC2229] font-mono text-xs">{v.folio}</td>
                   <td className="px-4 py-3 text-gray-400 text-xs">{v.fecha}</td>

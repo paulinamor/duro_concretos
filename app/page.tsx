@@ -4,7 +4,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { findUserByCredentials, recordAuthEvent, saveSession } from "@/lib/auth";
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { auth } from "@/lib/firebase";
+import { getUserProfile, upsertUserProfile } from "@/lib/db";
+import { recordAuthEvent, saveSession, getDefaultModulesForRole } from "@/lib/auth";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -42,21 +45,59 @@ export default function LoginPage() {
       showErrorToast(message);
       return;
     }
-    const user = findUserByCredentials(email, password);
-    if (!user) {
-      const message = "Correo o contraseña incorrectos. Verifica tus datos.";
+
+    setLoading(true);
+    try {
+      const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
+      const uid = credential.user.uid;
+
+      // Fetch Firestore profile; create a default one on first login
+      let profile = await getUserProfile(uid);
+      if (!profile) {
+        const defaultRole = email.trim().toLowerCase().includes("operador") ? "operador" : "admin";
+        profile = {
+          id: uid,
+          email: email.trim().toLowerCase(),
+          nombre: credential.user.displayName ?? email.split("@")[0],
+          role: defaultRole as "admin" | "operador",
+          modules: getDefaultModulesForRole(defaultRole as "admin" | "operador"),
+          status: "Activo",
+          createdAt: new Date().toISOString(),
+        };
+        await upsertUserProfile(uid, { ...profile, id: undefined } as Omit<typeof profile, "id">);
+      }
+
+      if (profile.status === "Inactivo") {
+        const message = "Tu cuenta está desactivada. Contacta al administrador.";
+        setError(message);
+        showErrorToast(message);
+        setLoading(false);
+        return;
+      }
+
+      saveSession({
+        email: profile.email,
+        password: "",
+        name: profile.nombre,
+        role: profile.role,
+        modules: profile.modules,
+        status: profile.status,
+      });
+      recordAuthEvent({ type: "login_success", email: profile.email, message: `Acceso autorizado como ${profile.role}.` });
+      router.push("/dashboard");
+    } catch (err: unknown) {
+      setLoading(false);
+      const code = (err as { code?: string }).code ?? "";
+      const message =
+        code === "auth/invalid-credential" || code === "auth/wrong-password" || code === "auth/user-not-found"
+          ? "Correo o contraseña incorrectos. Verifica tus datos."
+          : code === "auth/too-many-requests"
+            ? "Demasiados intentos fallidos. Espera unos minutos."
+            : "Error al iniciar sesión. Intenta de nuevo.";
       setError(message);
       recordAuthEvent({ type: "login_failed", email, message });
       showErrorToast(message);
-      return;
     }
-
-    setLoading(true);
-    setTimeout(() => {
-      saveSession(user);
-      recordAuthEvent({ type: "login_success", email: user.email, message: `Acceso autorizado como ${user.role}.` });
-      router.push("/dashboard");
-    }, 800);
   };
 
   return (

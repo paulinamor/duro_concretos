@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { Bell, Bot, CircleDollarSign, FileSpreadsheet, FileText, Fuel, LogOut, Settings, Truck, User, UserCircle, Wallet } from "lucide-react";
 import { MobileMenuButton } from "./Sidebar";
 import { getAllowedModuleSet, getStoredSession } from "@/lib/auth";
+import { signOut } from "firebase/auth";
+import { auth } from "@/lib/firebase";
 
 interface HeaderProps {
   title: string;
@@ -38,10 +40,15 @@ export default function Header({ title, onMobileMenu }: HeaderProps) {
     setNotificationsOpen(false);
   }
 
-  function handleLogout() {
+  async function handleLogout() {
+    setUserMenuOpen(false);
+    try {
+      await signOut(auth);
+    } catch {
+      // ignore sign-out errors
+    }
     localStorage.removeItem("duro_concretos_session");
     sessionStorage.clear();
-    setUserMenuOpen(false);
     router.push("/");
   }
 

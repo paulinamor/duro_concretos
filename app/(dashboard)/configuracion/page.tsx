@@ -2,20 +2,25 @@
 
 import { useEffect, useState } from "react";
 import { Moon, Pencil, Plus, Search, Sun, Trash2 } from "lucide-react";
+import { createUserWithEmailAndPassword } from "firebase/auth";
+import { authSecondary } from "@/lib/firebase";
+import {
+  getAllUserProfiles,
+  upsertUserProfile,
+  type UserProfile,
+} from "@/lib/db";
 import StatusBadge from "@/components/StatusBadge";
 import { getStoredTheme, setStoredTheme, type AppTheme } from "@/components/ThemeSync";
 import {
-  getManagedUsers,
   getStoredSession,
   moduleCatalog,
   recordAuthEvent,
-  saveManagedUsers,
   saveSession,
-  type AppUser,
   type UserRole,
 } from "@/lib/auth";
 
 type UserDraft = {
+  uid: string | null; // null = new user
   name: string;
   email: string;
   password: string;
@@ -29,18 +34,21 @@ type Tab = "usuarios" | "apariencia";
 export default function ConfiguracionPage() {
   const [activeTab, setActiveTab] = useState<Tab>("usuarios");
   const [session, setSession] = useState<ReturnType<typeof getStoredSession>>(null);
-  const [managedUsers, setManagedUsers] = useState<AppUser[]>([]);
+  const [profiles, setProfiles] = useState<UserProfile[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(true);
+  const [savingUser, setSavingUser] = useState(false);
   const [userSearch, setUserSearch] = useState("");
-  const [editingUserEmail, setEditingUserEmail] = useState<string | null>(null);
   const [userDraft, setUserDraft] = useState<UserDraft | null>(null);
   const [currentTheme, setCurrentTheme] = useState<AppTheme>("dark");
 
   useEffect(() => {
-    const frameId = window.requestAnimationFrame(() => {
-      setSession(getStoredSession());
-      setManagedUsers(getManagedUsers());
-      setCurrentTheme(getStoredTheme());
-    });
+    setSession(getStoredSession());
+    setCurrentTheme(getStoredTheme());
+
+    getAllUserProfiles()
+      .then((list) => setProfiles(list.filter((p) => p.status !== "Inactivo")))
+      .catch(() => {/* silently fail - show empty */})
+      .finally(() => setLoadingUsers(false));
 
     function handleThemeChange(event: Event) {
       const theme = (event as CustomEvent<{ theme?: string }>).detail?.theme as AppTheme | undefined;
@@ -48,15 +56,12 @@ export default function ConfiguracionPage() {
     }
 
     window.addEventListener("duro:theme-change", handleThemeChange);
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      window.removeEventListener("duro:theme-change", handleThemeChange);
-    };
+    return () => window.removeEventListener("duro:theme-change", handleThemeChange);
   }, []);
 
-  const filteredUsers = managedUsers.filter((user) => {
-    const query = userSearch.trim().toLowerCase();
-    return !query || user.name.toLowerCase().includes(query) || user.email.toLowerCase().includes(query);
+  const filteredUsers = profiles.filter((p) => {
+    const q = userSearch.trim().toLowerCase();
+    return !q || p.nombre.toLowerCase().includes(q) || p.email.toLowerCase().includes(q);
   });
 
   function showToast(type: "success" | "error", title: string, message: string) {
@@ -64,8 +69,8 @@ export default function ConfiguracionPage() {
   }
 
   function openCreateUser() {
-    setEditingUserEmail(null);
     setUserDraft({
+      uid: null,
       name: "",
       email: "",
       password: "",
@@ -75,15 +80,15 @@ export default function ConfiguracionPage() {
     });
   }
 
-  function openEditUser(user: AppUser) {
-    setEditingUserEmail(user.email);
+  function openEditUser(profile: UserProfile) {
     setUserDraft({
-      name: user.name,
-      email: user.email,
-      password: user.password,
-      role: user.role,
-      status: user.status ?? "Activo",
-      modules: user.modules ?? (user.role === "admin" ? "all" : ["/dashboard"]),
+      uid: profile.id,
+      name: profile.nombre,
+      email: profile.email,
+      password: "",
+      role: profile.role,
+      status: profile.status,
+      modules: profile.modules,
     });
   }
 
@@ -91,79 +96,120 @@ export default function ConfiguracionPage() {
     setUserDraft((current) => {
       if (!current || current.modules === "all") return current;
       const modules = current.modules.includes(href)
-        ? current.modules.filter((module) => module !== href)
+        ? current.modules.filter((m) => m !== href)
         : [...current.modules, href];
-
       return { ...current, modules };
     });
   }
 
-  function saveUserDraft() {
+  async function saveUserDraft() {
     if (!userDraft) return;
 
-    if (!userDraft.name.trim() || !userDraft.email.trim() || !userDraft.password.trim()) {
-      showToast("error", "Información incompleta", "Completa nombre, correo y contraseña.");
+    if (!userDraft.name.trim() || !userDraft.email.trim()) {
+      showToast("error", "Información incompleta", "Completa nombre y correo.");
       return;
     }
-
+    if (!userDraft.uid && !userDraft.password.trim()) {
+      showToast("error", "Información incompleta", "La contraseña es requerida para nuevos usuarios.");
+      return;
+    }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userDraft.email.trim())) {
-      showToast("error", "Correo inválido", "El correo del usuario no tiene formato válido.");
+      showToast("error", "Correo inválido", "El correo no tiene formato válido.");
       return;
     }
-
     if (userDraft.modules !== "all" && userDraft.modules.length === 0) {
-      showToast("error", "Sin módulos", "Selecciona al menos un módulo para este usuario.");
+      showToast("error", "Sin módulos", "Selecciona al menos un módulo.");
       return;
     }
 
     const normalizedEmail = userDraft.email.trim().toLowerCase();
-    const duplicated = managedUsers.some((user) => user.email.toLowerCase() === normalizedEmail && user.email !== editingUserEmail);
-    if (duplicated) {
-      showToast("error", "Usuario repetido", "Ya existe un usuario con ese correo.");
-      return;
+
+    if (!userDraft.uid) {
+      // duplicate check
+      const exists = profiles.some((p) => p.email.toLowerCase() === normalizedEmail);
+      if (exists) {
+        showToast("error", "Usuario repetido", "Ya existe un usuario con ese correo.");
+        return;
+      }
     }
 
-    const nextUser: AppUser = {
-      name: userDraft.name.trim(),
-      email: normalizedEmail,
-      password: userDraft.password,
-      role: userDraft.role,
-      status: userDraft.status,
-      modules: userDraft.modules,
-    };
-    const nextUsers = editingUserEmail
-      ? managedUsers.map((user) => user.email === editingUserEmail ? nextUser : user)
-      : [nextUser, ...managedUsers];
+    setSavingUser(true);
+    try {
+      let uid = userDraft.uid;
 
-    setManagedUsers(nextUsers);
-    saveManagedUsers(nextUsers);
+      if (!uid) {
+        // Create Firebase Auth account using secondary app (no sign-out of current admin)
+        const credential = await createUserWithEmailAndPassword(
+          authSecondary,
+          normalizedEmail,
+          userDraft.password,
+        );
+        uid = credential.user.uid;
+      }
 
-    if (session?.email === editingUserEmail || session?.email === nextUser.email) {
-      saveSession(nextUser);
-      setSession(getStoredSession());
+      const profileData: Omit<UserProfile, "id"> = {
+        email: normalizedEmail,
+        nombre: userDraft.name.trim(),
+        role: userDraft.role,
+        modules: userDraft.modules,
+        status: userDraft.status,
+        createdAt: profiles.find((p) => p.id === uid)?.createdAt ?? new Date().toISOString(),
+      };
+
+      await upsertUserProfile(uid, profileData);
+
+      // Refresh list
+      const updated = await getAllUserProfiles();
+      setProfiles(updated.filter((p) => p.status !== "Inactivo"));
+
+      // Keep current session in sync if editing own profile
+      if (session?.email === normalizedEmail) {
+        saveSession({
+          email: normalizedEmail,
+          password: "",
+          name: profileData.nombre,
+          role: profileData.role,
+          modules: profileData.modules,
+          status: profileData.status,
+        });
+        setSession(getStoredSession());
+      }
+
+      recordAuthEvent({
+        type: "role_update",
+        email: normalizedEmail,
+        message: `Accesos actualizados: ${profileData.modules === "all" ? "todos los módulos" : `${(profileData.modules as string[]).length} módulos`}.`,
+      });
+
+      setUserDraft(null);
+      showToast("success", "Usuario guardado", "Los accesos quedaron actualizados en Firebase.");
+    } catch (err: unknown) {
+      const code = (err as { code?: string }).code ?? "";
+      const message =
+        code === "auth/email-already-in-use"
+          ? "Ya existe una cuenta con ese correo en Firebase Auth."
+          : code === "auth/weak-password"
+            ? "La contraseña debe tener al menos 6 caracteres."
+            : "Error al guardar usuario. Intenta de nuevo.";
+      showToast("error", "Error", message);
+    } finally {
+      setSavingUser(false);
     }
-
-    recordAuthEvent({
-      type: "role_update",
-      email: nextUser.email,
-      message: `Accesos actualizados: ${nextUser.modules === "all" ? "todos los módulos" : `${(nextUser.modules ?? []).length} módulos`}.`,
-    });
-
-    setUserDraft(null);
-    setEditingUserEmail(null);
-    showToast("success", "Usuario guardado", "Los accesos por módulo quedaron actualizados.");
   }
 
-  function deleteUser(email: string) {
-    if (session?.email === email) {
+  async function deleteUser(profile: UserProfile) {
+    if (session?.email === profile.email) {
       showToast("error", "No disponible", "No puedes eliminar el usuario con sesión activa.");
       return;
     }
-
-    const nextUsers = managedUsers.filter((user) => user.email !== email);
-    setManagedUsers(nextUsers);
-    saveManagedUsers(nextUsers);
-    showToast("success", "Usuario eliminado", "El usuario ya no puede iniciar sesión.");
+    try {
+      // Soft-delete: mark Inactivo in Firestore (blocks login)
+      await upsertUserProfile(profile.id, { ...profile, id: undefined, status: "Inactivo" } as Omit<UserProfile, "id">);
+      setProfiles((current) => current.filter((p) => p.id !== profile.id));
+      showToast("success", "Usuario desactivado", "El usuario ya no puede iniciar sesión.");
+    } catch {
+      showToast("error", "Error", "No se pudo eliminar el usuario.");
+    }
   }
 
   function handleThemeSelect(theme: AppTheme) {
@@ -230,35 +276,47 @@ export default function ConfiguracionPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#3A3A3A]">
-                {filteredUsers.map((user) => {
+                {loadingUsers ? (
+                  <tr>
+                    <td colSpan={6} className="px-5 py-8 text-center text-sm text-gray-500">
+                      Cargando usuarios...
+                    </td>
+                  </tr>
+                ) : filteredUsers.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-5 py-8 text-center text-sm text-gray-500">
+                      No se encontraron usuarios.
+                    </td>
+                  </tr>
+                ) : filteredUsers.map((user) => {
                   const moduleCount = user.modules === "all"
                     ? "Todos"
-                    : `${(user.modules ?? []).length} módulo${(user.modules ?? []).length === 1 ? "" : "s"}`;
+                    : `${(user.modules as string[]).length} módulo${(user.modules as string[]).length === 1 ? "" : "s"}`;
 
                   return (
-                    <tr key={user.email} className="hover:bg-[#2A2A2A] transition-colors">
-                      <td className="px-5 py-4 text-white font-medium">{user.name}</td>
+                    <tr key={user.id} className="hover:bg-[#2A2A2A] transition-colors">
+                      <td className="px-5 py-4 text-white font-medium">{user.nombre}</td>
                       <td className="px-5 py-4 text-gray-400">{user.email}</td>
                       <td className="px-5 py-4">
                         <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${user.role === "admin" ? "bg-amber-100 text-amber-800 dark:bg-yellow-900/40 dark:text-yellow-300" : "bg-slate-100 text-slate-600 dark:bg-gray-800 dark:text-gray-300"}`}>
-                          {user.role === "admin" ? "Administrador" : "Usuario"}
+                          {user.role === "admin" ? "Administrador" : "Operador"}
                         </span>
                       </td>
                       <td className="px-5 py-4 text-gray-300">{moduleCount}</td>
-                      <td className="px-5 py-4"><StatusBadge status={user.status ?? "Activo"} /></td>
+                      <td className="px-5 py-4"><StatusBadge status={user.status} /></td>
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => openEditUser(user)}
                             className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-[#1A1A1A] hover:text-white cursor-pointer"
-                            aria-label={`Editar ${user.name}`}
+                            aria-label={`Editar ${user.nombre}`}
                           >
                             <Pencil size={15} />
                           </button>
                           <button
-                            onClick={() => deleteUser(user.email)}
+                            onClick={() => deleteUser(user)}
                             className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-[#1A1A1A] hover:text-[#CC2229] cursor-pointer"
-                            aria-label={`Eliminar ${user.name}`}
+                            aria-label={`Eliminar ${user.nombre}`}
                           >
                             <Trash2 size={15} />
                           </button>
@@ -387,7 +445,7 @@ export default function ConfiguracionPage() {
           <div className="relative z-10 my-8 w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-xl border border-[#3A3A3A] bg-[#242424] shadow-2xl">
             <div className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-[#3A3A3A] bg-[#242424] px-6 py-4">
               <div>
-                <h3 className="text-white font-semibold">{editingUserEmail ? "Editar usuario ERP" : "Crear usuario ERP"}</h3>
+                <h3 className="text-white font-semibold">{userDraft.uid ? "Editar usuario ERP" : "Crear usuario ERP"}</h3>
                 <p className="text-xs text-gray-500 mt-0.5">Asigna el rol y los módulos que puede abrir este usuario.</p>
               </div>
               <button onClick={() => setUserDraft(null)} className="text-gray-400 hover:text-white cursor-pointer">
@@ -414,14 +472,18 @@ export default function ConfiguracionPage() {
                     className="w-full rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">Contraseña</label>
-                  <input
-                    value={userDraft.password}
-                    onChange={(event) => setUserDraft({ ...userDraft, password: event.target.value })}
-                    className="w-full rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-                  />
-                </div>
+                {!userDraft.uid && (
+                  <div>
+                    <label className="block text-sm text-gray-400 mb-1">Contraseña</label>
+                    <input
+                      type="password"
+                      value={userDraft.password}
+                      onChange={(event) => setUserDraft({ ...userDraft, password: event.target.value })}
+                      placeholder="Mínimo 6 caracteres"
+                      className="w-full rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
+                    />
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm text-gray-400 mb-1">Rol</label>
                   <select
@@ -491,8 +553,13 @@ export default function ConfiguracionPage() {
               <button onClick={() => setUserDraft(null)} className="rounded-lg border border-[#3A3A3A] px-4 py-2 text-sm text-gray-400 hover:text-white cursor-pointer">
                 Cancelar
               </button>
-              <button onClick={saveUserDraft} className="rounded-lg bg-[#CC2229] px-4 py-2 text-sm text-white hover:bg-[#991A1E] cursor-pointer">
-                Guardar usuario
+              <button
+                onClick={saveUserDraft}
+                disabled={savingUser}
+                className="inline-flex items-center gap-2 rounded-lg bg-[#CC2229] px-4 py-2 text-sm text-white hover:bg-[#991A1E] disabled:opacity-60 cursor-pointer"
+              >
+                {savingUser && <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />}
+                {savingUser ? "Guardando..." : "Guardar usuario"}
               </button>
             </div>
           </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   ChevronDown,
@@ -20,23 +20,25 @@ import {
 import KPICard from "@/components/KPICard";
 import FormModal from "@/components/FormModal";
 import StatusBadge from "@/components/StatusBadge";
-import {
-  licenciasProximas,
-  operadores as initialOperadores,
-  operadoresActivos,
-  type EstatusOperador,
-  type Operador,
-} from "@/lib/operadores";
+import { licenciasProximas, operadoresActivos, type EstatusOperador, type Operador } from "@/lib/operadores";
+import { COLLECTIONS, deleteDocument, getCollectionDocs, upsertDocument } from "@/lib/db";
 
 const TIPOS_LICENCIA = ["E", "D", "C", "A", "B"];
 const ESTATUS_OPTIONS: EstatusOperador[] = ["Activo", "Inactivo", "Vacaciones"];
 
 export default function OperadoresPage() {
-  const [operadores, setOperadores] = useState(initialOperadores);
+  const [operadores, setOperadores] = useState<Operador[]>([]);
+  const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [filtroEstatus, setFiltroEstatus] = useState<EstatusOperador | "Todos">("Todos");
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Operador | null>(null);
+
+  useEffect(() => {
+    getCollectionDocs<Operador>(COLLECTIONS.operadores)
+      .then(setOperadores)
+      .finally(() => setLoading(false));
+  }, []);
 
   const filtered = useMemo(() => {
     const term = query.toLowerCase();
@@ -65,11 +67,12 @@ export default function OperadoresPage() {
     setShowForm(true);
   }
 
-  function handleDelete(id: string) {
+  async function handleDelete(id: string) {
     setOperadores((current) => current.filter((op) => op.id !== id));
+    await deleteDocument(COLLECTIONS.operadores, id);
   }
 
-  function handleSave(values: Record<string, string>) {
+  async function handleSave(values: Record<string, string>) {
     const nombre = values["Nombre completo"]?.trim();
     const telefono = values["Teléfono"]?.trim();
     const email = values["Correo electrónico"]?.trim();
@@ -82,8 +85,9 @@ export default function OperadoresPage() {
     );
     if (isDuplicate) return "Ya existe un operador con ese número de licencia.";
 
+    const id = editing?.id ?? `OP-${Date.now()}`;
     const next: Operador = {
-      id: editing?.id ?? `OP-${String(operadores.length + 1).padStart(3, "0")}`,
+      id,
       nombre,
       telefono,
       email: email ?? "",
@@ -104,6 +108,8 @@ export default function OperadoresPage() {
         ? current.map((op) => (op.id === editing.id ? next : op))
         : [next, ...current],
     );
+    const { id: _id, ...data } = next;
+    await upsertDocument(COLLECTIONS.operadores, _id, data);
     setShowForm(false);
     setEditing(null);
   }
@@ -272,7 +278,13 @@ export default function OperadoresPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#3A3A3A]">
-              {filtered.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={11} className="px-5 py-10 text-center text-gray-500">
+                    Cargando operadores...
+                  </td>
+                </tr>
+              ) : filtered.length === 0 ? (
                 <tr>
                   <td colSpan={11} className="px-5 py-10 text-center text-gray-500">
                     No se encontraron operadores con ese filtro.

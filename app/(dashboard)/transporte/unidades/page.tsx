@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   ChevronDown,
@@ -17,22 +17,25 @@ import {
 import KPICard from "@/components/KPICard";
 import FormModal from "@/components/FormModal";
 import StatusBadge from "@/components/StatusBadge";
-import {
-  capacidadTotalM3,
-  unidades as initialUnidades,
-  type EstatusUnidad,
-  type Unidad,
-} from "@/lib/unidades";
+import { capacidadTotalM3, type EstatusUnidad, type Unidad } from "@/lib/unidades";
+import { COLLECTIONS, deleteDocument, getCollectionDocs, upsertDocument } from "@/lib/db";
 
 const MARCAS = ["Mercedes-Benz", "Volvo", "Kenworth", "Scania", "Freightliner", "Otra"];
 const ESTATUS_OPTIONS: EstatusUnidad[] = ["Activo", "Mantenimiento", "Baja"];
 
 export default function UnidadesPage() {
-  const [unidades, setUnidades] = useState(initialUnidades);
+  const [unidades, setUnidades] = useState<Unidad[]>([]);
+  const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [filtroEstatus, setFiltroEstatus] = useState<EstatusUnidad | "Todos">("Todos");
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Unidad | null>(null);
+
+  useEffect(() => {
+    getCollectionDocs<Unidad>(COLLECTIONS.unidades)
+      .then(setUnidades)
+      .finally(() => setLoading(false));
+  }, []);
 
   const filtered = useMemo(() => {
     const term = query.toLowerCase();
@@ -71,11 +74,12 @@ export default function UnidadesPage() {
     setShowForm(true);
   }
 
-  function handleDelete(id: string) {
+  async function handleDelete(id: string) {
     setUnidades((current) => current.filter((u) => u.id !== id));
+    await deleteDocument(COLLECTIONS.unidades, id);
   }
 
-  function handleSave(values: Record<string, string>) {
+  async function handleSave(values: Record<string, string>) {
     const noEconomico = values["No. económico"]?.trim();
     const placa = values["Placa"]?.trim();
     const marca = values["Marca"]?.trim();
@@ -88,8 +92,9 @@ export default function UnidadesPage() {
     );
     if (isDuplicate) return "Ya existe una unidad con esa placa.";
 
+    const id = editing?.id ?? `UN-${Date.now()}`;
     const next: Unidad = {
-      id: editing?.id ?? `UN-${String(unidades.length + 1).padStart(3, "0")}`,
+      id,
       noEconomico,
       placa: placa.toUpperCase(),
       marca,
@@ -112,6 +117,8 @@ export default function UnidadesPage() {
         ? current.map((u) => (u.id === editing.id ? next : u))
         : [next, ...current],
     );
+    const { id: _id, ...data } = next;
+    await upsertDocument(COLLECTIONS.unidades, _id, data);
     setShowForm(false);
     setEditing(null);
   }
@@ -284,7 +291,13 @@ export default function UnidadesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#3A3A3A]">
-              {filtered.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={11} className="px-5 py-10 text-center text-gray-500">
+                    Cargando unidades...
+                  </td>
+                </tr>
+              ) : filtered.length === 0 ? (
                 <tr>
                   <td colSpan={11} className="px-5 py-10 text-center text-gray-500">
                     No se encontraron unidades con ese filtro.
