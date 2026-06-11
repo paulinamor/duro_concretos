@@ -128,32 +128,10 @@ export default function LoginPage() {
       router.push("/dashboard");
     } catch (err: unknown) {
       setLoading(false);
-      const code = (err as { code?: string }).code ?? "";
-      const rawMessage = err instanceof Error ? err.message : "";
-      const message =
-        rawMessage.startsWith("missing-firebase-config:")
-          ? `Firebase no está configurado en este ambiente. Faltan: ${missingFirebaseEnv.join(", ") || "configuración de Firebase"}.`
-          : code === "auth/invalid-api-key"
-            ? "La API key de Firebase no es válida. Revisa la configuración del proyecto Firebase."
-          : code === "auth/network-request-failed"
-            ? "No se pudo conectar con Firebase. Revisa internet o la configuración del proyecto."
-          : code === "auth/configuration-not-found"
-            ? "Firebase Auth no está habilitado o el proyecto no coincide con esta app."
-          : code === "auth/operation-not-allowed"
-            ? "El proveedor de correo/contraseña no está habilitado en Firebase Auth."
-          : code === "auth/user-disabled"
-            ? "Este usuario está deshabilitado en Firebase Authentication."
-          : code === "auth/invalid-email"
-            ? "El correo no es válido para Firebase Auth."
-          : code === "permission-denied"
-            ? "El usuario existe, pero Firestore no permitió leer su perfil. Revisa reglas/permisos."
-          :
-        code === "auth/invalid-credential" || code === "auth/wrong-password" || code === "auth/user-not-found"
-          ? "Correo o contraseña incorrectos. Verifica tus datos."
-          : code === "auth/too-many-requests"
-            ? "Demasiados intentos fallidos. Espera unos minutos."
-            : "Error al iniciar sesión. Intenta de nuevo.";
-      const visibleMessage = code ? `${message} (${code})` : message;
+      const code = (err as { code?: string }).code ?? "sin-codigo";
+      const rawMessage = err instanceof Error ? err.message : String(err);
+      // DEBUG: mostrar error crudo en pantalla
+      const visibleMessage = `code: ${code} | msg: ${rawMessage}`;
       setError(visibleMessage);
       recordAuthEvent({ type: "login_failed", email, message: visibleMessage });
       showErrorToast(visibleMessage);
