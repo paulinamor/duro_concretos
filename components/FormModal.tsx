@@ -13,6 +13,8 @@ interface FormModalProps {
 }
 
 const CUSTOM_SELECT_VALUE = "__duro_custom_select_value__";
+const CUSTOM_INPUT_CLASS =
+  "mt-2 hidden w-full rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-[#CC2229]";
 
 function getCustomOptionKey(formTitle: string, fieldLabel: string) {
   return `duro_custom_options:${formTitle}:${fieldLabel}`;
@@ -46,6 +48,27 @@ function saveCustomOption(formTitle: string, fieldLabel: string, value: string) 
   );
 }
 
+function getCustomInput(select: HTMLSelectElement) {
+  return select.parentElement?.querySelector(
+    `input[data-custom-select-for="${select.dataset.customFieldKey ?? ""}"]`,
+  ) as HTMLInputElement | null;
+}
+
+function showCustomInput(select: HTMLSelectElement, show: boolean) {
+  const input = getCustomInput(select);
+  if (!input) return;
+
+  input.classList.toggle("hidden", !show);
+  input.disabled = !show;
+  input.required = show;
+
+  if (show) {
+    input.focus();
+  } else {
+    input.value = "";
+  }
+}
+
 export default function FormModal({
   title,
   open,
@@ -56,6 +79,7 @@ export default function FormModal({
 }: FormModalProps) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const savedSignaturesRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     if (!open) return;
 
@@ -77,6 +101,8 @@ export default function FormModal({
       const fieldLabel = select.parentElement?.querySelector("label")?.textContent?.trim();
       if (!fieldLabel) return;
       const labelText = fieldLabel;
+      const customFieldKey = `${title}:${labelText}`.replace(/[^a-zA-Z0-9_-]/g, "_");
+      select.dataset.customFieldKey = customFieldKey;
 
       const existingValues = new Set(Array.from(select.options).map((option) => option.value.toLowerCase()));
       readCustomOptions(title, labelText).forEach((customOption) => {
@@ -96,6 +122,17 @@ export default function FormModal({
         select.appendChild(option);
       }
 
+      let customInput = getCustomInput(select);
+      if (!customInput) {
+        customInput = document.createElement("input");
+        customInput.type = "text";
+        customInput.disabled = true;
+        customInput.className = CUSTOM_INPUT_CLASS;
+        customInput.placeholder = `Escribe ${labelText.toLowerCase()}`;
+        customInput.dataset.customSelectFor = customFieldKey;
+        select.insertAdjacentElement("afterend", customInput);
+      }
+
       function handleFocus() {
         select.dataset.previousValue = select.value;
       }
@@ -103,31 +140,11 @@ export default function FormModal({
       function handleChange() {
         if (select.value !== CUSTOM_SELECT_VALUE) {
           select.dataset.previousValue = select.value;
+          showCustomInput(select, false);
           return;
         }
 
-        const newValue = window.prompt(`Escribe una nueva opción para "${labelText}"`);
-        const cleanValue = newValue?.trim();
-        if (!cleanValue) {
-          select.value = select.dataset.previousValue ?? select.options[0]?.value ?? "";
-          return;
-        }
-
-        const duplicate = Array.from(select.options).some((option) => (
-          option.value.toLowerCase() === cleanValue.toLowerCase()
-        ));
-
-        if (!duplicate) {
-          const customOption = document.createElement("option");
-          customOption.value = cleanValue;
-          customOption.textContent = cleanValue;
-          const customTrigger = Array.from(select.options).find((option) => option.value === CUSTOM_SELECT_VALUE);
-          select.insertBefore(customOption, customTrigger ?? null);
-          saveCustomOption(title, labelText, cleanValue);
-        }
-
-        select.value = cleanValue;
-        select.dataset.previousValue = cleanValue;
+        showCustomInput(select, true);
       }
 
       select.addEventListener("focus", handleFocus);
@@ -155,11 +172,46 @@ export default function FormModal({
       const control = container?.querySelector("input, select, textarea") as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null;
 
       if (key && control) {
-        values[key] = control.value;
+        if (control instanceof HTMLSelectElement && control.value === CUSTOM_SELECT_VALUE) {
+          values[key] = getCustomInput(control)?.value.trim() ?? "";
+        } else {
+          values[key] = control.value;
+        }
       }
     });
 
     return values;
+  }
+
+  function persistCustomSelectOptions(values: Record<string, string>) {
+    const selects = Array.from(bodyRef.current?.querySelectorAll("select") ?? []) as HTMLSelectElement[];
+
+    selects.forEach((select) => {
+      if (select.value !== CUSTOM_SELECT_VALUE) return;
+
+      const fieldLabel = select.parentElement?.querySelector("label")?.textContent?.trim();
+      if (!fieldLabel) return;
+
+      const customValue = values[fieldLabel]?.trim();
+      if (!customValue) return;
+
+      const duplicate = Array.from(select.options).some((option) => (
+        option.value.toLowerCase() === customValue.toLowerCase()
+      ));
+
+      if (!duplicate) {
+        const customOption = document.createElement("option");
+        customOption.value = customValue;
+        customOption.textContent = customValue;
+        const customTrigger = Array.from(select.options).find((option) => option.value === CUSTOM_SELECT_VALUE);
+        select.insertBefore(customOption, customTrigger ?? null);
+      }
+
+      saveCustomOption(title, fieldLabel, customValue);
+      select.value = customValue;
+      select.dataset.previousValue = customValue;
+      showCustomInput(select, false);
+    });
   }
 
   function showErrorToast(message: string) {
@@ -224,6 +276,7 @@ export default function FormModal({
         return;
       }
 
+      persistCustomSelectOptions(values);
       savedSignaturesRef.current.add(signature);
 
       window.dispatchEvent(
