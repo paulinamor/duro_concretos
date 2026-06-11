@@ -43,7 +43,7 @@ export default function Header({ title, onMobileMenu }: HeaderProps) {
   async function handleLogout() {
     setUserMenuOpen(false);
     try {
-      await signOut(auth);
+      if (auth) await signOut(auth);
     } catch {
       // ignore sign-out errors
     }

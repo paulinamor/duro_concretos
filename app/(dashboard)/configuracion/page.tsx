@@ -136,6 +136,10 @@ export default function ConfiguracionPage() {
       let uid = userDraft.uid;
 
       if (!uid) {
+        if (!authSecondary) {
+          showToast("error", "Firebase sin configurar", "Faltan variables NEXT_PUBLIC_FIREBASE_* en este ambiente.");
+          return;
+        }
         // Create Firebase Auth account using secondary app (no sign-out of current admin)
         const credential = await createUserWithEmailAndPassword(
           authSecondary,

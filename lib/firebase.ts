@@ -1,6 +1,6 @@
-import { initializeApp, getApps } from "firebase/app";
-import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
+import { getAuth, type Auth } from "firebase/auth";
+import { getFirestore, type Firestore } from "firebase/firestore";
 
 const requiredFirebaseEnv = [
   "NEXT_PUBLIC_FIREBASE_API_KEY",
@@ -23,13 +23,18 @@ const firebaseConfig = {
 export const missingFirebaseEnv = requiredFirebaseEnv.filter((key) => !process.env[key]);
 export const isFirebaseConfigured = Object.values(firebaseConfig).every(Boolean);
 
-// Primary app instance
-const app = getApps().find((a) => a.name === "[DEFAULT]") ?? initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export const db = getFirestore(app);
+let app: FirebaseApp | null = null;
+let secondaryApp: FirebaseApp | null = null;
+
+if (isFirebaseConfigured) {
+  app = getApps().find((a) => a.name === "[DEFAULT]") ?? initializeApp(firebaseConfig);
+  secondaryApp =
+    getApps().find((a) => a.name === "secondary") ??
+    initializeApp(firebaseConfig, "secondary");
+}
+
+export const auth: Auth | null = app ? getAuth(app) : null;
+export const db: Firestore | null = app ? getFirestore(app) : null;
 
 // Secondary app instance — used to create users without signing out the current admin
-const secondaryApp =
-  getApps().find((a) => a.name === "secondary") ??
-  initializeApp(firebaseConfig, "secondary");
-export const authSecondary = getAuth(secondaryApp);
+export const authSecondary: Auth | null = secondaryApp ? getAuth(secondaryApp) : null;

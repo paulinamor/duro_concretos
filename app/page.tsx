@@ -74,6 +74,9 @@ export default function LoginPage() {
       if (!isFirebaseConfigured) {
         throw new Error(`missing-firebase-config:${missingFirebaseEnv.join(", ")}`);
       }
+      if (!auth) {
+        throw new Error("missing-firebase-config:auth");
+      }
 
       const normalizedEmail = email.trim().toLowerCase();
       const credential = await signInWithEmailAndPassword(auth, normalizedEmail, password);

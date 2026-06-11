@@ -16,11 +16,18 @@ import { db } from "./firebase";
 
 // ---------- generic helpers ----------
 
+function getDb() {
+  if (!db) {
+    throw new Error("missing-firebase-config");
+  }
+  return db;
+}
+
 export async function getCollectionDocs<T>(
   collectionName: string,
   constraints: QueryConstraint[] = [],
 ): Promise<T[]> {
-  const ref = collection(db, collectionName);
+  const ref = collection(getDb(), collectionName);
   const q = constraints.length ? query(ref, ...constraints) : ref;
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({ id: d.id, ...d.data() } as T));
@@ -30,7 +37,7 @@ export async function getDocument<T>(
   collectionName: string,
   id: string,
 ): Promise<T | null> {
-  const snap = await getDoc(doc(db, collectionName, id));
+  const snap = await getDoc(doc(getDb(), collectionName, id));
   if (!snap.exists()) return null;
   return { id: snap.id, ...snap.data() } as T;
 }
@@ -40,14 +47,14 @@ export async function upsertDocument<T extends WithFieldValue<DocumentData>>(
   id: string,
   data: Omit<T, "id">,
 ): Promise<void> {
-  await setDoc(doc(db, collectionName, id), data, { merge: true });
+  await setDoc(doc(getDb(), collectionName, id), data, { merge: true });
 }
 
 export async function deleteDocument(
   collectionName: string,
   id: string,
 ): Promise<void> {
-  await deleteDoc(doc(db, collectionName, id));
+  await deleteDoc(doc(getDb(), collectionName, id));
 }
 
 // ---------- user profiles ----------
