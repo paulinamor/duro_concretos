@@ -24,6 +24,7 @@ const AUTH_EVENTS_KEY = "duro_concretos_auth_events";
 
 export const moduleCatalog = [
   { href: "/dashboard", label: "Dashboard operativo" },
+  { href: "/reportes", label: "Reportes gerenciales" },
   { href: "/transporte/viajes", label: "Control de viajes y choferes" },
   { href: "/transporte/operadores", label: "Operadores" },
   { href: "/transporte/unidades", label: "Unidades / Flota" },
