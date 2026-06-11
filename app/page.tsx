@@ -121,13 +121,22 @@ export default function LoginPage() {
       router.push("/dashboard");
     } catch (err: unknown) {
       setLoading(false);
-      const code = (err as { code?: string }).code ?? "sin-codigo";
-      const rawMessage = err instanceof Error ? err.message : String(err);
-      // DEBUG: mostrar error crudo en pantalla
-      const visibleMessage = `code: ${code} | msg: ${rawMessage}`;
-      setError(visibleMessage);
-      recordAuthEvent({ type: "login_failed", email, message: visibleMessage });
-      showErrorToast(visibleMessage);
+      const code = (err as { code?: string }).code ?? "";
+      const message =
+        code === "auth/invalid-credential" || code === "auth/wrong-password" || code === "auth/user-not-found"
+          ? "Correo o contraseña incorrectos. Verifica tus datos."
+          : code === "auth/too-many-requests"
+            ? "Demasiados intentos fallidos. Espera unos minutos."
+            : code === "auth/user-disabled"
+              ? "Esta cuenta está deshabilitada."
+              : code === "auth/network-request-failed"
+                ? "Sin conexión. Verifica tu red."
+                : code === "auth/operation-not-allowed"
+                  ? "El acceso con correo y contraseña no está habilitado."
+                  : "Error al iniciar sesión. Intenta de nuevo.";
+      setError(message);
+      recordAuthEvent({ type: "login_failed", email, message });
+      showErrorToast(message);
     }
   };
 

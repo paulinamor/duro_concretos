@@ -32,9 +32,13 @@ type UserDraft = {
 
 type Tab = "usuarios" | "apariencia";
 
+const SUPERADMIN = "leonardo@lpsoft.mx";
+
 export default function ConfiguracionPage() {
   const [activeTab, setActiveTab] = useState<Tab>("usuarios");
   const [session, setSession] = useState<ReturnType<typeof getStoredSession>>(() => getStoredSession());
+  const isSuperAdmin = session?.email?.toLowerCase() === SUPERADMIN;
+
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [savingUser, setSavingUser] = useState(false);
@@ -257,13 +261,15 @@ export default function ConfiguracionPage() {
                 className="w-full rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] py-2 pl-9 pr-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
               />
             </div>
-            <button
-              onClick={openCreateUser}
-              className="inline-flex items-center gap-2 rounded-lg bg-[#CC2229] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#991A1E] cursor-pointer"
-            >
-              <Plus size={16} />
-              Crear usuario ERP
-            </button>
+            {isSuperAdmin && (
+              <button
+                onClick={openCreateUser}
+                className="inline-flex items-center gap-2 rounded-lg bg-[#CC2229] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#991A1E] cursor-pointer"
+              >
+                <Plus size={16} />
+                Crear usuario ERP
+              </button>
+            )}
           </div>
 
           <div className="overflow-x-auto">
@@ -307,22 +313,26 @@ export default function ConfiguracionPage() {
                       <td className="px-5 py-4 text-gray-300">{moduleCount}</td>
                       <td className="px-5 py-4"><StatusBadge status={user.status} /></td>
                       <td className="px-5 py-4">
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => openEditUser(user)}
-                            className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-[#1A1A1A] hover:text-white cursor-pointer"
-                            aria-label={`Editar ${user.nombre}`}
-                          >
-                            <Pencil size={15} />
-                          </button>
-                          <button
-                            onClick={() => deleteUser(user)}
-                            className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-[#1A1A1A] hover:text-[#CC2229] cursor-pointer"
-                            aria-label={`Eliminar ${user.nombre}`}
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        </div>
+                        {isSuperAdmin ? (
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => openEditUser(user)}
+                              className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-[#1A1A1A] hover:text-white cursor-pointer"
+                              aria-label={`Editar ${user.nombre}`}
+                            >
+                              <Pencil size={15} />
+                            </button>
+                            <button
+                              onClick={() => deleteUser(user)}
+                              className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-[#1A1A1A] hover:text-[#CC2229] cursor-pointer"
+                              aria-label={`Eliminar ${user.nombre}`}
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-600">Sin acceso</span>
+                        )}
                       </td>
                     </tr>
                   );
