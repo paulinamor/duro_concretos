@@ -132,7 +132,7 @@ export default function LoginPage() {
       const rawMessage = err instanceof Error ? err.message : "";
       const message =
         rawMessage.startsWith("missing-firebase-config:")
-          ? "Firebase no está configurado en este local. Agrega las variables NEXT_PUBLIC_FIREBASE_* en .env.local."
+          ? `Firebase no está configurado en este ambiente. Faltan: ${missingFirebaseEnv.join(", ") || "configuración de Firebase"}.`
           : code === "auth/invalid-api-key"
             ? "La API key de Firebase no es válida. Revisa la configuración del proyecto Firebase."
           : code === "auth/network-request-failed"
