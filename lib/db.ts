@@ -112,6 +112,15 @@ export const COLLECTIONS = {
   clientes: "clientes",
   viajes: "viajes",
   pipeline: "pipeline",
+  mantenimientos: "mantenimientos",
+  refacciones: "refacciones",
+  seguros: "seguros",
+  diesel: "diesel",
+  cajaChica: "cajaChica",
+  efectivo: "efectivo",
+  inventarioMovimientos: "inventarioMovimientos",
+  inventarioStock: "inventarioStock",
+  nomina: "nomina",
 } as const;
 
 export { where, orderBy };

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Truck, Fuel, TrendingUp, Car } from "lucide-react";
 import KPICard from "@/components/KPICard";
 import StatusBadge from "@/components/StatusBadge";
@@ -14,32 +15,8 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-
-const viajesPorSemana = [
-  { semana: "Sem 1", viajes: 32 },
-  { semana: "Sem 2", viajes: 38 },
-  { semana: "Sem 3", viajes: 35 },
-  { semana: "Sem 4", viajes: 37 },
-];
-
-const dieselPorUnidad = [
-  { unidad: "DC-01", litros: 620 },
-  { unidad: "DC-02", litros: 580 },
-  { unidad: "DC-03", litros: 710 },
-  { unidad: "DC-04", litros: 490 },
-  { unidad: "DC-05", litros: 645 },
-  { unidad: "DC-06", litros: 530 },
-  { unidad: "DC-07", litros: 680 },
-  { unidad: "DC-08", litros: 565 },
-];
-
-const recentTrips = [
-  { folio: "VJ-2026-142", unidad: "DC-03", operador: "Luis Ramírez", m3: 7.5, destino: "Monterrey Centro", estado: "Completado", fecha: "20/05/2026" },
-  { folio: "VJ-2026-141", unidad: "DC-07", operador: "Carlos Mendoza", m3: 6.0, destino: "San Nicolás", estado: "En ruta", fecha: "20/05/2026" },
-  { folio: "VJ-2026-140", unidad: "DC-01", operador: "José García", m3: 8.0, destino: "Apodaca Industrial", estado: "Completado", fecha: "20/05/2026" },
-  { folio: "VJ-2026-139", unidad: "DC-05", operador: "Miguel Torres", m3: 5.5, destino: "García NL", estado: "Cancelado", fecha: "19/05/2026" },
-  { folio: "VJ-2026-138", unidad: "DC-02", operador: "Roberto Flores", m3: 7.0, destino: "Guadalupe NL", estado: "Completado", fecha: "19/05/2026" },
-];
+import { getCollectionDocs, COLLECTIONS } from "@/lib/db";
+import { parseViajeDate, type Viaje } from "@/lib/viajes";
 
 const tooltipStyle = {
   backgroundColor: "#242424",
@@ -49,37 +26,65 @@ const tooltipStyle = {
 };
 
 export default function DashboardPage() {
+  const [viajes, setViajes] = useState<Viaje[]>([]);
+
+  useEffect(() => {
+    getCollectionDocs<Viaje>(COLLECTIONS.viajes).then(setViajes);
+  }, []);
+
+  const totalM3 = viajes.filter(v => v.estado === "Completado").reduce((s, v) => s + v.m3, 0);
+  const totalVentas = viajes.filter(v => v.estado === "Completado").reduce((s, v) => s + v.total, 0);
+  const unidadesActivas = new Set(viajes.filter(v => v.estado !== "Cancelado").map(v => v.unidad)).size;
+
+  // Group completed viajes by week (last 4 weeks)
+  const now = new Date();
+  const viajesPorSemana = Array.from({ length: 4 }, (_, i) => {
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - (3 - i) * 7 - now.getDay());
+    weekStart.setHours(0, 0, 0, 0);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
+    weekEnd.setHours(23, 59, 59, 999);
+    const count = viajes.filter(v => {
+      const d = parseViajeDate(v.fecha);
+      return d >= weekStart && d <= weekEnd;
+    }).length;
+    return { semana: `Sem ${i + 1}`, viajes: count };
+  });
+
+  const dieselPorUnidad: { unidad: string; litros: number }[] = [];
+
+  const recentTrips = [...viajes]
+    .sort((a, b) => b.folio.localeCompare(a.folio))
+    .slice(0, 5);
+
   return (
     <div className="space-y-6">
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <KPICard
-          title="Viajes del mes"
-          value="142"
+          title="Viajes registrados"
+          value={String(viajes.length)}
           icon={Truck}
           iconColor="text-green-400"
-          trend={{ value: "+8% vs mes anterior", positive: true }}
         />
         <KPICard
-          title="Diesel consumido"
-          value="4,820 L"
+          title="M3 entregados"
+          value={`${totalM3.toLocaleString()} m³`}
           icon={Fuel}
           iconColor="text-yellow-400"
-          subtitle="Costo: $57,840 MXN"
         />
         <KPICard
-          title="Ventas del mes"
-          value="$284,500"
+          title="Ventas totales"
+          value={`$${totalVentas.toLocaleString()}`}
           icon={TrendingUp}
           iconColor="text-green-400"
-          trend={{ value: "+12% vs mes anterior", positive: true }}
         />
         <KPICard
           title="Unidades activas"
-          value="8 / 10"
+          value={String(unidadesActivas)}
           icon={Car}
           iconColor="text-[#CC2229]"
-          subtitle="2 en mantenimiento"
         />
       </div>
 
@@ -139,7 +144,13 @@ export default function DashboardPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#3A3A3A]">
-              {recentTrips.map((t) => (
+              {recentTrips.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-10 text-center text-sm text-gray-500">
+                    Sin viajes registrados.
+                  </td>
+                </tr>
+              ) : recentTrips.map((t) => (
                 <tr key={t.folio} className="hover:bg-[#2A2A2A] transition-colors">
                   <td className="px-4 py-3 text-[#CC2229] font-mono text-xs">{t.folio}</td>
                   <td className="px-4 py-3 text-gray-200 font-semibold">{t.unidad}</td>

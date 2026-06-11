@@ -1,5 +1,6 @@
 import { crmOpportunities } from "@/lib/crmPipeline";
-import { loadViajes, saveViajes } from "@/lib/viajes";
+import { getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
+import type { Viaje } from "@/lib/viajes";
 
 export type ConcreteSupplyType = "Tiro directo" | "Bombeado";
 
@@ -163,14 +164,11 @@ export function saveConcreteReceipts(receipts: ConcreteReceipt[]) {
   window.dispatchEvent(new CustomEvent("duro:concrete-receipts-updated"));
 }
 
-export function syncReceiptWithTrip(receipt: ConcreteReceipt) {
-  if (typeof window === "undefined") return;
-
-  const viajes = loadViajes();
+export async function syncReceiptWithTrip(receipt: ConcreteReceipt) {
   const folio = receipt.viajeFolio ?? `VJ-2026-${receipt.receiptNumber}`;
   const [year, month, day] = receipt.fecha.split("-");
   const fecha = `${day}/${month}/${year}`;
-  const trip = {
+  const trip: Viaje = {
     folio,
     fecha,
     unidad: "Por asignar",
@@ -182,6 +180,6 @@ export function syncReceiptWithTrip(receipt: ConcreteReceipt) {
     estado: "Pendiente",
   };
 
-  const exists = viajes.some((item) => item.folio === folio);
-  saveViajes(exists ? viajes.map((item) => item.folio === folio ? trip : item) : [trip, ...viajes]);
+  await upsertDocument<Viaje>(COLLECTIONS.viajes, folio, trip);
 }
+

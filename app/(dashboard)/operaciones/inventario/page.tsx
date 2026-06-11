@@ -5,6 +5,7 @@ import { Package, ArrowDownCircle, ArrowUpCircle, DollarSign, Plus } from "lucid
 import KPICard from "@/components/KPICard";
 import StatusBadge from "@/components/StatusBadge";
 import FormModal from "@/components/FormModal";
+import { getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
 
 interface Movimiento {
   fecha: string;
@@ -24,34 +25,11 @@ interface StockItem {
   status: string;
 }
 
-const movimientosData: Movimiento[] = [
-  { fecha: "02/01/2026", producto: "Cemento", tipo: "Salida", cantidad: 1416, unidad: "kg", responsable: "Alexis", observaciones: "Remisión 18945 - Rosbel Tellez - 6.5 m³" },
-  { fecha: "02/01/2026", producto: "Grava", tipo: "Salida", cantidad: 5390, unidad: "kg", responsable: "Alexis", observaciones: "Remisión 18945 - concreto 250-20-14" },
-  { fecha: "02/01/2026", producto: "Arena 4", tipo: "Salida", cantidad: 6870, unidad: "kg", responsable: "Alexis", observaciones: "Remisión 18945 - Rosbel Tellez" },
-  { fecha: "02/01/2026", producto: "Agua", tipo: "Salida", cantidad: 1105, unidad: "L", responsable: "Torres", observaciones: "Remisión 18946 - Rosbel Tellez" },
-  { fecha: "02/01/2026", producto: "Aditivo", tipo: "Salida", cantidad: 14.3, unidad: "L", responsable: "Omar", observaciones: "Remisión 18947 - Express 57 / Raul Paras" },
-  { fecha: "02/01/2026", producto: "Imper", tipo: "Salida", cantidad: 60, unidad: "kg", responsable: "Gerardo", observaciones: "Remisión 18957 - Casa ING - 03/01/2026" },
-  { fecha: "02/01/2026", producto: "Fibra 2", tipo: "Salida", cantidad: 36, unidad: "bolsas", responsable: "Gerardo", observaciones: "Remisiones 18954-18956 - Casa ING" },
-  { fecha: "02/01/2026", producto: "Grava", tipo: "Entrada", cantidad: 145620, unidad: "kg", responsable: "Calizas", observaciones: "Entrada material remisiones 28.020112, 40.020114, 18.02011, 48.020116" },
-  { fecha: "03/01/2026", producto: "Cemento", tipo: "Entrada", cantidad: 25930, unidad: "kg", responsable: "Holcim", observaciones: "Entrada remisión 342425480" },
-  { fecha: "03/01/2026", producto: "Grava", tipo: "Entrada", cantidad: 35030, unidad: "kg", responsable: "Calizas", observaciones: "Entrada remisión 34.030113" },
-];
-
-const stockData: StockItem[] = [
-  { producto: "Cemento", stockActual: 55513, unidad: "kg", minimo: 20000, status: "Normal" },
-  { producto: "Grava", stockActual: 314455, unidad: "kg", minimo: 50000, status: "Normal" },
-  { producto: "Arena 4", stockActual: 442294, unidad: "kg", minimo: 50000, status: "Normal" },
-  { producto: "Aditivo", stockActual: -3514, unidad: "L", minimo: 0, status: "Stock bajo" },
-  { producto: "HR25", stockActual: 297, unidad: "kg", minimo: 50, status: "Normal" },
-  { producto: "Imper", stockActual: -225, unidad: "kg", minimo: 0, status: "Stock bajo" },
-  { producto: "Costales fibra", stockActual: 12, unidad: "bolsas", minimo: 10, status: "Normal" },
-  { producto: "Color / cubetas", stockActual: 22, unidad: "cubetas", minimo: 10, status: "Normal" },
-  { producto: "Arena 5", stockActual: 32050, unidad: "kg", minimo: 10000, status: "Normal" },
-];
 
 export default function InventarioPage() {
   const insightsRef = useRef<HTMLDivElement>(null);
-  const [movimientos, setMovimientos] = useState(movimientosData);
+  const [movimientos, setMovimientos] = useState<Movimiento[]>([]);
+  const [stockData, setStockData] = useState<StockItem[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [activeTab, setActiveTab] = useState<"movimientos" | "stock">("movimientos");
   const [activeInsight, setActiveInsight] = useState<"productos" | "entradas" | "salidas" | "alertas" | null>(null);
@@ -60,6 +38,11 @@ export default function InventarioPage() {
   const entradaMovimientos = movimientos.filter((m) => m.tipo === "Entrada");
   const salidaMovimientos = movimientos.filter((m) => m.tipo === "Salida");
   const alertasStock = stockData.filter((s) => s.status === "Stock bajo");
+
+  useEffect(() => {
+    getCollectionDocs<Movimiento>(COLLECTIONS.inventarioMovimientos).then(setMovimientos);
+    getCollectionDocs<StockItem>(COLLECTIONS.inventarioStock).then(setStockData);
+  }, []);
 
   useEffect(() => {
     function handleOutsideClick(event: MouseEvent) {
@@ -71,21 +54,21 @@ export default function InventarioPage() {
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, []);
 
-  function handleSave(values: Record<string, string>) {
-    const fecha = values.Fecha ? values.Fecha.split("-").reverse().join("/") : "20/05/2026";
+  async function handleSave(values: Record<string, string>) {
+    const fecha = values.Fecha ? values.Fecha.split("-").reverse().join("/") : new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" });
+    const id = Date.now().toString();
+    const newMovimiento: Movimiento = {
+      fecha,
+      producto: values.Producto || "Cemento CPC 30 (saco)",
+      tipo: values.Tipo || "Entrada",
+      cantidad: Number(values.Cantidad || 0),
+      unidad: values.Unidad || "sacos",
+      responsable: values.Responsable || "Carlos Ortiz",
+      observaciones: values.Observaciones || "Producción del día",
+    };
 
-    setMovimientos((current) => [
-      {
-        fecha,
-        producto: values.Producto || "Cemento CPC 30 (saco)",
-        tipo: values.Tipo || "Entrada",
-        cantidad: Number(values.Cantidad || 0),
-        unidad: values.Unidad || "sacos",
-        responsable: values.Responsable || "Carlos Ortiz",
-        observaciones: values.Observaciones || "Producción del día",
-      },
-      ...current,
-    ]);
+    setMovimientos((current) => [newMovimiento, ...current]);
+    await upsertDocument(COLLECTIONS.inventarioMovimientos, id, newMovimiento);
   }
 
   return (

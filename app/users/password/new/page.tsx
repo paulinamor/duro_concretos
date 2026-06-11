@@ -3,7 +3,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { isRegisteredEmail, recordAuthEvent } from "@/lib/auth";
+import { sendPasswordResetEmail } from "firebase/auth";
+import { auth } from "@/lib/firebase";
+import { recordAuthEvent } from "@/lib/auth";
 
 export default function RecuperarPasswordPage() {
   const [email, setEmail] = useState("");
@@ -18,7 +20,7 @@ export default function RecuperarPasswordPage() {
     );
   }
 
-  function handleSubmit(event: React.FormEvent) {
+  async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError("");
     setSent(false);
@@ -39,17 +41,16 @@ export default function RecuperarPasswordPage() {
       return;
     }
 
-    if (!isRegisteredEmail(email)) {
-      const message = "Ese correo no está registrado en el ERP.";
+    try {
+      await sendPasswordResetEmail(auth!, email.trim().toLowerCase());
+      setSent(true);
+      recordAuthEvent({ type: "password_recovery", email, message: "Correo de recuperación enviado." });
+      showToast("success", "Recuperación enviada", "Revisa tu correo para restablecer la contraseña.");
+    } catch {
+      const message = "No se pudo enviar el correo. Verifica que el correo sea correcto.";
       setError(message);
-      recordAuthEvent({ type: "password_recovery", email, message });
       showToast("error", "No se pudo enviar", message);
-      return;
     }
-
-    setSent(true);
-    recordAuthEvent({ type: "password_recovery", email, message: "Solicitud de recuperación generada correctamente." });
-    showToast("success", "Recuperación enviada", "Se generó la solicitud para restablecer la contraseña.");
   }
 
   return (

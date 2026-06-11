@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AlertTriangle, DollarSign, Filter, Fuel, Gauge, Plus } from "lucide-react";
 import KPICard from "@/components/KPICard";
 import FormModal from "@/components/FormModal";
+import { getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
 import {
   LineChart,
   Line,
@@ -28,32 +29,6 @@ interface CargaDiesel {
   recibo: string;
 }
 
-const dieselData: CargaDiesel[] = [
-  { fecha: "10/02/2025", unidad: "115", operador: "Registro PDF", combustible: "DIESEL", litros: 226.43, precioL: 24.78, total: 5613, kmRecorridos: 6348, rendimiento: "28.04 km/L", recibo: "273278" },
-  { fecha: "11/03/2025", unidad: "AVANZA AZUL", operador: "Registro PDF", combustible: "GASOLINA", litros: 17.63, precioL: 22.69, total: 400, kmRecorridos: 132974, rendimiento: "0.00 km/L", recibo: "1400809" },
-  { fecha: "12/06/2025", unidad: "VOLTEO", operador: "Registro PDF", combustible: "DIESEL", litros: 194.81, precioL: 24.49, total: 4770.9, kmRecorridos: 0, rendimiento: "0.00 km/L", recibo: "298386" },
-  { fecha: "29/07/2025", unidad: "HYLUX COMBUSTIBLE", operador: "Registro PDF", combustible: "GASOLINA", litros: 66.97, precioL: 22.68, total: 1519, kmRecorridos: 0, rendimiento: "0.00 km/L", recibo: "86658" },
-  { fecha: "05/08/2025", unidad: "117", operador: "Registro PDF", combustible: "DIESEL", litros: 177.29, precioL: 24.19, total: 4288, kmRecorridos: 14155, rendimiento: "0.00 km/L", recibo: "24026" },
-  { fecha: "05/08/2025", unidad: "BOMBA-36 B03", operador: "Registro PDF", combustible: "DIESEL", litros: 233.87, precioL: 24.19, total: 5657, kmRecorridos: 3570107, rendimiento: "0.00 km/L", recibo: "242024" },
-  { fecha: "07/08/2025", unidad: "107", operador: "Registro PDF", combustible: "DIESEL", litros: 256, precioL: 24.19, total: 6192.64, kmRecorridos: 127431, rendimiento: "0.00 km/L", recibo: "242987" },
-  { fecha: "07/08/2025", unidad: "117", operador: "Registro PDF", combustible: "DIESEL", litros: 162.54, precioL: 0, total: 0, kmRecorridos: 189, rendimiento: "1.16 km/L", recibo: "-" },
-  { fecha: "08/08/2025", unidad: "111", operador: "Registro PDF", combustible: "DIESEL", litros: 263.11, precioL: 24.19, total: 6364.56, kmRecorridos: 155305.4, rendimiento: "0.00 km/L", recibo: "243499" },
-  { fecha: "08/08/2025", unidad: "112", operador: "Registro PDF", combustible: "DIESEL", litros: 307.18, precioL: 24.19, total: 7430.78, kmRecorridos: 155504.4, rendimiento: "0.00 km/L", recibo: "243513" },
-  { fecha: "13/08/2025", unidad: "112", operador: "Registro PDF", combustible: "DIESEL", litros: 248.74, precioL: 24.29, total: 6041.94, kmRecorridos: 384.2, rendimiento: "1.54 km/L", recibo: "346073" },
-  { fecha: "23/08/2025", unidad: "TR-02 ALFA 2013", operador: "Registro PDF", combustible: "DIESEL", litros: 304.44, precioL: 23.99, total: 7303.4, kmRecorridos: 0, rendimiento: "0.00 km/L", recibo: "102216" },
-];
-
-const costosPorDia = [
-  { dia: "15/05", DC01: 4251, DC03: 0, DC07: 0 },
-  { dia: "16/05", DC01: 0, DC03: 3833, DC07: 0 },
-  { dia: "17/05", DC01: 0, DC03: 0, DC07: 0 },
-  { dia: "18/05", DC01: 0, DC03: 0, DC07: 3426 },
-  { dia: "19/05", DC01: 4460, DC03: 0, DC07: 0 },
-  { dia: "20/05", DC01: 0, DC03: 4050, DC07: 3375 },
-];
-
-const promedioRendimiento = "2.95 km/L";
-
 const tooltipStyle = {
   backgroundColor: "#242424",
   border: "1px solid #3A3A3A",
@@ -62,10 +37,14 @@ const tooltipStyle = {
 };
 
 export default function DieselPage() {
-  const [cargas, setCargas] = useState(dieselData);
+  const [cargas, setCargas] = useState<CargaDiesel[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [showCostoUnidad, setShowCostoUnidad] = useState(false);
   const [filterUnidad, setFilterUnidad] = useState("Todas");
+
+  useEffect(() => {
+    getCollectionDocs<CargaDiesel>(COLLECTIONS.diesel).then(setCargas);
+  }, []);
 
   const totalLitros = cargas.reduce((s, d) => s + d.litros, 0);
   const totalCosto = cargas.reduce((s, d) => s + d.total, 0);
@@ -74,6 +53,11 @@ export default function DieselPage() {
   const filteredDiesel = cargas.filter((d) => {
     return filterUnidad === "Todas" || d.unidad === filterUnidad;
   });
+  const costosPorDia: { dia: string; DC01: number; DC03: number; DC07: number }[] = [];
+  const rendimientoValores = cargas.map(d => Number(d.rendimiento.split(" ")[0])).filter(v => v > 0);
+  const promedioRendimiento = rendimientoValores.length > 0
+    ? `${(rendimientoValores.reduce((s, v) => s + v, 0) / rendimientoValores.length).toFixed(2)} km/L`
+    : "0.00 km/L";
   const costoPorUnidad = Array.from(
     cargas.reduce((summary, carga) => {
       const current = summary.get(carga.unidad) ?? { unidad: carga.unidad, litros: 0, costo: 0, cargas: 0 };
@@ -89,28 +73,26 @@ export default function DieselPage() {
     .map(([, value]) => value)
     .sort((a, b) => b.costo - a.costo);
 
-  function handleSave(values: Record<string, string>) {
+  async function handleSave(values: Record<string, string>) {
     const litros = Number(values["Litros cargados"]?.replace(" L", "") || 0);
     const precioL = Number(values["Precio por litro ($)"] || 0);
     const kmRecorridos = Number(values["Km recorridos"]?.replace(" km", "") || 0);
     const rendimiento = litros > 0 ? `${(kmRecorridos / litros).toFixed(1)} km/L` : "0.0 km/L";
-    const fecha = values.Fecha ? values.Fecha.split("-").reverse().join("/") : "20/05/2026";
-
-    setCargas((current) => [
-      {
-        fecha,
-        unidad: values.Unidad || "DC-03",
-        operador: values.Operador || "Luis Ramírez",
-        combustible: "DIESEL",
-        litros,
-        precioL,
-        total: Math.round(litros * precioL),
-        kmRecorridos,
-        rendimiento,
-        recibo: "Nuevo",
-      },
-      ...current,
-    ]);
+    const fecha = values.Fecha ? values.Fecha.split("-").reverse().join("/") : new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" });
+    const newCarga: CargaDiesel = {
+      fecha,
+      unidad: values.Unidad || "DC-03",
+      operador: values.Operador || "Luis Ramírez",
+      combustible: "DIESEL",
+      litros,
+      precioL,
+      total: Math.round(litros * precioL),
+      kmRecorridos,
+      rendimiento,
+      recibo: "Nuevo",
+    };
+    setCargas((current) => [newCarga, ...current]);
+    await upsertDocument(COLLECTIONS.diesel, Date.now().toString(), newCarga);
   }
 
   return (

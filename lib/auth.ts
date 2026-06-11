@@ -21,11 +21,9 @@ export interface AuthEvent {
 
 const SESSION_KEY = "duro_concretos_session";
 const AUTH_EVENTS_KEY = "duro_concretos_auth_events";
-const USERS_KEY = "duro_concretos_users";
 
 export const moduleCatalog = [
   { href: "/dashboard", label: "Dashboard operativo" },
-  { href: "/reportes", label: "Reportes gerenciales" },
   { href: "/transporte/viajes", label: "Control de viajes y choferes" },
   { href: "/transporte/operadores", label: "Operadores" },
   { href: "/transporte/unidades", label: "Unidades / Flota" },
@@ -41,46 +39,6 @@ export const moduleCatalog = [
   { href: "/crm/clientes-vendedor", label: "Clientes por vendedor" },
   { href: "/ventas/recibos-concreto", label: "Recibos de concreto" },
   { href: "/configuracion", label: "Autenticación y roles" },
-];
-
-export const appUsers: AppUser[] = [
-  {
-    email: "admin@duroconcretos.mx",
-    password: "Admin2026!",
-    name: "Admin",
-    role: "admin",
-    modules: "all",
-    status: "Activo",
-  },
-  {
-    email: "operador@duroconcretos.mx",
-    password: "Operador2026!",
-    name: "Operador",
-    role: "operador",
-    modules: [
-      "/configuracion",
-      "/dashboard",
-      "/reportes",
-      "/transporte/viajes",
-      "/transporte/disponibilidad",
-      "/transporte/diesel",
-      "/transporte/mantenimiento",
-      "/operaciones/inventario",
-      "/operaciones/efectivo",
-      "/crm/seguimiento",
-      "/crm/clientes-vendedor",
-      "/ventas/recibos-concreto",
-    ],
-    status: "Activo",
-  },
-  {
-    email: "paulina.morales@duroconcretos.mx",
-    password: "Paulina2026!",
-    name: "Paulina Morales",
-    role: "admin",
-    modules: "all",
-    status: "Activo",
-  },
 ];
 
 export const accessProfiles: Record<UserRole, Array<{ module: string; access: "Completo" | "Registro" | "Consulta" | "Bloqueado" }>> = {
@@ -118,19 +76,6 @@ export const accessProfiles: Record<UserRole, Array<{ module: string; access: "C
   ],
 };
 
-export function findUserByCredentials(email: string, password: string) {
-  return getManagedUsers().find(
-    (user) =>
-      user.email.toLowerCase() === email.trim().toLowerCase() &&
-      user.password === password &&
-      (user.status ?? "Activo") === "Activo",
-  );
-}
-
-export function isRegisteredEmail(email: string) {
-  return getManagedUsers().some((user) => user.email.toLowerCase() === email.trim().toLowerCase());
-}
-
 export function getStoredSession() {
   if (typeof window === "undefined") return null;
 
@@ -164,7 +109,6 @@ export function getDefaultModulesForRole(role: UserRole) {
   return [
     "/configuracion",
     "/dashboard",
-    "/reportes",
     "/transporte/viajes",
     "/transporte/disponibilidad",
     "/transporte/diesel",
@@ -175,30 +119,6 @@ export function getDefaultModulesForRole(role: UserRole) {
     "/crm/clientes-vendedor",
     "/ventas/recibos-concreto",
   ];
-}
-
-export function getManagedUsers() {
-  if (typeof window === "undefined") return appUsers;
-
-  const raw = localStorage.getItem(USERS_KEY);
-  if (!raw) {
-    saveManagedUsers(appUsers);
-    return appUsers;
-  }
-
-  try {
-    const users = JSON.parse(raw) as AppUser[];
-    return users.length > 0 ? users : appUsers;
-  } catch {
-    localStorage.removeItem(USERS_KEY);
-    saveManagedUsers(appUsers);
-    return appUsers;
-  }
-}
-
-export function saveManagedUsers(users: AppUser[]) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(USERS_KEY, JSON.stringify(users));
 }
 
 export function getAllowedModuleSet(user: Pick<AppUser, "role" | "modules"> | null) {

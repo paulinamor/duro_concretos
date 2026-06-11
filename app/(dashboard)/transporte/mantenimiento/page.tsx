@@ -5,6 +5,7 @@ import { AlertTriangle, Car, DollarSign, Plus, Wrench } from "lucide-react";
 import KPICard from "@/components/KPICard";
 import StatusBadge from "@/components/StatusBadge";
 import FormModal from "@/components/FormModal";
+import { getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
 
 interface Mantenimiento {
   fecha: string;
@@ -52,66 +53,40 @@ interface SeguroUnidad {
   status: string;
 }
 
-const mantenimientosData: Mantenimiento[] = [
-  { fecha: "18/05/2026", unidad: "DC-03", tipo: "Preventivo", descripcion: "Cambio de aceite y filtros", costo: 3200, taller: "Taller Monterrey", status: "Completado" },
-  { fecha: "17/05/2026", unidad: "DC-09", tipo: "Correctivo", descripcion: "Reparación de frenos traseros", costo: 8500, taller: "Servitruck NL", status: "En proceso" },
-  { fecha: "15/05/2026", unidad: "DC-05", tipo: "Preventivo", descripcion: "Revisión general + afinación", costo: 4800, taller: "Taller Monterrey", status: "Completado" },
-  { fecha: "12/05/2026", unidad: "DC-10", tipo: "Correctivo", descripcion: "Cambio de bomba hidráulica", costo: 15200, taller: "Auto Partes NL", status: "Pendiente" },
-  { fecha: "10/05/2026", unidad: "DC-02", tipo: "Preventivo", descripcion: "Cambio de llantas delanteras", costo: 9600, taller: "Llantera JC", status: "Completado" },
-  { fecha: "08/05/2026", unidad: "DC-06", tipo: "Preventivo", descripcion: "Cambio de aceite motor y diferencial", costo: 3800, taller: "Taller Monterrey", status: "Completado" },
-];
-
-const refaccionesData: Refaccion[] = [
-  { fecha: "18/05/2026", unidad: "DC-03", refaccion: "Filtro de aceite", cantidad: 2, costoUnit: 280, total: 560, proveedor: "Auto Partes NL" },
-  { fecha: "17/05/2026", unidad: "DC-09", refaccion: "Pastillas de freno", cantidad: 4, costoUnit: 650, total: 2600, proveedor: "Servitruck NL" },
-  { fecha: "15/05/2026", unidad: "DC-05", refaccion: "Bujías NGK", cantidad: 6, costoUnit: 180, total: 1080, proveedor: "Refaccionaria Sur" },
-  { fecha: "12/05/2026", unidad: "DC-10", refaccion: "Bomba hidráulica", cantidad: 1, costoUnit: 12500, total: 12500, proveedor: "Hidráulicos MTY" },
-  { fecha: "10/05/2026", unidad: "DC-02", refaccion: "Llanta 11R22.5", cantidad: 2, costoUnit: 4800, total: 9600, proveedor: "Llantera JC" },
-  { fecha: "08/05/2026", unidad: "DC-06", refaccion: "Aceite 15W40 (cubeta)", cantidad: 2, costoUnit: 890, total: 1780, proveedor: "Lubricantes MX" },
-];
-
-const unidadesData: UnidadMantenimiento[] = [
-  { unidad: "DC-01", kmActual: 124800, proximoServicioKm: 130000, proximoServicioFecha: "28/06/2026", ultimoServicio: "19/04/2026", condicion: "Normal", responsable: "José García" },
-  { unidad: "DC-02", kmActual: 118400, proximoServicioKm: 120000, proximoServicioFecha: "12/06/2026", ultimoServicio: "10/05/2026", condicion: "Próximo servicio", responsable: "Roberto Flores" },
-  { unidad: "DC-03", kmActual: 132100, proximoServicioKm: 137000, proximoServicioFecha: "30/06/2026", ultimoServicio: "18/05/2026", condicion: "Normal", responsable: "Luis Ramírez" },
-  { unidad: "DC-09", kmActual: 98500, proximoServicioKm: 100000, proximoServicioFecha: "05/06/2026", ultimoServicio: "17/05/2026", condicion: "En taller", responsable: "Taller" },
-  { unidad: "DC-10", kmActual: 142300, proximoServicioKm: 145000, proximoServicioFecha: "18/06/2026", ultimoServicio: "12/05/2026", condicion: "Pendiente", responsable: "Taller" },
-];
-
-const segurosUnidadesData: SeguroUnidad[] = [
-  { tipo: "Revolvedora", alias: "105", placas: "HF5589F", estado: "Guerrero", marca: "Internacional", nombre: "AG Support", modelo: "Internacional", anio: 2005, poliza: "640698167-1", costoPoliza: 12886.46, vigencia: "02/09/2026", valorMercado: 1000000, status: "Qualitas Carlos Contreras" },
-  { tipo: "Revolvedora", alias: "108", placas: "RJ-1241-B", estado: "Nuevo León", marca: "Kenworth T-460", nombre: "Duro", modelo: "6x4 ISL 330HP Chasis cabina STD.", anio: 2011, poliza: "971269209-1", costoPoliza: 17622.38, vigencia: "02/09/2026", valorMercado: 1500000, status: "Qualitas Carlos Contreras" },
-  { tipo: "Revolvedora", alias: "110", placas: "RL-3576-A", estado: "Nuevo León", marca: "Kenworth T-460", nombre: "Duro", modelo: "6x4 ISL 330HP Chasis cabina STD.", anio: 2016, poliza: "1700069536 D 14", costoPoliza: 12941.12, vigencia: "02/09/2026", valorMercado: 1750000, status: "Qualitas Carlos Contreras" },
-  { tipo: "Revolvedora", alias: "111", placas: "PW8840A", estado: "Nuevo León", marca: "Kenworth", nombre: "Erik", modelo: "T880", anio: 2019, poliza: "4019352-1", costoPoliza: 409357.03, vigencia: "09/09/2026", valorMercado: 2500000, status: "Seguro de financiera Unifin Qualitas" },
-  { tipo: "Bomba", alias: "Bomba 03", placas: "GZ80Z5G", estado: "Guerrero", marca: "Mack", nombre: "Duro", modelo: "Putzmeister 36m M70", anio: 1999, poliza: "1700069536 ED 17", costoPoliza: 14833.84, vigencia: "02/09/2026", valorMercado: 3000000, status: "Qualitas Carlos Contreras" },
-  { tipo: "Volteo", alias: "Camión volteo", placas: "PT-5620-B", estado: "Nuevo León", marca: "Kenworth", nombre: "AG Support", modelo: "White", anio: 1992, poliza: "1700069536", costoPoliza: 13404.87, vigencia: "02/09/2026", valorMercado: 400000, status: "Qualitas Carlos Contreras" },
-  { tipo: "Vehículo", alias: "Beat", placas: "RRL431A", estado: "Nuevo León", marca: "Chevrolet", nombre: "Duro/Martín", modelo: "Chevrolet Beat Sedan LT", anio: 2018, poliza: "640884448", costoPoliza: 9161.44, vigencia: "05/05/2027", valorMercado: 111000, status: "Qualitas Sairy" },
-  { tipo: "Vehículo", alias: "Hilux 4P", placas: "PR-4425-B", estado: "Nuevo León", marca: "Toyota", nombre: "Duro", modelo: "Hilux doble cabina", anio: 2023, poliza: "TFS000000306726", costoPoliza: 78945.01, vigencia: "01/10/2027", valorMercado: 500000, status: "Seguro con Toyota Financial" },
-  { tipo: "Vehículo", alias: "Siena", placas: "SWM866R", estado: "Nuevo León", marca: "Toyota", nombre: "Duro", modelo: "Sienna XSE Minivan híbrida", anio: 2024, poliza: "06.0201049418000001", costoPoliza: 55109.77, vigencia: "01/01/2027", valorMercado: 1000000, status: "Seguro con Toyota Financial" },
-  { tipo: "Maquinaria", alias: "Retroexcavadora", placas: "-", estado: "-", marca: "John Deere", nombre: "Duro", modelo: "Retro 310 SL", anio: 2015, poliza: "-", costoPoliza: 0, vigencia: "-", valorMercado: 1350000, status: "Pendiente póliza" },
-];
 
 export default function MantenimientoPage() {
   const insightsRef = useRef<HTMLDivElement>(null);
-  const [mantenimientos, setMantenimientos] = useState(mantenimientosData);
-  const [refacciones, setRefacciones] = useState(refaccionesData);
+  const [mantenimientos, setMantenimientos] = useState<Mantenimiento[]>([]);
+  const [refacciones, setRefacciones] = useState<Refaccion[]>([]);
+  const [unidades, setUnidades] = useState<UnidadMantenimiento[]>([]);
+  const [seguros, setSeguros] = useState<SeguroUnidad[]>([]);
   const [activeTab, setActiveTab] = useState<"mantenimientos" | "refacciones" | "unidades" | "seguros">("mantenimientos");
   const [showForm, setShowForm] = useState(false);
   const [showHistorialCamion, setShowHistorialCamion] = useState(false);
-  const [selectedUnidadHistorial, setSelectedUnidadHistorial] = useState(unidadesData[0]?.unidad ?? "DC-01");
+  const [selectedUnidadHistorial, setSelectedUnidadHistorial] = useState("");
   const [activeInsight, setActiveInsight] = useState<"costo" | "pendientes" | "taller" | "proximos" | null>(null);
   const costoMes = mantenimientos.reduce((s, m) => s + m.costo, 0);
   const mantenimientosPendientes = mantenimientos.filter(m => m.status === "Pendiente" || m.status === "En proceso");
-  const unidadesTallerDetalle = unidadesData.filter((u) => u.condicion === "En taller" || u.condicion === "Pendiente");
-  const proximosServiciosDetalle = unidadesData.filter((u) => u.condicion === "Próximo servicio");
+  const unidadesTallerDetalle = unidades.filter((u) => u.condicion === "En taller" || u.condicion === "Pendiente");
+  const proximosServiciosDetalle = unidades.filter((u) => u.condicion === "Próximo servicio");
   const pendientes = mantenimientosPendientes.length;
   const unidadesEnTaller = unidadesTallerDetalle.length;
   const proximosServicios = proximosServiciosDetalle.length;
   const historialMantenimientos = mantenimientos.filter((m) => m.unidad === selectedUnidadHistorial);
   const historialRefacciones = refacciones.filter((r) => r.unidad === selectedUnidadHistorial);
-  const historialUnidad = unidadesData.find((u) => u.unidad === selectedUnidadHistorial);
+  const historialUnidad = unidades.find((u) => u.unidad === selectedUnidadHistorial);
   const costoHistorialMantenimiento = historialMantenimientos.reduce((sum, item) => sum + item.costo, 0);
   const costoHistorialRefacciones = historialRefacciones.reduce((sum, item) => sum + item.total, 0);
+
+  useEffect(() => {
+    getCollectionDocs<Mantenimiento>(COLLECTIONS.mantenimientos).then(setMantenimientos);
+    getCollectionDocs<Refaccion>(COLLECTIONS.refacciones).then(setRefacciones);
+    getCollectionDocs<UnidadMantenimiento>("unidadesMantenimiento").then((data) => {
+      setUnidades(data);
+      if (data.length > 0) setSelectedUnidadHistorial(data[0].unidad);
+    });
+    getCollectionDocs<SeguroUnidad>(COLLECTIONS.seguros).then(setSeguros);
+  }, []);
 
   function showToast(type: "success" | "error", title: string, message: string) {
     window.dispatchEvent(new CustomEvent("duro:toast", {
@@ -142,40 +117,37 @@ export default function MantenimientoPage() {
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, []);
 
-  function handleSave(values: Record<string, string>) {
+  async function handleSave(values: Record<string, string>) {
     if (activeTab === "refacciones") {
       const cantidad = Number(values.Cantidad || 0);
       const costoUnit = Number(values["Costo unitario ($)"]?.replace(/[$,]/g, "") || 0);
-      const fecha = values.Fecha ? values.Fecha.split("-").reverse().join("/") : "20/05/2026";
-
-      setRefacciones((current) => [
-        {
-          fecha,
-          unidad: values.Unidad || "DC-03",
-          refaccion: values.Refacción || "Filtro de aceite",
-          cantidad,
-          costoUnit,
-          total: cantidad * costoUnit,
-          proveedor: values.Proveedor || "Auto Partes NL",
-        },
-        ...current,
-      ]);
+      const fecha = values.Fecha ? values.Fecha.split("-").reverse().join("/") : new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" });
+      const newRefaccion: Refaccion = {
+        fecha,
+        unidad: values.Unidad || "DC-03",
+        refaccion: values.Refacción || "Filtro de aceite",
+        cantidad,
+        costoUnit,
+        total: cantidad * costoUnit,
+        proveedor: values.Proveedor || "Auto Partes NL",
+      };
+      setRefacciones((current) => [newRefaccion, ...current]);
+      await upsertDocument(COLLECTIONS.refacciones, Date.now().toString(), newRefaccion);
       return;
     }
 
-    const fecha = values.Fecha ? values.Fecha.split("-").reverse().join("/") : "20/05/2026";
-    setMantenimientos((current) => [
-      {
-        fecha,
-        unidad: values.Unidad || "DC-03",
-        tipo: values.Tipo || "Preventivo",
-        descripcion: values.Descripción || "Cambio de aceite y filtros",
-        costo: Number(values["Costo ($)"]?.replace(/[$,]/g, "") || 0),
-        taller: values.Taller || "Taller Monterrey",
-        status: values.Status || "Pendiente",
-      },
-      ...current,
-    ]);
+    const fecha = values.Fecha ? values.Fecha.split("-").reverse().join("/") : new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" });
+    const newMantenimiento: Mantenimiento = {
+      fecha,
+      unidad: values.Unidad || "DC-03",
+      tipo: values.Tipo || "Preventivo",
+      descripcion: values.Descripción || "Cambio de aceite y filtros",
+      costo: Number(values["Costo ($)"]?.replace(/[$,]/g, "") || 0),
+      taller: values.Taller || "Taller Monterrey",
+      status: values.Status || "Pendiente",
+    };
+    setMantenimientos((current) => [newMantenimiento, ...current]);
+    await upsertDocument(COLLECTIONS.mantenimientos, Date.now().toString(), newMantenimiento);
   }
 
   return (
@@ -268,7 +240,7 @@ export default function MantenimientoPage() {
               ))}
 
               {activeInsight === "pendientes" && mantenimientosPendientes.map((item) => {
-                const unidad = unidadesData.find((u) => u.unidad === item.unidad);
+                const unidad = unidades.find((u) => u.unidad === item.unidad);
                 return (
                 <div key={`${item.fecha}-${item.unidad}-${item.status}`} className="grid grid-cols-1 md:grid-cols-[120px_1fr_auto_auto] gap-2 px-5 py-3">
                   <p className="text-sm font-semibold text-white">{item.unidad}</p>
@@ -342,7 +314,7 @@ export default function MantenimientoPage() {
             <div>
               <label className="block text-sm text-gray-400 mb-1">Unidad</label>
               <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
-                {unidadesData.map((unidad) => <option key={unidad.unidad}>{unidad.unidad}</option>)}
+                {unidades.map((unidad) => <option key={unidad.unidad}>{unidad.unidad}</option>)}
               </select>
             </div>
             <div>
@@ -390,7 +362,7 @@ export default function MantenimientoPage() {
             <div>
               <label className="block text-sm text-gray-400 mb-1">Unidad</label>
               <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
-                {unidadesData.map((unidad) => <option key={unidad.unidad}>{unidad.unidad}</option>)}
+                {unidades.map((unidad) => <option key={unidad.unidad}>{unidad.unidad}</option>)}
               </select>
             </div>
             <div>
@@ -434,7 +406,7 @@ export default function MantenimientoPage() {
                 onChange={(event) => setSelectedUnidadHistorial(event.target.value)}
                 className="bg-[#1A1A1A] border border-[#3A3A3A] text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
               >
-                {unidadesData.map((unidad) => <option key={unidad.unidad}>{unidad.unidad}</option>)}
+                {unidades.map((unidad) => <option key={unidad.unidad}>{unidad.unidad}</option>)}
               </select>
               <button
                 onClick={() => setShowHistorialCamion(false)}
@@ -647,7 +619,7 @@ export default function MantenimientoPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#3A3A3A]">
-                {unidadesData.map((u) => {
+                {unidades.map((u) => {
                   const kmRestantes = u.proximoServicioKm - u.kmActual;
                   return (
                     <tr key={u.unidad} className="hover:bg-[#2A2A2A] transition-colors">
@@ -686,7 +658,7 @@ export default function MantenimientoPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#3A3A3A]">
-                {segurosUnidadesData.map((unidad) => (
+                {seguros.map((unidad) => (
                   <tr key={`${unidad.tipo}-${unidad.alias}-${unidad.placas}`} className="hover:bg-[#2A2A2A] transition-colors">
                     <td className="px-4 py-3 text-gray-300">{unidad.tipo}</td>
                     <td className="px-4 py-3 text-white font-semibold">{unidad.alias}</td>

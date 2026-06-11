@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, DollarSign, FileText, TrendingUp, Upload, Users } from "lucide-react";
 import KPICard from "@/components/KPICard";
-import { loadViajes, parseViajeDate, type Viaje } from "@/lib/viajes";
+import { getCollectionDocs, COLLECTIONS } from "@/lib/db";
+import { parseViajeDate, type Viaje } from "@/lib/viajes";
 import {
   BarChart,
   Bar,
@@ -16,35 +17,6 @@ import {
 
 type Period = "todos" | "semanal" | "quincenal" | "mensual";
 type DriverView = "con-viajes" | "todos";
-
-const tarifasPorChofer: Record<string, number> = {
-  "José García": 90,
-};
-
-const bonosPorChofer: Record<string, number> = {
-  "Luis Ramírez": 500,
-  "Carlos Mendoza": 300,
-  "José García": 500,
-  "Roberto Flores": 300,
-  "Alejandro Reyes": 200,
-};
-
-const deduccionesPorChofer: Record<string, number> = {
-  "Carlos Mendoza": 250,
-  "Miguel Torres": 500,
-  "Alejandro Reyes": 100,
-};
-
-const choferesBase = [
-  "Luis Ramírez",
-  "Carlos Mendoza",
-  "José García",
-  "Miguel Torres",
-  "Roberto Flores",
-  "Alejandro Reyes",
-  "Fernando Castillo",
-  "Eduardo López",
-];
 
 const tooltipStyle = {
   backgroundColor: "#242424",
@@ -104,24 +76,25 @@ function buildPagos(viajes: Viaje[], period: Period, driverView: DriverView) {
   const referenceDate = getReferenceDate(viajes);
   const viajesPagables = viajes.filter((viaje) => viaje.estado === "Completado" && isInPeriod(viaje, period, referenceDate));
   const grouped = viajesPagables.reduce((summary, viaje) => {
-    const current = summary.get(viaje.operador) ?? { nombre: viaje.operador, viajes: 0, m3Total: 0 };
+    const current = summary.get(viaje.operador) ?? { nombre: viaje.operador, viajes: 0, m3Total: 0, totalViajes: 0 };
     summary.set(viaje.operador, {
       nombre: viaje.operador,
       viajes: current.viajes + 1,
       m3Total: current.m3Total + viaje.m3,
+      totalViajes: current.totalViajes + viaje.total,
     });
     return summary;
-  }, new Map<string, { nombre: string; viajes: number; m3Total: number }>());
+  }, new Map<string, { nombre: string; viajes: number; m3Total: number; totalViajes: number }>());
   const allDrivers = driverView === "todos"
-    ? Array.from(new Set([...choferesBase, ...viajes.map((viaje) => viaje.operador)]))
+    ? Array.from(new Set(viajes.map((viaje) => viaje.operador))).sort()
     : Array.from(grouped.keys());
 
   return allDrivers.map((driver) => {
-    const item = grouped.get(driver) ?? { nombre: driver, viajes: 0, m3Total: 0 };
-    const tarifaM3 = tarifasPorChofer[item.nombre] ?? 85;
+    const item = grouped.get(driver) ?? { nombre: driver, viajes: 0, m3Total: 0, totalViajes: 0 };
+    const tarifaM3 = 85;
     const subtotal = Math.round(item.m3Total * tarifaM3);
-    const bonos = bonosPorChofer[item.nombre] ?? 0;
-    const deducciones = deduccionesPorChofer[item.nombre] ?? 0;
+    const bonos = 0;
+    const deducciones = 0;
 
     return {
       ...item,
@@ -145,29 +118,7 @@ export default function PagosPage() {
   const pagoPromedio = operadoresData.length > 0 ? Math.round(totalPagar / operadoresData.length) : 0;
 
   useEffect(() => {
-    const frameId = window.requestAnimationFrame(() => setViajes(loadViajes()));
-
-    function refreshViajes() {
-      setViajes(loadViajes());
-    }
-
-    function handleStorage(event: StorageEvent) {
-      if (event.key === "duro_concretos_viajes") setViajes(loadViajes());
-    }
-
-    function handleFocus() {
-      setViajes(loadViajes());
-    }
-
-    window.addEventListener("storage", handleStorage);
-    window.addEventListener("duro:viajes-updated", refreshViajes);
-    window.addEventListener("focus", handleFocus);
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      window.removeEventListener("storage", handleStorage);
-      window.removeEventListener("duro:viajes-updated", refreshViajes);
-      window.removeEventListener("focus", handleFocus);
-    };
+    getCollectionDocs<Viaje>(COLLECTIONS.viajes).then(setViajes);
   }, []);
 
   function handleReceiptUpload(operador: string, file?: File) {

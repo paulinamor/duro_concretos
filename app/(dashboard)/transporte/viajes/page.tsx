@@ -9,7 +9,6 @@ import type { Viaje } from "@/lib/viajes";
 import { COLLECTIONS, getCollectionDocs, upsertDocument } from "@/lib/db";
 import { unidadesDisponibilidad } from "@/lib/disponibilidadCargas";
 
-const operadores = ["Todos", "Luis Ramírez", "Carlos Mendoza", "José García", "Miguel Torres", "Roberto Flores", "Alejandro Reyes", "Fernando Castillo", "Eduardo López"];
 const estados = ["Todos", "Completado", "En ruta", "Cancelado", "Pendiente"];
 
 function formatDate(date: string) {
@@ -32,7 +31,9 @@ export default function ViajesPage() {
   }, []);
 
   const totalM3 = viajes.filter(v => v.estado === "Completado").reduce((s, v) => s + v.m3, 0);
-  const hoy = viajes.filter(v => v.fecha === "20/05/2026").length;
+  const todayStr = new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" }).replace(/\//g, "/");
+  const hoy = viajes.filter(v => v.fecha === todayStr).length;
+  const operadoresOptions = ["Todos", ...Array.from(new Set(viajes.map(v => v.operador))).sort()];
   const filtered = viajes.filter((v) => {
     return (
       (filterEstado === "Todos" || v.estado === filterEstado) &&
@@ -123,7 +124,7 @@ export default function ViajesPage() {
             <div>
               <label className="block text-sm text-gray-400 mb-1">Chofer</label>
               <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
-                {operadores.filter((o) => o !== "Todos").map((o) => <option key={o}>{o}</option>)}
+                {operadoresOptions.filter((o) => o !== "Todos").map((o) => <option key={o}>{o}</option>)}
               </select>
             </div>
             <div>
@@ -179,7 +180,7 @@ export default function ViajesPage() {
             onChange={(e) => setFilterOperador(e.target.value)}
             className="bg-[#1A1A1A] border border-[#3A3A3A] text-white text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
           >
-            {operadores.map((o) => <option key={o}>{o}</option>)}
+            {operadoresOptions.map((o) => <option key={o}>{o}</option>)}
           </select>
         </div>
         <span className="text-gray-500 text-xs ml-auto">{filtered.length} registros</span>

@@ -5,15 +5,15 @@ import { clientesEstadoCuenta, generarEstadoCuentaCliente } from "@/lib/clientSt
 import { crmOpportunities } from "@/lib/crmPipeline";
 import { disponibilidadProgramada } from "@/lib/disponibilidadCargas";
 import { getSalesClientSummaries, salesClientsBase } from "@/lib/salesClients";
-import { viajesIniciales } from "@/lib/viajes";
+import type { Viaje } from "@/lib/viajes";
 
 function currency(value: number) {
   return `$${Math.round(value).toLocaleString("es-MX")}`;
 }
 
-const completedTrips = viajesIniciales.filter((item) => item.estado === "Completado");
-const totalM3 = completedTrips.reduce((sum, item) => sum + item.m3, 0);
-const totalVentas = completedTrips.reduce((sum, item) => sum + item.total, 0);
+const completedTrips: Viaje[] = [];
+const totalM3 = 0;
+const totalVentas = 0;
 const pipelineTotal = crmOpportunities.reduce((sum, item) => sum + item.valorEstimado, 0);
 const pipelinePonderado = crmOpportunities.reduce((sum, item) => sum + (item.valorEstimado * item.probabilidad / 100), 0);
 const estadosCuenta = clientesEstadoCuenta.map((cliente) => generarEstadoCuentaCliente({

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { TrendingUp, TrendingDown, DollarSign, Plus, WalletCards } from "lucide-react";
+import { getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
 import StatusBadge from "@/components/StatusBadge";
 import FormModal from "@/components/FormModal";
 
@@ -14,21 +15,6 @@ interface Transaccion {
   responsable: string;
   saldo: number;
 }
-
-const transaccionesData: Transaccion[] = [
-  { fecha: "20/03/26", cliente: "ABRAHAM ARRIAGA", descripcion: "4.5 m³ - Colinas del Aeropuerto", tipo: "Ingreso", monto: 16920, responsable: "SAM", saldo: 16920 },
-  { fecha: "21/03/26", cliente: "PATRICIO BENAVIDES", descripcion: "00 de 50kg", tipo: "Ingreso", monto: 8000, responsable: "SAM", saldo: 24920 },
-  { fecha: "09/04/26", cliente: "JORGE ESTEBAN REYES", descripcion: "Residencial El Barrito", tipo: "Ingreso", monto: 9000, responsable: "SAM", saldo: 33920 },
-  { fecha: "14/04/26", cliente: "ADRIAN LEAL", descripcion: "36 m³ - Col. Terminal Monterrey", tipo: "Ingreso", monto: 29200, responsable: "SAM", saldo: 63120 },
-  { fecha: "16/04/26", cliente: "CRISTO VIVE", descripcion: "7 m³ - Camino Agua Fría Apodaca", tipo: "Ingreso", monto: 20300, responsable: "SAM", saldo: 83420 },
-  { fecha: "17/04/26", cliente: "GABRIEL FRAGOSO", descripcion: "Dr. González", tipo: "Ingreso", monto: 10700, responsable: "SAM", saldo: 94120 },
-  { fecha: "18/04/26", cliente: "MARIA SANTOS CANTU", descripcion: "27 m³ - Pesquería NL", tipo: "Ingreso", monto: 71820, responsable: "SAM", saldo: 165940 },
-  { fecha: "18/04/26", cliente: "CRISTO VIVE", descripcion: "10 m³ - Camino Agua Fría Apodaca", tipo: "Ingreso", monto: 29000, responsable: "SAM", saldo: 194940 },
-  { fecha: "NO COLADO", cliente: "MARIA SANTOS CANTU", descripcion: "Pesquería NL", tipo: "Ingreso", monto: 50000, responsable: "RAFA", saldo: 244940 },
-  { fecha: "04/26", cliente: "GABRIEL FRAGOSO", descripcion: "17 m³ - Mil Encinos", tipo: "Ingreso", monto: 52870, responsable: "RAFA", saldo: 297810 },
-  { fecha: "15/05/26", cliente: "JIME GONZALEZ CISNEROS", descripcion: "Universo #3318", tipo: "Ingreso", monto: 21450, responsable: "GAYTAN", saldo: 319260 },
-  { fecha: "18/04/26", cliente: "Robo de efectivo", descripcion: "Salida de Samantha y Angel", tipo: "Egreso", monto: 4500, responsable: "SAMANTHA/ANGEL", saldo: 314760 },
-];
 
 const saldoInicial = 0;
 
@@ -50,7 +36,11 @@ function parseFecha(fecha: string) {
 }
 
 export default function EfectivoPage() {
-  const [transacciones, setTransacciones] = useState(transaccionesData);
+  const [transacciones, setTransacciones] = useState<Transaccion[]>([]);
+
+  useEffect(() => {
+    getCollectionDocs<Transaccion>(COLLECTIONS.efectivo).then(setTransacciones);
+  }, []);
   const [clienteFiltro, setClienteFiltro] = useState("todos");
   const [fechaInicio, setFechaInicio] = useState("");
   const [fechaFin, setFechaFin] = useState("");
@@ -100,25 +90,25 @@ export default function EfectivoPage() {
     return acc;
   }, {})).sort((a, b) => b.saldo - a.saldo);
 
-  function handleSave(values: Record<string, string>) {
+  async function handleSave(values: Record<string, string>) {
     const monto = Number(values["Monto ($)"]?.replace(/[$,]/g, "") || 0);
     const tipo = values.Tipo || "Ingreso";
     const saldoActual = transacciones[transacciones.length - 1]?.saldo ?? saldoInicial;
     const cliente = values.Proveedor || "Proveedor general";
     const descripcion = values.Descripción || "Cobro viaje";
+    const id = Date.now().toString();
+    const newTransaccion: Transaccion = {
+      fecha: new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "2-digit" }),
+      cliente,
+      descripcion,
+      tipo,
+      monto,
+      responsable: values.Responsable || "Admin",
+      saldo: tipo === "Ingreso" ? saldoActual + monto : saldoActual - monto,
+    };
 
-    setTransacciones((current) => [
-      {
-        fecha: new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "2-digit" }),
-        cliente,
-        descripcion,
-        tipo,
-        monto,
-        responsable: values.Responsable || "Admin",
-        saldo: tipo === "Ingreso" ? saldoActual + monto : saldoActual - monto,
-      },
-      ...current,
-    ]);
+    setTransacciones((current) => [newTransaccion, ...current]);
+    await upsertDocument(COLLECTIONS.efectivo, id, newTransaccion);
   }
 
   return (

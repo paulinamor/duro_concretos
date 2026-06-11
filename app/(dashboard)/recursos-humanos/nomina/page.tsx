@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   BadgeCheck,
   CalendarDays,
@@ -17,6 +17,7 @@ import {
 import KPICard from "@/components/KPICard";
 import StatusBadge from "@/components/StatusBadge";
 import FormModal from "@/components/FormModal";
+import { getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
 
 type NominaStatus = "Timbrado" | "Pendiente" | "Error";
 
@@ -34,13 +35,6 @@ interface ReciboNomina {
   enviado: boolean;
 }
 
-const recibosData: ReciboNomina[] = [
-  { folio: "NOM-2026-0515-001", empleado: "Luis Ramírez", rfc: "RALU850412H12", puesto: "Operador", periodo: "1-15 Mayo 2026", sueldoBruto: 14143, deducciones: 1280, neto: 12863, uuid: "9F2B-7A41-DC01", status: "Timbrado", enviado: true },
-  { folio: "NOM-2026-0515-002", empleado: "Carlos Mendoza", rfc: "MECC900221K88", puesto: "Operador", periodo: "1-15 Mayo 2026", sueldoBruto: 11780, deducciones: 940, neto: 10840, uuid: "B31C-44D8-DC02", status: "Timbrado", enviado: true },
-  { folio: "NOM-2026-0515-003", empleado: "José García", rfc: "GAJO870918M21", puesto: "Operador", periodo: "1-15 Mayo 2026", sueldoBruto: 14720, deducciones: 1390, neto: 13330, uuid: "E84F-11A9-DC03", status: "Timbrado", enviado: false },
-  { folio: "NOM-2026-0515-004", empleado: "Miguel Torres", rfc: "TOMI820706P45", puesto: "Mantenimiento", periodo: "1-15 Mayo 2026", sueldoBruto: 9743, deducciones: 850, neto: 8893, uuid: "Pendiente", status: "Pendiente", enviado: false },
-  { folio: "NOM-2026-0515-005", empleado: "Ana López", rfc: "LOAA910830Q02", puesto: "Administración", periodo: "1-15 Mayo 2026", sueldoBruto: 12600, deducciones: 1120, neto: 11480, uuid: "Error SAT", status: "Error", enviado: false },
-];
 
 const statusTone: Record<NominaStatus, string> = {
   Timbrado: "aprobado",
@@ -49,7 +43,11 @@ const statusTone: Record<NominaStatus, string> = {
 };
 
 export default function NominaPage() {
-  const [recibos, setRecibos] = useState(recibosData);
+  const [recibos, setRecibos] = useState<ReciboNomina[]>([]);
+
+  useEffect(() => {
+    getCollectionDocs<ReciboNomina>(COLLECTIONS.nomina).then(setRecibos);
+  }, []);
   const [showForm, setShowForm] = useState(false);
   const [periodo, setPeriodo] = useState("2026-05-15");
   const [query, setQuery] = useState("");
@@ -67,27 +65,26 @@ export default function NominaPage() {
     );
   });
 
-  function handleSave(values: Record<string, string>) {
-    const next = recibos.length + 1;
+  async function handleSave(values: Record<string, string>) {
     const fechaPeriodo = values.Periodo || periodo;
     const serie = values["Serie CFDI"] || "Pendiente";
+    const id = Date.now().toString();
+    const newRecibo: ReciboNomina = {
+      folio: `NOM-${id}`,
+      empleado: "Nuevo empleado",
+      rfc: "RFC-PENDIENTE",
+      puesto: values["Tipo de nómina"] || "Quincenal",
+      periodo: fechaPeriodo,
+      sueldoBruto: 0,
+      deducciones: 0,
+      neto: 0,
+      uuid: serie,
+      status: "Pendiente",
+      enviado: false,
+    };
 
-    setRecibos((current) => [
-      {
-        folio: `NOM-2026-${fechaPeriodo.replaceAll("-", "").slice(4)}-${String(next).padStart(3, "0")}`,
-        empleado: "Nuevo empleado",
-        rfc: "RFC-PENDIENTE",
-        puesto: values["Tipo de nómina"] || "Quincenal",
-        periodo: fechaPeriodo,
-        sueldoBruto: 0,
-        deducciones: 0,
-        neto: 0,
-        uuid: serie,
-        status: "Pendiente",
-        enviado: false,
-      },
-      ...current,
-    ]);
+    setRecibos((current) => [newRecibo, ...current]);
+    await upsertDocument(COLLECTIONS.nomina, id, newRecibo);
   }
 
   return (

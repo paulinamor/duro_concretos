@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -15,6 +15,7 @@ import {
 import KPICard from "@/components/KPICard";
 import StatusBadge from "@/components/StatusBadge";
 import FormModal from "@/components/FormModal";
+import { getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
 import {
   PieChart,
   Pie,
@@ -37,16 +38,6 @@ interface GastoCajaChica {
   estado: string;
 }
 
-const gastosData: GastoCajaChica[] = [
-  { folio: "CC-2026-0291", fecha: "20/05/2026", descripcion: "Material de limpieza oficina", categoria: "Oficina", monto: 380, comprobante: "Ticket-0291", comprobanteEstado: "Validado", responsable: "Ana López", autorizadoPor: "Admin", estado: "Aprobado" },
-  { folio: "CC-2026-0290", fecha: "20/05/2026", descripcion: "Café y consumibles comedor", categoria: "Consumibles", monto: 210, comprobante: "Ticket-0290", comprobanteEstado: "Validado", responsable: "Carlos Ortiz", autorizadoPor: "Admin", estado: "Aprobado" },
-  { folio: "CC-2026-0289", fecha: "19/05/2026", descripcion: "Papelería e impresión", categoria: "Oficina", monto: 450, comprobante: "Factura-A112", comprobanteEstado: "Validado", responsable: "Ana López", autorizadoPor: "Admin", estado: "Aprobado" },
-  { folio: "CC-2026-0288", fecha: "19/05/2026", descripcion: "Gasolina vehículo administrativo", categoria: "Transporte", monto: 700, comprobante: "Ticket-0289", comprobanteEstado: "Validado", responsable: "José Martínez", autorizadoPor: "Admin", estado: "Aprobado" },
-  { folio: "CC-2026-0287", fecha: "18/05/2026", descripcion: "Herramientas menores", categoria: "Mantenimiento", monto: 620, comprobante: "Ticket-0288", comprobanteEstado: "Pendiente", responsable: "Carlos Ortiz", autorizadoPor: "Mantenimiento", estado: "Aprobado" },
-  { folio: "CC-2026-0286", fecha: "18/05/2026", descripcion: "Comida reunión con cliente", categoria: "Representación", monto: 890, comprobante: "Ticket-0287", comprobanteEstado: "Pendiente", responsable: "Admin", autorizadoPor: "Dirección", estado: "Revision" },
-  { folio: "CC-2026-0285", fecha: "17/05/2026", descripcion: "Copia de llaves bodega", categoria: "Mantenimiento", monto: 120, comprobante: "Ticket-0286", comprobanteEstado: "Validado", responsable: "José Martínez", autorizadoPor: "Admin", estado: "Aprobado" },
-  { folio: "CC-2026-0284", fecha: "16/05/2026", descripcion: "Artículos de seguridad (cinta)", categoria: "Seguridad", monto: 340, comprobante: "Ticket-0285", comprobanteEstado: "Validado", responsable: "Carlos Ortiz", autorizadoPor: "Seguridad", estado: "Aprobado" },
-];
 
 const fondoTotal = 5000;
 const puntoReposicion = 1500;
@@ -60,7 +51,11 @@ const tooltipStyle = {
 };
 
 export default function CajaChicaPage() {
-  const [gastos, setGastos] = useState(gastosData);
+  const [gastos, setGastos] = useState<GastoCajaChica[]>([]);
+
+  useEffect(() => {
+    getCollectionDocs<GastoCajaChica>(COLLECTIONS.cajaChica).then(setGastos);
+  }, []);
   const [showForm, setShowForm] = useState(false);
   const [showReposicion, setShowReposicion] = useState(false);
   const [filterEstado, setFilterEstado] = useState("Todos");
@@ -95,26 +90,25 @@ export default function CajaChicaPage() {
     );
   });
 
-  function handleSave(values: Record<string, string>) {
-    const next = gastos.length + 292;
-    const fecha = values.Fecha ? values.Fecha.split("-").reverse().join("/") : "20/05/2026";
+  async function handleSave(values: Record<string, string>) {
+    const id = Date.now().toString();
+    const fecha = values.Fecha ? values.Fecha.split("-").reverse().join("/") : new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" });
     const monto = Number(values["Monto ($)"]?.replace(/[$,]/g, "") || 0);
+    const newGasto: GastoCajaChica = {
+      folio: `CC-${id}`,
+      fecha,
+      descripcion: values.Descripción || "Material de limpieza oficina",
+      categoria: values.Categoría || "Oficina",
+      monto,
+      comprobante: values["No. Comprobante"] || "Ticket",
+      comprobanteEstado: values.Comprobante || "Pendiente",
+      responsable: values.Responsable || "Admin",
+      autorizadoPor: values.Autoriza || "Admin",
+      estado: "Revision",
+    };
 
-    setGastos((current) => [
-      {
-        folio: `CC-2026-${String(next).padStart(4, "0")}`,
-        fecha,
-        descripcion: values.Descripción || "Material de limpieza oficina",
-        categoria: values.Categoría || "Oficina",
-        monto,
-        comprobante: values["No. Comprobante"] || "Ticket",
-        comprobanteEstado: values.Comprobante || "Pendiente",
-        responsable: values.Responsable || "Admin",
-        autorizadoPor: values.Autoriza || "Admin",
-        estado: "Revision",
-      },
-      ...current,
-    ]);
+    setGastos((current) => [newGasto, ...current]);
+    await upsertDocument(COLLECTIONS.cajaChica, id, newGasto);
   }
 
   return (
