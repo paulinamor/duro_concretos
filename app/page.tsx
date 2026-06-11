@@ -5,9 +5,32 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth } from "@/lib/firebase";
-import { getUserProfile, upsertUserProfile } from "@/lib/db";
+import { auth, isFirebaseConfigured, missingFirebaseEnv } from "@/lib/firebase";
+import { getUserProfile, upsertUserProfile, type UserProfile } from "@/lib/db";
 import { recordAuthEvent, saveSession, getDefaultModulesForRole } from "@/lib/auth";
+
+function getDefaultLoginProfile({
+  uid,
+  email,
+  displayName,
+}: {
+  uid: string;
+  email: string;
+  displayName: string | null;
+}) {
+  const normalizedEmail = email.trim().toLowerCase();
+  const defaultRole = normalizedEmail.includes("operador") ? "operador" : "admin";
+
+  return {
+    id: uid,
+    email: normalizedEmail,
+    nombre: displayName ?? normalizedEmail.split("@")[0],
+    role: defaultRole as "admin" | "operador",
+    modules: getDefaultModulesForRole(defaultRole as "admin" | "operador"),
+    status: "Activo" as const,
+    createdAt: new Date().toISOString(),
+  };
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -48,23 +71,38 @@ export default function LoginPage() {
 
     setLoading(true);
     try {
-      const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
+      if (!isFirebaseConfigured) {
+        throw new Error(`missing-firebase-config:${missingFirebaseEnv.join(", ")}`);
+      }
+
+      const normalizedEmail = email.trim().toLowerCase();
+      const credential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
       const uid = credential.user.uid;
 
-      // Fetch Firestore profile; create a default one on first login
-      let profile = await getUserProfile(uid);
-      if (!profile) {
-        const defaultRole = email.trim().toLowerCase().includes("operador") ? "operador" : "admin";
-        profile = {
-          id: uid,
-          email: email.trim().toLowerCase(),
-          nombre: credential.user.displayName ?? email.split("@")[0],
-          role: defaultRole as "admin" | "operador",
-          modules: getDefaultModulesForRole(defaultRole as "admin" | "operador"),
-          status: "Activo",
-          createdAt: new Date().toISOString(),
-        };
-        await upsertUserProfile(uid, { ...profile, id: undefined } as Omit<typeof profile, "id">);
+      let profile: UserProfile = getDefaultLoginProfile({
+        uid,
+        email: normalizedEmail,
+        displayName: credential.user.displayName,
+      });
+
+      try {
+        const storedProfile = await getUserProfile(uid);
+        if (storedProfile) {
+          profile = storedProfile;
+        } else {
+          await upsertUserProfile(uid, { ...profile, id: undefined } as Omit<typeof profile, "id">);
+        }
+      } catch (profileError) {
+        console.warn("No se pudo leer o crear el perfil en Firestore. Se usará perfil local.", profileError);
+        window.dispatchEvent(
+          new CustomEvent("duro:toast", {
+            detail: {
+              type: "error",
+              title: "Perfil Firestore pendiente",
+              message: "Entraste con Firebase Auth, pero falta crear o permitir el perfil en Firestore.",
+            },
+          })
+        );
       }
 
       if (profile.status === "Inactivo") {
@@ -88,15 +126,34 @@ export default function LoginPage() {
     } catch (err: unknown) {
       setLoading(false);
       const code = (err as { code?: string }).code ?? "";
+      const rawMessage = err instanceof Error ? err.message : "";
       const message =
+        rawMessage.startsWith("missing-firebase-config:")
+          ? "Firebase no está configurado en este local. Agrega las variables NEXT_PUBLIC_FIREBASE_* en .env.local."
+          : code === "auth/invalid-api-key"
+            ? "La API key de Firebase no es válida. Revisa la configuración del proyecto Firebase."
+          : code === "auth/network-request-failed"
+            ? "No se pudo conectar con Firebase. Revisa internet o la configuración del proyecto."
+          : code === "auth/configuration-not-found"
+            ? "Firebase Auth no está habilitado o el proyecto no coincide con esta app."
+          : code === "auth/operation-not-allowed"
+            ? "El proveedor de correo/contraseña no está habilitado en Firebase Auth."
+          : code === "auth/user-disabled"
+            ? "Este usuario está deshabilitado en Firebase Authentication."
+          : code === "auth/invalid-email"
+            ? "El correo no es válido para Firebase Auth."
+          : code === "permission-denied"
+            ? "El usuario existe, pero Firestore no permitió leer su perfil. Revisa reglas/permisos."
+          :
         code === "auth/invalid-credential" || code === "auth/wrong-password" || code === "auth/user-not-found"
           ? "Correo o contraseña incorrectos. Verifica tus datos."
           : code === "auth/too-many-requests"
             ? "Demasiados intentos fallidos. Espera unos minutos."
             : "Error al iniciar sesión. Intenta de nuevo.";
-      setError(message);
-      recordAuthEvent({ type: "login_failed", email, message });
-      showErrorToast(message);
+      const visibleMessage = code ? `${message} (${code})` : message;
+      setError(visibleMessage);
+      recordAuthEvent({ type: "login_failed", email, message: visibleMessage });
+      showErrorToast(visibleMessage);
     }
   };
 
