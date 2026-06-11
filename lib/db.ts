@@ -86,6 +86,12 @@ export async function upsertUserProfile(
   return upsertDocument<UserProfile>("users", uid, data);
 }
 
+export function withoutUserProfileId(profile: UserProfile): Omit<UserProfile, "id"> {
+  const { id, ...data } = profile;
+  void id;
+  return data;
+}
+
 export async function deleteUserProfile(uid: string): Promise<void> {
   return deleteDocument("users", uid);
 }

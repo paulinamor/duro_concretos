@@ -6,7 +6,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth, isFirebaseConfigured, missingFirebaseEnv } from "@/lib/firebase";
-import { getUserProfile, upsertUserProfile, type UserProfile } from "@/lib/db";
+import { getUserProfile, upsertUserProfile, withoutUserProfileId, type UserProfile } from "@/lib/db";
 import { recordAuthEvent, saveSession, getDefaultModulesForRole } from "@/lib/auth";
 
 function getDefaultLoginProfile({
@@ -90,7 +90,7 @@ export default function LoginPage() {
         if (storedProfile) {
           profile = storedProfile;
         } else {
-          await upsertUserProfile(uid, { ...profile, id: undefined } as Omit<typeof profile, "id">);
+          await upsertUserProfile(uid, withoutUserProfileId(profile));
         }
       } catch (profileError) {
         console.warn("No se pudo leer o crear el perfil en Firestore. Se usará perfil local.", profileError);

@@ -7,6 +7,7 @@ import { authSecondary } from "@/lib/firebase";
 import {
   getAllUserProfiles,
   upsertUserProfile,
+  withoutUserProfileId,
   type UserProfile,
 } from "@/lib/db";
 import StatusBadge from "@/components/StatusBadge";
@@ -201,7 +202,7 @@ export default function ConfiguracionPage() {
     }
     try {
       // Soft-delete: mark Inactivo in Firestore (blocks login)
-      await upsertUserProfile(profile.id, { ...profile, id: undefined, status: "Inactivo" } as Omit<UserProfile, "id">);
+      await upsertUserProfile(profile.id, { ...withoutUserProfileId(profile), status: "Inactivo" });
       setProfiles((current) => current.filter((p) => p.id !== profile.id));
       showToast("success", "Usuario desactivado", "El usuario ya no puede iniciar sesión.");
     } catch {
