@@ -102,7 +102,7 @@ export default function ViajesPage() {
         onSave={handleSave}
         footer={
           <>
-            <button onClick={() => setShowForm(false)} className="px-5 py-2.5 text-sm font-medium text-gray-300 hover:text-white border border-[#2A3142] rounded-xl transition-colors">
+            <button onClick={() => setShowForm(false)} className="px-5 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 border border-gray-200 rounded-xl transition-colors">
               Cancelar
             </button>
             <button className="px-5 py-2.5 text-sm font-medium bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-xl transition-colors shadow-md shadow-[#CC2229]/20">
@@ -112,8 +112,8 @@ export default function ViajesPage() {
         }
       >
         {(() => {
-          const lbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5";
-          const inp = "w-full bg-[#0F1115] border border-[#252D3D] rounded-xl px-3.5 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors";
+          const lbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5";
+          const inp = "w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-900 text-sm placeholder-gray-400 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors";
           return (
             <>
               <FormSection title="Datos del viaje">

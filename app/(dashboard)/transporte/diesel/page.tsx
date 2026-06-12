@@ -218,14 +218,14 @@ function FormDrawer({
   }
 
   const inputCls = (field?: keyof FormState) =>
-    `w-full bg-[#111318] border ${
-      field && errors[field] ? "border-red-500/60" : "border-[#2A3347]"
-    } rounded-lg px-3 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-[#CC2229]/70 focus:ring-1 focus:ring-[#CC2229]/30 transition`;
+    `w-full bg-white border ${
+      field && errors[field] ? "border-red-400" : "border-gray-200"
+    } rounded-xl px-3.5 py-2.5 text-gray-900 text-sm placeholder-gray-400 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors`;
 
   const readonlyCls =
-    "w-full bg-[#0F1115] border border-[#1E293B] rounded-lg px-3 py-2.5 text-sm text-emerald-400 font-mono cursor-default select-all";
+    "w-full bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-emerald-700 font-mono cursor-default select-all font-semibold";
 
-  const labelCls = "block text-xs font-medium text-gray-400 mb-1.5";
+  const labelCls = "block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5";
   const requiredStar = <span className="text-[#CC2229] ml-0.5">*</span>;
 
   if (!open) return null;
@@ -239,31 +239,31 @@ function FormDrawer({
       />
 
       {/* Drawer */}
-      <div className="relative ml-auto flex h-full w-full max-w-lg flex-col bg-[#0F1115] border-l border-[#1E293B] shadow-2xl overflow-hidden">
+      <div className="relative ml-auto flex h-full w-full max-w-lg flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-[#1E293B] px-6 py-4 shrink-0">
+        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#CC2229]/15 text-[#CC2229]">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#CC2229]/10 text-[#CC2229]">
               <Fuel size={18} />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-white">Registrar carga</h2>
+              <h2 className="text-sm font-semibold text-gray-900">Registrar carga</h2>
               <p className="text-xs text-gray-500">Carga de combustible</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="rounded-lg p-1.5 text-gray-500 hover:bg-white/5 hover:text-white transition-colors"
+            className="rounded-xl p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
           >
-            <X size={18} />
+            <X size={16} />
           </button>
         </div>
 
         {/* Body — scrollable */}
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6 bg-white">
           {/* Section: Identificación */}
           <fieldset>
-            <legend className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-500">
+            <legend className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-gray-500">
               Identificación
             </legend>
             <div className="grid grid-cols-2 gap-3">
@@ -296,7 +296,7 @@ function FormDrawer({
                             : t === "GASOLINA"
                               ? "bg-blue-500/20 border border-blue-500/60 text-blue-300"
                               : "bg-emerald-500/20 border border-emerald-500/60 text-emerald-300"
-                          : "bg-[#111318] border border-[#2A3347] text-gray-500 hover:text-gray-300"
+                          : "bg-white border border-gray-200 text-gray-600 hover:text-gray-900 hover:border-gray-300"
                       }`}
                     >
                       {t === "DIESEL" ? "Diésel" : t === "GASOLINA" ? "Gasolina" : "Gas"}
@@ -330,7 +330,7 @@ function FormDrawer({
 
           {/* Section: Carga */}
           <fieldset>
-            <legend className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-500">
+            <legend className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-gray-500">
               Carga de combustible
             </legend>
             <div className="grid grid-cols-2 gap-3">
@@ -406,7 +406,7 @@ function FormDrawer({
 
           {/* Section: Odómetro */}
           <fieldset>
-            <legend className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-500">
+            <legend className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-gray-500">
               Odómetro
             </legend>
             <div className="grid grid-cols-2 gap-3">
@@ -455,7 +455,7 @@ function FormDrawer({
                   }
                 />
                 {kmRecAuto != null && !form.kmRecorridos && (
-                  <p className="mt-1 text-xs text-gray-500">
+                  <p className="mt-1 text-xs text-gray-400">
                     Auto: {kmRecAuto.toLocaleString("es-MX")} km
                   </p>
                 )}
@@ -479,7 +479,7 @@ function FormDrawer({
 
           {/* Section: Sellos */}
           <fieldset>
-            <legend className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-500">
+            <legend className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-gray-500">
               Sellos de odómetro
             </legend>
             <div className="grid grid-cols-2 gap-3">
@@ -508,7 +508,7 @@ function FormDrawer({
 
           {/* Section: Observaciones */}
           <fieldset>
-            <legend className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-500">
+            <legend className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-gray-500">
               Observaciones
             </legend>
             <textarea
@@ -522,18 +522,18 @@ function FormDrawer({
         </div>
 
         {/* Footer */}
-        <div className="shrink-0 border-t border-[#1E293B] px-6 py-4 flex items-center justify-end gap-3">
+        <div className="shrink-0 border-t border-gray-100 px-6 py-4 flex items-center justify-end gap-3">
           <button
             onClick={onClose}
             disabled={saving}
-            className="px-4 py-2.5 text-sm font-medium text-gray-400 hover:text-white border border-[#2A3347] rounded-lg transition-colors disabled:opacity-50"
+            className="px-4 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 border border-gray-200 rounded-xl transition-colors disabled:opacity-50"
           >
             Cancelar
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-lg transition-colors disabled:opacity-60 shadow-lg shadow-[#CC2229]/20"
+            className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-xl transition-colors disabled:opacity-60 shadow-lg shadow-[#CC2229]/20"
           >
             {saving ? (
               <>

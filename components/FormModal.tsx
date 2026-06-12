@@ -300,20 +300,20 @@ export default function FormModal({
         onClick={onClose}
         className="absolute inset-0"
       />
-      <div className="relative z-10 my-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-[#252D3D] bg-[#16181D] shadow-2xl shadow-black/60">
-        <div className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-[#252D3D] bg-[#16181D]/98 px-7 py-5 backdrop-blur">
-          <h3 className="text-[15px] font-semibold tracking-tight text-white">{title}</h3>
+      <div className="relative z-10 my-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-gray-100 bg-white shadow-2xl shadow-gray-900/20">
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-gray-100 bg-white/98 px-7 py-5 backdrop-blur">
+          <h3 className="text-[15px] font-semibold tracking-tight text-gray-900">{title}</h3>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl p-2 text-gray-500 transition-colors hover:bg-white/5 hover:text-white"
+            className="rounded-xl p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
             aria-label="Cerrar"
           >
             <X size={16} />
           </button>
         </div>
         <div ref={bodyRef} className="px-7 py-6 space-y-6">{children}</div>
-        <div onClickCapture={handleFooterClick} className="sticky bottom-0 flex justify-end gap-3 border-t border-[#252D3D] bg-[#16181D]/98 px-7 py-4 backdrop-blur">
+        <div onClickCapture={handleFooterClick} className="sticky bottom-0 flex justify-end gap-3 border-t border-gray-100 bg-white/98 px-7 py-4 backdrop-blur">
           {footer}
         </div>
       </div>

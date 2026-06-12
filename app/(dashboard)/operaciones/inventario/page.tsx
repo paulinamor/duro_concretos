@@ -108,8 +108,8 @@ function exportCSV(rows: Remision[]) {
 
 const tooltipStyle = { backgroundColor: "#1A1F2B", border: "1px solid #252D3D", borderRadius: "8px", color: "#fff", fontSize: "12px" };
 
-const lbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-300 mb-1.5";
-const inp = "w-full bg-[#111318] border border-[#1E293B] rounded-lg px-3 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-[#CC2229]/70 focus:ring-1 focus:ring-[#CC2229]/30 transition-colors";
+const lbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5";
+const inp = "w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-900 text-sm placeholder-gray-400 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors";
 
 // ─── FormDrawer ───────────────────────────────────────────────────────────────
 
@@ -191,17 +191,17 @@ function FormDrawer({
   return (
     <div className="fixed inset-0 z-[100] flex">
       <button className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} aria-label="Cerrar" />
-      <div className="relative ml-auto flex h-full w-full max-w-lg flex-col bg-[#0F1115] border-l border-[#1E293B] shadow-2xl overflow-hidden">
+      <div className="relative ml-auto flex h-full w-full max-w-lg flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-center gap-3 border-b border-[#1E293B] px-6 py-4 shrink-0">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#CC2229]/15 text-[#CC2229]">
+        <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-4 shrink-0">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#CC2229]/10 text-[#CC2229]">
             <FlaskConical size={18} />
           </div>
           <div>
-            <h2 className="text-sm font-semibold text-white">{initial ? "Editar remisión" : "Registrar remisión"}</h2>
-            <p className="text-xs text-gray-400">Despacho de concreto</p>
+            <h2 className="text-sm font-semibold text-gray-900">{initial ? "Editar remisión" : "Registrar remisión"}</h2>
+            <p className="text-xs text-gray-500">Despacho de concreto</p>
           </div>
-          <button onClick={onClose} className="ml-auto rounded-xl p-2 text-gray-400 hover:bg-white/5 hover:text-white transition-colors">
+          <button onClick={onClose} className="ml-auto rounded-xl p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors">
             <X size={16} />
           </button>
         </div>
@@ -212,7 +212,7 @@ function FormDrawer({
           <div className="space-y-3">
             <div className="flex items-center gap-3">
               <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 whitespace-nowrap">Despacho</span>
-              <span className="h-px flex-1 bg-[#1E293B]" />
+              <span className="h-px flex-1 bg-gray-100" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -250,7 +250,7 @@ function FormDrawer({
           <div className="space-y-3">
             <div className="flex items-center gap-3">
               <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 whitespace-nowrap">Materiales base</span>
-              <span className="h-px flex-1 bg-[#1E293B]" />
+              <span className="h-px flex-1 bg-gray-100" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               {([
@@ -273,7 +273,7 @@ function FormDrawer({
           <div className="space-y-3">
             <div className="flex items-center gap-3">
               <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 whitespace-nowrap">Aditivos especiales</span>
-              <span className="h-px flex-1 bg-[#1E293B]" />
+              <span className="h-px flex-1 bg-gray-100" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -301,8 +301,8 @@ function FormDrawer({
         </div>
 
         {/* Footer */}
-        <div className="shrink-0 border-t border-[#1E293B] px-6 py-4 flex items-center justify-end gap-3">
-          <button onClick={onClose} className="px-4 py-2.5 text-sm font-medium text-gray-200 hover:text-white border border-[#3A3A3A] rounded-xl transition-colors">
+        <div className="shrink-0 border-t border-gray-100 px-6 py-4 flex items-center justify-end gap-3">
+          <button onClick={onClose} className="px-4 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 border border-gray-200 rounded-xl transition-colors">
             Cancelar
           </button>
           <button
