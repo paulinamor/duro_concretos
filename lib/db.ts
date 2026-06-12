@@ -120,6 +120,7 @@ export const COLLECTIONS = {
   efectivo: "efectivo",
   inventarioMovimientos: "inventarioMovimientos",
   inventarioStock: "inventarioStock",
+  remisiones: "remisiones",
   nomina: "nomina",
 } as const;
 

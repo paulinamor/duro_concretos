@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
 import FormModal from "@/components/FormModal";
+import FormSection from "@/components/FormSection";
 import StatusBadge from "@/components/StatusBadge";
 import { licenciasProximas, operadoresActivos, type EstatusOperador, type Operador } from "@/lib/operadores";
 import { COLLECTIONS, deleteDocument, getCollectionDocs, upsertDocument } from "@/lib/db";
@@ -365,93 +366,75 @@ export default function OperadoresPage() {
           <>
             <button
               onClick={() => { setShowForm(false); setEditing(null); }}
-              className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-[#3A3A3A] rounded-lg transition-colors"
+              className="px-5 py-2.5 text-sm font-medium text-gray-300 hover:text-white border border-[#2A3142] rounded-xl transition-colors"
             >
               Cancelar
             </button>
-            <button className="px-4 py-2 text-sm bg-[#CC2229] hover:bg-[#991A1E] text-white rounded-lg transition-colors">
+            <button className="px-5 py-2.5 text-sm font-medium bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-xl transition-colors shadow-md shadow-[#CC2229]/20">
               Guardar operador
             </button>
           </>
         }
       >
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[
-            { label: "Nombre completo", type: "text", defaultValue: editing?.nombre },
-            { label: "Teléfono", type: "text", defaultValue: editing?.telefono },
-            { label: "Correo electrónico", type: "email", defaultValue: editing?.email },
-            { label: "CURP", type: "text", defaultValue: editing?.curp },
-            { label: "RFC", type: "text", defaultValue: editing?.rfc },
-            { label: "No. Licencia", type: "text", defaultValue: editing?.noLicencia },
-          ].map(({ label, type, defaultValue }) => (
-            <div key={label}>
-              <label className="block text-sm text-gray-400 mb-1">{label}</label>
-              <input
-                type={type}
-                defaultValue={defaultValue ?? ""}
-                className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-              />
-            </div>
-          ))}
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Tipo licencia</label>
-            <select
-              defaultValue={editing?.tipoLicencia ?? "E"}
-              className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-            >
-              {TIPOS_LICENCIA.map((t) => <option key={t}>{t}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Vencimiento licencia</label>
-            <input
-              type="date"
-              defaultValue={editing?.vencimientoLicencia ?? ""}
-              className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-            />
-          </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Unidad asignada</label>
-            <input
-              type="text"
-              defaultValue={editing?.unidadAsignada ?? ""}
-              className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-            />
-          </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Salario / día</label>
-            <input
-              type="text"
-              defaultValue={editing?.salarioDia ? String(editing.salarioDia) : ""}
-              className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-            />
-          </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Fecha ingreso</label>
-            <input
-              type="date"
-              defaultValue={editing?.fechaIngreso ?? ""}
-              className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-            />
-          </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Estatus</label>
-            <select
-              defaultValue={editing?.estatus ?? "Activo"}
-              className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-            >
-              {ESTATUS_OPTIONS.map((s) => <option key={s}>{s}</option>)}
-            </select>
-          </div>
-          <div className="sm:col-span-2 lg:col-span-3">
-            <label className="block text-sm text-gray-400 mb-1">Observaciones</label>
-            <textarea
-              defaultValue={editing?.observaciones ?? ""}
-              rows={2}
-              className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229] resize-none"
-            />
-          </div>
-        </div>
+        {(() => {
+          const lbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5";
+          const inp = "w-full bg-[#0F1115] border border-[#252D3D] rounded-xl px-3.5 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors";
+          return (
+            <>
+              <FormSection title="Datos personales">
+                {[
+                  { label: "Nombre completo", type: "text", defaultValue: editing?.nombre },
+                  { label: "Teléfono", type: "text", defaultValue: editing?.telefono },
+                  { label: "Correo electrónico", type: "email", defaultValue: editing?.email },
+                  { label: "CURP", type: "text", defaultValue: editing?.curp },
+                  { label: "RFC", type: "text", defaultValue: editing?.rfc },
+                  { label: "No. Licencia", type: "text", defaultValue: editing?.noLicencia },
+                ].map(({ label, type, defaultValue }) => (
+                  <div key={label}>
+                    <label className={lbl}>{label}</label>
+                    <input type={type} defaultValue={defaultValue ?? ""} className={inp} />
+                  </div>
+                ))}
+              </FormSection>
+              <FormSection title="Licencia">
+                <div>
+                  <label className={lbl}>Tipo licencia</label>
+                  <select defaultValue={editing?.tipoLicencia ?? "E"} className={inp}>
+                    {TIPOS_LICENCIA.map((t) => <option key={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={lbl}>Vencimiento licencia</label>
+                  <input type="date" defaultValue={editing?.vencimientoLicencia ?? ""} className={inp} />
+                </div>
+              </FormSection>
+              <FormSection title="Laboral">
+                <div>
+                  <label className={lbl}>Unidad asignada</label>
+                  <input type="text" defaultValue={editing?.unidadAsignada ?? ""} className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Salario / día</label>
+                  <input type="text" defaultValue={editing?.salarioDia ? String(editing.salarioDia) : ""} className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Fecha ingreso</label>
+                  <input type="date" defaultValue={editing?.fechaIngreso ?? ""} className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Estatus</label>
+                  <select defaultValue={editing?.estatus ?? "Activo"} className={inp}>
+                    {ESTATUS_OPTIONS.map((s) => <option key={s}>{s}</option>)}
+                  </select>
+                </div>
+              </FormSection>
+              <div>
+                <label className={lbl}>Observaciones</label>
+                <textarea defaultValue={editing?.observaciones ?? ""} rows={2} className={`${inp} resize-none`} />
+              </div>
+            </>
+          );
+        })()}
       </FormModal>
     </div>
   );

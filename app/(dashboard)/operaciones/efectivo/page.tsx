@@ -5,6 +5,7 @@ import { TrendingUp, TrendingDown, DollarSign, Plus, WalletCards } from "lucide-
 import { getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
 import StatusBadge from "@/components/StatusBadge";
 import FormModal from "@/components/FormModal";
+import FormSection from "@/components/FormSection";
 
 interface Transaccion {
   fecha: string;
@@ -295,44 +296,50 @@ export default function EfectivoPage() {
         onSave={handleSave}
         footer={
           <>
-            <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-[#3A3A3A] rounded-lg transition-colors">Cancelar</button>
-            <button className="px-4 py-2 text-sm bg-[#CC2229] hover:bg-[#991A1E] text-white rounded-lg transition-colors">Guardar</button>
+            <button onClick={() => setShowForm(false)} className="px-5 py-2.5 text-sm font-medium text-gray-300 hover:text-white border border-[#2A3142] rounded-xl transition-colors">Cancelar</button>
+            <button className="px-5 py-2.5 text-sm font-medium bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-xl transition-colors shadow-md shadow-[#CC2229]/20">Guardar</button>
           </>
         }
       >
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Tipo</label>
-              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
-                <option>Ingreso</option>
-                <option>Egreso</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Monto ($)</label>
-              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
-                {[850, 3200, 3375, 4050, 12025, 13300, 15200, 16150, 22000].map((monto) => <option key={monto}>${monto.toLocaleString()}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Responsable</label>
-              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
-                {["Admin", "José García", "Luis Ramírez", "Roberto Flores", "Alejandro Reyes", "Fernando Castillo", "Carlos Mendoza"].map((responsable) => <option key={responsable}>{responsable}</option>)}
-              </select>
-            </div>
-            <div className="sm:col-span-2 lg:col-span-3">
-              <label className="block text-sm text-gray-400 mb-1">Proveedor</label>
-              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
-                {["Proveedor general", ...clientes].map((cliente) => <option key={cliente}>{cliente}</option>)}
-              </select>
-            </div>
-            <div className="sm:col-span-2 lg:col-span-3">
-              <label className="block text-sm text-gray-400 mb-1">Descripción</label>
-              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
-                {["Cobro viaje", "Cobro pendiente cliente", "Pago diesel", "Pago refacciones", "Gastos varios operación", "Saldo inicial del día"].map((descripcion) => <option key={descripcion}>{descripcion}</option>)}
-              </select>
-            </div>
-          </div>
+        {(() => {
+          const lbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5";
+          const inp = "w-full bg-[#0F1115] border border-[#252D3D] rounded-xl px-3.5 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors";
+          return (
+            <FormSection title="Transacción">
+              <div>
+                <label className={lbl}>Tipo</label>
+                <select className={inp}>
+                  <option>Ingreso</option>
+                  <option>Egreso</option>
+                </select>
+              </div>
+              <div>
+                <label className={lbl}>Monto ($)</label>
+                <select className={inp}>
+                  {[850, 3200, 3375, 4050, 12025, 13300, 15200, 16150, 22000].map((m) => <option key={m}>${m.toLocaleString()}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={lbl}>Responsable</label>
+                <select className={inp}>
+                  {["Admin", "José García", "Luis Ramírez", "Roberto Flores", "Alejandro Reyes", "Fernando Castillo", "Carlos Mendoza"].map((r) => <option key={r}>{r}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={lbl}>Proveedor / Cliente</label>
+                <select className={inp}>
+                  {["Proveedor general", ...clientes].map((c) => <option key={c}>{c}</option>)}
+                </select>
+              </div>
+              <div className="sm:col-span-2">
+                <label className={lbl}>Descripción</label>
+                <select className={inp}>
+                  {["Cobro viaje", "Cobro pendiente cliente", "Pago diesel", "Pago refacciones", "Gastos varios operación", "Saldo inicial del día"].map((d) => <option key={d}>{d}</option>)}
+                </select>
+              </div>
+            </FormSection>
+          );
+        })()}
       </FormModal>
 
       {/* Transaction Table */}

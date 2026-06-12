@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
 import FormModal from "@/components/FormModal";
+import FormSection from "@/components/FormSection";
 import StatusBadge from "@/components/StatusBadge";
 import {
   estatusCliente,
@@ -517,132 +518,99 @@ export default function CrmClientesPage() {
           <>
             <button
               onClick={() => { setShowForm(false); setEditing(null); }}
-              className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-[#3A3A3A] rounded-lg transition-colors"
+              className="px-5 py-2.5 text-sm font-medium text-gray-300 hover:text-white border border-[#2A3142] rounded-xl transition-colors"
             >
               Cancelar
             </button>
-            <button className="px-4 py-2 text-sm bg-[#CC2229] hover:bg-[#991A1E] text-white rounded-lg transition-colors">
+            <button className="px-5 py-2.5 text-sm font-medium bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-xl transition-colors shadow-md shadow-[#CC2229]/20">
               Guardar cliente
             </button>
           </>
         }
       >
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {/* Datos fiscales */}
-          <div className="sm:col-span-2 lg:col-span-3">
-            <p className="text-xs font-extrabold uppercase tracking-wider text-gray-500 mb-3">Datos fiscales</p>
-          </div>
-          {[
-            { label: "Razón social", defaultValue: editing?.razonSocial, span: "lg:col-span-2" },
-            { label: "Nombre comercial", defaultValue: editing?.nombreComercial },
-            { label: "RFC", defaultValue: editing?.rfc },
-            { label: "Domicilio", defaultValue: editing?.domicilio },
-            { label: "Colonia", defaultValue: editing?.colonia },
-            { label: "Municipio", defaultValue: editing?.municipio },
-            { label: "Estado", defaultValue: editing?.estado ?? "Nuevo León" },
-            { label: "C.P.", defaultValue: editing?.cp },
-          ].map(({ label, defaultValue, span }) => (
-            <div key={label} className={span}>
-              <label className="block text-sm text-gray-400 mb-1">{label}</label>
-              <input
-                type="text"
-                defaultValue={defaultValue ?? ""}
-                className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-              />
-            </div>
-          ))}
-
-          {/* Contacto */}
-          <div className="sm:col-span-2 lg:col-span-3 pt-2">
-            <p className="text-xs font-extrabold uppercase tracking-wider text-gray-500 mb-3">Contacto</p>
-          </div>
-          {[
-            { label: "Contacto principal", defaultValue: editing?.contacto },
-            { label: "Cargo", defaultValue: editing?.cargo },
-            { label: "Teléfono", defaultValue: editing?.telefono },
-            { label: "Correo electrónico", type: "email", defaultValue: editing?.email },
-          ].map(({ label, defaultValue, type }) => (
-            <div key={label}>
-              <label className="block text-sm text-gray-400 mb-1">{label}</label>
-              <input
-                type={type ?? "text"}
-                defaultValue={defaultValue ?? ""}
-                className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-              />
-            </div>
-          ))}
-
-          {/* Comercial */}
-          <div className="sm:col-span-2 lg:col-span-3 pt-2">
-            <p className="text-xs font-extrabold uppercase tracking-wider text-gray-500 mb-3">Clasificación y crédito</p>
-          </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Tipo de cliente</label>
-            <select
-              defaultValue={editing?.tipoCliente ?? "Constructora"}
-              className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-            >
-              {tiposCliente.map((t) => <option key={t}>{t}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Vendedor asignado</label>
-            <select
-              defaultValue={editing?.vendedorAsignado ?? "Ventas MTY"}
-              className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-            >
-              {vendedores.map((v) => <option key={v}>{v}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Calificación</label>
-            <select
-              defaultValue={editing?.calificacion ?? "B"}
-              className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-            >
-              {CALIFICACION_OPTIONS.map((c) => <option key={c}>{c}</option>)}
-            </select>
-          </div>
-          {[
-            { label: "Límite de crédito", defaultValue: editing?.limiteCredito ? String(editing.limiteCredito) : "0" },
-            { label: "Saldo pendiente", defaultValue: editing?.saldoPendiente ? String(editing.saldoPendiente) : "0" },
-          ].map(({ label, defaultValue }) => (
-            <div key={label}>
-              <label className="block text-sm text-gray-400 mb-1">{label}</label>
-              <input
-                type="text"
-                defaultValue={defaultValue ?? ""}
-                className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-              />
-            </div>
-          ))}
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Días de crédito</label>
-            <select
-              defaultValue={editing?.diasCredito ? String(editing.diasCredito) : "30"}
-              className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-            >
-              {DIAS_CREDITO_OPTIONS.map((d) => <option key={d}>{d}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Estatus</label>
-            <select
-              defaultValue={editing?.estatus ?? "Activo"}
-              className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-            >
-              {estatusCliente.map((s) => <option key={s}>{s}</option>)}
-            </select>
-          </div>
-          <div className="sm:col-span-2 lg:col-span-3">
-            <label className="block text-sm text-gray-400 mb-1">Notas</label>
-            <textarea
-              defaultValue={editing?.notas ?? ""}
-              rows={3}
-              className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229] resize-none"
-            />
-          </div>
-        </div>
+        {(() => {
+          const lbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5";
+          const inp = "w-full bg-[#0F1115] border border-[#252D3D] rounded-xl px-3.5 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors";
+          return (
+            <>
+              <FormSection title="Datos fiscales">
+                {[
+                  { label: "Razón social", defaultValue: editing?.razonSocial, span: "sm:col-span-2" },
+                  { label: "Nombre comercial", defaultValue: editing?.nombreComercial },
+                  { label: "RFC", defaultValue: editing?.rfc },
+                  { label: "Domicilio", defaultValue: editing?.domicilio, span: "sm:col-span-2" },
+                  { label: "Colonia", defaultValue: editing?.colonia },
+                  { label: "Municipio", defaultValue: editing?.municipio },
+                  { label: "Estado", defaultValue: editing?.estado ?? "Nuevo León" },
+                  { label: "C.P.", defaultValue: editing?.cp },
+                ].map(({ label, defaultValue, span }) => (
+                  <div key={label} className={span}>
+                    <label className={lbl}>{label}</label>
+                    <input type="text" defaultValue={defaultValue ?? ""} className={inp} />
+                  </div>
+                ))}
+              </FormSection>
+              <FormSection title="Contacto">
+                {[
+                  { label: "Contacto principal", defaultValue: editing?.contacto },
+                  { label: "Cargo", defaultValue: editing?.cargo },
+                  { label: "Teléfono", defaultValue: editing?.telefono },
+                  { label: "Correo electrónico", type: "email", defaultValue: editing?.email },
+                ].map(({ label, defaultValue, type }) => (
+                  <div key={label}>
+                    <label className={lbl}>{label}</label>
+                    <input type={type ?? "text"} defaultValue={defaultValue ?? ""} className={inp} />
+                  </div>
+                ))}
+              </FormSection>
+              <FormSection title="Clasificación y crédito">
+                <div>
+                  <label className={lbl}>Tipo de cliente</label>
+                  <select defaultValue={editing?.tipoCliente ?? "Constructora"} className={inp}>
+                    {tiposCliente.map((t) => <option key={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={lbl}>Vendedor asignado</label>
+                  <select defaultValue={editing?.vendedorAsignado ?? "Ventas MTY"} className={inp}>
+                    {vendedores.map((v) => <option key={v}>{v}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={lbl}>Calificación</label>
+                  <select defaultValue={editing?.calificacion ?? "B"} className={inp}>
+                    {CALIFICACION_OPTIONS.map((c) => <option key={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={lbl}>Días de crédito</label>
+                  <select defaultValue={editing?.diasCredito ? String(editing.diasCredito) : "30"} className={inp}>
+                    {DIAS_CREDITO_OPTIONS.map((d) => <option key={d}>{d}</option>)}
+                  </select>
+                </div>
+                {[
+                  { label: "Límite de crédito", defaultValue: editing?.limiteCredito ? String(editing.limiteCredito) : "0" },
+                  { label: "Saldo pendiente", defaultValue: editing?.saldoPendiente ? String(editing.saldoPendiente) : "0" },
+                ].map(({ label, defaultValue }) => (
+                  <div key={label}>
+                    <label className={lbl}>{label}</label>
+                    <input type="text" defaultValue={defaultValue ?? ""} className={inp} />
+                  </div>
+                ))}
+                <div>
+                  <label className={lbl}>Estatus</label>
+                  <select defaultValue={editing?.estatus ?? "Activo"} className={inp}>
+                    {estatusCliente.map((s) => <option key={s}>{s}</option>)}
+                  </select>
+                </div>
+              </FormSection>
+              <div>
+                <label className={lbl}>Notas</label>
+                <textarea defaultValue={editing?.notas ?? ""} rows={3} className={`${inp} resize-none`} />
+              </div>
+            </>
+          );
+        })()}
       </FormModal>
     </div>
   );

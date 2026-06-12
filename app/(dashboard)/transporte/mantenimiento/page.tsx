@@ -5,6 +5,7 @@ import { AlertTriangle, Car, DollarSign, Plus, Wrench } from "lucide-react";
 import KPICard from "@/components/KPICard";
 import StatusBadge from "@/components/StatusBadge";
 import FormModal from "@/components/FormModal";
+import FormSection from "@/components/FormSection";
 import { getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
 
 interface Mantenimiento {
@@ -296,101 +297,107 @@ export default function MantenimientoPage() {
         onSave={handleSave}
         footer={
           <>
-            <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-[#3A3A3A] rounded-lg transition-colors">
+            <button onClick={() => setShowForm(false)} className="px-5 py-2.5 text-sm font-medium text-gray-300 hover:text-white border border-[#2A3142] rounded-xl transition-colors">
               Cancelar
             </button>
-            <button className="px-4 py-2 text-sm bg-[#CC2229] hover:bg-[#991A1E] text-white rounded-lg transition-colors">
+            <button className="px-5 py-2.5 text-sm font-medium bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-xl transition-colors shadow-md shadow-[#CC2229]/20">
               Guardar
             </button>
           </>
         }
       >
-        {activeTab === "mantenimientos" ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Fecha</label>
-              <input type="date" className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]" />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Unidad</label>
-              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
-                {unidades.map((unidad) => <option key={unidad.unidad}>{unidad.unidad}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Tipo</label>
-              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
-                <option>Preventivo</option>
-                <option>Correctivo</option>
-                <option>Inspección</option>
-                <option>Garantía</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Costo ($)</label>
-              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
-                {[3200, 3800, 4800, 8500, 9600, 15200].map((costo) => <option key={costo}>${costo.toLocaleString()}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Taller</label>
-              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
-                {["Taller Monterrey", "Servitruck NL", "Auto Partes NL", "Llantera JC", "Hidráulicos MTY"].map((taller) => <option key={taller}>{taller}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Status</label>
-              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
-                <option>Pendiente</option>
-                <option>En proceso</option>
-                <option>Completado</option>
-              </select>
-            </div>
-            <div className="sm:col-span-2 lg:col-span-3">
-              <label className="block text-sm text-gray-400 mb-1">Descripción</label>
-              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
-                {["Cambio de aceite y filtros", "Reparación de frenos traseros", "Revisión general + afinación", "Cambio de bomba hidráulica", "Cambio de llantas delanteras"].map((descripcion) => <option key={descripcion}>{descripcion}</option>)}
-              </select>
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Fecha</label>
-              <input type="date" className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]" />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Unidad</label>
-              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
-                {unidades.map((unidad) => <option key={unidad.unidad}>{unidad.unidad}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Refacción</label>
-              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
-                {["Filtro de aceite", "Pastillas de freno", "Bujías NGK", "Bomba hidráulica", "Llanta 11R22.5", "Aceite 15W40 (cubeta)"].map((refaccion) => <option key={refaccion}>{refaccion}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Cantidad</label>
-              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
-                {[1, 2, 4, 6, 8, 10].map((cantidad) => <option key={cantidad}>{cantidad}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Costo unitario ($)</label>
-              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
-                {[180, 280, 650, 890, 4800, 12500].map((costo) => <option key={costo}>${costo.toLocaleString()}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Proveedor</label>
-              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
-                {["Auto Partes NL", "Servitruck NL", "Refaccionaria Sur", "Hidráulicos MTY", "Llantera JC", "Lubricantes MX"].map((proveedor) => <option key={proveedor}>{proveedor}</option>)}
-              </select>
-            </div>
-          </div>
-        )}
+        {(() => {
+          const lbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5";
+          const inp = "w-full bg-[#0F1115] border border-[#252D3D] rounded-xl px-3.5 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors";
+          return activeTab === "mantenimientos" ? (
+            <>
+              <FormSection title="Servicio">
+                <div>
+                  <label className={lbl}>Fecha</label>
+                  <input type="date" className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Unidad</label>
+                  <select className={inp}>
+                    {unidades.map((unidad) => <option key={unidad.unidad}>{unidad.unidad}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={lbl}>Tipo</label>
+                  <select className={inp}>
+                    <option>Preventivo</option>
+                    <option>Correctivo</option>
+                    <option>Inspección</option>
+                    <option>Garantía</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={lbl}>Costo ($)</label>
+                  <select className={inp}>
+                    {[3200, 3800, 4800, 8500, 9600, 15200].map((costo) => <option key={costo}>${costo.toLocaleString()}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={lbl}>Taller</label>
+                  <select className={inp}>
+                    {["Taller Monterrey", "Servitruck NL", "Auto Partes NL", "Llantera JC", "Hidráulicos MTY"].map((taller) => <option key={taller}>{taller}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={lbl}>Status</label>
+                  <select className={inp}>
+                    <option>Pendiente</option>
+                    <option>En proceso</option>
+                    <option>Completado</option>
+                  </select>
+                </div>
+              </FormSection>
+              <div>
+                <label className={lbl}>Descripción</label>
+                <select className={inp}>
+                  {["Cambio de aceite y filtros", "Reparación de frenos traseros", "Revisión general + afinación", "Cambio de bomba hidráulica", "Cambio de llantas delanteras"].map((d) => <option key={d}>{d}</option>)}
+                </select>
+              </div>
+            </>
+          ) : (
+            <FormSection title="Refacción">
+              <div>
+                <label className={lbl}>Fecha</label>
+                <input type="date" className={inp} />
+              </div>
+              <div>
+                <label className={lbl}>Unidad</label>
+                <select className={inp}>
+                  {unidades.map((unidad) => <option key={unidad.unidad}>{unidad.unidad}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={lbl}>Refacción</label>
+                <select className={inp}>
+                  {["Filtro de aceite", "Pastillas de freno", "Bujías NGK", "Bomba hidráulica", "Llanta 11R22.5", "Aceite 15W40 (cubeta)"].map((r) => <option key={r}>{r}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={lbl}>Cantidad</label>
+                <select className={inp}>
+                  {[1, 2, 4, 6, 8, 10].map((c) => <option key={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={lbl}>Costo unitario ($)</label>
+                <select className={inp}>
+                  {[180, 280, 650, 890, 4800, 12500].map((c) => <option key={c}>${c.toLocaleString()}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={lbl}>Proveedor</label>
+                <select className={inp}>
+                  {["Auto Partes NL", "Servitruck NL", "Refaccionaria Sur", "Hidráulicos MTY", "Llantera JC", "Lubricantes MX"].map((p) => <option key={p}>{p}</option>)}
+                </select>
+              </div>
+            </FormSection>
+          );
+        })()}
       </FormModal>
 
       {showHistorialCamion && (

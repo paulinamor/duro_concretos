@@ -5,6 +5,7 @@ import { Plus, Truck, Package, Calendar, Filter } from "lucide-react";
 import StatusBadge from "@/components/StatusBadge";
 import KPICard from "@/components/KPICard";
 import FormModal from "@/components/FormModal";
+import FormSection from "@/components/FormSection";
 import type { Viaje } from "@/lib/viajes";
 import { COLLECTIONS, getCollectionDocs, upsertDocument } from "@/lib/db";
 import { unidadesDisponibilidad } from "@/lib/disponibilidadCargas";
@@ -101,67 +102,73 @@ export default function ViajesPage() {
         onSave={handleSave}
         footer={
           <>
-            <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-[#3A3A3A] rounded-lg transition-colors">
+            <button onClick={() => setShowForm(false)} className="px-5 py-2.5 text-sm font-medium text-gray-300 hover:text-white border border-[#2A3142] rounded-xl transition-colors">
               Cancelar
             </button>
-            <button className="px-4 py-2 text-sm bg-[#CC2229] hover:bg-[#991A1E] text-white rounded-lg transition-colors">
+            <button className="px-5 py-2.5 text-sm font-medium bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-xl transition-colors shadow-md shadow-[#CC2229]/20">
               Guardar viaje
             </button>
           </>
         }
       >
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Fecha</label>
-              <input type="date" className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]" />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Unidad</label>
-              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
-                {unidadesDisponibilidad.map((u) => <option key={u}>{u}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Chofer</label>
-              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
-                {operadoresOptions.filter((o) => o !== "Todos").map((o) => <option key={o}>{o}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Destino</label>
-              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
-                {["Monterrey Centro", "San Nicolás", "Apodaca Industrial", "García NL", "Guadalupe NL", "Santa Catarina"].map((d) => <option key={d}>{d}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">M3 a entregar</label>
-              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
-                {["5.0", "5.5", "6.0", "6.5", "7.0", "7.5", "8.0", "8.5"].map((m3) => <option key={m3}>{m3}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Precio por M3 ($)</label>
-              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
-                {["1850", "1900", "2000"].map((precio) => <option key={precio}>{precio}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Estado</label>
-              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
-                <option>Pendiente</option>
-                <option>En ruta</option>
-                <option>Completado</option>
-              </select>
-            </div>
-            <div className="sm:col-span-2 lg:col-span-3">
-              <label className="block text-sm text-gray-400 mb-1">Observaciones</label>
-              <textarea
-                rows={2}
-                placeholder="Notas adicionales..."
-                className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229] resize-none"
-              />
-            </div>
-          </div>
+        {(() => {
+          const lbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5";
+          const inp = "w-full bg-[#0F1115] border border-[#252D3D] rounded-xl px-3.5 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors";
+          return (
+            <>
+              <FormSection title="Datos del viaje">
+                <div>
+                  <label className={lbl}>Fecha</label>
+                  <input type="date" className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Unidad</label>
+                  <select className={inp}>
+                    {unidadesDisponibilidad.map((u) => <option key={u}>{u}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={lbl}>Chofer</label>
+                  <select className={inp}>
+                    {operadoresOptions.filter((o) => o !== "Todos").map((o) => <option key={o}>{o}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={lbl}>Estado</label>
+                  <select className={inp}>
+                    <option>Pendiente</option>
+                    <option>En ruta</option>
+                    <option>Completado</option>
+                  </select>
+                </div>
+              </FormSection>
+              <FormSection title="Carga y destino">
+                <div>
+                  <label className={lbl}>Destino</label>
+                  <select className={inp}>
+                    {["Monterrey Centro", "San Nicolás", "Apodaca Industrial", "García NL", "Guadalupe NL", "Santa Catarina"].map((d) => <option key={d}>{d}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={lbl}>M3 a entregar</label>
+                  <select className={inp}>
+                    {["5.0", "5.5", "6.0", "6.5", "7.0", "7.5", "8.0", "8.5"].map((m3) => <option key={m3}>{m3}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={lbl}>Precio por M3 ($)</label>
+                  <select className={inp}>
+                    {["1850", "1900", "2000"].map((precio) => <option key={precio}>{precio}</option>)}
+                  </select>
+                </div>
+              </FormSection>
+              <div>
+                <label className={lbl}>Observaciones</label>
+                <textarea rows={2} placeholder="Notas adicionales..." className={`${inp} resize-none`} />
+              </div>
+            </>
+          );
+        })()}
       </FormModal>
 
       {/* Filters */}

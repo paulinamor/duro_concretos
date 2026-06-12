@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
 import FormModal from "@/components/FormModal";
+import FormSection from "@/components/FormSection";
 import StatusBadge from "@/components/StatusBadge";
 import { capacidadTotalM3, type EstatusUnidad, type Unidad } from "@/lib/unidades";
 import { COLLECTIONS, deleteDocument, getCollectionDocs, upsertDocument } from "@/lib/db";
@@ -373,85 +374,75 @@ export default function UnidadesPage() {
           <>
             <button
               onClick={() => { setShowForm(false); setEditing(null); }}
-              className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-[#3A3A3A] rounded-lg transition-colors"
+              className="px-5 py-2.5 text-sm font-medium text-gray-300 hover:text-white border border-[#2A3142] rounded-xl transition-colors"
             >
               Cancelar
             </button>
-            <button className="px-4 py-2 text-sm bg-[#CC2229] hover:bg-[#991A1E] text-white rounded-lg transition-colors">
+            <button className="px-5 py-2.5 text-sm font-medium bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-xl transition-colors shadow-md shadow-[#CC2229]/20">
               Guardar unidad
             </button>
           </>
         }
       >
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[
-            { label: "No. económico", type: "text", defaultValue: editing?.noEconomico },
-            { label: "Placa", type: "text", defaultValue: editing?.placa },
-            { label: "Modelo", type: "text", defaultValue: editing?.modelo },
-            { label: "Año", type: "text", defaultValue: editing?.anio ? String(editing.anio) : "" },
-            { label: "Capacidad m3", type: "text", defaultValue: editing?.capacidadM3 ? String(editing.capacidadM3) : "" },
-            { label: "Km actual", type: "text", defaultValue: editing?.kmActual ? String(editing.kmActual) : "" },
-          ].map(({ label, type, defaultValue }) => (
-            <div key={label}>
-              <label className="block text-sm text-gray-400 mb-1">{label}</label>
-              <input
-                type={type}
-                defaultValue={defaultValue ?? ""}
-                className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-              />
-            </div>
-          ))}
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Marca</label>
-            <select
-              defaultValue={editing?.marca ?? "Mercedes-Benz"}
-              className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-            >
-              {MARCAS.map((m) => <option key={m}>{m}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Chofer asignado</label>
-            <input
-              type="text"
-              defaultValue={editing?.choferAsignado ?? ""}
-              className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-            />
-          </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Estatus</label>
-            <select
-              defaultValue={editing?.estatus ?? "Activo"}
-              className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-            >
-              {ESTATUS_OPTIONS.map((s) => <option key={s}>{s}</option>)}
-            </select>
-          </div>
-          {[
-            { label: "Último mantenimiento", defaultValue: editing?.ultimoMantenimiento },
-            { label: "Próximo mantenimiento", defaultValue: editing?.proximoMantenimiento },
-            { label: "Seguro vigente hasta", defaultValue: editing?.seguroVigente },
-            { label: "Tarjeta circulación", defaultValue: editing?.tarjetaCirculacion },
-            { label: "Verificación", defaultValue: editing?.verificacion },
-          ].map(({ label, defaultValue }) => (
-            <div key={label}>
-              <label className="block text-sm text-gray-400 mb-1">{label}</label>
-              <input
-                type="date"
-                defaultValue={defaultValue && defaultValue !== "—" ? defaultValue : ""}
-                className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-              />
-            </div>
-          ))}
-          <div className="sm:col-span-2 lg:col-span-3">
-            <label className="block text-sm text-gray-400 mb-1">Observaciones</label>
-            <textarea
-              defaultValue={editing?.observaciones ?? ""}
-              rows={2}
-              className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229] resize-none"
-            />
-          </div>
-        </div>
+        {(() => {
+          const lbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5";
+          const inp = "w-full bg-[#0F1115] border border-[#252D3D] rounded-xl px-3.5 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors";
+          return (
+            <>
+              <FormSection title="Datos de la unidad">
+                {[
+                  { label: "No. económico", defaultValue: editing?.noEconomico },
+                  { label: "Placa", defaultValue: editing?.placa },
+                  { label: "Modelo", defaultValue: editing?.modelo },
+                  { label: "Año", defaultValue: editing?.anio ? String(editing.anio) : "" },
+                  { label: "Capacidad m3", defaultValue: editing?.capacidadM3 ? String(editing.capacidadM3) : "" },
+                  { label: "Km actual", defaultValue: editing?.kmActual ? String(editing.kmActual) : "" },
+                ].map(({ label, defaultValue }) => (
+                  <div key={label}>
+                    <label className={lbl}>{label}</label>
+                    <input type="text" defaultValue={defaultValue ?? ""} className={inp} />
+                  </div>
+                ))}
+                <div>
+                  <label className={lbl}>Marca</label>
+                  <select defaultValue={editing?.marca ?? "Mercedes-Benz"} className={inp}>
+                    {MARCAS.map((m) => <option key={m}>{m}</option>)}
+                  </select>
+                </div>
+              </FormSection>
+              <FormSection title="Asignación">
+                <div>
+                  <label className={lbl}>Chofer asignado</label>
+                  <input type="text" defaultValue={editing?.choferAsignado ?? ""} className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Estatus</label>
+                  <select defaultValue={editing?.estatus ?? "Activo"} className={inp}>
+                    {ESTATUS_OPTIONS.map((s) => <option key={s}>{s}</option>)}
+                  </select>
+                </div>
+              </FormSection>
+              <FormSection title="Documentos y vencimientos">
+                {[
+                  { label: "Último mantenimiento", defaultValue: editing?.ultimoMantenimiento },
+                  { label: "Próximo mantenimiento", defaultValue: editing?.proximoMantenimiento },
+                  { label: "Seguro vigente hasta", defaultValue: editing?.seguroVigente },
+                  { label: "Tarjeta circulación", defaultValue: editing?.tarjetaCirculacion },
+                  { label: "Verificación", defaultValue: editing?.verificacion },
+                ].map(({ label, defaultValue }) => (
+                  <div key={label}>
+                    <label className={lbl}>{label}</label>
+                    <input type="date" defaultValue={defaultValue && defaultValue !== "—" ? defaultValue : ""} className={inp} />
+                  </div>
+                ))}
+              </FormSection>
+              <div>
+                <label className={lbl}>Observaciones</label>
+                <textarea defaultValue={editing?.observaciones ?? ""} rows={2} className={`${inp} resize-none`} />
+              </div>
+            </>
+          );
+        })()}
       </FormModal>
 
       {enMantenimiento > 0 && (
