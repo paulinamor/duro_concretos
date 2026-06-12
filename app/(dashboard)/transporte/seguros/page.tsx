@@ -258,9 +258,9 @@ function FormDrawer({
   const set = (k: keyof FormState, v: string) => setForm((p) => ({ ...p, [k]: v }));
 
   async function handleSave() {
-    if (!form.placa.trim() || !form.marca.trim()) return;
+    if (!selectedUnidadId) return;
     setSaving(true);
-    const resolvedUnidadId = selectedUnidadId || unidad?.id || "";
+    const resolvedUnidadId = selectedUnidadId;
     try {
       const id = existing?.id ?? `SEG-${(resolvedUnidadId || form.noEconomico || Date.now())}-${Date.now()}`;
       await onSave({
@@ -315,7 +315,7 @@ function FormDrawer({
             <p className="text-xs text-gray-500">
               {selectedUnidad
                 ? `${selectedUnidad.noEconomico} · ${selectedUnidad.placa} · ${selectedUnidad.marca} ${selectedUnidad.modelo}`
-                : "Selecciona una unidad o captura manualmente"}
+                : "Selecciona una unidad de la flota"}
             </p>
           </div>
           <button onClick={onClose} className="ml-auto rounded-xl p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors">
@@ -327,8 +327,8 @@ function FormDrawer({
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
 
           {/* Unidad selector */}
-          <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 space-y-2">
-            <label className={lbl}>Unidad registrada en el sistema</label>
+          <div className="space-y-2">
+            <label className={lbl}>Unidad <span className="text-[#CC2229]">*</span></label>
             <select
               value={selectedUnidadId}
               onChange={(e) => handleUnitSelect(e.target.value)}
@@ -341,42 +341,52 @@ function FormDrawer({
                 </option>
               ))}
             </select>
-            {selectedUnidadId && (
-              <p className="text-[11px] text-gray-500">
-                Los datos de la unidad se cargaron automáticamente. Completa solo los campos del seguro.
+            {!selectedUnidadId && unidadesList.length === 0 && (
+              <p className="text-[11px] text-red-400">
+                No hay unidades registradas. Agrégalas primero en Transporte → Unidades.
               </p>
             )}
-            {!selectedUnidadId && (
+            {!selectedUnidadId && unidadesList.length > 0 && (
               <p className="text-[11px] text-gray-400">
-                Si no aparece, agrégala en Transporte → Unidades o captura los datos manualmente abajo.
+                Si la unidad no aparece, regístrala primero en Transporte → Unidades.
               </p>
             )}
           </div>
 
-          {/* Identificación — collapsed summary when unit selected, expanded otherwise */}
-          {selectedUnidadId ? (
-            <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 grid grid-cols-2 gap-x-6 gap-y-1">
-              {[
-                ["Tipo", form.tipoUnidad],
-                ["No. Eco.", form.noEconomico],
-                ["Placa", form.placa],
-                ["Estado", form.estadoPlaca],
-                ["Marca", form.marca],
-                ["Modelo", form.modelo],
-                ["Año", form.anio],
-                ["Color", form.color],
-                ["# Serie", form.noSerie],
-                ["Motor", form.motor],
-              ].map(([label, value]) => value ? (
-                <div key={label} className="flex items-baseline gap-1.5">
-                  <span className="text-[10px] uppercase tracking-wider text-gray-400 shrink-0">{label}</span>
-                  <span className="text-xs text-gray-700 truncate">{value}</span>
-                </div>
-              ) : null)}
+          {/* Bloqueo — no unit selected */}
+          {!selectedUnidadId && (
+            <div className="flex flex-col items-center justify-center py-12 text-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gray-100">
+                <Shield size={22} className="text-gray-400" />
+              </div>
+              <p className="text-sm font-medium text-gray-600">Selecciona una unidad para continuar</p>
+              <p className="text-xs text-gray-400 max-w-[240px]">
+                Solo se pueden registrar seguros de unidades que ya están en el catálogo de flota.
+              </p>
             </div>
-          ) : (
+          )}
+
+          {/* Formulario — solo visible cuando hay unidad seleccionada */}
+          {selectedUnidadId && (
             <>
-              <Sec title="Identificación de la unidad" />
+              {/* Resumen de unidad — solo lectura */}
+              <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 grid grid-cols-2 gap-x-6 gap-y-1.5">
+                {([
+                  ["No. Eco.", form.noEconomico],
+                  ["Placa", form.placa],
+                  ["Marca", form.marca],
+                  ["Modelo", form.modelo],
+                  ["Año", form.anio],
+                ] as [string, string][]).filter(([, v]) => v).map(([label, value]) => (
+                  <div key={label} className="flex items-baseline gap-1.5">
+                    <span className="text-[10px] uppercase tracking-wider text-gray-400 shrink-0">{label}</span>
+                    <span className="text-xs text-gray-700 truncate font-medium">{value}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Campos adicionales de la unidad que pueden no estar en el catálogo */}
+              <Sec title="Datos complementarios de la unidad" />
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className={lbl}>Tipo de unidad</label>
@@ -385,108 +395,88 @@ function FormDrawer({
                   </select>
                 </div>
                 <div>
-                  <label className={lbl}>No. Económico</label>
-                  <input type="text" value={form.noEconomico} onChange={(e) => set("noEconomico", e.target.value)} className={inp} />
-                </div>
-                <div>
-                  <label className={lbl}>Placa <span className="text-[#CC2229]">*</span></label>
-                  <input type="text" value={form.placa} onChange={(e) => set("placa", e.target.value.toUpperCase())} className={inp} />
-                </div>
-                <div>
                   <label className={lbl}>Estado placa</label>
                   <select value={form.estadoPlaca} onChange={(e) => set("estadoPlaca", e.target.value)} className={inp}>
                     {ESTADOS_MX.map((e) => <option key={e}>{e}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className={lbl}>Marca <span className="text-[#CC2229]">*</span></label>
-                  <input type="text" value={form.marca} onChange={(e) => set("marca", e.target.value)} className={inp} />
-                </div>
-                <div>
-                  <label className={lbl}>Modelo</label>
-                  <input type="text" value={form.modelo} onChange={(e) => set("modelo", e.target.value)} className={inp} />
-                </div>
-                <div>
                   <label className={lbl}># Serie</label>
                   <input type="text" value={form.noSerie} onChange={(e) => set("noSerie", e.target.value)} className={inp} />
-                </div>
-                <div>
-                  <label className={lbl}>Año</label>
-                  <input type="number" min="1950" max="2030" value={form.anio} onChange={(e) => set("anio", e.target.value)} className={inp} />
                 </div>
                 <div>
                   <label className={lbl}>Color</label>
                   <input type="text" value={form.color} onChange={(e) => set("color", e.target.value)} className={inp} />
                 </div>
-                <div>
+                <div className="col-span-2">
                   <label className={lbl}>Motor</label>
                   <input type="text" value={form.motor} onChange={(e) => set("motor", e.target.value)} className={inp} />
                 </div>
               </div>
+
+              {/* Tarjeta de Circulación */}
+              <Sec title="Tarjeta de circulación" />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={lbl}>No. Tarjeta de circulación</label>
+                  <input type="text" value={form.noTarjetaCirculacion} onChange={(e) => set("noTarjetaCirculacion", e.target.value)} className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Vigencia TC</label>
+                  <input type="date" value={form.vigenciaTarjetaCirculacion} onChange={(e) => set("vigenciaTarjetaCirculacion", e.target.value)} className={inp} />
+                </div>
+              </div>
+
+              {/* Póliza */}
+              <Sec title="Póliza de seguro" />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <label className={lbl}>Aseguradora / Agente</label>
+                  <input type="text" value={form.aseguradora} onChange={(e) => set("aseguradora", e.target.value)} className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>No. Póliza</label>
+                  <input type="text" value={form.noPoliza} onChange={(e) => set("noPoliza", e.target.value)} className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Status póliza</label>
+                  <select value={form.statusPoliza} onChange={(e) => set("statusPoliza", e.target.value as StatusPoliza)} className={inp}>
+                    {STATUS_POLIZA_OPTS.map((s) => <option key={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={lbl}>Vigencia inicio</label>
+                  <input type="date" value={form.vigenciaInicio} onChange={(e) => set("vigenciaInicio", e.target.value)} className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Vigencia fin</label>
+                  <input type="date" value={form.vigenciaFin} onChange={(e) => set("vigenciaFin", e.target.value)} className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Costo póliza $</label>
+                  <input type="text" value={form.costoPoliza} onChange={(e) => set("costoPoliza", e.target.value)} className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Valor mercado $</label>
+                  <input type="text" value={form.valorMercado} onChange={(e) => set("valorMercado", e.target.value)} className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Tenencia (año)</label>
+                  <input type="text" value={form.tenencia} onChange={(e) => set("tenencia", e.target.value)} className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Agente / Contacto</label>
+                  <input type="text" value={form.agente} onChange={(e) => set("agente", e.target.value)} className={inp} />
+                </div>
+              </div>
+
+              {/* Observaciones */}
+              <div>
+                <label className={lbl}>Observaciones</label>
+                <textarea rows={2} value={form.observaciones} onChange={(e) => set("observaciones", e.target.value)} className={`${inp} resize-none`} />
+              </div>
             </>
           )}
-
-          {/* Tarjeta de Circulación */}
-          <Sec title="Tarjeta de circulación" />
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={lbl}>No. Tarjeta de circulación</label>
-              <input type="text" value={form.noTarjetaCirculacion} onChange={(e) => set("noTarjetaCirculacion", e.target.value)} className={inp} />
-            </div>
-            <div>
-              <label className={lbl}>Vigencia TC</label>
-              <input type="date" value={form.vigenciaTarjetaCirculacion} onChange={(e) => set("vigenciaTarjetaCirculacion", e.target.value)} className={inp} />
-            </div>
-          </div>
-
-          {/* Póliza */}
-          <Sec title="Póliza de seguro" />
-          <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2">
-              <label className={lbl}>Aseguradora / Agente</label>
-              <input type="text" value={form.aseguradora} onChange={(e) => set("aseguradora", e.target.value)} className={inp} />
-            </div>
-            <div>
-              <label className={lbl}>No. Póliza</label>
-              <input type="text" value={form.noPoliza} onChange={(e) => set("noPoliza", e.target.value)} className={inp} />
-            </div>
-            <div>
-              <label className={lbl}>Status póliza</label>
-              <select value={form.statusPoliza} onChange={(e) => set("statusPoliza", e.target.value as StatusPoliza)} className={inp}>
-                {STATUS_POLIZA_OPTS.map((s) => <option key={s}>{s}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className={lbl}>Vigencia inicio</label>
-              <input type="date" value={form.vigenciaInicio} onChange={(e) => set("vigenciaInicio", e.target.value)} className={inp} />
-            </div>
-            <div>
-              <label className={lbl}>Vigencia fin</label>
-              <input type="date" value={form.vigenciaFin} onChange={(e) => set("vigenciaFin", e.target.value)} className={inp} />
-            </div>
-            <div>
-              <label className={lbl}>Costo póliza $</label>
-              <input type="text" value={form.costoPoliza} onChange={(e) => set("costoPoliza", e.target.value)} className={inp} />
-            </div>
-            <div>
-              <label className={lbl}>Valor mercado $</label>
-              <input type="text" value={form.valorMercado} onChange={(e) => set("valorMercado", e.target.value)} className={inp} />
-            </div>
-            <div>
-              <label className={lbl}>Tenencia (año)</label>
-              <input type="text" value={form.tenencia} onChange={(e) => set("tenencia", e.target.value)} className={inp} />
-            </div>
-            <div>
-              <label className={lbl}>Agente / Contacto</label>
-              <input type="text" value={form.agente} onChange={(e) => set("agente", e.target.value)} className={inp} />
-            </div>
-          </div>
-
-          {/* Observaciones */}
-          <div>
-            <label className={lbl}>Observaciones</label>
-            <textarea rows={2} value={form.observaciones} onChange={(e) => set("observaciones", e.target.value)} className={`${inp} resize-none`} />
-          </div>
         </div>
 
         {/* Footer */}
@@ -496,7 +486,7 @@ function FormDrawer({
           </button>
           <button
             onClick={handleSave}
-            disabled={saving || !form.placa.trim() || !form.marca.trim()}
+            disabled={saving || !selectedUnidadId}
             className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-xl transition-colors disabled:opacity-60 shadow-lg shadow-[#CC2229]/20"
           >
             <Shield size={14} />
