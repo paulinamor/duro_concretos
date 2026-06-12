@@ -215,33 +215,57 @@ function Sec({ title }: { title: string }) {
 // ─── FormDrawer ───────────────────────────────────────────────────────────────
 
 function FormDrawer({
-  open, onClose, onSave, unidad, existing,
+  open, onClose, onSave, unidad, existing, unidadesList,
 }: {
   open: boolean;
   onClose: () => void;
   onSave: (s: Seguro) => Promise<void>;
   unidad: Unidad | null;
   existing?: Seguro;
+  unidadesList: Unidad[];
 }) {
+  const [selectedUnidadId, setSelectedUnidadId] = useState<string>("");
   const [form, setForm] = useState<FormState>(() => emptyForm(unidad ?? undefined));
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (open) {
-      setForm(existing ? formFromSeguro(existing) : emptyForm(unidad ?? undefined));
+    if (!open) return;
+    if (existing) {
+      setSelectedUnidadId(existing.unidadId ?? "");
+      setForm(formFromSeguro(existing));
+    } else {
+      setSelectedUnidadId(unidad?.id ?? "");
+      setForm(emptyForm(unidad ?? undefined));
     }
   }, [open, existing, unidad]);
+
+  // When user picks a unit from the dropdown, auto-fill unit fields
+  function handleUnitSelect(id: string) {
+    setSelectedUnidadId(id);
+    const u = unidadesList.find((u) => u.id === id);
+    if (!u) return;
+    setForm((prev) => ({
+      ...prev,
+      noEconomico: u.noEconomico,
+      placa: u.placa,
+      marca: u.marca,
+      modelo: u.modelo,
+      anio: String(u.anio),
+      noTarjetaCirculacion: prev.noTarjetaCirculacion || u.tarjetaCirculacion || "",
+    }));
+  }
 
   const set = (k: keyof FormState, v: string) => setForm((p) => ({ ...p, [k]: v }));
 
   async function handleSave() {
     if (!form.placa.trim() || !form.marca.trim()) return;
     setSaving(true);
+    const resolvedUnidadId = selectedUnidadId || unidad?.id || "";
     try {
-      const id = existing?.id ?? `SEG-${(unidad?.id ?? form.noEconomico)}-${Date.now()}`;
+      const id = existing?.id ?? `SEG-${(resolvedUnidadId || form.noEconomico || Date.now())}-${Date.now()}`;
       await onSave({
         id,
-        unidadId: unidad?.id ?? "",
+        unidadId: resolvedUnidadId,
         tipoUnidad: form.tipoUnidad,
         noEconomico: form.noEconomico.trim(),
         placa: form.placa.trim(),
@@ -259,8 +283,8 @@ function FormDrawer({
         statusPoliza: form.statusPoliza,
         vigenciaInicio: form.vigenciaInicio,
         vigenciaFin: form.vigenciaFin,
-        costoPoliza: form.costoPoliza ? parseFloat(form.costoPoliza.replace(/,/g,"")) : null,
-        valorMercado: form.valorMercado ? parseFloat(form.valorMercado.replace(/,/g,"")) : null,
+        costoPoliza: form.costoPoliza ? parseFloat(form.costoPoliza.replace(/,/g, "")) : null,
+        valorMercado: form.valorMercado ? parseFloat(form.valorMercado.replace(/,/g, "")) : null,
         tenencia: form.tenencia.trim(),
         agente: form.agente.trim(),
         observaciones: form.observaciones.trim(),
@@ -273,6 +297,8 @@ function FormDrawer({
 
   if (!open) return null;
 
+  const selectedUnidad = unidadesList.find((u) => u.id === selectedUnidadId);
+
   return (
     <div className="fixed inset-0 z-[100] flex">
       <button className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} aria-label="Cerrar" />
@@ -284,10 +310,12 @@ function FormDrawer({
           </div>
           <div>
             <h2 className="text-sm font-semibold text-gray-900">
-              {existing ? "Editar registro" : "Registrar seguro"}
+              {existing ? "Editar póliza" : "Registrar seguro"}
             </h2>
             <p className="text-xs text-gray-500">
-              {unidad ? `${unidad.noEconomico} · ${unidad.placa} · ${unidad.marca} ${unidad.modelo}` : "Nueva unidad"}
+              {selectedUnidad
+                ? `${selectedUnidad.noEconomico} · ${selectedUnidad.placa} · ${selectedUnidad.marca} ${selectedUnidad.modelo}`
+                : "Selecciona una unidad o captura manualmente"}
             </p>
           </div>
           <button onClick={onClose} className="ml-auto rounded-xl p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors">
@@ -298,61 +326,112 @@ function FormDrawer({
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
 
-          {/* Identificación */}
-          <Sec title="Identificación de la unidad" />
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={lbl}>Tipo de unidad</label>
-              <select value={form.tipoUnidad} onChange={(e) => set("tipoUnidad", e.target.value)} className={inp}>
-                {TIPOS_UNIDAD.map((t) => <option key={t}>{t}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className={lbl}>No. Económico</label>
-              <input type="text" value={form.noEconomico} onChange={(e) => set("noEconomico", e.target.value)} placeholder="105" className={inp} />
-            </div>
-            <div>
-              <label className={lbl}>Placa <span className="text-[#CC2229]">*</span></label>
-              <input type="text" value={form.placa} onChange={(e) => set("placa", e.target.value.toUpperCase())} placeholder="HF5589F" className={inp} />
-            </div>
-            <div>
-              <label className={lbl}>Estado placa</label>
-              <select value={form.estadoPlaca} onChange={(e) => set("estadoPlaca", e.target.value)} className={inp}>
-                {ESTADOS_MX.map((e) => <option key={e}>{e}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className={lbl}>Marca <span className="text-[#CC2229]">*</span></label>
-              <input type="text" value={form.marca} onChange={(e) => set("marca", e.target.value)} placeholder="KENWORTH" className={inp} />
-            </div>
-            <div>
-              <label className={lbl}>Modelo</label>
-              <input type="text" value={form.modelo} onChange={(e) => set("modelo", e.target.value)} placeholder="T-460" className={inp} />
-            </div>
-            <div>
-              <label className={lbl}># Serie</label>
-              <input type="text" value={form.noSerie} onChange={(e) => set("noSerie", e.target.value)} placeholder="3BKBL50X4BF830114" className={inp} />
-            </div>
-            <div>
-              <label className={lbl}>Año</label>
-              <input type="number" min="1950" max="2030" value={form.anio} onChange={(e) => set("anio", e.target.value)} placeholder="2021" className={inp} />
-            </div>
-            <div>
-              <label className={lbl}>Color</label>
-              <input type="text" value={form.color} onChange={(e) => set("color", e.target.value)} placeholder="BLANCO" className={inp} />
-            </div>
-            <div>
-              <label className={lbl}>Motor</label>
-              <input type="text" value={form.motor} onChange={(e) => set("motor", e.target.value)} placeholder="ISL CUMMINS" className={inp} />
-            </div>
+          {/* Unidad selector */}
+          <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 space-y-2">
+            <label className={lbl}>Unidad registrada en el sistema</label>
+            <select
+              value={selectedUnidadId}
+              onChange={(e) => handleUnitSelect(e.target.value)}
+              className={inp}
+            >
+              <option value="">— Seleccionar unidad —</option>
+              {unidadesList.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.noEconomico} · {u.placa} · {u.marca} {u.modelo}
+                </option>
+              ))}
+            </select>
+            {selectedUnidadId && (
+              <p className="text-[11px] text-gray-500">
+                Los datos de la unidad se cargaron automáticamente. Completa solo los campos del seguro.
+              </p>
+            )}
+            {!selectedUnidadId && (
+              <p className="text-[11px] text-gray-400">
+                Si no aparece, agrégala en Transporte → Unidades o captura los datos manualmente abajo.
+              </p>
+            )}
           </div>
+
+          {/* Identificación — collapsed summary when unit selected, expanded otherwise */}
+          {selectedUnidadId ? (
+            <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 grid grid-cols-2 gap-x-6 gap-y-1">
+              {[
+                ["Tipo", form.tipoUnidad],
+                ["No. Eco.", form.noEconomico],
+                ["Placa", form.placa],
+                ["Estado", form.estadoPlaca],
+                ["Marca", form.marca],
+                ["Modelo", form.modelo],
+                ["Año", form.anio],
+                ["Color", form.color],
+                ["# Serie", form.noSerie],
+                ["Motor", form.motor],
+              ].map(([label, value]) => value ? (
+                <div key={label} className="flex items-baseline gap-1.5">
+                  <span className="text-[10px] uppercase tracking-wider text-gray-400 shrink-0">{label}</span>
+                  <span className="text-xs text-gray-700 truncate">{value}</span>
+                </div>
+              ) : null)}
+            </div>
+          ) : (
+            <>
+              <Sec title="Identificación de la unidad" />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={lbl}>Tipo de unidad</label>
+                  <select value={form.tipoUnidad} onChange={(e) => set("tipoUnidad", e.target.value)} className={inp}>
+                    {TIPOS_UNIDAD.map((t) => <option key={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={lbl}>No. Económico</label>
+                  <input type="text" value={form.noEconomico} onChange={(e) => set("noEconomico", e.target.value)} className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Placa <span className="text-[#CC2229]">*</span></label>
+                  <input type="text" value={form.placa} onChange={(e) => set("placa", e.target.value.toUpperCase())} className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Estado placa</label>
+                  <select value={form.estadoPlaca} onChange={(e) => set("estadoPlaca", e.target.value)} className={inp}>
+                    {ESTADOS_MX.map((e) => <option key={e}>{e}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={lbl}>Marca <span className="text-[#CC2229]">*</span></label>
+                  <input type="text" value={form.marca} onChange={(e) => set("marca", e.target.value)} className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Modelo</label>
+                  <input type="text" value={form.modelo} onChange={(e) => set("modelo", e.target.value)} className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}># Serie</label>
+                  <input type="text" value={form.noSerie} onChange={(e) => set("noSerie", e.target.value)} className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Año</label>
+                  <input type="number" min="1950" max="2030" value={form.anio} onChange={(e) => set("anio", e.target.value)} className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Color</label>
+                  <input type="text" value={form.color} onChange={(e) => set("color", e.target.value)} className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Motor</label>
+                  <input type="text" value={form.motor} onChange={(e) => set("motor", e.target.value)} className={inp} />
+                </div>
+              </div>
+            </>
+          )}
 
           {/* Tarjeta de Circulación */}
           <Sec title="Tarjeta de circulación" />
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={lbl}>No. Tarjeta de circulación</label>
-              <input type="text" value={form.noTarjetaCirculacion} onChange={(e) => set("noTarjetaCirculacion", e.target.value)} placeholder="73129699" className={inp} />
+              <input type="text" value={form.noTarjetaCirculacion} onChange={(e) => set("noTarjetaCirculacion", e.target.value)} className={inp} />
             </div>
             <div>
               <label className={lbl}>Vigencia TC</label>
@@ -365,11 +444,11 @@ function FormDrawer({
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
               <label className={lbl}>Aseguradora / Agente</label>
-              <input type="text" value={form.aseguradora} onChange={(e) => set("aseguradora", e.target.value)} placeholder="QUALYTAS CARLOS CONTRERAS 1700069536" className={inp} />
+              <input type="text" value={form.aseguradora} onChange={(e) => set("aseguradora", e.target.value)} className={inp} />
             </div>
             <div>
               <label className={lbl}>No. Póliza</label>
-              <input type="text" value={form.noPoliza} onChange={(e) => set("noPoliza", e.target.value)} placeholder="640698167-1" className={inp} />
+              <input type="text" value={form.noPoliza} onChange={(e) => set("noPoliza", e.target.value)} className={inp} />
             </div>
             <div>
               <label className={lbl}>Status póliza</label>
@@ -387,26 +466,26 @@ function FormDrawer({
             </div>
             <div>
               <label className={lbl}>Costo póliza $</label>
-              <input type="text" value={form.costoPoliza} onChange={(e) => set("costoPoliza", e.target.value)} placeholder="12,886.46" className={inp} />
+              <input type="text" value={form.costoPoliza} onChange={(e) => set("costoPoliza", e.target.value)} className={inp} />
             </div>
             <div>
               <label className={lbl}>Valor mercado $</label>
-              <input type="text" value={form.valorMercado} onChange={(e) => set("valorMercado", e.target.value)} placeholder="1,000,000" className={inp} />
+              <input type="text" value={form.valorMercado} onChange={(e) => set("valorMercado", e.target.value)} className={inp} />
             </div>
             <div>
               <label className={lbl}>Tenencia (año)</label>
-              <input type="text" value={form.tenencia} onChange={(e) => set("tenencia", e.target.value)} placeholder="2026" className={inp} />
+              <input type="text" value={form.tenencia} onChange={(e) => set("tenencia", e.target.value)} className={inp} />
             </div>
             <div>
               <label className={lbl}>Agente / Contacto</label>
-              <input type="text" value={form.agente} onChange={(e) => set("agente", e.target.value)} placeholder="Nombre del agente" className={inp} />
+              <input type="text" value={form.agente} onChange={(e) => set("agente", e.target.value)} className={inp} />
             </div>
           </div>
 
           {/* Observaciones */}
           <div>
             <label className={lbl}>Observaciones</label>
-            <textarea rows={2} value={form.observaciones} onChange={(e) => set("observaciones", e.target.value)} placeholder="FUERA DE SERVICIO · PROCESO DE CANCELACIÓN…" className={`${inp} resize-none`} />
+            <textarea rows={2} value={form.observaciones} onChange={(e) => set("observaciones", e.target.value)} className={`${inp} resize-none`} />
           </div>
         </div>
 
@@ -714,6 +793,7 @@ export default function SegurosPage() {
         onSave={handleSave}
         unidad={drawerUnidad}
         existing={drawerExisting}
+        unidadesList={unidades}
       />
     </div>
   );
