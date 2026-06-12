@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
 import { getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
+import { filterByPlanta, withPlantaTag } from "@/lib/auth";
 import type { Cliente } from "@/lib/crmClientes";
 import type { Operador } from "@/lib/operadores";
 
@@ -38,6 +39,7 @@ interface Remision {
   fibra: number | null;
   color: string;
   ligsthone: string;
+  planta?: string;
 }
 
 interface FormState {
@@ -412,7 +414,7 @@ export default function InventarioPage() {
   const [filterMezcla, setFilterMezcla] = useState("Todos");
 
   useEffect(() => {
-    getCollectionDocs<Remision>(COLLECTIONS.remisiones).then(setRemisiones);
+    getCollectionDocs<Remision>(COLLECTIONS.remisiones).then((data) => setRemisiones(filterByPlanta(data)));
     getCollectionDocs<Cliente>(COLLECTIONS.clientes).then((list) =>
       setClientesList(list.map((c) => ({ id: c.id, razonSocial: c.razonSocial, nombreComercial: c.nombreComercial })))
     );
@@ -429,7 +431,7 @@ export default function InventarioPage() {
 
   const handleSave = async (r: Remision) => {
     const id = r.id ?? `rem-${r.noRemision}-${Date.now()}`;
-    await upsertDocument(COLLECTIONS.remisiones, id, { ...r, id: undefined });
+    await upsertDocument(COLLECTIONS.remisiones, id, withPlantaTag({ ...r, id: undefined }));
     setRemisiones((prev) => {
       const idx = prev.findIndex((x) => x.id === r.id);
       const updated = { ...r, id };

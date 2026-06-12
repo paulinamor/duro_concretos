@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
 import { getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
+import { filterByPlanta, withPlantaTag } from "@/lib/auth";
 import type { Unidad } from "@/lib/unidades";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -43,6 +44,7 @@ interface Seguro {
   tenencia: string;         // año o "—"
   agente: string;
   observaciones: string;
+  planta?: string;
 }
 
 interface FormState {
@@ -511,8 +513,8 @@ export default function SegurosPage() {
   const [showDrawer, setShowDrawer] = useState(false);
 
   useEffect(() => {
-    getCollectionDocs<Unidad>(COLLECTIONS.unidades).then(setUnidades);
-    getCollectionDocs<Seguro>(COLLECTIONS.seguros).then(setSeguros);
+    getCollectionDocs<Unidad>(COLLECTIONS.unidades).then((data) => setUnidades(filterByPlanta(data)));
+    getCollectionDocs<Seguro>(COLLECTIONS.seguros).then((data) => setSeguros(filterByPlanta(data)));
   }, []);
 
   // Map unidadId → latest seguro (by vigenciaFin desc)
@@ -579,7 +581,7 @@ export default function SegurosPage() {
 
   const handleSave = async (s: Seguro) => {
     const id = s.id!;
-    await upsertDocument(COLLECTIONS.seguros, id, { ...s, id: undefined });
+    await upsertDocument(COLLECTIONS.seguros, id, withPlantaTag({ ...s, id: undefined }));
     setSeguros((prev) => {
       const idx = prev.findIndex((x) => x.id === s.id);
       return idx >= 0 ? prev.map((x, i) => (i === idx ? s : x)) : [...prev, s];

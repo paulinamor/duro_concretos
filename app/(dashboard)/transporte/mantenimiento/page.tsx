@@ -8,6 +8,7 @@ import FormModal from "@/components/FormModal";
 import FormSection from "@/components/FormSection";
 import { getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
 import { type Unidad } from "@/lib/unidades";
+import { filterByPlanta, withPlantaTag } from "@/lib/auth";
 
 interface Mantenimiento {
   fecha: string;
@@ -17,6 +18,7 @@ interface Mantenimiento {
   costo: number;
   taller: string;
   status: string;
+  planta?: string;
 }
 
 interface Refaccion {
@@ -27,6 +29,7 @@ interface Refaccion {
   costoUnit: number;
   total: number;
   proveedor: string;
+  planta?: string;
 }
 
 interface UnidadMantenimiento {
@@ -124,7 +127,7 @@ export default function MantenimientoPage() {
         proveedor: values.Proveedor || "Auto Partes NL",
       };
       setRefacciones((current) => [newRefaccion, ...current]);
-      await upsertDocument(COLLECTIONS.refacciones, Date.now().toString(), newRefaccion);
+      await upsertDocument(COLLECTIONS.refacciones, Date.now().toString(), withPlantaTag(newRefaccion));
       return;
     }
 
@@ -139,7 +142,7 @@ export default function MantenimientoPage() {
       status: values.Status || "Pendiente",
     };
     setMantenimientos((current) => [newMantenimiento, ...current]);
-    await upsertDocument(COLLECTIONS.mantenimientos, Date.now().toString(), newMantenimiento);
+    await upsertDocument(COLLECTIONS.mantenimientos, Date.now().toString(), withPlantaTag(newMantenimiento));
   }
 
   return (

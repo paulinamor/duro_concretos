@@ -128,6 +128,16 @@ export function getActivePlanta(): Planta {
   return session.plantaActiva ?? session.planta ?? "Todas";
 }
 
+export function filterByPlanta<T extends { planta?: string }>(docs: T[]): T[] {
+  const active = getActivePlanta();
+  if (active === "Todas") return docs;
+  return docs.filter((doc) => !doc.planta || doc.planta === active);
+}
+
+export function withPlantaTag<T extends object>(data: T): T & { planta: string } {
+  return { ...data, planta: getActivePlanta() };
+}
+
 export function getDefaultModulesForRole(role: UserRole) {
   if (role === "admin") return "all" as const;
   return [

@@ -15,6 +15,7 @@ export interface Operador {
   fechaIngreso: string;
   estatus: EstatusOperador;
   observaciones: string;
+  planta?: string;
 }
 
 export const operadores: Operador[] = [

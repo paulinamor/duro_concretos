@@ -17,6 +17,7 @@ export interface Unidad {
   tarjetaCirculacion: string;
   verificacion: string;
   observaciones: string;
+  planta?: string;
 }
 
 export const unidades: Unidad[] = [

@@ -23,6 +23,7 @@ import FormSection from "@/components/FormSection";
 import StatusBadge from "@/components/StatusBadge";
 import { licenciasProximas, operadoresActivos, type EstatusOperador, type Operador } from "@/lib/operadores";
 import { type Unidad } from "@/lib/unidades";
+import { filterByPlanta, withPlantaTag } from "@/lib/auth";
 import { COLLECTIONS, deleteDocument, getCollectionDocs, upsertDocument } from "@/lib/db";
 
 const TIPOS_LICENCIA = ["E", "D", "C", "A", "B"];
@@ -43,7 +44,7 @@ export default function OperadoresPage() {
       getCollectionDocs<Operador>(COLLECTIONS.operadores),
       getCollectionDocs<Unidad>(COLLECTIONS.unidades),
     ]).then(([op, u]) => {
-      setOperadores(op);
+      setOperadores(filterByPlanta(op));
       setUnidadesList(u);
     }).finally(() => setLoading(false));
   }, []);
@@ -117,7 +118,7 @@ export default function OperadoresPage() {
         : [next, ...current],
     );
     const { id: _id, ...data } = next;
-    await upsertDocument(COLLECTIONS.operadores, _id, data);
+    await upsertDocument(COLLECTIONS.operadores, _id, withPlantaTag(data));
     setShowForm(false);
     setEditing(null);
   }

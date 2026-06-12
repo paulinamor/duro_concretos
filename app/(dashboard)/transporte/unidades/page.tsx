@@ -20,6 +20,7 @@ import FormSection from "@/components/FormSection";
 import StatusBadge from "@/components/StatusBadge";
 import { capacidadTotalM3, type EstatusUnidad, type Unidad } from "@/lib/unidades";
 import { type Operador } from "@/lib/operadores";
+import { filterByPlanta, withPlantaTag } from "@/lib/auth";
 import { COLLECTIONS, deleteDocument, getCollectionDocs, upsertDocument } from "@/lib/db";
 
 const MARCAS = ["Mercedes-Benz", "Volvo", "Kenworth", "Scania", "Freightliner", "Otra"];
@@ -40,7 +41,7 @@ export default function UnidadesPage() {
       getCollectionDocs<Unidad>(COLLECTIONS.unidades),
       getCollectionDocs<Operador>(COLLECTIONS.operadores),
     ]).then(([u, op]) => {
-      setUnidades(u);
+      setUnidades(filterByPlanta(u));
       setOperadoresList(op);
     }).finally(() => setLoading(false));
   }, []);
@@ -126,7 +127,7 @@ export default function UnidadesPage() {
         : [next, ...current],
     );
     const { id: _id, ...data } = next;
-    await upsertDocument(COLLECTIONS.unidades, _id, data);
+    await upsertDocument(COLLECTIONS.unidades, _id, withPlantaTag(data));
     setShowForm(false);
     setEditing(null);
   }

@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
 import { getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
+import { filterByPlanta, withPlantaTag } from "@/lib/auth";
 import type { Unidad } from "@/lib/unidades";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -49,6 +50,7 @@ interface CargaDiesel {
   sellosNuevo: string;
   lugar: string;
   comentarios: string;
+  planta?: string;
 }
 
 interface FormState {
@@ -647,7 +649,7 @@ export default function DieselPage() {
 
   // Load data
   useEffect(() => {
-    getCollectionDocs<CargaDiesel>(COLLECTIONS.diesel).then(setCargas);
+    getCollectionDocs<CargaDiesel>(COLLECTIONS.diesel).then((data) => setCargas(filterByPlanta(data)));
     getCollectionDocs<Unidad>(COLLECTIONS.unidades).then((list) =>
       setUnidadesList(list.map((u) => u.noEconomico).filter(Boolean)),
     );
@@ -767,7 +769,7 @@ export default function DieselPage() {
     const id = Date.now().toString();
     const withId = { ...carga, id };
     setCargas((prev) => [withId, ...prev]);
-    await upsertDocument(COLLECTIONS.diesel, id, carga);
+    await upsertDocument(COLLECTIONS.diesel, id, withPlantaTag(carga));
   }
 
   return (
