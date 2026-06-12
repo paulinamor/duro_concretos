@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  AlertTriangle, CheckCircle2, Clock, Plus, Search, Shield, ShieldOff, X,
+  AlertTriangle, CheckCircle2, Clock, Download, Plus, Search,
+  Shield, ShieldOff, X,
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
 import { getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
@@ -10,28 +11,61 @@ import type { Unidad } from "@/lib/unidades";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+type StatusPoliza =
+  | "Condicionada" | "Indefinida" | "Renovada"
+  | "Con financiera" | "Sin seguro" | "Cotizar" | "Cancelada";
+
 interface Seguro {
   id?: string;
+  // Identificación de unidad (denormalizado para rapidez)
   unidadId: string;
+  tipoUnidad: string;       // REVOLVEDORA, BOMBA, TRACTOCAMION, VOLTEO, VEHICULO…
   noEconomico: string;
   placa: string;
+  estadoPlaca: string;
+  marca: string;
+  modelo: string;
+  noSerie: string;
+  anio: number | null;
+  color: string;
+  motor: string;
+  // Tarjeta de circulación
+  noTarjetaCirculacion: string;
+  vigenciaTarjetaCirculacion: string; // ISO yyyy-mm-dd
+  // Póliza de seguro
   aseguradora: string;
   noPoliza: string;
-  tipoCobertura: string;
-  vigenciaInicio: string;  // yyyy-mm-dd
-  vigenciaFin: string;     // yyyy-mm-dd
-  primaNeta: number | null;
+  statusPoliza: StatusPoliza;
+  vigenciaInicio: string;   // ISO yyyy-mm-dd
+  vigenciaFin: string;      // ISO yyyy-mm-dd
+  costoPoliza: number | null;
+  valorMercado: number | null;
+  tenencia: string;         // año o "—"
   agente: string;
   observaciones: string;
 }
 
 interface FormState {
+  tipoUnidad: string;
+  noEconomico: string;
+  placa: string;
+  estadoPlaca: string;
+  marca: string;
+  modelo: string;
+  noSerie: string;
+  anio: string;
+  color: string;
+  motor: string;
+  noTarjetaCirculacion: string;
+  vigenciaTarjetaCirculacion: string;
   aseguradora: string;
   noPoliza: string;
-  tipoCobertura: string;
+  statusPoliza: StatusPoliza;
   vigenciaInicio: string;
   vigenciaFin: string;
-  primaNeta: string;
+  costoPoliza: string;
+  valorMercado: string;
+  tenencia: string;
   agente: string;
   observaciones: string;
 }
@@ -40,16 +74,29 @@ type VigenciaStatus = "vigente" | "por_vencer" | "vencido" | "sin_registro";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const COBERTURAS = ["Amplia", "Limitada", "Responsabilidad civil", "Daños a terceros"];
+const TIPOS_UNIDAD = [
+  "Revolvedora", "Bomba", "Tractocamión", "Volteo", "Vehículo",
+  "Maquinaria", "Remolque", "Plataforma", "Otro",
+];
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
+const STATUS_POLIZA_OPTS: StatusPoliza[] = [
+  "Condicionada", "Indefinida", "Renovada", "Con financiera",
+  "Sin seguro", "Cotizar", "Cancelada",
+];
+
+const ESTADOS_MX = [
+  "Aguascalientes","Baja California","Baja California Sur","Campeche","Chiapas",
+  "Chihuahua","Ciudad de México","Coahuila","Colima","Durango","Guanajuato",
+  "Guerrero","Hidalgo","Jalisco","México","Michoacán","Morelos","Nayarit",
+  "Nuevo León","Oaxaca","Puebla","Querétaro","Quintana Roo","San Luis Potosí",
+  "Sinaloa","Sonora","Tabasco","Tamaulipas","Tlaxcala","Veracruz","Yucatán","Zacatecas",
+];
+
+function todayISO() { return new Date().toISOString().slice(0, 10); }
 
 function vigenciaStatus(fechaFin: string | undefined): VigenciaStatus {
   if (!fechaFin) return "sin_registro";
-  const hoy = new Date();
-  hoy.setHours(0, 0, 0, 0);
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
   const fin = new Date(fechaFin + "T00:00:00");
   const diff = (fin.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24);
   if (diff < 0) return "vencido";
@@ -58,29 +105,112 @@ function vigenciaStatus(fechaFin: string | undefined): VigenciaStatus {
 }
 
 function diasRestantes(fechaFin: string) {
-  const hoy = new Date();
-  hoy.setHours(0, 0, 0, 0);
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
   const fin = new Date(fechaFin + "T00:00:00");
   return Math.ceil((fin.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
 }
 
-function emptyForm(): FormState {
+function emptyForm(u?: Unidad): FormState {
   return {
-    aseguradora: "", noPoliza: "", tipoCobertura: "Amplia",
-    vigenciaInicio: todayISO(), vigenciaFin: "",
-    primaNeta: "", agente: "", observaciones: "",
+    tipoUnidad: "Revolvedora",
+    noEconomico: u?.noEconomico ?? "",
+    placa: u?.placa ?? "",
+    estadoPlaca: "Nuevo León",
+    marca: u?.marca ?? "",
+    modelo: u?.modelo ?? "",
+    noSerie: "",
+    anio: u?.anio ? String(u.anio) : "",
+    color: "",
+    motor: "",
+    noTarjetaCirculacion: u?.tarjetaCirculacion ?? "",
+    vigenciaTarjetaCirculacion: "",
+    aseguradora: "",
+    noPoliza: "",
+    statusPoliza: "Condicionada",
+    vigenciaInicio: todayISO(),
+    vigenciaFin: "",
+    costoPoliza: "",
+    valorMercado: "",
+    tenencia: "",
+    agente: "",
+    observaciones: "",
   };
 }
 
-const STATUS_CONFIG: Record<VigenciaStatus, { label: string; cls: string }> = {
+function formFromSeguro(s: Seguro): FormState {
+  return {
+    tipoUnidad: s.tipoUnidad,
+    noEconomico: s.noEconomico,
+    placa: s.placa,
+    estadoPlaca: s.estadoPlaca,
+    marca: s.marca,
+    modelo: s.modelo,
+    noSerie: s.noSerie,
+    anio: s.anio != null ? String(s.anio) : "",
+    color: s.color,
+    motor: s.motor,
+    noTarjetaCirculacion: s.noTarjetaCirculacion,
+    vigenciaTarjetaCirculacion: s.vigenciaTarjetaCirculacion,
+    aseguradora: s.aseguradora,
+    noPoliza: s.noPoliza,
+    statusPoliza: s.statusPoliza,
+    vigenciaInicio: s.vigenciaInicio,
+    vigenciaFin: s.vigenciaFin,
+    costoPoliza: s.costoPoliza != null ? String(s.costoPoliza) : "",
+    valorMercado: s.valorMercado != null ? String(s.valorMercado) : "",
+    tenencia: s.tenencia,
+    agente: s.agente,
+    observaciones: s.observaciones,
+  };
+}
+
+function exportCSV(rows: Seguro[]) {
+  const headers = [
+    "TIPO","NO.ECO","PLACA","ESTADO","MARCA","MODELO","SERIE","AÑO","COLOR","MOTOR",
+    "NO.TC","VIGENCIA TC","ASEGURADORA","NO.POLIZA","STATUS POLIZA",
+    "VIGENCIA INI","VIGENCIA FIN","DIAS","COSTO POLIZA","VALOR MERCADO","TENENCIA","AGENTE","OBSERVACIONES",
+  ];
+  const today = new Date(); today.setHours(0,0,0,0);
+  const lines = rows.map((s) => {
+    const dias = s.vigenciaFin
+      ? Math.ceil((new Date(s.vigenciaFin+"T00:00:00").getTime()-today.getTime())/(1000*60*60*24))
+      : "";
+    return [
+      s.tipoUnidad, s.noEconomico, s.placa, s.estadoPlaca, s.marca, s.modelo,
+      s.noSerie, s.anio??'', s.color, s.motor,
+      s.noTarjetaCirculacion, s.vigenciaTarjetaCirculacion,
+      s.aseguradora, s.noPoliza, s.statusPoliza,
+      s.vigenciaInicio, s.vigenciaFin, dias,
+      s.costoPoliza??'', s.valorMercado??'', s.tenencia, s.agente, s.observaciones,
+    ].map((v) => `"${v}"`).join(",");
+  });
+  const blob = new Blob(["﻿"+[headers.join(","), ...lines].join("\n")], { type: "text/csv" });
+  const a = Object.assign(document.createElement("a"), {
+    href: URL.createObjectURL(blob), download: "seguros-flota.csv",
+  });
+  a.click();
+}
+
+const STATUS_VIG: Record<VigenciaStatus, { label: string; cls: string }> = {
   vigente:      { label: "Vigente",      cls: "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" },
-  por_vencer:   { label: "Por vencer",   cls: "bg-amber-500/10 border-amber-500/30 text-amber-400" },
-  vencido:      { label: "Vencido",      cls: "bg-red-500/10 border-red-500/30 text-red-400" },
-  sin_registro: { label: "Sin registro", cls: "bg-gray-500/10 border-gray-500/30 text-gray-500" },
+  por_vencer:   { label: "Por vencer",   cls: "bg-amber-500/10  border-amber-500/30  text-amber-400"   },
+  vencido:      { label: "Vencido",      cls: "bg-red-500/10    border-red-500/30    text-red-400"     },
+  sin_registro: { label: "Sin registro", cls: "bg-gray-500/10   border-gray-500/30   text-gray-500"    },
 };
 
 const lbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5";
 const inp = "w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-900 text-sm placeholder-gray-400 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors";
+
+// ─── Section divider helper ───────────────────────────────────────────────────
+
+function Sec({ title }: { title: string }) {
+  return (
+    <div className="flex items-center gap-3 pt-1">
+      <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 whitespace-nowrap">{title}</span>
+      <span className="h-px flex-1 bg-gray-100" />
+    </div>
+  );
+}
 
 // ─── FormDrawer ───────────────────────────────────────────────────────────────
 
@@ -93,45 +223,45 @@ function FormDrawer({
   unidad: Unidad | null;
   existing?: Seguro;
 }) {
-  const [form, setForm] = useState<FormState>(emptyForm);
+  const [form, setForm] = useState<FormState>(() => emptyForm(unidad ?? undefined));
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (open) {
-      if (existing) {
-        setForm({
-          aseguradora: existing.aseguradora,
-          noPoliza: existing.noPoliza,
-          tipoCobertura: existing.tipoCobertura,
-          vigenciaInicio: existing.vigenciaInicio,
-          vigenciaFin: existing.vigenciaFin,
-          primaNeta: existing.primaNeta != null ? String(existing.primaNeta) : "",
-          agente: existing.agente,
-          observaciones: existing.observaciones,
-        });
-      } else {
-        setForm(emptyForm());
-      }
+      setForm(existing ? formFromSeguro(existing) : emptyForm(unidad ?? undefined));
     }
-  }, [open, existing]);
+  }, [open, existing, unidad]);
 
   const set = (k: keyof FormState, v: string) => setForm((p) => ({ ...p, [k]: v }));
 
-  const handleSave = async () => {
-    if (!unidad || !form.aseguradora.trim() || !form.noPoliza.trim() || !form.vigenciaFin) return;
+  async function handleSave() {
+    if (!form.placa.trim() || !form.marca.trim()) return;
     setSaving(true);
     try {
+      const id = existing?.id ?? `SEG-${(unidad?.id ?? form.noEconomico)}-${Date.now()}`;
       await onSave({
-        id: existing?.id,
-        unidadId: unidad.id,
-        noEconomico: unidad.noEconomico,
-        placa: unidad.placa,
+        id,
+        unidadId: unidad?.id ?? "",
+        tipoUnidad: form.tipoUnidad,
+        noEconomico: form.noEconomico.trim(),
+        placa: form.placa.trim(),
+        estadoPlaca: form.estadoPlaca,
+        marca: form.marca.trim(),
+        modelo: form.modelo.trim(),
+        noSerie: form.noSerie.trim(),
+        anio: form.anio ? parseInt(form.anio) : null,
+        color: form.color.trim(),
+        motor: form.motor.trim(),
+        noTarjetaCirculacion: form.noTarjetaCirculacion.trim(),
+        vigenciaTarjetaCirculacion: form.vigenciaTarjetaCirculacion,
         aseguradora: form.aseguradora.trim(),
         noPoliza: form.noPoliza.trim(),
-        tipoCobertura: form.tipoCobertura,
+        statusPoliza: form.statusPoliza,
         vigenciaInicio: form.vigenciaInicio,
         vigenciaFin: form.vigenciaFin,
-        primaNeta: form.primaNeta ? parseFloat(form.primaNeta) : null,
+        costoPoliza: form.costoPoliza ? parseFloat(form.costoPoliza.replace(/,/g,"")) : null,
+        valorMercado: form.valorMercado ? parseFloat(form.valorMercado.replace(/,/g,"")) : null,
+        tenencia: form.tenencia.trim(),
         agente: form.agente.trim(),
         observaciones: form.observaciones.trim(),
       });
@@ -139,14 +269,14 @@ function FormDrawer({
     } finally {
       setSaving(false);
     }
-  };
+  }
 
-  if (!open || !unidad) return null;
+  if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-[100] flex">
       <button className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} aria-label="Cerrar" />
-      <div className="relative ml-auto flex h-full w-full max-w-lg flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden">
+      <div className="relative ml-auto flex h-full w-full max-w-xl flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-4 shrink-0">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#CC2229]/10 text-[#CC2229]">
@@ -154,10 +284,10 @@ function FormDrawer({
           </div>
           <div>
             <h2 className="text-sm font-semibold text-gray-900">
-              {existing ? "Editar póliza" : "Registrar seguro"}
+              {existing ? "Editar registro" : "Registrar seguro"}
             </h2>
             <p className="text-xs text-gray-500">
-              {unidad.noEconomico} · {unidad.placa} · {unidad.marca} {unidad.modelo}
+              {unidad ? `${unidad.noEconomico} · ${unidad.placa} · ${unidad.marca} ${unidad.modelo}` : "Nueva unidad"}
             </p>
           </div>
           <button onClick={onClose} className="ml-auto rounded-xl p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors">
@@ -166,71 +296,117 @@ function FormDrawer({
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+
+          {/* Identificación */}
+          <Sec title="Identificación de la unidad" />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={lbl}>Tipo de unidad</label>
+              <select value={form.tipoUnidad} onChange={(e) => set("tipoUnidad", e.target.value)} className={inp}>
+                {TIPOS_UNIDAD.map((t) => <option key={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={lbl}>No. Económico</label>
+              <input type="text" value={form.noEconomico} onChange={(e) => set("noEconomico", e.target.value)} placeholder="105" className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Placa <span className="text-[#CC2229]">*</span></label>
+              <input type="text" value={form.placa} onChange={(e) => set("placa", e.target.value.toUpperCase())} placeholder="HF5589F" className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Estado placa</label>
+              <select value={form.estadoPlaca} onChange={(e) => set("estadoPlaca", e.target.value)} className={inp}>
+                {ESTADOS_MX.map((e) => <option key={e}>{e}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={lbl}>Marca <span className="text-[#CC2229]">*</span></label>
+              <input type="text" value={form.marca} onChange={(e) => set("marca", e.target.value)} placeholder="KENWORTH" className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Modelo</label>
+              <input type="text" value={form.modelo} onChange={(e) => set("modelo", e.target.value)} placeholder="T-460" className={inp} />
+            </div>
+            <div>
+              <label className={lbl}># Serie</label>
+              <input type="text" value={form.noSerie} onChange={(e) => set("noSerie", e.target.value)} placeholder="3BKBL50X4BF830114" className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Año</label>
+              <input type="number" min="1950" max="2030" value={form.anio} onChange={(e) => set("anio", e.target.value)} placeholder="2021" className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Color</label>
+              <input type="text" value={form.color} onChange={(e) => set("color", e.target.value)} placeholder="BLANCO" className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Motor</label>
+              <input type="text" value={form.motor} onChange={(e) => set("motor", e.target.value)} placeholder="ISL CUMMINS" className={inp} />
+            </div>
+          </div>
+
+          {/* Tarjeta de Circulación */}
+          <Sec title="Tarjeta de circulación" />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={lbl}>No. Tarjeta de circulación</label>
+              <input type="text" value={form.noTarjetaCirculacion} onChange={(e) => set("noTarjetaCirculacion", e.target.value)} placeholder="73129699" className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Vigencia TC</label>
+              <input type="date" value={form.vigenciaTarjetaCirculacion} onChange={(e) => set("vigenciaTarjetaCirculacion", e.target.value)} className={inp} />
+            </div>
+          </div>
+
           {/* Póliza */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-3">
-              <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 whitespace-nowrap">Póliza</span>
-              <span className="h-px flex-1 bg-gray-100" />
+          <Sec title="Póliza de seguro" />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <label className={lbl}>Aseguradora / Agente</label>
+              <input type="text" value={form.aseguradora} onChange={(e) => set("aseguradora", e.target.value)} placeholder="QUALYTAS CARLOS CONTRERAS 1700069536" className={inp} />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="col-span-2">
-                <label className={lbl}>Aseguradora <span className="text-[#CC2229]">*</span></label>
-                <input type="text" value={form.aseguradora} onChange={(e) => set("aseguradora", e.target.value)} placeholder="GNP, MAPFRE, AXA…" className={inp} />
-              </div>
-              <div>
-                <label className={lbl}>No. Póliza <span className="text-[#CC2229]">*</span></label>
-                <input type="text" value={form.noPoliza} onChange={(e) => set("noPoliza", e.target.value)} placeholder="POL-2026-000001" className={inp} />
-              </div>
-              <div>
-                <label className={lbl}>Tipo de cobertura</label>
-                <select value={form.tipoCobertura} onChange={(e) => set("tipoCobertura", e.target.value)} className={inp}>
-                  {COBERTURAS.map((c) => <option key={c}>{c}</option>)}
-                </select>
-              </div>
+            <div>
+              <label className={lbl}>No. Póliza</label>
+              <input type="text" value={form.noPoliza} onChange={(e) => set("noPoliza", e.target.value)} placeholder="640698167-1" className={inp} />
             </div>
-          </div>
-
-          {/* Vigencia */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-3">
-              <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 whitespace-nowrap">Vigencia</span>
-              <span className="h-px flex-1 bg-gray-100" />
+            <div>
+              <label className={lbl}>Status póliza</label>
+              <select value={form.statusPoliza} onChange={(e) => set("statusPoliza", e.target.value as StatusPoliza)} className={inp}>
+                {STATUS_POLIZA_OPTS.map((s) => <option key={s}>{s}</option>)}
+              </select>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className={lbl}>Inicio</label>
-                <input type="date" value={form.vigenciaInicio} onChange={(e) => set("vigenciaInicio", e.target.value)} className={inp} />
-              </div>
-              <div>
-                <label className={lbl}>Vencimiento <span className="text-[#CC2229]">*</span></label>
-                <input type="date" value={form.vigenciaFin} onChange={(e) => set("vigenciaFin", e.target.value)} className={inp} />
-              </div>
+            <div>
+              <label className={lbl}>Vigencia inicio</label>
+              <input type="date" value={form.vigenciaInicio} onChange={(e) => set("vigenciaInicio", e.target.value)} className={inp} />
             </div>
-          </div>
-
-          {/* Financiero */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-3">
-              <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 whitespace-nowrap">Datos financieros</span>
-              <span className="h-px flex-1 bg-gray-100" />
+            <div>
+              <label className={lbl}>Vigencia fin</label>
+              <input type="date" value={form.vigenciaFin} onChange={(e) => set("vigenciaFin", e.target.value)} className={inp} />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className={lbl}>Prima neta $</label>
-                <input type="number" step="0.01" min="0" value={form.primaNeta} onChange={(e) => set("primaNeta", e.target.value)} placeholder="0.00" className={inp} />
-              </div>
-              <div>
-                <label className={lbl}>Agente / Broker</label>
-                <input type="text" value={form.agente} onChange={(e) => set("agente", e.target.value)} placeholder="Nombre del agente" className={inp} />
-              </div>
+            <div>
+              <label className={lbl}>Costo póliza $</label>
+              <input type="text" value={form.costoPoliza} onChange={(e) => set("costoPoliza", e.target.value)} placeholder="12,886.46" className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Valor mercado $</label>
+              <input type="text" value={form.valorMercado} onChange={(e) => set("valorMercado", e.target.value)} placeholder="1,000,000" className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Tenencia (año)</label>
+              <input type="text" value={form.tenencia} onChange={(e) => set("tenencia", e.target.value)} placeholder="2026" className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Agente / Contacto</label>
+              <input type="text" value={form.agente} onChange={(e) => set("agente", e.target.value)} placeholder="Nombre del agente" className={inp} />
             </div>
           </div>
 
           {/* Observaciones */}
           <div>
             <label className={lbl}>Observaciones</label>
-            <textarea rows={2} value={form.observaciones} onChange={(e) => set("observaciones", e.target.value)} placeholder="Notas adicionales…" className={`${inp} resize-none`} />
+            <textarea rows={2} value={form.observaciones} onChange={(e) => set("observaciones", e.target.value)} placeholder="FUERA DE SERVICIO · PROCESO DE CANCELACIÓN…" className={`${inp} resize-none`} />
           </div>
         </div>
 
@@ -241,11 +417,11 @@ function FormDrawer({
           </button>
           <button
             onClick={handleSave}
-            disabled={saving || !form.aseguradora.trim() || !form.noPoliza.trim() || !form.vigenciaFin}
+            disabled={saving || !form.placa.trim() || !form.marca.trim()}
             className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-xl transition-colors disabled:opacity-60 shadow-lg shadow-[#CC2229]/20"
           >
             <Shield size={14} />
-            {saving ? "Guardando…" : "Guardar póliza"}
+            {saving ? "Guardando…" : "Guardar registro"}
           </button>
         </div>
       </div>
@@ -260,6 +436,7 @@ export default function SegurosPage() {
   const [seguros, setSeguros] = useState<Seguro[]>([]);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<VigenciaStatus | "todos">("todos");
+  const [filterTipo, setFilterTipo] = useState("Todos");
   const [drawerUnidad, setDrawerUnidad] = useState<Unidad | null>(null);
   const [drawerExisting, setDrawerExisting] = useState<Seguro | undefined>();
   const [showDrawer, setShowDrawer] = useState(false);
@@ -269,59 +446,78 @@ export default function SegurosPage() {
     getCollectionDocs<Seguro>(COLLECTIONS.seguros).then(setSeguros);
   }, []);
 
-  // Map unidadId → latest seguro
+  // Map unidadId → latest seguro (by vigenciaFin desc)
   const seguroByUnidad = useMemo(() => {
     const map = new Map<string, Seguro>();
     seguros.forEach((s) => {
-      const existing = map.get(s.unidadId);
-      if (!existing || s.vigenciaFin > existing.vigenciaFin) map.set(s.unidadId, s);
+      const ex = map.get(s.unidadId);
+      if (!ex || (s.vigenciaFin || "") > (ex.vigenciaFin || "")) map.set(s.unidadId, s);
     });
     return map;
   }, [seguros]);
 
-  // Merged rows: one per unit
+  // Standalone seguros (no matching unidad in DB — imported from Excel)
+  const standaloneIds = useMemo(() => {
+    const unitIds = new Set(unidades.map((u) => u.id));
+    return seguros.filter((s) => s.unidadId && !unitIds.has(s.unidadId)).map((s) => s.id);
+  }, [seguros, unidades]);
+
+  // Merged rows
   const rows = useMemo(() => {
-    return unidades.map((u) => ({
+    const fromUnidades = unidades.map((u) => ({
       unidad: u,
       seguro: seguroByUnidad.get(u.id),
       status: vigenciaStatus(seguroByUnidad.get(u.id)?.vigenciaFin),
     }));
-  }, [unidades, seguroByUnidad]);
+    // Also include standalone seguros (e.g. imported that have no unidad doc)
+    const extra = seguros
+      .filter((s) => standaloneIds.includes(s.id))
+      .map((s) => ({
+        unidad: null as unknown as Unidad,
+        seguro: s,
+        status: vigenciaStatus(s.vigenciaFin),
+      }));
+    return [...fromUnidades, ...extra];
+  }, [unidades, seguroByUnidad, seguros, standaloneIds]);
 
-  // Filtered
+  const tipos = useMemo(() => {
+    const set = new Set(seguros.map((s) => s.tipoUnidad).filter(Boolean));
+    return ["Todos", ...Array.from(set).sort()];
+  }, [seguros]);
+
   const filtered = useMemo(() => {
     let list = rows;
     if (filterStatus !== "todos") list = list.filter((r) => r.status === filterStatus);
+    if (filterTipo !== "Todos") list = list.filter((r) => r.seguro?.tipoUnidad === filterTipo);
     if (search) {
       const q = search.toLowerCase();
       list = list.filter((r) =>
-        r.unidad.noEconomico.toLowerCase().includes(q) ||
-        r.unidad.placa.toLowerCase().includes(q) ||
-        r.unidad.marca.toLowerCase().includes(q) ||
+        (r.unidad?.noEconomico ?? r.seguro?.noEconomico ?? "").toLowerCase().includes(q) ||
+        (r.unidad?.placa ?? r.seguro?.placa ?? "").toLowerCase().includes(q) ||
+        (r.unidad?.marca ?? r.seguro?.marca ?? "").toLowerCase().includes(q) ||
         (r.seguro?.aseguradora ?? "").toLowerCase().includes(q) ||
-        (r.seguro?.noPoliza ?? "").toLowerCase().includes(q)
+        (r.seguro?.noPoliza ?? "").toLowerCase().includes(q) ||
+        (r.seguro?.agente ?? "").toLowerCase().includes(q)
       );
     }
     return list;
-  }, [rows, filterStatus, search]);
+  }, [rows, filterStatus, filterTipo, search]);
 
-  // KPIs
   const total = rows.length;
   const vigentes = rows.filter((r) => r.status === "vigente").length;
   const porVencer = rows.filter((r) => r.status === "por_vencer").length;
-  const vencidas = rows.filter((r) => r.status === "vencido" || r.status === "sin_registro").length;
+  const sinCob = rows.filter((r) => r.status === "vencido" || r.status === "sin_registro").length;
 
   const handleSave = async (s: Seguro) => {
-    const id = s.id ?? `SEG-${s.unidadId}-${Date.now()}`;
+    const id = s.id!;
     await upsertDocument(COLLECTIONS.seguros, id, { ...s, id: undefined });
-    const withId = { ...s, id };
     setSeguros((prev) => {
       const idx = prev.findIndex((x) => x.id === s.id);
-      return idx >= 0 ? prev.map((x, i) => (i === idx ? withId : x)) : [...prev, withId];
+      return idx >= 0 ? prev.map((x, i) => (i === idx ? s : x)) : [...prev, s];
     });
   };
 
-  function openDrawer(unidad: Unidad, existing?: Seguro) {
+  function openDrawer(unidad: Unidad | null, existing?: Seguro) {
     setDrawerUnidad(unidad);
     setDrawerExisting(existing);
     setShowDrawer(true);
@@ -329,37 +525,56 @@ export default function SegurosPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl font-bold text-white">Seguros de flota</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Pólizas de seguro por unidad · Catálogo maestro</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-white">Seguros de flota</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Catálogo maestro · Pólizas, tarjetas de circulación y valores</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => exportCSV(seguros)}
+            disabled={seguros.length === 0}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-300 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg hover:border-[#CC2229]/60 transition-colors disabled:opacity-40"
+          >
+            <Download size={14} />
+            Exportar CSV
+          </button>
+          <button
+            onClick={() => openDrawer(null)}
+            className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#B01E24] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-[#CC2229]/20"
+          >
+            <Plus size={15} />
+            Nuevo registro
+          </button>
+        </div>
       </div>
 
-      {/* KPI Cards */}
+      {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KPICard title="Unidades en flota" value={String(total)} icon={Shield} iconColor="text-blue-400" />
+        <KPICard title="Unidades registradas" value={String(total)} icon={Shield} iconColor="text-blue-400" />
         <KPICard title="Pólizas vigentes" value={String(vigentes)} icon={CheckCircle2} iconColor="text-emerald-400" iconBg="bg-emerald-500/10" />
-        <KPICard title="Por vencer (≤30 días)" value={String(porVencer)} icon={Clock} iconColor="text-amber-400" iconBg="bg-amber-500/10" />
-        <KPICard title="Vencidas / Sin póliza" value={String(vencidas)} icon={ShieldOff} iconColor="text-red-400" iconBg="bg-red-500/10" />
+        <KPICard title="Por vencer ≤30 días" value={String(porVencer)} icon={Clock} iconColor="text-amber-400" iconBg="bg-amber-500/10" />
+        <KPICard title="Sin cobertura activa" value={String(sinCob)} icon={ShieldOff} iconColor="text-red-400" iconBg="bg-red-500/10" />
       </div>
 
-      {/* Toolbar */}
+      {/* Table */}
       <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
+        {/* Toolbar */}
         <div className="px-5 py-4 border-b border-[#3A3A3A] flex flex-wrap items-center gap-3">
           <div className="relative flex-1 min-w-[200px]">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
             <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Unidad, placa, aseguradora…"
+              value={search} onChange={(e) => setSearch(e.target.value)}
+              placeholder="Placa, No. Eco, aseguradora, agente…"
               className="w-full bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 text-xs rounded-lg pl-7 pr-3 py-1.5 focus:outline-none focus:border-[#CC2229]/60 placeholder-gray-600"
             />
           </div>
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value as VigenciaStatus | "todos")}
-            className="bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[#CC2229]/60"
-          >
+          <select value={filterTipo} onChange={(e) => setFilterTipo(e.target.value)}
+            className="bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[#CC2229]/60">
+            {tipos.map((t) => <option key={t}>{t}</option>)}
+          </select>
+          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as VigenciaStatus | "todos")}
+            className="bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[#CC2229]/60">
             <option value="todos">Todos los estatus</option>
             <option value="vigente">Vigente</option>
             <option value="por_vencer">Por vencer</option>
@@ -369,13 +584,16 @@ export default function SegurosPage() {
           <span className="text-xs text-gray-600 ml-auto">{filtered.length} unidades</span>
         </div>
 
-        {/* Table */}
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-[#1A1A1A]">
-                {["No. Econ.", "Placa", "Unidad", "Aseguradora", "No. Póliza", "Cobertura", "Vigencia inicio", "Vencimiento", "Prima neta", "Estatus", ""].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                {[
+                  "Tipo","No. Eco.","Placa","Marca / Modelo","No. T.C.","Vence TC",
+                  "Aseguradora / Agente","No. Póliza","Status póliza",
+                  "Vence póliza","Días","Costo póliza","Valor mercado","Tenencia","",
+                ].map((h) => (
+                  <th key={h} className="px-3 py-3 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
                     {h}
                   </th>
                 ))}
@@ -384,71 +602,89 @@ export default function SegurosPage() {
             <tbody className="divide-y divide-[#2A2A2A]">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-12 text-center text-sm text-gray-600">
-                    No hay unidades que coincidan.
+                  <td colSpan={15} className="px-4 py-12 text-center text-sm text-gray-600">
+                    Sin registros.
                   </td>
                 </tr>
               ) : (
                 filtered.map(({ unidad, seguro, status }) => {
-                  const cfg = STATUS_CONFIG[status];
+                  const cfg = STATUS_VIG[status];
                   const dias = seguro?.vigenciaFin ? diasRestantes(seguro.vigenciaFin) : null;
+                  const placa = unidad?.placa ?? seguro?.placa ?? "—";
+                  const marca = unidad?.marca ?? seguro?.marca ?? "—";
+                  const modelo = unidad?.modelo ?? seguro?.modelo ?? "";
+                  const noEco = unidad?.noEconomico ?? seguro?.noEconomico ?? "—";
+                  const tipo = seguro?.tipoUnidad ?? "—";
                   return (
-                    <tr key={unidad.id} className="hover:bg-[#1A1F2B] transition-colors">
-                      <td className="px-4 py-3 text-[#CC2229] font-mono text-xs font-semibold whitespace-nowrap">
-                        {unidad.noEconomico}
+                    <tr key={unidad?.id ?? seguro?.id} className="hover:bg-[#1A1F2B] transition-colors">
+                      <td className="px-3 py-3 text-gray-500 text-xs whitespace-nowrap">{tipo}</td>
+                      <td className="px-3 py-3 text-[#CC2229] font-mono text-xs font-semibold whitespace-nowrap">{noEco}</td>
+                      <td className="px-3 py-3 text-gray-200 text-xs font-mono whitespace-nowrap">{placa}</td>
+                      <td className="px-3 py-3 whitespace-nowrap">
+                        <p className="text-gray-200 text-xs">{marca}</p>
+                        <p className="text-gray-600 text-[11px]">{modelo} {seguro?.anio ? `· ${seguro.anio}` : unidad?.anio ? `· ${unidad.anio}` : ""}</p>
                       </td>
-                      <td className="px-4 py-3 text-gray-300 text-xs font-mono whitespace-nowrap">
-                        {unidad.placa}
+                      <td className="px-3 py-3 text-gray-400 font-mono text-[11px] whitespace-nowrap">
+                        {seguro?.noTarjetaCirculacion || <span className="text-gray-700">—</span>}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <p className="text-gray-200 text-sm">{unidad.marca} {unidad.modelo}</p>
-                        <p className="text-gray-600 text-xs">{unidad.anio}</p>
+                      <td className="px-3 py-3 text-gray-500 text-[11px] whitespace-nowrap">
+                        {seguro?.vigenciaTarjetaCirculacion || <span className="text-gray-700">—</span>}
                       </td>
-                      <td className="px-4 py-3 text-gray-300 text-sm whitespace-nowrap">
-                        {seguro?.aseguradora || <span className="text-gray-600">—</span>}
+                      <td className="px-3 py-3 max-w-[180px]">
+                        <p className="text-gray-200 text-xs truncate">{seguro?.aseguradora || <span className="text-gray-700">—</span>}</p>
+                        {seguro?.agente && <p className="text-gray-600 text-[11px] truncate">{seguro.agente}</p>}
                       </td>
-                      <td className="px-4 py-3 text-gray-400 font-mono text-xs whitespace-nowrap">
-                        {seguro?.noPoliza || <span className="text-gray-600">—</span>}
+                      <td className="px-3 py-3 text-gray-400 font-mono text-[11px] whitespace-nowrap">
+                        {seguro?.noPoliza || <span className="text-gray-700">—</span>}
                       </td>
-                      <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">
-                        {seguro?.tipoCobertura || <span className="text-gray-600">—</span>}
+                      <td className="px-3 py-3 whitespace-nowrap">
+                        {seguro?.statusPoliza ? (
+                          <span className={`text-[11px] font-medium ${
+                            seguro.statusPoliza === "Sin seguro" || seguro.statusPoliza === "Cancelada" ? "text-red-400"
+                            : seguro.statusPoliza === "Cotizar" ? "text-amber-400"
+                            : "text-gray-300"
+                          }`}>{seguro.statusPoliza}</span>
+                        ) : <span className="text-gray-700 text-[11px]">—</span>}
                       </td>
-                      <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
-                        {seguro?.vigenciaInicio || "—"}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
+                      <td className="px-3 py-3 whitespace-nowrap">
                         {seguro?.vigenciaFin ? (
-                          <div>
-                            <p className={`text-xs font-medium ${status === "vencido" ? "text-red-400" : status === "por_vencer" ? "text-amber-400" : "text-gray-300"}`}>
-                              {seguro.vigenciaFin}
-                            </p>
-                            {dias !== null && (
-                              <p className="text-[10px] text-gray-600 mt-0.5">
-                                {dias < 0 ? `Venció hace ${Math.abs(dias)} días` : dias === 0 ? "Vence hoy" : `${dias} días`}
-                              </p>
-                            )}
-                          </div>
+                          <p className={`text-[11px] font-medium ${
+                            status === "vencido" ? "text-red-400"
+                            : status === "por_vencer" ? "text-amber-400"
+                            : "text-gray-300"
+                          }`}>{seguro.vigenciaFin}</p>
+                        ) : <span className="text-gray-700 text-[11px]">—</span>}
+                      </td>
+                      <td className="px-3 py-3 whitespace-nowrap">
+                        {dias !== null ? (
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${cfg.cls}`}>
+                            {dias < 0 ? `−${Math.abs(dias)}d` : dias === 0 ? "Hoy" : `${dias}d`}
+                          </span>
                         ) : (
-                          <span className="text-gray-600 text-xs">—</span>
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${cfg.cls}`}>
+                            {cfg.label}
+                          </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-gray-300 text-xs tabular-nums whitespace-nowrap">
-                        {seguro?.primaNeta != null
-                          ? `$${seguro.primaNeta.toLocaleString("es-MX", { minimumFractionDigits: 2 })}`
-                          : <span className="text-gray-600">—</span>}
+                      <td className="px-3 py-3 text-gray-300 text-[11px] tabular-nums whitespace-nowrap">
+                        {seguro?.costoPoliza != null
+                          ? `$${seguro.costoPoliza.toLocaleString("es-MX", { minimumFractionDigits: 2 })}`
+                          : <span className="text-gray-700">—</span>}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium border ${cfg.cls}`}>
-                          {status === "vencido" && <AlertTriangle size={10} />}
-                          {cfg.label}
-                        </span>
+                      <td className="px-3 py-3 text-gray-300 text-[11px] tabular-nums whitespace-nowrap">
+                        {seguro?.valorMercado != null
+                          ? `$${seguro.valorMercado.toLocaleString("es-MX")}`
+                          : <span className="text-gray-700">—</span>}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
+                      <td className="px-3 py-3 text-gray-500 text-[11px] whitespace-nowrap">
+                        {seguro?.tenencia || <span className="text-gray-700">—</span>}
+                      </td>
+                      <td className="px-3 py-3 whitespace-nowrap">
                         <button
                           onClick={() => openDrawer(unidad, seguro)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-400 hover:text-white bg-[#1A1A1A] hover:bg-[#252D3D] border border-[#3A3A3A] hover:border-[#CC2229]/40 rounded-lg transition-colors"
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium text-gray-400 hover:text-white bg-[#1A1A1A] hover:bg-[#252D3D] border border-[#3A3A3A] hover:border-[#CC2229]/40 rounded-lg transition-colors"
                         >
-                          <Shield size={12} />
+                          <Shield size={11} />
                           {seguro ? "Editar" : "Registrar"}
                         </button>
                       </td>
@@ -460,17 +696,16 @@ export default function SegurosPage() {
           </table>
         </div>
 
-        {/* Footer summary */}
-        {porVencer > 0 || vencidas > 0 ? (
+        {(porVencer > 0 || sinCob > 0) && (
           <div className="px-5 py-3 border-t border-[#3A3A3A] flex items-center gap-2">
             <AlertTriangle size={13} className="text-amber-400 shrink-0" />
             <p className="text-xs text-gray-500">
               {porVencer > 0 && <span className="text-amber-400 font-medium">{porVencer} póliza{porVencer !== 1 ? "s" : ""} por vencer</span>}
-              {porVencer > 0 && vencidas > 0 && " · "}
-              {vencidas > 0 && <span className="text-red-400 font-medium">{vencidas} sin cobertura activa</span>}
+              {porVencer > 0 && sinCob > 0 && " · "}
+              {sinCob > 0 && <span className="text-red-400 font-medium">{sinCob} sin cobertura activa</span>}
             </p>
           </div>
-        ) : null}
+        )}
       </div>
 
       <FormDrawer
