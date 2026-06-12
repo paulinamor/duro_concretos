@@ -494,10 +494,16 @@ export default function Header({ title, onMobileMenu }: HeaderProps) {
   const isMultiPlanta = session?.planta === "Todas";
   const plantaDisplay = isMultiPlanta ? plantaActiva : (session?.planta ?? null);
   const plantaColor = plantaDisplay === "Allende"
-    ? "bg-blue-500/15 text-blue-300 border-blue-500/30"
+    ? "bg-blue-500/25 text-blue-200 border-blue-400/50"
     : plantaDisplay === "Pesquería"
-      ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
-      : "bg-white/10 text-slate-300 border-white/15";
+      ? "bg-emerald-500/25 text-emerald-200 border-emerald-400/50"
+      : "bg-white/15 text-slate-200 border-white/25";
+
+  function plantaItemColor(p: Planta) {
+    if (p === "Allende") return "bg-blue-500/20 border border-blue-500/40 text-blue-200";
+    if (p === "Pesquería") return "bg-emerald-500/20 border border-emerald-500/40 text-emerald-200";
+    return "bg-white/10 border border-white/20 text-slate-200";
+  }
 
   return (
     <header className="sticky top-0 z-50 flex shrink-0 items-center justify-between border-b border-[#1E293B] bg-[#0B1220] px-4 py-3">
@@ -510,28 +516,38 @@ export default function Header({ title, onMobileMenu }: HeaderProps) {
               <>
                 <button
                   onClick={() => { setPlantaOpen((v) => !v); setNotificationsOpen(false); setUserMenuOpen(false); }}
-                  className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${plantaColor} hover:brightness-125`}
+                  className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all ${plantaColor} hover:brightness-110 shadow-sm`}
                 >
                   <MapPin size={11} />
                   {plantaDisplay}
-                  <ChevronDown size={11} />
+                  <ChevronDown size={11} className={`transition-transform ${plantaOpen ? "rotate-180" : ""}`} />
                 </button>
                 {plantaOpen && (
-                  <div className="absolute left-0 mt-2 w-44 overflow-hidden rounded-xl border border-slate-700 bg-[#0F172A] shadow-xl shadow-black/40">
-                    <div className="px-3 py-2 border-b border-slate-700">
-                      <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">Vista de planta</p>
+                  <div className="absolute left-0 mt-2 w-48 overflow-hidden rounded-xl border border-slate-700 bg-[#0F172A] shadow-xl shadow-black/50">
+                    <div className="px-3 py-2.5 border-b border-slate-700/60">
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Vista de planta</p>
                     </div>
-                    {(["Todas", "Pesquería", "Allende"] as Planta[]).map((p) => (
-                      <button
-                        key={p}
-                        onClick={() => { setActivePlanta(p); setPlantaActivaState(p); setPlantaOpen(false); }}
-                        className={`w-full flex items-center gap-2 px-3 py-2.5 text-sm transition-colors hover:bg-white/5 ${plantaActiva === p ? "text-white font-medium" : "text-slate-400"}`}
-                      >
-                        <MapPin size={13} className={plantaActiva === p ? "text-[#CC2229]" : "text-slate-600"} />
-                        {p}
-                        {plantaActiva === p && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-[#CC2229]" />}
-                      </button>
-                    ))}
+                    <div className="p-1.5 space-y-1">
+                      {(["Todas", "Pesquería", "Allende"] as Planta[]).map((p) => (
+                        <button
+                          key={p}
+                          onClick={() => { setActivePlanta(p); setPlantaActivaState(p); setPlantaOpen(false); }}
+                          className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                            plantaActiva === p
+                              ? plantaItemColor(p)
+                              : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
+                          }`}
+                        >
+                          <MapPin size={13} className={plantaActiva === p ? "opacity-100" : "opacity-40"} />
+                          {p}
+                          {plantaActiva === p && (
+                            <svg className="ml-auto w-4 h-4 shrink-0" viewBox="0 0 16 16" fill="currentColor">
+                              <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z" />
+                            </svg>
+                          )}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
               </>
