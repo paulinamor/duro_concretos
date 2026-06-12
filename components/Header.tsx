@@ -494,15 +494,15 @@ export default function Header({ title, onMobileMenu }: HeaderProps) {
   const isMultiPlanta = session?.planta === "Todas";
   const plantaDisplay = isMultiPlanta ? plantaActiva : (session?.planta ?? null);
   const plantaColor = plantaDisplay === "Allende"
-    ? "bg-blue-500/25 text-blue-200 border-blue-400/50"
+    ? "border-blue-500/60 text-blue-400"
     : plantaDisplay === "Pesquería"
-      ? "bg-emerald-500/25 text-emerald-200 border-emerald-400/50"
-      : "bg-white/15 text-slate-200 border-white/25";
+      ? "border-emerald-500/60 text-emerald-400"
+      : "border-slate-500/60 text-slate-400";
 
-  function plantaItemColor(p: Planta) {
-    if (p === "Allende") return "bg-blue-500/20 border border-blue-500/40 text-blue-200";
-    if (p === "Pesquería") return "bg-emerald-500/20 border border-emerald-500/40 text-emerald-200";
-    return "bg-white/10 border border-white/20 text-slate-200";
+  function plantaItemActiveCls(p: Planta) {
+    if (p === "Allende") return "bg-blue-500/15 text-blue-300";
+    if (p === "Pesquería") return "bg-emerald-500/15 text-emerald-300";
+    return "bg-white/8 text-slate-200";
   }
 
   return (
@@ -516,7 +516,7 @@ export default function Header({ title, onMobileMenu }: HeaderProps) {
               <>
                 <button
                   onClick={() => { setPlantaOpen((v) => !v); setNotificationsOpen(false); setUserMenuOpen(false); }}
-                  className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all ${plantaColor} hover:brightness-110 shadow-sm`}
+                  className={`flex items-center gap-1.5 rounded-full border bg-transparent px-2.5 py-1 text-xs font-medium transition-colors hover:bg-white/5 ${plantaColor}`}
                 >
                   <MapPin size={11} />
                   {plantaDisplay}
@@ -534,7 +534,7 @@ export default function Header({ title, onMobileMenu }: HeaderProps) {
                           onClick={() => { setActivePlanta(p); setPlantaActivaState(p); setPlantaOpen(false); }}
                           className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                             plantaActiva === p
-                              ? plantaItemColor(p)
+                              ? plantaItemActiveCls(p)
                               : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
                           }`}
                         >
