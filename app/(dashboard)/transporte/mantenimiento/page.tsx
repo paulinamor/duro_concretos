@@ -7,6 +7,7 @@ import StatusBadge from "@/components/StatusBadge";
 import FormModal from "@/components/FormModal";
 import FormSection from "@/components/FormSection";
 import { getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
+import { type Unidad } from "@/lib/unidades";
 
 interface Mantenimiento {
   fecha: string;
@@ -38,30 +39,12 @@ interface UnidadMantenimiento {
   responsable: string;
 }
 
-interface SeguroUnidad {
-  tipo: string;
-  alias: string;
-  placas: string;
-  estado: string;
-  marca: string;
-  nombre: string;
-  modelo: string;
-  anio: number;
-  poliza: string;
-  costoPoliza: number;
-  vigencia: string;
-  valorMercado: number;
-  status: string;
-}
-
-
 export default function MantenimientoPage() {
   const insightsRef = useRef<HTMLDivElement>(null);
   const [mantenimientos, setMantenimientos] = useState<Mantenimiento[]>([]);
   const [refacciones, setRefacciones] = useState<Refaccion[]>([]);
   const [unidades, setUnidades] = useState<UnidadMantenimiento[]>([]);
-  const [seguros, setSeguros] = useState<SeguroUnidad[]>([]);
-  const [activeTab, setActiveTab] = useState<"mantenimientos" | "refacciones" | "unidades" | "seguros">("mantenimientos");
+  const [activeTab, setActiveTab] = useState<"mantenimientos" | "refacciones" | "unidades">("mantenimientos");
   const [showForm, setShowForm] = useState(false);
   const [showHistorialCamion, setShowHistorialCamion] = useState(false);
   const [selectedUnidadHistorial, setSelectedUnidadHistorial] = useState("");
@@ -82,11 +65,19 @@ export default function MantenimientoPage() {
   useEffect(() => {
     getCollectionDocs<Mantenimiento>(COLLECTIONS.mantenimientos).then(setMantenimientos);
     getCollectionDocs<Refaccion>(COLLECTIONS.refacciones).then(setRefacciones);
-    getCollectionDocs<UnidadMantenimiento>("unidadesMantenimiento").then((data) => {
-      setUnidades(data);
-      if (data.length > 0) setSelectedUnidadHistorial(data[0].unidad);
+    getCollectionDocs<Unidad>(COLLECTIONS.unidades).then((data) => {
+      const mapped: UnidadMantenimiento[] = data.map((u) => ({
+        unidad: u.noEconomico,
+        kmActual: u.kmActual,
+        proximoServicioKm: 0,
+        proximoServicioFecha: u.proximoMantenimiento ?? "",
+        ultimoServicio: u.ultimoMantenimiento ?? "",
+        condicion: u.estatus === "Mantenimiento" ? "En taller" : u.estatus === "Baja" ? "Baja" : "Al día",
+        responsable: u.choferAsignado ?? "",
+      }));
+      setUnidades(mapped);
+      if (mapped.length > 0) setSelectedUnidadHistorial(mapped[0].unidad);
     });
-    getCollectionDocs<SeguroUnidad>(COLLECTIONS.seguros).then(setSeguros);
   }, []);
 
   function showToast(type: "success" | "error", title: string, message: string) {
@@ -158,15 +149,15 @@ export default function MantenimientoPage() {
         <div>
           <p className="text-gray-500 text-sm mt-0.5">Control de mantenimientos y refacciones</p>
         </div>
-        {activeTab !== "seguros" && (
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => setShowHistorialCamion((value) => !value)}
-              className="flex items-center gap-2 border border-[#3A3A3A] bg-[#1A1A1A] hover:border-[#CC2229] text-gray-300 hover:text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-            >
-              <Car size={16} />
-              Ver historial por camión
-            </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setShowHistorialCamion((value) => !value)}
+            className="flex items-center gap-2 border border-[#3A3A3A] bg-[#1A1A1A] hover:border-[#CC2229] text-gray-300 hover:text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+          >
+            <Car size={16} />
+            Ver historial por camión
+          </button>
+          {activeTab !== "unidades" && (
             <button
               onClick={() => setShowForm(true)}
               className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#991A1E] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
@@ -174,8 +165,8 @@ export default function MantenimientoPage() {
               <Plus size={16} />
               Registrar
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* KPIs */}
@@ -519,16 +510,6 @@ export default function MantenimientoPage() {
         >
           Unidades
         </button>
-        <button
-          onClick={() => setActiveTab("seguros")}
-          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-            activeTab === "seguros"
-              ? "bg-[#CC2229] text-white"
-              : "text-gray-400 hover:text-white"
-          }`}
-        >
-          Seguros
-        </button>
       </div>
 
       {/* Mantenimientos Table */}
@@ -627,17 +608,16 @@ export default function MantenimientoPage() {
               </thead>
               <tbody className="divide-y divide-[#3A3A3A]">
                 {unidades.map((u) => {
-                  const kmRestantes = u.proximoServicioKm - u.kmActual;
                   return (
                     <tr key={u.unidad} className="hover:bg-[#2A2A2A] transition-colors">
                       <td className="px-4 py-3 text-white font-semibold">{u.unidad}</td>
                       <td className="px-4 py-3 text-gray-300">{u.kmActual.toLocaleString()} km</td>
-                      <td className="px-4 py-3 text-gray-300">{u.proximoServicioKm.toLocaleString()} km</td>
-                      <td className="px-4 py-3 text-gray-300">{u.proximoServicioFecha}</td>
-                      <td className={`px-4 py-3 font-semibold ${kmRestantes <= 2000 ? "text-orange-400" : "text-green-400"}`}>{kmRestantes.toLocaleString()} km</td>
-                      <td className="px-4 py-3 text-gray-400 text-xs">{u.ultimoServicio}</td>
+                      <td className="px-4 py-3 text-gray-500">—</td>
+                      <td className="px-4 py-3 text-gray-300">{u.proximoServicioFecha || "—"}</td>
+                      <td className="px-4 py-3 text-gray-500">—</td>
+                      <td className="px-4 py-3 text-gray-400 text-xs">{u.ultimoServicio || "—"}</td>
                       <td className="px-4 py-3"><StatusBadge status={u.condicion} /></td>
-                      <td className="px-4 py-3 text-gray-300">{u.responsable}</td>
+                      <td className="px-4 py-3 text-gray-300">{u.responsable || "—"}</td>
                     </tr>
                   );
                 })}
@@ -647,45 +627,6 @@ export default function MantenimientoPage() {
         </div>
       )}
 
-      {activeTab === "seguros" && (
-        <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-[#3A3A3A]">
-            <h3 className="text-white font-semibold">Listado de unidades y seguros</h3>
-            <p className="text-gray-500 text-xs mt-1">Datos capturados del listado de equipos y pólizas.</p>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-[#1A1A1A] border-b border-[#3A3A3A]">
-                  {["Tipo", "Alias", "Placas", "Estado", "Marca", "Modelo", "Año", "Póliza", "Costo póliza", "Vigencia", "Valor mercado", "Status"].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#3A3A3A]">
-                {seguros.map((unidad) => (
-                  <tr key={`${unidad.tipo}-${unidad.alias}-${unidad.placas}`} className="hover:bg-[#2A2A2A] transition-colors">
-                    <td className="px-4 py-3 text-gray-300">{unidad.tipo}</td>
-                    <td className="px-4 py-3 text-white font-semibold">{unidad.alias}</td>
-                    <td className="px-4 py-3 text-gray-300">{unidad.placas}</td>
-                    <td className="px-4 py-3 text-gray-400">{unidad.estado}</td>
-                    <td className="px-4 py-3 text-gray-300">{unidad.marca}</td>
-                    <td className="px-4 py-3 text-gray-300 min-w-64">{unidad.modelo}</td>
-                    <td className="px-4 py-3 text-gray-400">{unidad.anio}</td>
-                    <td className="px-4 py-3 text-gray-300 font-mono text-xs">{unidad.poliza}</td>
-                    <td className="px-4 py-3 text-white font-semibold">${unidad.costoPoliza.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-green-400">{unidad.vigencia}</td>
-                    <td className="px-4 py-3 text-white">${unidad.valorMercado.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-gray-300 min-w-72">{unidad.status}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
