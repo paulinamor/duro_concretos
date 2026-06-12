@@ -22,6 +22,7 @@ import FormModal from "@/components/FormModal";
 import FormSection from "@/components/FormSection";
 import StatusBadge from "@/components/StatusBadge";
 import { licenciasProximas, operadoresActivos, type EstatusOperador, type Operador } from "@/lib/operadores";
+import { type Unidad } from "@/lib/unidades";
 import { COLLECTIONS, deleteDocument, getCollectionDocs, upsertDocument } from "@/lib/db";
 
 const TIPOS_LICENCIA = ["E", "D", "C", "A", "B"];
@@ -30,6 +31,7 @@ const CURRENT_TIME = new Date().getTime();
 
 export default function OperadoresPage() {
   const [operadores, setOperadores] = useState<Operador[]>([]);
+  const [unidadesList, setUnidadesList] = useState<Unidad[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [filtroEstatus, setFiltroEstatus] = useState<EstatusOperador | "Todos">("Todos");
@@ -37,9 +39,13 @@ export default function OperadoresPage() {
   const [editing, setEditing] = useState<Operador | null>(null);
 
   useEffect(() => {
-    getCollectionDocs<Operador>(COLLECTIONS.operadores)
-      .then(setOperadores)
-      .finally(() => setLoading(false));
+    Promise.all([
+      getCollectionDocs<Operador>(COLLECTIONS.operadores),
+      getCollectionDocs<Unidad>(COLLECTIONS.unidades),
+    ]).then(([op, u]) => {
+      setOperadores(op);
+      setUnidadesList(u);
+    }).finally(() => setLoading(false));
   }, []);
 
   const filtered = useMemo(() => {
@@ -411,7 +417,15 @@ export default function OperadoresPage() {
               <FormSection title="Laboral">
                 <div>
                   <label className={lbl}>Unidad asignada</label>
-                  <input type="text" defaultValue={editing?.unidadAsignada ?? ""} className={inp} />
+                  <select defaultValue={editing?.unidadAsignada ?? ""} className={inp}>
+                    <option value="">Sin asignar</option>
+                    {unidadesList.filter((u) => u.estatus === "Activo").map((u) => (
+                      <option key={u.id} value={u.noEconomico}>{u.noEconomico} · {u.placa}</option>
+                    ))}
+                  </select>
+                  {unidadesList.filter((u) => u.estatus === "Activo").length === 0 && (
+                    <p className="mt-1 text-xs text-gray-400">Sin unidades activas — agrégalas en Transporte → Unidades.</p>
+                  )}
                 </div>
                 <div>
                   <label className={lbl}>Salario / día</label>

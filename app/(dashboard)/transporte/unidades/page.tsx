@@ -19,6 +19,7 @@ import FormModal from "@/components/FormModal";
 import FormSection from "@/components/FormSection";
 import StatusBadge from "@/components/StatusBadge";
 import { capacidadTotalM3, type EstatusUnidad, type Unidad } from "@/lib/unidades";
+import { type Operador } from "@/lib/operadores";
 import { COLLECTIONS, deleteDocument, getCollectionDocs, upsertDocument } from "@/lib/db";
 
 const MARCAS = ["Mercedes-Benz", "Volvo", "Kenworth", "Scania", "Freightliner", "Otra"];
@@ -27,6 +28,7 @@ const CURRENT_TIME = new Date().getTime();
 
 export default function UnidadesPage() {
   const [unidades, setUnidades] = useState<Unidad[]>([]);
+  const [operadoresList, setOperadoresList] = useState<Operador[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [filtroEstatus, setFiltroEstatus] = useState<EstatusUnidad | "Todos">("Todos");
@@ -34,9 +36,13 @@ export default function UnidadesPage() {
   const [editing, setEditing] = useState<Unidad | null>(null);
 
   useEffect(() => {
-    getCollectionDocs<Unidad>(COLLECTIONS.unidades)
-      .then(setUnidades)
-      .finally(() => setLoading(false));
+    Promise.all([
+      getCollectionDocs<Unidad>(COLLECTIONS.unidades),
+      getCollectionDocs<Operador>(COLLECTIONS.operadores),
+    ]).then(([u, op]) => {
+      setUnidades(u);
+      setOperadoresList(op);
+    }).finally(() => setLoading(false));
   }, []);
 
   const filtered = useMemo(() => {
@@ -413,7 +419,15 @@ export default function UnidadesPage() {
               <FormSection title="Asignación">
                 <div>
                   <label className={lbl}>Chofer asignado</label>
-                  <input type="text" defaultValue={editing?.choferAsignado ?? ""} className={inp} />
+                  <select defaultValue={editing?.choferAsignado ?? ""} className={inp}>
+                    <option value="">Sin asignar</option>
+                    {operadoresList.filter((o) => o.estatus === "Activo").map((o) => (
+                      <option key={o.id} value={o.nombre}>{o.nombre}</option>
+                    ))}
+                  </select>
+                  {operadoresList.filter((o) => o.estatus === "Activo").length === 0 && (
+                    <p className="mt-1 text-xs text-gray-400">Sin operadores activos — agrégalos en Transporte → Operadores.</p>
+                  )}
                 </div>
                 <div>
                   <label className={lbl}>Estatus</label>
