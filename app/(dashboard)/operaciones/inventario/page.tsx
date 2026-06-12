@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
 import { getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
+import type { Cliente } from "@/lib/crmClientes";
+import type { Operador } from "@/lib/operadores";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -114,12 +116,15 @@ const inp = "w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 tex
 // ─── FormDrawer ───────────────────────────────────────────────────────────────
 
 function FormDrawer({
-  open, onClose, onSave, initial,
+  open, onClose, onSave, initial, clientes, operadores, nextRemision,
 }: {
   open: boolean;
   onClose: () => void;
   onSave: (r: Remision) => Promise<void>;
   initial?: Remision;
+  clientes: Pick<Cliente, "id" | "razonSocial" | "nombreComercial">[];
+  operadores: Pick<Operador, "id" | "nombre">[];
+  nextRemision: string;
 }) {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
@@ -148,10 +153,10 @@ function FormDrawer({
           ligsthone: initial.ligsthone,
         });
       } else {
-        setForm(emptyForm());
+        setForm({ ...emptyForm(), noRemision: nextRemision });
       }
     }
-  }, [open, initial]);
+  }, [open, initial, nextRemision]);
 
   const set = (k: keyof FormState, v: string) => setForm((p) => ({ ...p, [k]: v }));
 
@@ -225,7 +230,15 @@ function FormDrawer({
               </div>
               <div className="col-span-2">
                 <label className={lbl}>Cliente <span className="text-[#CC2229]">*</span></label>
-                <input type="text" value={form.cliente} onChange={(e) => set("cliente", e.target.value)} placeholder="Nombre del cliente u obra" className={inp} />
+                <select value={form.cliente} onChange={(e) => set("cliente", e.target.value)} className={inp}>
+                  <option value="">Seleccionar cliente…</option>
+                  {clientes.map((c) => (
+                    <option key={c.id} value={c.razonSocial}>{c.nombreComercial || c.razonSocial}</option>
+                  ))}
+                </select>
+                {clientes.length === 0 && (
+                  <p className="mt-1 text-xs text-gray-400">Sin clientes registrados — agrégalos en CRM → Clientes.</p>
+                )}
               </div>
               <div>
                 <label className={lbl}>Metros m³ <span className="text-[#CC2229]">*</span></label>
@@ -241,7 +254,15 @@ function FormDrawer({
               </div>
               <div>
                 <label className={lbl}>Operador <span className="text-[#CC2229]">*</span></label>
-                <input type="text" value={form.operador} onChange={(e) => set("operador", e.target.value)} placeholder="Nombre del operador" className={inp} />
+                <select value={form.operador} onChange={(e) => set("operador", e.target.value)} className={inp}>
+                  <option value="">Seleccionar operador…</option>
+                  {operadores.map((o) => (
+                    <option key={o.id} value={o.nombre}>{o.nombre}</option>
+                  ))}
+                </select>
+                {operadores.length === 0 && (
+                  <p className="mt-1 text-xs text-gray-400">Sin operadores — agrégalos en Transporte → Operadores.</p>
+                )}
               </div>
             </div>
           </div>
@@ -384,13 +405,27 @@ function TableRow({ r }: { r: Remision }) {
 
 export default function InventarioPage() {
   const [remisiones, setRemisiones] = useState<Remision[]>([]);
+  const [clientesList, setClientesList] = useState<Pick<Cliente, "id" | "razonSocial" | "nombreComercial">[]>([]);
+  const [operadoresList, setOperadoresList] = useState<Pick<Operador, "id" | "nombre">[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState("");
   const [filterMezcla, setFilterMezcla] = useState("Todos");
 
   useEffect(() => {
     getCollectionDocs<Remision>(COLLECTIONS.remisiones).then(setRemisiones);
+    getCollectionDocs<Cliente>(COLLECTIONS.clientes).then((list) =>
+      setClientesList(list.map((c) => ({ id: c.id, razonSocial: c.razonSocial, nombreComercial: c.nombreComercial })))
+    );
+    getCollectionDocs<Operador>(COLLECTIONS.operadores).then((list) =>
+      setOperadoresList(list.filter((o) => o.estatus === "Activo").map((o) => ({ id: o.id, nombre: o.nombre })))
+    );
   }, []);
+
+  const nextRemision = useMemo(() => {
+    if (remisiones.length === 0) return "1";
+    const nums = remisiones.map((r) => parseInt(r.noRemision, 10)).filter((n) => !isNaN(n));
+    return nums.length > 0 ? String(Math.max(...nums) + 1) : "1";
+  }, [remisiones]);
 
   const handleSave = async (r: Remision) => {
     const id = r.id ?? `rem-${r.noRemision}-${Date.now()}`;
@@ -571,7 +606,14 @@ export default function InventarioPage() {
         </div>
       </div>
 
-      <FormDrawer open={showForm} onClose={() => setShowForm(false)} onSave={handleSave} />
+      <FormDrawer
+        open={showForm}
+        onClose={() => setShowForm(false)}
+        onSave={handleSave}
+        clientes={clientesList}
+        operadores={operadoresList}
+        nextRemision={nextRemision}
+      />
     </div>
   );
 }

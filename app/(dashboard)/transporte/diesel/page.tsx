@@ -310,18 +310,19 @@ function FormDrawer({
               <label className={labelCls}>
                 Unidad {requiredStar}
               </label>
-              <input
-                list="unidades-list"
+              <select
                 value={form.unidad}
                 onChange={(e) => set("unidad", e.target.value)}
-                placeholder="Número económico o nombre"
                 className={inputCls("unidad")}
-              />
-              <datalist id="unidades-list">
+              >
+                <option value="">Seleccionar unidad…</option>
                 {unidadesList.map((u) => (
-                  <option key={u} value={u} />
+                  <option key={u} value={u}>{u}</option>
                 ))}
-              </datalist>
+              </select>
+              {unidadesList.length === 0 && (
+                <p className="mt-1 text-xs text-gray-400">Sin unidades registradas — agrégalas en Transporte → Unidades.</p>
+              )}
               {errors.unidad && (
                 <p className="mt-1 text-xs text-red-400">{errors.unidad}</p>
               )}
