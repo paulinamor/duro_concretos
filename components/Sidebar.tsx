@@ -32,6 +32,12 @@ import {
 } from "lucide-react";
 import { getAllowedModuleSet, getStoredSession } from "@/lib/auth";
 
+const COMING_SOON = new Set([
+  "/transporte/viajes",
+  "/transporte/disponibilidad",
+  "/transporte/pagos",
+]);
+
 const navItems = [
   {
     href: "/dashboard",
@@ -112,14 +118,14 @@ function NavLink({
 }) {
   const pathname = usePathname();
   const isActive = pathname === href || pathname.startsWith(href + "/");
-  const isEnabled = enabledSet.has(href);
+  const isEnabled = enabledSet.has(href) && !COMING_SOON.has(href);
 
   if (!isEnabled) {
     return (
       <div
         className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-slate-500 cursor-not-allowed select-none"
         aria-disabled="true"
-        title="Módulo bloqueado"
+        title={COMING_SOON.has(href) ? "Próximamente" : "Módulo bloqueado"}
       >
         <Icon size={18} className="text-slate-600" />
         <span className="min-w-0 flex-1 whitespace-normal leading-snug">{label}</span>

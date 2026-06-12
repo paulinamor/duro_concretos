@@ -23,40 +23,41 @@ function money(value: number) {
 }
 
 function getNextReceiptNumber(receipts: ConcreteReceipt[]) {
-  const maxReceipt = receipts.reduce((max, item) => Math.max(max, item.receiptNumber), 156);
-  return maxReceipt + 1;
+  if (receipts.length === 0) return 1;
+  return receipts.reduce((max, item) => Math.max(max, item.receiptNumber), 0) + 1;
 }
 
 function createReceipt(receipts: ConcreteReceipt[]): ConcreteReceipt {
   const nextNumber = getNextReceiptNumber(receipts);
+  const today = new Date().toISOString().split("T")[0];
 
   return {
     id: `REC-${nextNumber}`,
     receiptNumber: nextNumber,
-    cliente: "Roberto Peña",
-    direccionObra: "Vista Encinos",
-    m3: 5,
-    resistencia: "F'C 150-20-14 KG/CM²",
+    cliente: "",
+    direccionObra: "",
+    m3: 0,
+    resistencia: "",
     supplyType: "Tiro directo",
     servicioBomba: "",
-    metrosVaciosCantidad: 1,
-    metrosVaciosPrecio: 800,
-    precioPorM3: 245,
+    metrosVaciosCantidad: 0,
+    metrosVaciosPrecio: 0,
+    precioPorM3: 0,
     anticipo: 0,
-    nota: "2 / 06 / 26",
+    nota: "",
     firmaCliente: "",
     recibidoPor: "",
-    fecha: "2026-06-02",
+    fecha: today,
     extras: defaultConcreteExtras.map((extra) => ({ ...extra })),
-    total: 1305,
-    resta: 1305,
+    total: 0,
+    resta: 0,
     viajeFolio: `VJ-2026-${nextNumber}`,
   };
 }
 
 export default function RecibosConcretoPage() {
-  const [receipts, setReceipts] = useState(concreteReceiptsBase);
-  const [receipt, setReceipt] = useState<ConcreteReceipt>(() => createReceipt(concreteReceiptsBase));
+  const [receipts, setReceipts] = useState<ConcreteReceipt[]>([]);
+  const [receipt, setReceipt] = useState<ConcreteReceipt>(() => createReceipt([]));
 
   const totals = useMemo(() => calculateConcreteReceiptTotal(receipt), [receipt]);
   const receiptDate = formatReceiptDate(receipt.fecha);

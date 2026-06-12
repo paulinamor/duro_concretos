@@ -69,30 +69,7 @@ export const defaultConcreteExtras: ConcreteExtra[] = [
   { name: "Tiempo extra", checked: false, price: 0, quantity: "", unit: "HR." },
 ];
 
-export const concreteReceiptsBase: ConcreteReceipt[] = [
-  {
-    id: "REC-157",
-    receiptNumber: 157,
-    cliente: "Roberto Peña",
-    direccionObra: "Vista Encinos",
-    m3: 5,
-    resistencia: "F'C 150-20-14 KG/CM²",
-    supplyType: "Tiro directo",
-    servicioBomba: "",
-    metrosVaciosCantidad: 1,
-    metrosVaciosPrecio: 800,
-    precioPorM3: 245,
-    anticipo: 0,
-    nota: "2 / 06 / 26",
-    firmaCliente: "Roberto Peña",
-    recibidoPor: "Jere",
-    fecha: "2026-06-02",
-    extras: defaultConcreteExtras,
-    total: 13050,
-    resta: 13050,
-    viajeFolio: "VJ-2026-157",
-  },
-];
+export const concreteReceiptsBase: ConcreteReceipt[] = [];
 
 export function calculateConcreteReceiptTotal({
   m3,
@@ -140,21 +117,17 @@ export function formatReceiptDate(date: string) {
 }
 
 export function loadConcreteReceipts() {
-  if (typeof window === "undefined") return concreteReceiptsBase;
+  if (typeof window === "undefined") return [];
 
   const raw = localStorage.getItem(concreteReceiptStorageKey);
-  if (!raw) {
-    saveConcreteReceipts(concreteReceiptsBase);
-    return concreteReceiptsBase;
-  }
+  if (!raw) return [];
 
   try {
     const receipts = JSON.parse(raw) as ConcreteReceipt[];
-    return receipts.length > 0 ? receipts : concreteReceiptsBase;
+    return Array.isArray(receipts) ? receipts : [];
   } catch {
     localStorage.removeItem(concreteReceiptStorageKey);
-    saveConcreteReceipts(concreteReceiptsBase);
-    return concreteReceiptsBase;
+    return [];
   }
 }
 
