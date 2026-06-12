@@ -419,7 +419,7 @@ export default function UnidadesPage() {
               <FormSection title="Asignación">
                 <div>
                   <label className={lbl}>Chofer asignado</label>
-                  <select defaultValue={editing?.choferAsignado ?? ""} className={inp}>
+                  <select defaultValue={editing?.choferAsignado ?? ""} className={inp} data-catalog-locked="true">
                     <option value="">Sin asignar</option>
                     {operadoresList.filter((o) => o.estatus === "Activo").map((o) => (
                       <option key={o.id} value={o.nombre}>{o.nombre}</option>

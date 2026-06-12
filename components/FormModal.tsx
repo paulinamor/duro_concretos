@@ -115,7 +115,10 @@ export default function FormModal({
         existingValues.add(customOption.toLowerCase());
       });
 
-      if (!Array.from(select.options).some((option) => option.value === CUSTOM_SELECT_VALUE)) {
+      if (
+        !select.dataset.catalogLocked &&
+        !Array.from(select.options).some((option) => option.value === CUSTOM_SELECT_VALUE)
+      ) {
         const option = document.createElement("option");
         option.value = CUSTOM_SELECT_VALUE;
         option.textContent = "Escribir nuevo...";
