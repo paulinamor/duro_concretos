@@ -17,6 +17,7 @@ interface HeaderProps {
 export default function Header({ title, onMobileMenu }: HeaderProps) {
   const router = useRouter();
   const headerActionsRef = useRef<HTMLDivElement>(null);
+  const plantaRef = useRef<HTMLDivElement>(null);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [plantaOpen, setPlantaOpen] = useState(false);
@@ -471,6 +472,11 @@ export default function Header({ title, onMobileMenu }: HeaderProps) {
       ) {
         setNotificationsOpen(false);
         setUserMenuOpen(false);
+      }
+      if (
+        plantaRef.current &&
+        !plantaRef.current.contains(event.target as Node)
+      ) {
         setPlantaOpen(false);
       }
     }
@@ -499,7 +505,7 @@ export default function Header({ title, onMobileMenu }: HeaderProps) {
         <MobileMenuButton onClick={onMobileMenu} />
         <h2 className="text-lg font-semibold text-white">{title}</h2>
         {plantaDisplay && (
-          <div className="relative hidden sm:block">
+          <div className="relative hidden sm:block" ref={plantaRef}>
             {isMultiPlanta ? (
               <>
                 <button
