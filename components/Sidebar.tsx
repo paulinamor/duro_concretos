@@ -70,6 +70,7 @@ const transporteItems = [
   { href: "/transporte/pagos", icon: DollarSign, label: "Pago por viaje / m³" },
   { href: "/transporte/diesel", icon: Fuel, label: "Consumo de diésel" },
   { href: "/transporte/mantenimiento", icon: Wrench, label: "Mantenimiento + refacciones" },
+  { href: "/transporte/seguros", icon: ShieldCheck, label: "Seguros de flota" },
 ];
 
 const operacionesItems = [

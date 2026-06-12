@@ -32,6 +32,7 @@ export const moduleCatalog = [
   { href: "/transporte/pagos", label: "Pago por viaje / m³" },
   { href: "/transporte/diesel", label: "Consumo de diésel" },
   { href: "/transporte/mantenimiento", label: "Mantenimiento + refacciones" },
+  { href: "/transporte/seguros", label: "Seguros de flota" },
   { href: "/operaciones/inventario", label: "Inventarios" },
   { href: "/operaciones/efectivo", label: "Control de efectivo" },
   { href: "/crm/clientes", label: "Base de clientes" },

@@ -489,24 +489,6 @@ export default function Header({ title, onMobileMenu }: HeaderProps) {
         <h2 className="text-lg font-semibold text-white">{title}</h2>
       </div>
       <div ref={headerActionsRef} className="flex items-center gap-2">
-        <div data-export-ignore className="hidden items-center gap-2 md:flex">
-          <button
-            type="button"
-            onClick={exportCurrentModuleExcel}
-            className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 transition-colors hover:border-green-500/50 hover:text-green-300"
-          >
-            <FileSpreadsheet size={15} />
-            Excel
-          </button>
-          <button
-            type="button"
-            onClick={exportCurrentModulePdf}
-            className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 transition-colors hover:border-[#CC2229]/60 hover:text-[#CC2229]"
-          >
-            <FileText size={15} />
-            PDF
-          </button>
-        </div>
         <div className="relative">
         <button
           onClick={() => {
