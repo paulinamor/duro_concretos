@@ -1,4 +1,5 @@
 export type UserRole = "admin" | "operador";
+export type Planta = "Pesquería" | "Allende" | "Todas";
 
 export interface AppUser {
   email: string;
@@ -7,6 +8,7 @@ export interface AppUser {
   role: UserRole;
   modules?: "all" | string[];
   status?: "Activo" | "Inactivo";
+  planta?: Planta;
 }
 
 export type AuthEventType = "login_success" | "login_failed" | "password_recovery" | "role_update";
@@ -85,7 +87,7 @@ export function getStoredSession() {
   if (!raw) return null;
 
   try {
-    return JSON.parse(raw) as Pick<AppUser, "email" | "name" | "role" | "modules" | "status">;
+    return JSON.parse(raw) as Pick<AppUser, "email" | "name" | "role" | "modules" | "status" | "planta"> & { plantaActiva?: Planta };
   } catch {
     localStorage.removeItem(SESSION_KEY);
     return null;
@@ -101,9 +103,29 @@ export function saveSession(user: AppUser) {
       role: user.role,
       modules: user.modules ?? getDefaultModulesForRole(user.role),
       status: user.status ?? "Activo",
+      planta: user.planta ?? "Todas",
     }),
   );
   window.dispatchEvent(new CustomEvent("duro:session-updated"));
+}
+
+export function setActivePlanta(planta: Planta) {
+  if (typeof window === "undefined") return;
+  const raw = localStorage.getItem(SESSION_KEY);
+  if (!raw) return;
+  try {
+    const session = JSON.parse(raw);
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ ...session, plantaActiva: planta }));
+    window.dispatchEvent(new CustomEvent("duro:session-updated"));
+  } catch {
+    // ignore
+  }
+}
+
+export function getActivePlanta(): Planta {
+  const session = getStoredSession();
+  if (!session) return "Todas";
+  return session.plantaActiva ?? session.planta ?? "Todas";
 }
 
 export function getDefaultModulesForRole(role: UserRole) {

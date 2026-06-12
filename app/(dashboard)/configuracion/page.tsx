@@ -17,17 +17,19 @@ import {
   moduleCatalog,
   recordAuthEvent,
   saveSession,
+  type Planta,
   type UserRole,
 } from "@/lib/auth";
 
 type UserDraft = {
-  uid: string | null; // null = new user
+  uid: string | null;
   name: string;
   email: string;
   password: string;
   role: UserRole;
   status: "Activo" | "Inactivo";
   modules: "all" | string[];
+  planta: Planta;
 };
 
 type Tab = "usuarios" | "apariencia";
@@ -79,6 +81,7 @@ export default function ConfiguracionPage() {
       role: "operador",
       status: "Activo",
       modules: ["/dashboard", "/transporte/viajes"],
+      planta: "Pesquería",
     });
   }
 
@@ -91,6 +94,7 @@ export default function ConfiguracionPage() {
       role: profile.role,
       status: profile.status,
       modules: profile.modules,
+      planta: profile.planta ?? "Pesquería",
     });
   }
 
@@ -159,6 +163,7 @@ export default function ConfiguracionPage() {
         role: userDraft.role,
         modules: userDraft.modules,
         status: userDraft.status,
+        planta: userDraft.planta,
         createdAt: profiles.find((p) => p.id === uid)?.createdAt ?? new Date().toISOString(),
       };
 
@@ -177,6 +182,7 @@ export default function ConfiguracionPage() {
           role: profileData.role,
           modules: profileData.modules,
           status: profileData.status,
+          planta: profileData.planta,
         });
         setSession(getStoredSession());
       }
@@ -276,7 +282,7 @@ export default function ConfiguracionPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-[#1A1A1A] border-b border-[#3A3A3A]">
-                  {["Nombre", "Correo", "Rol", "Módulos", "Estatus", "Acciones"].map((header) => (
+                  {["Nombre", "Correo", "Rol", "Planta", "Módulos", "Estatus", "Acciones"].map((header) => (
                     <th key={header} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">
                       {header}
                     </th>
@@ -286,13 +292,13 @@ export default function ConfiguracionPage() {
               <tbody className="divide-y divide-[#3A3A3A]">
                 {loadingUsers ? (
                   <tr>
-                    <td colSpan={6} className="px-5 py-8 text-center text-sm text-gray-500">
+                    <td colSpan={7} className="px-5 py-8 text-center text-sm text-gray-500">
                       Cargando usuarios...
                     </td>
                   </tr>
                 ) : filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-5 py-8 text-center text-sm text-gray-500">
+                    <td colSpan={7} className="px-5 py-8 text-center text-sm text-gray-500">
                       No se encontraron usuarios.
                     </td>
                   </tr>
@@ -308,6 +314,15 @@ export default function ConfiguracionPage() {
                       <td className="px-5 py-4">
                         <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${user.role === "admin" ? "bg-amber-100 text-amber-800 dark:bg-yellow-900/40 dark:text-yellow-300" : "bg-slate-100 text-slate-600 dark:bg-gray-800 dark:text-gray-300"}`}>
                           {user.role === "admin" ? "Administrador" : "Operador"}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                          user.planta === "Allende" ? "bg-blue-900/40 text-blue-300" :
+                          user.planta === "Pesquería" ? "bg-emerald-900/40 text-emerald-300" :
+                          "bg-slate-800 text-slate-400"
+                        }`}>
+                          {user.planta ?? "—"}
                         </span>
                       </td>
                       <td className="px-5 py-4 text-gray-300">{moduleCount}</td>
@@ -506,6 +521,19 @@ export default function ConfiguracionPage() {
                     <option value="admin">Administrador</option>
                     <option value="operador">Usuario</option>
                   </select>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Planta</label>
+                  <select
+                    value={userDraft.planta}
+                    onChange={(event) => setUserDraft({ ...userDraft, planta: event.target.value as Planta })}
+                    className="w-full rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
+                  >
+                    <option value="Pesquería">Pesquería</option>
+                    <option value="Allende">Allende</option>
+                    <option value="Todas">Todas (acceso completo)</option>
+                  </select>
+                  <p className="mt-1 text-xs text-gray-600">Define a qué planta pertenece este usuario.</p>
                 </div>
                 <div>
                   <label className="block text-sm text-gray-400 mb-1">Estatus</label>

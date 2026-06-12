@@ -3,9 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bell, Bot, CircleDollarSign, FileSpreadsheet, FileText, Fuel, LogOut, Settings, Truck, User, UserCircle, Wallet } from "lucide-react";
+import { Bell, Bot, ChevronDown, CircleDollarSign, FileSpreadsheet, FileText, Fuel, LogOut, MapPin, Settings, Truck, User, UserCircle, Wallet } from "lucide-react";
 import { MobileMenuButton } from "./Sidebar";
-import { getAllowedModuleSet, getStoredSession } from "@/lib/auth";
+import { getAllowedModuleSet, getActivePlanta, getStoredSession, setActivePlanta, type Planta } from "@/lib/auth";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 
@@ -19,7 +19,9 @@ export default function Header({ title, onMobileMenu }: HeaderProps) {
   const headerActionsRef = useRef<HTMLDivElement>(null);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [plantaOpen, setPlantaOpen] = useState(false);
   const [session, setSession] = useState(() => getStoredSession());
+  const [plantaActiva, setPlantaActivaState] = useState<Planta>(() => getActivePlanta());
   const [notifications, setNotifications] = useState([
     { title: "Caja chica requiere reposición", detail: "Disponible bajo el punto definido", href: "/operaciones/caja-chica", read: false, icon: Wallet, tag: "Operaciones" },
     { title: "Unidad DC-02 próxima a servicio", detail: "Restan menos de 2,000 km", href: "/transporte/mantenimiento", read: false, icon: Truck, tag: "Transporte" },
@@ -459,6 +461,7 @@ export default function Header({ title, onMobileMenu }: HeaderProps) {
   useEffect(() => {
     function handleSessionUpdate() {
       setSession(getStoredSession());
+      setPlantaActivaState(getActivePlanta());
     }
 
     function handleOutsideClick(event: MouseEvent) {
@@ -468,6 +471,7 @@ export default function Header({ title, onMobileMenu }: HeaderProps) {
       ) {
         setNotificationsOpen(false);
         setUserMenuOpen(false);
+        setPlantaOpen(false);
       }
     }
 
@@ -481,12 +485,58 @@ export default function Header({ title, onMobileMenu }: HeaderProps) {
 
   const displayName = session?.name ?? "Admin";
   const displayRole = session?.role === "operador" ? "Operador" : "Administrador";
+  const isMultiPlanta = session?.planta === "Todas";
+  const plantaDisplay = isMultiPlanta ? plantaActiva : (session?.planta ?? null);
+  const plantaColor = plantaDisplay === "Allende"
+    ? "bg-blue-500/15 text-blue-300 border-blue-500/30"
+    : plantaDisplay === "Pesquería"
+      ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+      : "bg-white/10 text-slate-300 border-white/15";
 
   return (
     <header className="sticky top-0 z-50 flex shrink-0 items-center justify-between border-b border-[#1E293B] bg-[#0B1220] px-4 py-3">
       <div className="flex items-center gap-3">
         <MobileMenuButton onClick={onMobileMenu} />
         <h2 className="text-lg font-semibold text-white">{title}</h2>
+        {plantaDisplay && (
+          <div className="relative hidden sm:block">
+            {isMultiPlanta ? (
+              <>
+                <button
+                  onClick={() => { setPlantaOpen((v) => !v); setNotificationsOpen(false); setUserMenuOpen(false); }}
+                  className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${plantaColor} hover:brightness-125`}
+                >
+                  <MapPin size={11} />
+                  {plantaDisplay}
+                  <ChevronDown size={11} />
+                </button>
+                {plantaOpen && (
+                  <div className="absolute left-0 mt-2 w-44 overflow-hidden rounded-xl border border-slate-700 bg-[#0F172A] shadow-xl shadow-black/40">
+                    <div className="px-3 py-2 border-b border-slate-700">
+                      <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">Vista de planta</p>
+                    </div>
+                    {(["Todas", "Pesquería", "Allende"] as Planta[]).map((p) => (
+                      <button
+                        key={p}
+                        onClick={() => { setActivePlanta(p); setPlantaActivaState(p); setPlantaOpen(false); }}
+                        className={`w-full flex items-center gap-2 px-3 py-2.5 text-sm transition-colors hover:bg-white/5 ${plantaActiva === p ? "text-white font-medium" : "text-slate-400"}`}
+                      >
+                        <MapPin size={13} className={plantaActiva === p ? "text-[#CC2229]" : "text-slate-600"} />
+                        {p}
+                        {plantaActiva === p && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-[#CC2229]" />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <span className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${plantaColor}`}>
+                <MapPin size={11} />
+                {plantaDisplay}
+              </span>
+            )}
+          </div>
+        )}
       </div>
       <div ref={headerActionsRef} className="flex items-center gap-2">
         <div className="relative">

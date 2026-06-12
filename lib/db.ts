@@ -66,6 +66,7 @@ export interface UserProfile {
   role: "admin" | "operador";
   modules: "all" | string[];
   status: "Activo" | "Inactivo";
+  planta?: "Pesquería" | "Allende" | "Todas";
   createdAt: string;
 }
 
