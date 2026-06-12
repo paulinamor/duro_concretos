@@ -418,8 +418,8 @@ export default function OperadoresPage() {
               <FormSection title="Laboral">
                 <div>
                   <label className={lbl}>Unidad asignada</label>
-                  <select defaultValue={editing?.unidadAsignada ?? ""} className={inp} data-catalog-locked="true">
-                    <option value="">Sin asignar</option>
+                  <select defaultValue={editing?.unidadAsignada || "N/A"} className={inp} data-catalog-locked="true">
+                    <option value="N/A">N/A</option>
                     {unidadesList.filter((u) => u.estatus === "Activo").map((u) => (
                       <option key={u.id} value={u.noEconomico}>{u.noEconomico} · {u.placa}</option>
                     ))}
