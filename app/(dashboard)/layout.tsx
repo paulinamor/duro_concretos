@@ -12,6 +12,7 @@ const pageTitles: Record<string, string> = {
   "/perfil": "Mi Perfil",
   "/configuracion": "Configuración",
   "/automatizaciones": "Automatizaciones",
+  "/transporte/programacion": "Programación",
   "/transporte/viajes": "Control de viajes y choferes",
   "/transporte/disponibilidad": "Disponibilidad de cargas",
   "/transporte/pagos": "Pago por viaje / m³",

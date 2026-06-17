@@ -123,6 +123,7 @@ export const COLLECTIONS = {
   inventarioStock: "inventarioStock",
   remisiones: "remisiones",
   nomina: "nomina",
+  programaciones: "programaciones",
 } as const;
 
 export { where, orderBy };
