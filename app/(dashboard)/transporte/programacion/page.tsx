@@ -222,7 +222,10 @@ function FormDrawer({
   const set = (k: keyof FormState, v: string) => setForm((p) => ({ ...p, [k]: v }));
 
   async function handleSave() {
-    if (!form.dia || !form.cliente.trim()) return;
+    if (!form.cliente.trim()) {
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "El campo Cliente es obligatorio." } }));
+      return;
+    }
     setSaving(true);
     try {
       const id = initial?.id ?? `prog-${Date.now()}`;
@@ -274,6 +277,9 @@ function FormDrawer({
         fechaPago: form.fechaPago,
       });
       onClose();
+    } catch (err) {
+      console.error("Error al guardar programación:", err);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al guardar. Verifica tu conexión e intenta de nuevo." } }));
     } finally {
       setSaving(false);
     }
@@ -548,7 +554,7 @@ function FormDrawer({
           </button>
           <button
             onClick={handleSave}
-            disabled={saving || !form.dia || !form.cliente.trim()}
+            disabled={saving}
             className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-xl transition-colors disabled:opacity-60 shadow-lg shadow-[#CC2229]/20"
           >
             <CalendarDays size={14} />
