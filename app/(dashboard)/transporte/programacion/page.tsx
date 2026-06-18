@@ -926,7 +926,8 @@ export default function ProgramacionPage() {
 
   async function handleSave(p: Programacion) {
     const id = p.id!;
-    await upsertDocument(COLLECTIONS.programaciones, id, withPlantaTag({ ...p, id: undefined }));
+    const { id: _id, ...data } = p;
+    await upsertDocument(COLLECTIONS.programaciones, id, withPlantaTag(data));
     setProgramaciones((prev) => {
       const idx = prev.findIndex((x) => x.id === id);
       const updated = { ...p, id };
