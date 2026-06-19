@@ -596,7 +596,8 @@ export default function InventarioPage() {
 
   const handleSaveRemision = async (r: Remision) => {
     const id = r.id ?? `rem-${r.noRemision}-${Date.now()}`;
-    await upsertDocument(COLLECTIONS.remisiones, id, withPlantaTag({ ...r, id: undefined }));
+    const { id: _id, ...data } = r;
+    await upsertDocument(COLLECTIONS.remisiones, id, withPlantaTag(data));
     setRemisiones((prev) => {
       const idx = prev.findIndex((x) => x.id === r.id);
       const updated = { ...r, id };
