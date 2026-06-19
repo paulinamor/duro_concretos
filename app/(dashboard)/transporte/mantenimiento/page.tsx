@@ -1,16 +1,31 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Car, DollarSign, Plus, Wrench } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  DollarSign,
+  Fuel,
+  Plus,
+  Search,
+  Wrench,
+  X,
+  Zap,
+} from "lucide-react";
 import KPICard from "@/components/KPICard";
 import StatusBadge from "@/components/StatusBadge";
-import FormModal from "@/components/FormModal";
-import FormSection from "@/components/FormSection";
 import { getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
-import { type Unidad } from "@/lib/unidades";
 import { filterByPlanta, withPlantaTag } from "@/lib/auth";
+import type { Unidad } from "@/lib/unidades";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type Tab = "mantenimientos" | "reparaciones" | "fallas";
 
 interface Mantenimiento {
+  id?: string;
   fecha: string;
   unidad: string;
   tipo: string;
@@ -21,539 +36,678 @@ interface Mantenimiento {
   planta?: string;
 }
 
-interface Refaccion {
+interface Reparacion {
+  id?: string;
   fecha: string;
   unidad: string;
-  refaccion: string;
-  cantidad: number;
-  costoUnit: number;
-  total: number;
-  proveedor: string;
+  descripcion: string;
+  causa: string;
+  costo: number;
+  taller: string;
+  status: string;
   planta?: string;
 }
 
-interface UnidadMantenimiento {
+interface Falla {
+  id?: string;
+  fecha: string;
   unidad: string;
-  kmActual: number;
-  proximoServicioKm: number;
-  proximoServicioFecha: string;
-  ultimoServicio: string;
-  condicion: string;
-  responsable: string;
+  descripcion: string;
+  severidad: string;
+  reportadoPor: string;
+  status: string;
+  planta?: string;
 }
 
-export default function MantenimientoPage() {
-  const insightsRef = useRef<HTMLDivElement>(null);
-  const [mantenimientos, setMantenimientos] = useState<Mantenimiento[]>([]);
-  const [refacciones, setRefacciones] = useState<Refaccion[]>([]);
-  const [unidades, setUnidades] = useState<UnidadMantenimiento[]>([]);
-  const [activeTab, setActiveTab] = useState<"mantenimientos" | "refacciones" | "unidades">("mantenimientos");
-  const [showForm, setShowForm] = useState(false);
-  const [showHistorialCamion, setShowHistorialCamion] = useState(false);
-  const [selectedUnidadHistorial, setSelectedUnidadHistorial] = useState("");
-  const [activeInsight, setActiveInsight] = useState<"costo" | "pendientes" | "taller" | "proximos" | null>(null);
-  const costoMes = mantenimientos.reduce((s, m) => s + m.costo, 0);
-  const mantenimientosPendientes = mantenimientos.filter(m => m.status === "Pendiente" || m.status === "En proceso");
-  const unidadesTallerDetalle = unidades.filter((u) => u.condicion === "En taller" || u.condicion === "Pendiente");
-  const proximosServiciosDetalle = unidades.filter((u) => u.condicion === "Próximo servicio");
-  const pendientes = mantenimientosPendientes.length;
-  const unidadesEnTaller = unidadesTallerDetalle.length;
-  const proximosServicios = proximosServiciosDetalle.length;
-  const historialMantenimientos = mantenimientos.filter((m) => m.unidad === selectedUnidadHistorial);
-  const historialRefacciones = refacciones.filter((r) => r.unidad === selectedUnidadHistorial);
-  const historialUnidad = unidades.find((u) => u.unidad === selectedUnidadHistorial);
-  const costoHistorialMantenimiento = historialMantenimientos.reduce((sum, item) => sum + item.costo, 0);
-  const costoHistorialRefacciones = historialRefacciones.reduce((sum, item) => sum + item.total, 0);
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function isoToDisplay(iso: string) {
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+}
+
+function currency(n: number) {
+  return `$${Math.round(n).toLocaleString("es-MX")}`;
+}
+
+const SEVERIDAD_COLORS: Record<string, string> = {
+  Alta:  "bg-red-500/15 text-red-400 border border-red-500/30",
+  Media: "bg-amber-500/15 text-amber-400 border border-amber-500/30",
+  Baja:  "bg-blue-500/15 text-blue-400 border border-blue-500/30",
+};
+
+const TIPO_COLORS: Record<string, string> = {
+  Preventivo:  "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30",
+  Correctivo:  "bg-orange-500/15 text-orange-400 border border-orange-500/30",
+  "Inspección": "bg-blue-500/15 text-blue-400 border border-blue-500/30",
+};
+
+// ─── Form Drawer ──────────────────────────────────────────────────────────────
+
+function FormDrawer({
+  open,
+  tab,
+  unidadesList,
+  onClose,
+  onSave,
+}: {
+  open: boolean;
+  tab: Tab;
+  unidadesList: string[];
+  onClose: () => void;
+  onSave: (data: Mantenimiento | Reparacion | Falla) => Promise<void>;
+}) {
+  const emptyM = () => ({ fecha: todayISO(), unidad: "", tipo: "Preventivo", descripcion: "", costo: "", taller: "", status: "Pendiente" });
+  const emptyR = () => ({ fecha: todayISO(), unidad: "", descripcion: "", causa: "", costo: "", taller: "", status: "Pendiente" });
+  const emptyF = () => ({ fecha: todayISO(), unidad: "", descripcion: "", severidad: "Media", reportadoPor: "", status: "Reportada" });
+
+  const [fm, setFm] = useState(emptyM());
+  const [fr, setFr] = useState(emptyR());
+  const [ff, setFf] = useState(emptyF());
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    getCollectionDocs<Mantenimiento>(COLLECTIONS.mantenimientos).then(setMantenimientos);
-    getCollectionDocs<Refaccion>(COLLECTIONS.refacciones).then(setRefacciones);
-    getCollectionDocs<Unidad>(COLLECTIONS.unidades).then((data) => {
-      const mapped: UnidadMantenimiento[] = data.map((u) => ({
-        unidad: u.noEconomico,
-        kmActual: u.kmActual,
-        proximoServicioKm: 0,
-        proximoServicioFecha: u.proximoMantenimiento ?? "",
-        ultimoServicio: u.ultimoMantenimiento ?? "",
-        condicion: u.estatus === "Mantenimiento" ? "En taller" : u.estatus === "Baja" ? "Baja" : "Al día",
-        responsable: u.choferAsignado ?? "",
-      }));
-      setUnidades(mapped);
-      if (mapped.length > 0) setSelectedUnidadHistorial(mapped[0].unidad);
-    });
-  }, []);
+    if (open) { setFm(emptyM()); setFr(emptyR()); setFf(emptyF()); }
+  }, [open]);
 
-  function showToast(type: "success" | "error", title: string, message: string) {
-    window.dispatchEvent(new CustomEvent("duro:toast", {
-      detail: { type, title, message },
-    }));
-  }
-
-  function markMantenimientoCompletado(target: Mantenimiento) {
-    setMantenimientos((current) => current.map((item) => {
-      const isSameRecord =
-        item.fecha === target.fecha &&
-        item.unidad === target.unidad &&
-        item.descripcion === target.descripcion &&
-        item.costo === target.costo;
-
-      return isSameRecord ? { ...item, status: "Completado" } : item;
-    }));
-    showToast("success", "Mantenimiento completado", `${target.unidad} quedó marcado como completado.`);
-  }
-
-  useEffect(() => {
-    function handleOutsideClick(event: MouseEvent) {
-      if (!insightsRef.current || insightsRef.current.contains(event.target as Node)) return;
-      setActiveInsight(null);
+  async function handleSave() {
+    setSaving(true);
+    try {
+      if (tab === "mantenimientos") {
+        await onSave({
+          fecha: isoToDisplay(fm.fecha),
+          unidad: fm.unidad,
+          tipo: fm.tipo,
+          descripcion: fm.descripcion,
+          costo: parseFloat(fm.costo) || 0,
+          taller: fm.taller,
+          status: fm.status,
+        });
+      } else if (tab === "reparaciones") {
+        await onSave({
+          fecha: isoToDisplay(fr.fecha),
+          unidad: fr.unidad,
+          descripcion: fr.descripcion,
+          causa: fr.causa,
+          costo: parseFloat(fr.costo) || 0,
+          taller: fr.taller,
+          status: fr.status,
+        });
+      } else {
+        await onSave({
+          fecha: isoToDisplay(ff.fecha),
+          unidad: ff.unidad,
+          descripcion: ff.descripcion,
+          severidad: ff.severidad,
+          reportadoPor: ff.reportadoPor,
+          status: ff.status,
+        });
+      }
+      onClose();
+    } finally {
+      setSaving(false);
     }
-
-    document.addEventListener("mousedown", handleOutsideClick);
-    return () => document.removeEventListener("mousedown", handleOutsideClick);
-  }, []);
-
-  async function handleSave(values: Record<string, string>) {
-    if (activeTab === "refacciones") {
-      const cantidad = Number(values.Cantidad || 0);
-      const costoUnit = Number(values["Costo unitario ($)"]?.replace(/[$,]/g, "") || 0);
-      const fecha = values.Fecha ? values.Fecha.split("-").reverse().join("/") : new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" });
-      const newRefaccion: Refaccion = {
-        fecha,
-        unidad: values.Unidad || "DC-03",
-        refaccion: values.Refacción || "Filtro de aceite",
-        cantidad,
-        costoUnit,
-        total: cantidad * costoUnit,
-        proveedor: values.Proveedor || "Auto Partes NL",
-      };
-      setRefacciones((current) => [newRefaccion, ...current]);
-      await upsertDocument(COLLECTIONS.refacciones, Date.now().toString(), withPlantaTag(newRefaccion));
-      return;
-    }
-
-    const fecha = values.Fecha ? values.Fecha.split("-").reverse().join("/") : new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" });
-    const newMantenimiento: Mantenimiento = {
-      fecha,
-      unidad: values.Unidad || "DC-03",
-      tipo: values.Tipo || "Preventivo",
-      descripcion: values.Descripción || "Cambio de aceite y filtros",
-      costo: Number(values["Costo ($)"]?.replace(/[$,]/g, "") || 0),
-      taller: values.Taller || "Taller Monterrey",
-      status: values.Status || "Pendiente",
-    };
-    setMantenimientos((current) => [newMantenimiento, ...current]);
-    await upsertDocument(COLLECTIONS.mantenimientos, Date.now().toString(), withPlantaTag(newMantenimiento));
   }
+
+  const inp = "w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-900 text-sm placeholder-gray-400 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors";
+  const lbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5";
+
+  const titles: Record<Tab, string> = {
+    mantenimientos: "Registrar mantenimiento",
+    reparaciones: "Registrar reparación",
+    fallas: "Registrar falla",
+  };
+
+  const icons: Record<Tab, React.ReactNode> = {
+    mantenimientos: <Wrench size={18} />,
+    reparaciones: <Fuel size={18} />,
+    fallas: <Zap size={18} />,
+  };
+
+  if (!open) return null;
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-gray-500 text-sm mt-0.5">Control de mantenimientos y refacciones</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => setShowHistorialCamion((value) => !value)}
-            className="flex items-center gap-2 border border-[#3A3A3A] bg-[#1A1A1A] hover:border-[#CC2229] text-gray-300 hover:text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-          >
-            <Car size={16} />
-            Ver historial por camión
-          </button>
-          {activeTab !== "unidades" && (
-            <button
-              onClick={() => setShowForm(true)}
-              className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#991A1E] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-            >
-              <Plus size={16} />
-              Registrar
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* KPIs */}
-      <div ref={insightsRef} className="space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-          <KPICard
-            title="Costo mantenimiento mes"
-            value={`$${costoMes.toLocaleString()}`}
-            icon={DollarSign}
-            iconColor="text-[#CC2229]"
-            active={activeInsight === "costo"}
-            onClick={() => setActiveInsight((current) => current === "costo" ? null : "costo")}
-          />
-          <KPICard
-            title="Mantenimientos pendientes"
-            value={String(pendientes)}
-            icon={AlertTriangle}
-            iconColor="text-orange-400"
-            subtitle="Requieren atención"
-            active={activeInsight === "pendientes"}
-            onClick={() => setActiveInsight((current) => current === "pendientes" ? null : "pendientes")}
-          />
-          <KPICard
-            title="Unidades en taller"
-            value={String(unidadesEnTaller)}
-            icon={Wrench}
-            iconColor="text-red-400"
-            active={activeInsight === "taller"}
-            onClick={() => setActiveInsight((current) => current === "taller" ? null : "taller")}
-          />
-          <KPICard
-            title="Próximos servicios"
-            value={String(proximosServicios)}
-            icon={Car}
-            iconColor="text-blue-400"
-            active={activeInsight === "proximos"}
-            onClick={() => setActiveInsight((current) => current === "proximos" ? null : "proximos")}
-          />
-        </div>
-
-        {activeInsight && (
-          <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
-            <div className="px-5 py-4 border-b border-[#3A3A3A]">
-              <h3 className="text-white font-semibold">
-                {activeInsight === "costo" && "Detalle de costo mantenimiento mes"}
-                {activeInsight === "pendientes" && "Mantenimientos pendientes"}
-                {activeInsight === "taller" && "Unidades en taller"}
-                {activeInsight === "proximos" && "Próximos servicios"}
-              </h3>
-              <p className="text-gray-500 text-xs mt-1">Selecciona una tarjeta para ver cuáles unidades requieren atención.</p>
+    <div className="fixed inset-0 z-50 flex">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative ml-auto flex h-full w-full max-w-lg flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#CC2229]/10 text-[#CC2229]">
+              {icons[tab]}
             </div>
-            <div className="divide-y divide-[#3A3A3A]">
-              {activeInsight === "costo" && mantenimientos.map((item) => (
-                <div key={`${item.fecha}-${item.unidad}-${item.descripcion}`} className="grid grid-cols-1 md:grid-cols-[120px_1fr_auto_auto] gap-2 px-5 py-3">
-                  <p className="text-sm font-semibold text-white">{item.unidad}</p>
-                  <div>
-                    <p className="text-sm text-gray-200">{item.descripcion}</p>
-                    <p className="text-xs text-gray-500">{item.fecha} · {item.taller}</p>
-                  </div>
-                  <StatusBadge status={item.status} />
-                  <p className="text-sm font-semibold text-white">${item.costo.toLocaleString()}</p>
-                </div>
-              ))}
-
-              {activeInsight === "pendientes" && mantenimientosPendientes.map((item) => {
-                const unidad = unidades.find((u) => u.unidad === item.unidad);
-                return (
-                <div key={`${item.fecha}-${item.unidad}-${item.status}`} className="grid grid-cols-1 md:grid-cols-[120px_1fr_auto_auto] gap-2 px-5 py-3">
-                  <p className="text-sm font-semibold text-white">{item.unidad}</p>
-                  <div>
-                    <p className="text-sm text-gray-200">{item.descripcion}</p>
-                    <p className="text-xs text-gray-500">Toca atender el {unidad?.proximoServicioFecha ?? item.fecha} · {item.taller}</p>
-                  </div>
-                  <StatusBadge status={item.status} />
-                  <button
-                    onClick={() => markMantenimientoCompletado(item)}
-                    className="inline-flex min-w-32 items-center justify-center rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-4 py-2 text-center text-sm font-medium leading-tight text-gray-200 transition-colors hover:border-[#CC2229] hover:text-white"
-                  >
-                    Marcar<br />completado
-                  </button>
-                </div>
-              );
-            })}
-
-              {activeInsight === "taller" && unidadesTallerDetalle.map((item) => (
-                <div key={item.unidad} className="grid grid-cols-1 md:grid-cols-[120px_1fr_auto] gap-2 px-5 py-3">
-                  <p className="text-sm font-semibold text-white">{item.unidad}</p>
-                  <div>
-                    <p className="text-sm text-gray-200">Responsable: {item.responsable}</p>
-                    <p className="text-xs text-gray-500">Servicio programado para {item.proximoServicioFecha} · Último servicio {item.ultimoServicio}</p>
-                  </div>
-                  <StatusBadge status={item.condicion} />
-                </div>
-              ))}
-
-              {activeInsight === "proximos" && proximosServiciosDetalle.map((item) => (
-                <div key={item.unidad} className="grid grid-cols-1 md:grid-cols-[120px_1fr_auto] gap-2 px-5 py-3">
-                  <p className="text-sm font-semibold text-white">{item.unidad}</p>
-                  <div>
-                    <p className="text-sm text-gray-200">Le toca servicio el {item.proximoServicioFecha}</p>
-                    <p className="text-xs text-gray-500">Km actual {item.kmActual.toLocaleString()} · Próximo servicio {item.proximoServicioKm.toLocaleString()} km</p>
-                  </div>
-                  <StatusBadge status={item.condicion} />
-                </div>
-              ))}
-
-              {activeInsight === "proximos" && proximosServiciosDetalle.length === 0 && (
-                <p className="px-5 py-4 text-sm text-gray-500">No hay próximos servicios registrados.</p>
-              )}
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">{titles[tab]}</h2>
+              <p className="text-xs text-gray-500">Completa los datos del registro</p>
             </div>
           </div>
-        )}
-      </div>
+          <button onClick={onClose} className="rounded-xl p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors cursor-pointer">
+            <X size={16} />
+          </button>
+        </div>
 
-      <FormModal
-        open={showForm}
-        title={activeTab === "mantenimientos" ? "Registrar mantenimiento" : "Registrar refacción"}
-        onClose={() => setShowForm(false)}
-        onSave={handleSave}
-        footer={
-          <>
-            <button onClick={() => setShowForm(false)} className="px-5 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 border border-gray-200 rounded-xl transition-colors">
-              Cancelar
-            </button>
-            <button className="px-5 py-2.5 text-sm font-medium bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-xl transition-colors shadow-md shadow-[#CC2229]/20">
-              Guardar
-            </button>
-          </>
-        }
-      >
-        {(() => {
-          const lbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5";
-          const inp = "w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-900 text-sm placeholder-gray-400 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors";
-          return activeTab === "mantenimientos" ? (
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+          {tab === "mantenimientos" && (
             <>
-              <FormSection title="Servicio">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className={lbl}>Fecha</label>
-                  <input type="date" className={inp} />
-                </div>
-                <div>
-                  <label className={lbl}>Unidad</label>
-                  <select className={inp}>
-                    {unidades.map((unidad) => <option key={unidad.unidad}>{unidad.unidad}</option>)}
-                  </select>
+                  <input type="date" value={fm.fecha} onChange={(e) => setFm({ ...fm, fecha: e.target.value })} className={inp} />
                 </div>
                 <div>
                   <label className={lbl}>Tipo</label>
-                  <select className={inp}>
+                  <select value={fm.tipo} onChange={(e) => setFm({ ...fm, tipo: e.target.value })} className={inp}>
                     <option>Preventivo</option>
                     <option>Correctivo</option>
                     <option>Inspección</option>
-                    <option>Garantía</option>
                   </select>
                 </div>
+              </div>
+              <div>
+                <label className={lbl}>Unidad</label>
+                <select value={fm.unidad} onChange={(e) => setFm({ ...fm, unidad: e.target.value })} className={inp}>
+                  <option value="">Seleccionar unidad…</option>
+                  {unidadesList.map((u) => <option key={u}>{u}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={lbl}>Descripción</label>
+                <input type="text" value={fm.descripcion} onChange={(e) => setFm({ ...fm, descripcion: e.target.value })} placeholder="Ej: Cambio de aceite y filtros" className={inp} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className={lbl}>Costo ($)</label>
-                  <select className={inp}>
-                    {[3200, 3800, 4800, 8500, 9600, 15200].map((costo) => <option key={costo}>${costo.toLocaleString()}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className={lbl}>Taller</label>
-                  <select className={inp}>
-                    {["Taller Monterrey", "Servitruck NL", "Auto Partes NL", "Llantera JC", "Hidráulicos MTY"].map((taller) => <option key={taller}>{taller}</option>)}
-                  </select>
+                  <input type="number" min="0" step="0.01" value={fm.costo} onChange={(e) => setFm({ ...fm, costo: e.target.value })} placeholder="0.00" className={inp} />
                 </div>
                 <div>
                   <label className={lbl}>Status</label>
-                  <select className={inp}>
+                  <select value={fm.status} onChange={(e) => setFm({ ...fm, status: e.target.value })} className={inp}>
                     <option>Pendiente</option>
                     <option>En proceso</option>
                     <option>Completado</option>
                   </select>
                 </div>
-              </FormSection>
+              </div>
               <div>
-                <label className={lbl}>Descripción</label>
-                <select className={inp}>
-                  {["Cambio de aceite y filtros", "Reparación de frenos traseros", "Revisión general + afinación", "Cambio de bomba hidráulica", "Cambio de llantas delanteras"].map((d) => <option key={d}>{d}</option>)}
-                </select>
+                <label className={lbl}>Taller / Proveedor</label>
+                <input type="text" value={fm.taller} onChange={(e) => setFm({ ...fm, taller: e.target.value })} placeholder="Nombre del taller" className={inp} />
               </div>
             </>
-          ) : (
-            <FormSection title="Refacción">
-              <div>
-                <label className={lbl}>Fecha</label>
-                <input type="date" className={inp} />
+          )}
+
+          {tab === "reparaciones" && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={lbl}>Fecha</label>
+                  <input type="date" value={fr.fecha} onChange={(e) => setFr({ ...fr, fecha: e.target.value })} className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Status</label>
+                  <select value={fr.status} onChange={(e) => setFr({ ...fr, status: e.target.value })} className={inp}>
+                    <option>Pendiente</option>
+                    <option>En proceso</option>
+                    <option>Completado</option>
+                  </select>
+                </div>
               </div>
               <div>
                 <label className={lbl}>Unidad</label>
-                <select className={inp}>
-                  {unidades.map((unidad) => <option key={unidad.unidad}>{unidad.unidad}</option>)}
+                <select value={fr.unidad} onChange={(e) => setFr({ ...fr, unidad: e.target.value })} className={inp}>
+                  <option value="">Seleccionar unidad…</option>
+                  {unidadesList.map((u) => <option key={u}>{u}</option>)}
                 </select>
               </div>
               <div>
-                <label className={lbl}>Refacción</label>
-                <select className={inp}>
-                  {["Filtro de aceite", "Pastillas de freno", "Bujías NGK", "Bomba hidráulica", "Llanta 11R22.5", "Aceite 15W40 (cubeta)"].map((r) => <option key={r}>{r}</option>)}
-                </select>
+                <label className={lbl}>Descripción de la reparación</label>
+                <input type="text" value={fr.descripcion} onChange={(e) => setFr({ ...fr, descripcion: e.target.value })} placeholder="Ej: Reparación de frenos traseros" className={inp} />
               </div>
               <div>
-                <label className={lbl}>Cantidad</label>
-                <select className={inp}>
-                  {[1, 2, 4, 6, 8, 10].map((c) => <option key={c}>{c}</option>)}
-                </select>
+                <label className={lbl}>Causa / Motivo</label>
+                <input type="text" value={fr.causa} onChange={(e) => setFr({ ...fr, causa: e.target.value })} placeholder="Ej: Desgaste por uso" className={inp} />
               </div>
-              <div>
-                <label className={lbl}>Costo unitario ($)</label>
-                <select className={inp}>
-                  {[180, 280, 650, 890, 4800, 12500].map((c) => <option key={c}>${c.toLocaleString()}</option>)}
-                </select>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={lbl}>Costo ($)</label>
+                  <input type="number" min="0" step="0.01" value={fr.costo} onChange={(e) => setFr({ ...fr, costo: e.target.value })} placeholder="0.00" className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Taller / Proveedor</label>
+                  <input type="text" value={fr.taller} onChange={(e) => setFr({ ...fr, taller: e.target.value })} placeholder="Nombre del taller" className={inp} />
+                </div>
               </div>
-              <div>
-                <label className={lbl}>Proveedor</label>
-                <select className={inp}>
-                  {["Auto Partes NL", "Servitruck NL", "Refaccionaria Sur", "Hidráulicos MTY", "Llantera JC", "Lubricantes MX"].map((p) => <option key={p}>{p}</option>)}
-                </select>
-              </div>
-            </FormSection>
-          );
-        })()}
-      </FormModal>
+            </>
+          )}
 
-      {showHistorialCamion && (
-        <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-[#3A3A3A] flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="text-white font-semibold">Historial por camión</h3>
-              <p className="text-gray-500 text-xs mt-1">Mantenimientos, refacciones y costos acumulados por unidad.</p>
+          {tab === "fallas" && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={lbl}>Fecha</label>
+                  <input type="date" value={ff.fecha} onChange={(e) => setFf({ ...ff, fecha: e.target.value })} className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Severidad</label>
+                  <select value={ff.severidad} onChange={(e) => setFf({ ...ff, severidad: e.target.value })} className={inp}>
+                    <option>Alta</option>
+                    <option>Media</option>
+                    <option>Baja</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className={lbl}>Unidad</label>
+                <select value={ff.unidad} onChange={(e) => setFf({ ...ff, unidad: e.target.value })} className={inp}>
+                  <option value="">Seleccionar unidad…</option>
+                  {unidadesList.map((u) => <option key={u}>{u}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={lbl}>Descripción de la falla</label>
+                <input type="text" value={ff.descripcion} onChange={(e) => setFf({ ...ff, descripcion: e.target.value })} placeholder="Ej: Motor no enciende" className={inp} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={lbl}>Reportado por</label>
+                  <input type="text" value={ff.reportadoPor} onChange={(e) => setFf({ ...ff, reportadoPor: e.target.value })} placeholder="Nombre del operador" className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Status</label>
+                  <select value={ff.status} onChange={(e) => setFf({ ...ff, status: e.target.value })} className={inp}>
+                    <option>Reportada</option>
+                    <option>En proceso</option>
+                    <option>Resuelta</option>
+                  </select>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="shrink-0 border-t border-gray-100 px-6 py-4 flex items-center justify-end gap-3">
+          <button onClick={onClose} disabled={saving} className="px-4 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 border border-gray-200 rounded-xl transition-colors disabled:opacity-50 cursor-pointer">
+            Cancelar
+          </button>
+          <button onClick={handleSave} disabled={saving} className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-xl transition-colors disabled:opacity-60 shadow-lg shadow-[#CC2229]/20 cursor-pointer">
+            {saving ? (
+              <><span className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />Guardando...</>
+            ) : (
+              <>Guardar registro</>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Expandable row for mantenimientos / reparaciones ─────────────────────────
+
+function MantRow({
+  item,
+  onComplete,
+}: {
+  item: Mantenimiento;
+  onComplete: (item: Mantenimiento) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const done = item.status === "Completado";
+  return (
+    <>
+      <tr
+        className={`cursor-pointer transition-colors ${expanded ? "bg-[#1A1A1A]" : "hover:bg-[#1A1A1A]"}`}
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{item.fecha}</td>
+        <td className="px-4 py-3 text-white font-semibold text-sm">{item.unidad}</td>
+        <td className="px-4 py-3">
+          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${TIPO_COLORS[item.tipo] ?? "bg-gray-500/15 text-gray-400 border border-gray-500/30"}`}>
+            {item.tipo}
+          </span>
+        </td>
+        <td className="px-4 py-3 text-gray-200 text-sm">{item.descripcion}</td>
+        <td className="px-4 py-3 text-white font-semibold tabular-nums">{currency(item.costo)}</td>
+        <td className="px-4 py-3"><StatusBadge status={item.status} /></td>
+        <td className="px-4 py-3 text-gray-500 text-xs">{expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</td>
+      </tr>
+      {expanded && (
+        <tr className="bg-[#111318]">
+          <td colSpan={7} className="px-5 pb-4 pt-3">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex flex-wrap gap-6 text-sm">
+                <div>
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-0.5">Taller</p>
+                  <p className="text-gray-200">{item.taller || "—"}</p>
+                </div>
+              </div>
+              {!done && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onComplete(item); }}
+                  className="flex items-center gap-1.5 rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-4 py-2 text-sm font-medium text-gray-200 transition-colors hover:border-emerald-500/50 hover:text-emerald-400 cursor-pointer"
+                >
+                  <CheckCircle2 size={14} /> Marcar completado
+                </button>
+              )}
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={selectedUnidadHistorial}
-                onChange={(event) => setSelectedUnidadHistorial(event.target.value)}
-                className="bg-[#1A1A1A] border border-[#3A3A3A] text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-              >
-                {unidades.map((unidad) => <option key={unidad.unidad}>{unidad.unidad}</option>)}
-              </select>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+function RepRow({
+  item,
+  onComplete,
+}: {
+  item: Reparacion;
+  onComplete: (item: Reparacion) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const done = item.status === "Completado";
+  return (
+    <>
+      <tr
+        className={`cursor-pointer transition-colors ${expanded ? "bg-[#1A1A1A]" : "hover:bg-[#1A1A1A]"}`}
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{item.fecha}</td>
+        <td className="px-4 py-3 text-white font-semibold text-sm">{item.unidad}</td>
+        <td className="px-4 py-3 text-gray-200 text-sm">{item.descripcion}</td>
+        <td className="px-4 py-3 text-gray-400 text-sm">{item.causa || "—"}</td>
+        <td className="px-4 py-3 text-white font-semibold tabular-nums">{currency(item.costo)}</td>
+        <td className="px-4 py-3"><StatusBadge status={item.status} /></td>
+        <td className="px-4 py-3 text-gray-500 text-xs">{expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</td>
+      </tr>
+      {expanded && (
+        <tr className="bg-[#111318]">
+          <td colSpan={7} className="px-5 pb-4 pt-3">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="text-sm">
+                <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-0.5">Taller</p>
+                <p className="text-gray-200">{item.taller || "—"}</p>
+              </div>
+              {!done && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onComplete(item); }}
+                  className="flex items-center gap-1.5 rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-4 py-2 text-sm font-medium text-gray-200 transition-colors hover:border-emerald-500/50 hover:text-emerald-400 cursor-pointer"
+                >
+                  <CheckCircle2 size={14} /> Marcar completado
+                </button>
+              )}
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+function FallaRow({
+  item,
+  onResolve,
+}: {
+  item: Falla;
+  onResolve: (item: Falla) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const resolved = item.status === "Resuelta";
+  return (
+    <>
+      <tr
+        className={`cursor-pointer transition-colors ${expanded ? "bg-[#1A1A1A]" : "hover:bg-[#1A1A1A]"}`}
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{item.fecha}</td>
+        <td className="px-4 py-3 text-white font-semibold text-sm">{item.unidad}</td>
+        <td className="px-4 py-3 text-gray-200 text-sm">{item.descripcion}</td>
+        <td className="px-4 py-3">
+          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${SEVERIDAD_COLORS[item.severidad] ?? "bg-gray-500/15 text-gray-400 border border-gray-500/30"}`}>
+            {item.severidad}
+          </span>
+        </td>
+        <td className="px-4 py-3 text-gray-400 text-sm">{item.reportadoPor || "—"}</td>
+        <td className="px-4 py-3"><StatusBadge status={item.status} /></td>
+        <td className="px-4 py-3 text-gray-500 text-xs">{expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</td>
+      </tr>
+      {expanded && !resolved && (
+        <tr className="bg-[#111318]">
+          <td colSpan={7} className="px-5 pb-4 pt-3">
+            <div className="flex justify-end">
               <button
-                onClick={() => setShowHistorialCamion(false)}
-                className="rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-3 py-2 text-sm text-gray-300 transition-colors hover:border-[#CC2229] hover:text-white"
+                onClick={(e) => { e.stopPropagation(); onResolve(item); }}
+                className="flex items-center gap-1.5 rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-4 py-2 text-sm font-medium text-gray-200 transition-colors hover:border-emerald-500/50 hover:text-emerald-400 cursor-pointer"
               >
-                Cerrar historial
+                <CheckCircle2 size={14} /> Marcar resuelta
               </button>
             </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-4 divide-y md:divide-y-0 md:divide-x divide-[#3A3A3A]">
-            <div className="p-5">
-              <p className="text-xs uppercase tracking-widest text-gray-500">Unidad</p>
-              <p className="mt-2 text-lg font-semibold text-white">{selectedUnidadHistorial}</p>
-              <p className="text-xs text-gray-500">{historialUnidad?.responsable ?? "Sin responsable"}</p>
-            </div>
-            <div className="p-5">
-              <p className="text-xs uppercase tracking-widest text-gray-500">Último servicio</p>
-              <p className="mt-2 text-lg font-semibold text-white">{historialUnidad?.ultimoServicio ?? "-"}</p>
-              <p className="text-xs text-gray-500">{historialUnidad?.condicion ?? "Sin condición"}</p>
-            </div>
-            <div className="p-5">
-              <p className="text-xs uppercase tracking-widest text-gray-500">Costo mantenimiento</p>
-              <p className="mt-2 text-lg font-semibold text-white">${costoHistorialMantenimiento.toLocaleString()}</p>
-              <p className="text-xs text-gray-500">{historialMantenimientos.length} registros</p>
-            </div>
-            <div className="p-5">
-              <p className="text-xs uppercase tracking-widest text-gray-500">Costo refacciones</p>
-              <p className="mt-2 text-lg font-semibold text-white">${costoHistorialRefacciones.toLocaleString()}</p>
-              <p className="text-xs text-gray-500">{historialRefacciones.length} registros</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 xl:grid-cols-2 divide-y xl:divide-y-0 xl:divide-x divide-[#3A3A3A]">
-            <div className="p-5">
-              <h4 className="text-white font-semibold mb-3">Mantenimientos</h4>
-              <div className="space-y-3">
-                {historialMantenimientos.length > 0 ? historialMantenimientos.map((item) => (
-                  <div key={`${item.fecha}-${item.descripcion}-${item.costo}`} className="rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] p-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-sm font-semibold text-white">{item.descripcion}</p>
-                      <StatusBadge status={item.status} />
-                    </div>
-                    <p className="mt-1 text-xs text-gray-500">{item.fecha} · {item.tipo} · {item.taller}</p>
-                    <p className="mt-2 text-sm font-semibold text-white">${item.costo.toLocaleString()}</p>
-                  </div>
-                )) : (
-                  <p className="text-sm text-gray-500">Sin mantenimientos registrados para esta unidad.</p>
-                )}
-              </div>
-            </div>
-
-            <div className="p-5">
-              <h4 className="text-white font-semibold mb-3">Refacciones</h4>
-              <div className="space-y-3">
-                {historialRefacciones.length > 0 ? historialRefacciones.map((item) => (
-                  <div key={`${item.fecha}-${item.refaccion}-${item.total}`} className="rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] p-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-sm font-semibold text-white">{item.refaccion}</p>
-                      <span className="text-xs text-gray-400">{item.cantidad} pzas.</span>
-                    </div>
-                    <p className="mt-1 text-xs text-gray-500">{item.fecha} · {item.proveedor}</p>
-                    <p className="mt-2 text-sm font-semibold text-white">${item.total.toLocaleString()}</p>
-                  </div>
-                )) : (
-                  <p className="text-sm text-gray-500">Sin refacciones registradas para esta unidad.</p>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
+          </td>
+        </tr>
       )}
+    </>
+  );
+}
 
-      {/* Tabs */}
-      <div className="flex gap-1 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg p-1 w-fit">
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+export default function MantenimientoPage() {
+  const [activeTab, setActiveTab] = useState<Tab>("mantenimientos");
+  const [showForm, setShowForm] = useState(false);
+  const [query, setQuery] = useState("");
+
+  const [mantenimientos, setMantenimientos] = useState<Mantenimiento[]>([]);
+  const [reparaciones, setReparaciones] = useState<Reparacion[]>([]);
+  const [fallas, setFallas] = useState<Falla[]>([]);
+  const [unidadesList, setUnidadesList] = useState<string[]>([]);
+
+  useEffect(() => {
+    getCollectionDocs<Mantenimiento>(COLLECTIONS.mantenimientos).then((d) => setMantenimientos(filterByPlanta(d)));
+    getCollectionDocs<Reparacion>(COLLECTIONS.reparaciones).then((d) => setReparaciones(filterByPlanta(d)));
+    getCollectionDocs<Falla>(COLLECTIONS.fallas).then((d) => setFallas(filterByPlanta(d)));
+    getCollectionDocs<Unidad>(COLLECTIONS.unidades).then((d) =>
+      setUnidadesList(d.map((u) => u.noEconomico).filter(Boolean))
+    );
+  }, []);
+
+  function showToast(type: "success" | "error", title: string, msg: string) {
+    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type, title, message: msg } }));
+  }
+
+  // KPIs
+  const costoTotal = useMemo(() =>
+    mantenimientos.reduce((s, m) => s + m.costo, 0) +
+    reparaciones.reduce((s, r) => s + r.costo, 0),
+    [mantenimientos, reparaciones]
+  );
+  const pendientes = useMemo(() =>
+    mantenimientos.filter((m) => m.status !== "Completado").length +
+    reparaciones.filter((r) => r.status !== "Completado").length,
+    [mantenimientos, reparaciones]
+  );
+  const fallasActivas = useMemo(() => fallas.filter((f) => f.status !== "Resuelta").length, [fallas]);
+  const fallasAltas = useMemo(() => fallas.filter((f) => f.severidad === "Alta" && f.status !== "Resuelta").length, [fallas]);
+
+  // Filtered lists
+  const filteredM = useMemo(() => {
+    const q = query.toLowerCase();
+    return !q ? mantenimientos : mantenimientos.filter((m) =>
+      m.unidad.toLowerCase().includes(q) || m.descripcion.toLowerCase().includes(q) || m.taller.toLowerCase().includes(q)
+    );
+  }, [mantenimientos, query]);
+
+  const filteredR = useMemo(() => {
+    const q = query.toLowerCase();
+    return !q ? reparaciones : reparaciones.filter((r) =>
+      r.unidad.toLowerCase().includes(q) || r.descripcion.toLowerCase().includes(q) || r.causa.toLowerCase().includes(q)
+    );
+  }, [reparaciones, query]);
+
+  const filteredF = useMemo(() => {
+    const q = query.toLowerCase();
+    return !q ? fallas : fallas.filter((f) =>
+      f.unidad.toLowerCase().includes(q) || f.descripcion.toLowerCase().includes(q) || f.reportadoPor.toLowerCase().includes(q)
+    );
+  }, [fallas, query]);
+
+  async function handleSave(data: Mantenimiento | Reparacion | Falla) {
+    const id = Date.now().toString();
+    if (activeTab === "mantenimientos") {
+      const item = { ...(data as Mantenimiento), id };
+      setMantenimientos((p) => [item, ...p]);
+      await upsertDocument(COLLECTIONS.mantenimientos, id, withPlantaTag(data as Mantenimiento));
+      showToast("success", "Mantenimiento registrado", `${item.unidad} agregado.`);
+    } else if (activeTab === "reparaciones") {
+      const item = { ...(data as Reparacion), id };
+      setReparaciones((p) => [item, ...p]);
+      await upsertDocument(COLLECTIONS.reparaciones, id, withPlantaTag(data as Reparacion));
+      showToast("success", "Reparación registrada", `${item.unidad} agregado.`);
+    } else {
+      const item = { ...(data as Falla), id };
+      setFallas((p) => [item, ...p]);
+      await upsertDocument(COLLECTIONS.fallas, id, withPlantaTag(data as Falla));
+      showToast("success", "Falla registrada", `${item.unidad} agregado.`);
+    }
+  }
+
+  function completeMantenimiento(target: Mantenimiento) {
+    setMantenimientos((p) => p.map((m) =>
+      m.id === target.id || (m.fecha === target.fecha && m.unidad === target.unidad && m.descripcion === target.descripcion)
+        ? { ...m, status: "Completado" }
+        : m
+    ));
+    showToast("success", "Completado", `Mantenimiento de ${target.unidad} marcado.`);
+  }
+
+  function completeReparacion(target: Reparacion) {
+    setReparaciones((p) => p.map((r) =>
+      r.id === target.id || (r.fecha === target.fecha && r.unidad === target.unidad && r.descripcion === target.descripcion)
+        ? { ...r, status: "Completado" }
+        : r
+    ));
+    showToast("success", "Completado", `Reparación de ${target.unidad} marcada.`);
+  }
+
+  function resolveFalla(target: Falla) {
+    setFallas((p) => p.map((f) =>
+      f.id === target.id || (f.fecha === target.fecha && f.unidad === target.unidad && f.descripcion === target.descripcion)
+        ? { ...f, status: "Resuelta" }
+        : f
+    ));
+    showToast("success", "Resuelta", `Falla de ${target.unidad} marcada como resuelta.`);
+  }
+
+  const tabLabels: Record<Tab, string> = {
+    mantenimientos: "Mantenimientos",
+    reparaciones: "Reparaciones",
+    fallas: "Fallas",
+  };
+
+  const currentCount = activeTab === "mantenimientos" ? filteredM.length : activeTab === "reparaciones" ? filteredR.length : filteredF.length;
+
+  return (
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-gray-500">{currentCount} registros en {tabLabels[activeTab].toLowerCase()}</p>
         <button
-          onClick={() => setActiveTab("mantenimientos")}
-          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-            activeTab === "mantenimientos"
-              ? "bg-[#CC2229] text-white"
-              : "text-gray-400 hover:text-white"
-          }`}
+          onClick={() => setShowForm(true)}
+          className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#B01E24] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-[#CC2229]/20 cursor-pointer"
         >
-          Mantenimientos
-        </button>
-        <button
-          onClick={() => setActiveTab("refacciones")}
-          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-            activeTab === "refacciones"
-              ? "bg-[#CC2229] text-white"
-              : "text-gray-400 hover:text-white"
-          }`}
-        >
-          Refacciones
-        </button>
-        <button
-          onClick={() => setActiveTab("unidades")}
-          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-            activeTab === "unidades"
-              ? "bg-[#CC2229] text-white"
-              : "text-gray-400 hover:text-white"
-          }`}
-        >
-          Unidades
+          <Plus size={16} />
+          Registrar {activeTab === "mantenimientos" ? "mantenimiento" : activeTab === "reparaciones" ? "reparación" : "falla"}
         </button>
       </div>
 
-      {/* Mantenimientos Table */}
+      {/* KPIs */}
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+        <KPICard
+          title="Costo total"
+          value={currency(costoTotal)}
+          icon={DollarSign}
+          iconColor="text-[#CC2229]"
+          subtitle="Mantenimientos + reparaciones"
+        />
+        <KPICard
+          title="Trabajos pendientes"
+          value={String(pendientes)}
+          icon={Wrench}
+          iconColor={pendientes > 0 ? "text-amber-400" : "text-gray-500"}
+          subtitle="Sin completar"
+        />
+        <KPICard
+          title="Fallas activas"
+          value={String(fallasActivas)}
+          icon={Zap}
+          iconColor={fallasActivas > 0 ? "text-orange-400" : "text-gray-500"}
+          subtitle={fallasAltas > 0 ? `${fallasAltas} de alta severidad` : "Sin fallas activas"}
+        />
+        <KPICard
+          title="Total registros"
+          value={String(mantenimientos.length + reparaciones.length + fallas.length)}
+          icon={AlertTriangle}
+          iconColor="text-blue-400"
+          subtitle="Historial completo"
+        />
+      </div>
+
+      {/* Tabs + search */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex gap-1 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg p-1 w-fit">
+          {(["mantenimientos", "reparaciones", "fallas"] as Tab[]).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => { setActiveTab(tab); setQuery(""); }}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                activeTab === tab
+                  ? "bg-[#CC2229] text-white shadow-sm"
+                  : "text-gray-400 hover:text-white"
+              }`}
+            >
+              {tabLabels[tab]}
+            </button>
+          ))}
+        </div>
+        <div className="relative">
+          <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Buscar unidad o descripción..."
+            className="bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 text-xs rounded-lg pl-7 pr-3 py-1.5 w-52 focus:outline-none focus:border-[#CC2229]/60 placeholder-gray-600"
+          />
+          {query && (
+            <button onClick={() => setQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 cursor-pointer">
+              <X size={11} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Mantenimientos table */}
       {activeTab === "mantenimientos" && (
         <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-[#1A1A1A] border-b border-[#3A3A3A]">
-                  {["Fecha", "Unidad", "Tipo", "Descripción", "Costo", "Taller", "Status", "Acción"].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">
-                      {h}
-                    </th>
+                  {["Fecha", "Unidad", "Tipo", "Descripción", "Costo", "Status", ""].map((h) => (
+                    <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#3A3A3A]">
-                {mantenimientos.map((m, i) => (
-                  <tr key={i} className="hover:bg-[#2A2A2A] transition-colors">
-                    <td className="px-4 py-3 text-gray-400 text-xs">{m.fecha}</td>
-                    <td className="px-4 py-3 text-white font-semibold">{m.unidad}</td>
-                    <td className="px-4 py-3"><StatusBadge status={m.tipo} /></td>
-                    <td className="px-4 py-3 text-gray-200">{m.descripcion}</td>
-                    <td className="px-4 py-3 text-white font-semibold">${m.costo.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-gray-300">{m.taller}</td>
-                    <td className="px-4 py-3"><StatusBadge status={m.status} /></td>
-                    <td className="px-4 py-3">
-                      {m.status === "Completado" ? (
-                        <span className="text-sm text-gray-500">
-                          Listo
-                        </span>
-                      ) : (
-                        <button
-                          onClick={() => markMantenimientoCompletado(m)}
-                          className="inline-flex min-w-32 items-center justify-center rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-4 py-2 text-center text-sm font-medium leading-tight text-gray-200 transition-colors hover:border-[#CC2229] hover:text-white"
-                        >
-                          Marcar<br />completado
-                        </button>
-                      )}
-                    </td>
-                  </tr>
+                {filteredM.length === 0 ? (
+                  <tr><td colSpan={7} className="px-4 py-14 text-center text-sm text-gray-600">
+                    {mantenimientos.length === 0 ? "Sin mantenimientos registrados" : "Sin resultados"}
+                  </td></tr>
+                ) : filteredM.map((m, i) => (
+                  <MantRow key={m.id ?? i} item={m} onComplete={completeMantenimiento} />
                 ))}
               </tbody>
             </table>
@@ -561,31 +715,25 @@ export default function MantenimientoPage() {
         </div>
       )}
 
-      {/* Refacciones Table */}
-      {activeTab === "refacciones" && (
+      {/* Reparaciones table */}
+      {activeTab === "reparaciones" && (
         <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-[#1A1A1A] border-b border-[#3A3A3A]">
-                  {["Fecha", "Unidad", "Refacción", "Cantidad", "Costo Unit.", "Total", "Proveedor"].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">
-                      {h}
-                    </th>
+                  {["Fecha", "Unidad", "Descripción", "Causa", "Costo", "Status", ""].map((h) => (
+                    <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#3A3A3A]">
-                {refacciones.map((r, i) => (
-                  <tr key={i} className="hover:bg-[#2A2A2A] transition-colors">
-                    <td className="px-4 py-3 text-gray-400 text-xs">{r.fecha}</td>
-                    <td className="px-4 py-3 text-white font-semibold">{r.unidad}</td>
-                    <td className="px-4 py-3 text-gray-200">{r.refaccion}</td>
-                    <td className="px-4 py-3 text-gray-300">{r.cantidad}</td>
-                    <td className="px-4 py-3 text-gray-300">${r.costoUnit.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-white font-semibold">${r.total.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-gray-300">{r.proveedor}</td>
-                  </tr>
+                {filteredR.length === 0 ? (
+                  <tr><td colSpan={7} className="px-4 py-14 text-center text-sm text-gray-600">
+                    {reparaciones.length === 0 ? "Sin reparaciones registradas" : "Sin resultados"}
+                  </td></tr>
+                ) : filteredR.map((r, i) => (
+                  <RepRow key={r.id ?? i} item={r} onComplete={completeReparacion} />
                 ))}
               </tbody>
             </table>
@@ -593,43 +741,39 @@ export default function MantenimientoPage() {
         </div>
       )}
 
-      {activeTab === "unidades" && (
+      {/* Fallas table */}
+      {activeTab === "fallas" && (
         <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-[#3A3A3A]">
-            <h3 className="text-white font-semibold">Control de unidades</h3>
-          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-[#1A1A1A] border-b border-[#3A3A3A]">
-                  {["Unidad", "Km actual", "Próximo servicio", "Fecha servicio", "Km restantes", "Último servicio", "Condición", "Responsable"].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">
-                      {h}
-                    </th>
+                  {["Fecha", "Unidad", "Descripción", "Severidad", "Reportó", "Status", ""].map((h) => (
+                    <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#3A3A3A]">
-                {unidades.map((u) => {
-                  return (
-                    <tr key={u.unidad} className="hover:bg-[#2A2A2A] transition-colors">
-                      <td className="px-4 py-3 text-white font-semibold">{u.unidad}</td>
-                      <td className="px-4 py-3 text-gray-300">{u.kmActual.toLocaleString()} km</td>
-                      <td className="px-4 py-3 text-gray-500">—</td>
-                      <td className="px-4 py-3 text-gray-300">{u.proximoServicioFecha || "—"}</td>
-                      <td className="px-4 py-3 text-gray-500">—</td>
-                      <td className="px-4 py-3 text-gray-400 text-xs">{u.ultimoServicio || "—"}</td>
-                      <td className="px-4 py-3"><StatusBadge status={u.condicion} /></td>
-                      <td className="px-4 py-3 text-gray-300">{u.responsable || "—"}</td>
-                    </tr>
-                  );
-                })}
+                {filteredF.length === 0 ? (
+                  <tr><td colSpan={7} className="px-4 py-14 text-center text-sm text-gray-600">
+                    {fallas.length === 0 ? "Sin fallas registradas" : "Sin resultados"}
+                  </td></tr>
+                ) : filteredF.map((f, i) => (
+                  <FallaRow key={f.id ?? i} item={f} onResolve={resolveFalla} />
+                ))}
               </tbody>
             </table>
           </div>
         </div>
       )}
 
+      <FormDrawer
+        open={showForm}
+        tab={activeTab}
+        unidadesList={unidadesList}
+        onClose={() => setShowForm(false)}
+        onSave={handleSave}
+      />
     </div>
   );
 }

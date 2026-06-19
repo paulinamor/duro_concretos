@@ -314,7 +314,7 @@ export default function UnidadesPage() {
                 </tr>
               ) : (
                 filtered.map((u) => (
-                  <tr key={u.id} className="hover:bg-[#2A2A2A] transition-colors">
+                  <tr key={u.id} className="transition-colors">
                     <td className="px-5 py-3 whitespace-nowrap">
                       <div className="flex items-center gap-2">
                         <div className="h-8 w-8 rounded-full bg-[#1A1A1A] flex items-center justify-center shrink-0">
@@ -329,12 +329,18 @@ export default function UnidadesPage() {
                       </span>
                     </td>
                     <td className="px-5 py-3 text-white whitespace-nowrap">{u.marca} {u.modelo}</td>
-                    <td className="px-5 py-3 text-gray-400 whitespace-nowrap">{u.anio}</td>
+                    <td className="px-5 py-3 text-gray-400 whitespace-nowrap">{u.anio ?? "—"}</td>
                     <td className="px-5 py-3 whitespace-nowrap">
-                      <span className="text-blue-300 font-semibold">{u.capacidadM3}</span>
-                      <span className="text-gray-600 text-xs ml-1">m3</span>
+                      {u.capacidadM3 != null && !isNaN(Number(u.capacidadM3)) ? (
+                        <>
+                          <span className="text-blue-300 font-semibold">{u.capacidadM3}</span>
+                          <span className="text-gray-600 text-xs ml-1">m3</span>
+                        </>
+                      ) : (
+                        <span className="text-gray-600">—</span>
+                      )}
                     </td>
-                    <td className="px-5 py-3 text-gray-400 whitespace-nowrap">{u.kmActual.toLocaleString()} km</td>
+                    <td className="px-5 py-3 text-gray-400 whitespace-nowrap">{u.kmActual != null ? u.kmActual.toLocaleString() : "—"} km</td>
                     <td className="px-5 py-3 text-gray-300 whitespace-nowrap">{u.choferAsignado || <span className="text-gray-600">—</span>}</td>
                     <td className="px-5 py-3 whitespace-nowrap">
                       <StatusBadge status={u.estatus === "Mantenimiento" ? "en riesgo" : u.estatus === "Baja" ? "cancelado" : "activo"} />

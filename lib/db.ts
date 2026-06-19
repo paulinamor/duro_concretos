@@ -117,13 +117,19 @@ export const COLLECTIONS = {
   refacciones: "refacciones",
   seguros: "seguros",
   diesel: "diesel",
+  reparaciones: "reparaciones",
+  fallas: "fallas",
   cajaChica: "cajaChica",
   efectivo: "efectivo",
   inventarioMovimientos: "inventarioMovimientos",
   inventarioStock: "inventarioStock",
   remisiones: "remisiones",
+  entradasMaterial: "entradasMaterial",
+  existenciasIniciales: "existenciasIniciales",
   nomina: "nomina",
   programaciones: "programaciones",
+  cuentasPorCobrar: "cuentasPorCobrar",
+  cuentasPorPagar: "cuentasPorPagar",
 } as const;
 
 export { where, orderBy };

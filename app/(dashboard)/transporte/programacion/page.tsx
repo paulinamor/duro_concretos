@@ -6,9 +6,11 @@ import {
   Clock, Download, Pencil, Plus, Trash2, UserRound, X,
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
+import ClienteCombobox from "@/components/ClienteCombobox";
 import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
 import { filterByPlanta, withPlantaTag } from "@/lib/auth";
 import type { Operador } from "@/lib/operadores";
+import type { Cliente } from "@/lib/crmClientes";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -352,7 +354,7 @@ function ChoferCard({
 // ─── FormDrawer ───────────────────────────────────────────────────────────────
 
 function FormDrawer({
-  open, onClose, onSave, initial, dia, operadoresList,
+  open, onClose, onSave, initial, dia, operadoresList, clientesList,
 }: {
   open: boolean;
   onClose: () => void;
@@ -360,6 +362,7 @@ function FormDrawer({
   initial?: Programacion;
   dia: string;
   operadoresList: Pick<Operador, "id" | "nombre">[];
+  clientesList: string[];
 }) {
   const [form, setForm] = useState<FormState>(() => emptyForm(dia));
   const [saving, setSaving] = useState(false);
@@ -534,8 +537,14 @@ function FormDrawer({
           <Sec title="Cliente" />
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
-              <label className={lbl}>Cliente <span className="text-[#CC2229]">*</span></label>
-              <input type="text" value={form.cliente} onChange={(e) => set("cliente", e.target.value)} placeholder="Nombre del cliente" className={inp} />
+              <ClienteCombobox
+                label="Cliente"
+                required
+                value={form.cliente}
+                onChange={(v) => set("cliente", v)}
+                options={clientesList}
+                placeholder="Buscar o escribir cliente…"
+              />
             </div>
             <div>
               <label className={lbl}>Num. de teléfono</label>
@@ -754,7 +763,7 @@ function TableRow({ p, onEdit, onDelete }: { p: Programacion; onEdit: () => void
   return (
     <>
       <tr
-        className={`hover:bg-[#1A1F2B] transition-colors cursor-pointer ${expanded ? "bg-[#1A1F2B]" : ""}`}
+        className="cursor-pointer"
         onClick={() => setExpanded((v) => !v)}
       >
         <td className="px-4 py-3 text-white font-mono text-sm font-semibold whitespace-nowrap">{p.hora || "—"}</td>
@@ -814,75 +823,116 @@ function TableRow({ p, onEdit, onDelete }: { p: Programacion; onEdit: () => void
       </tr>
 
       {expanded && (
-        <tr className="bg-[#0F1115]">
-          <td colSpan={10} className="px-6 py-4 space-y-4">
-            {/* Choferes detalle */}
-            {choferesList.length > 0 && (
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-600 mb-2">Choferes</p>
-                <div className="space-y-2">
-                  {choferesList.map((c) => (
-                    <div key={c.id} className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
+        <tr>
+          <td colSpan={10} style={{ backgroundColor: "#F8FAFC", padding: "16px 20px", borderTop: "2px solid #CC2229", borderBottom: "1px solid #e2e8f0", maxWidth: 0 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px", overflow: "hidden" }}>
+
+              {/* Tarjetas de choferes */}
+              {choferesList.length > 0 && (
+                <div>
+                  <p style={{ fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.12em", color: "#64748b", marginBottom: "10px" }}>Choferes</p>
+                  <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                    {choferesList.map((c) => (
+                      <div key={c.id} style={{ backgroundColor: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "10px 14px", minWidth: "160px", flex: "1 1 160px", maxWidth: "260px", display: "flex", flexDirection: "column", gap: "5px", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}>
+                        <p style={{ fontSize: "12px", fontWeight: 600, color: "#0f172a", marginBottom: "6px", borderBottom: "1px solid #f1f5f9", paddingBottom: "6px" }}>{c.chofer}</p>
+                        {[
+                          { label: "M3",           value: c.m3 != null ? `${c.m3} m³` : "", color: "#2563eb", bold: true },
+                          { label: "CR",           value: c.cr,                              color: "#1e293b", bold: false },
+                          { label: "Remisión",     value: c.remision,                        color: "#1e293b", bold: false },
+                          { label: "Sello",        value: c.numSello,                        color: "#1e293b", bold: false },
+                          { label: "Salida",       value: c.horaSalida,                      color: "#1e293b", bold: false },
+                          { label: "Llegada obra", value: c.horaLlegadaObra,                 color: "#1e293b", bold: false },
+                          { label: "Inicio desc.", value: c.horaInicioDescarga,               color: "#1e293b", bold: false },
+                          { label: "Final desc.",  value: c.horaFinalDescarga,                color: "#1e293b", bold: false },
+                          { label: "Salida obra",  value: c.horaSalidaObra,                  color: "#1e293b", bold: false },
+                          { label: "T. descarga",  value: c.tiempoDescarga,                  color: "#059669", bold: true },
+                        ].filter((f) => f.value).map(({ label, value, color, bold }) => (
+                          <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "6px", minWidth: 0 }}>
+                            <span style={{ fontSize: "10px", color: "#64748b", flexShrink: 0 }}>{label}</span>
+                            <span style={{ fontSize: "11px", color, fontFamily: "monospace", fontWeight: bold ? 600 : 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{String(value ?? "")}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Detalles en 3 columnas */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "16px" }}>
+
+                {/* Concreto */}
+                {[p.hsr, p.tiempoExtraDescarga, p.m3Vacios, p.tdBom, p.color, p.resistencia, p.extras, p.paraUso, p.muestras].some(Boolean) && (
+                  <div>
+                    <p style={{ fontSize: "9px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.14em", color: "#64748b", marginBottom: "8px", paddingBottom: "5px", borderBottom: "1px solid #e2e8f0" }}>Concreto</p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                       {[
-                        { label: "Chofer", value: c.chofer },
-                        { label: "M3", value: c.m3 != null ? `${c.m3} m³` : "" },
-                        { label: "CR", value: c.cr },
-                        { label: "Remisión", value: c.remision },
-                        { label: "Num. sello", value: c.numSello },
-                        { label: "Hora salida", value: c.horaSalida },
-                        { label: "Llegada obra", value: c.horaLlegadaObra },
-                        { label: "Inicio desc.", value: c.horaInicioDescarga },
-                        { label: "Final desc.", value: c.horaFinalDescarga },
-                        { label: "Salida obra", value: c.horaSalidaObra },
-                        { label: "Tiempo desc.", value: c.tiempoDescarga },
+                        { label: "Resistencia",   value: p.resistencia },
+                        { label: "T/D BOM",       value: p.tdBom },
+                        { label: "Color",         value: p.color },
+                        { label: "M3 vacíos",     value: p.m3Vacios != null ? `${p.m3Vacios} m³` : "" },
+                        { label: "HSR",           value: p.hsr },
+                        { label: "T. extra desc.",value: p.tiempoExtraDescarga },
+                        { label: "Extras",        value: p.extras },
+                        { label: "Para uso",      value: p.paraUso },
+                        { label: "Muestras",      value: p.muestras },
                       ].filter((f) => f.value).map(({ label, value }) => (
-                        <div key={label} className="bg-[#1A1F2B] rounded-lg p-2 border border-[#252D3D]">
-                          <p className="text-[9px] uppercase tracking-wider text-gray-600 mb-0.5">{label}</p>
-                          <p className="text-xs font-medium text-gray-200 font-mono">{value}</p>
+                        <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "6px", minWidth: 0 }}>
+                          <span style={{ fontSize: "10px", color: "#64748b", flexShrink: 0 }}>{label}</span>
+                          <span style={{ fontSize: "11px", color: "#1e293b", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{String(value)}</span>
                         </div>
                       ))}
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Datos generales */}
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-600 mb-2">Detalle</p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2">
-                {[
-                  { label: "HSR", value: p.hsr },
-                  { label: "T. extra desc.", value: p.tiempoExtraDescarga },
-                  { label: "M3 vacíos", value: p.m3Vacios != null ? `${p.m3Vacios} m³` : "" },
-                  { label: "T/D BOM", value: p.tdBom },
-                  { label: "Color", value: p.color },
-                  { label: "Extras", value: p.extras },
-                  { label: "Para uso", value: p.paraUso },
-                  { label: "Muestras", value: p.muestras },
-                  { label: "Vendedor", value: p.vendedor },
-                  { label: "Día y hora pedido", value: p.diaHoraPedido ? p.diaHoraPedido.replace("T", " ") : "" },
-                  { label: "Precio M3", value: p.precioM3 != null ? currency(p.precioM3) : "" },
-                  { label: "$ M3 Bomba", value: p.precioM3Bomba != null ? currency(p.precioM3Bomba) : "" },
-                  { label: "Total x M3", value: p.totalXM3 != null ? currency(p.totalXM3) : "" },
-                  { label: "$ Lto Acelr", value: p.ltoAcelr != null ? currency(p.ltoAcelr) : "" },
-                  { label: "$ Kilo Fibra", value: p.kiloFibra != null ? currency(p.kiloFibra) : "" },
-                  { label: "$ M3 Imper", value: p.m3Imper != null ? currency(p.m3Imper) : "" },
-                  { label: "Aditivo", value: p.aditivo },
-                  { label: "Tubería extra", value: p.tuberiaExtra != null ? currency(p.tuberiaExtra) : "" },
-                  { label: "Permisos O/C", value: p.permisosOC != null ? currency(p.permisosOC) : "" },
-                  { label: "Recibo", value: p.recibo },
-                  { label: "Fact.", value: p.fact },
-                  { label: "Crédito", value: p.credito },
-                  { label: "Método pago", value: p.metodoPago },
-                  { label: "Fecha pago", value: p.fechaPago },
-                  { label: "Teléfono", value: p.telefono },
-                ].filter((f) => f.value).map(({ label, value }) => (
-                  <div key={label} className="bg-[#1A1F2B] rounded-lg p-2.5 border border-[#252D3D]">
-                    <p className="text-[9px] uppercase tracking-wider text-gray-600 mb-0.5">{label}</p>
-                    <p className="text-xs font-medium text-gray-200 font-mono">{String(value)}</p>
                   </div>
-                ))}
+                )}
+
+                {/* Costos */}
+                {[p.precioM3, p.precioM3Bomba, p.totalXM3, p.ltoAcelr, p.kiloFibra, p.m3Imper, p.tuberiaExtra, p.permisosOC, p.aditivo].some((v) => v != null && v !== "") && (
+                  <div>
+                    <p style={{ fontSize: "9px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.14em", color: "#64748b", marginBottom: "8px", paddingBottom: "5px", borderBottom: "1px solid #e2e8f0" }}>Costos</p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                      {[
+                        { label: "Precio M3",     value: p.precioM3 != null ? currency(p.precioM3) : "" },
+                        { label: "$ M3 Bomba",    value: p.precioM3Bomba != null ? currency(p.precioM3Bomba) : "" },
+                        { label: "Total x M3",    value: p.totalXM3 != null ? currency(p.totalXM3) : "" },
+                        { label: "$ Lto Acelr",   value: p.ltoAcelr != null ? currency(p.ltoAcelr) : "" },
+                        { label: "$ Kilo Fibra",  value: p.kiloFibra != null ? currency(p.kiloFibra) : "" },
+                        { label: "$ M3 Imper",    value: p.m3Imper != null ? currency(p.m3Imper) : "" },
+                        { label: "Tubería extra", value: p.tuberiaExtra != null ? currency(p.tuberiaExtra) : "" },
+                        { label: "Permisos O/C",  value: p.permisosOC != null ? currency(p.permisosOC) : "" },
+                        { label: "Aditivo",       value: p.aditivo },
+                      ].filter((f) => f.value).map(({ label, value }) => (
+                        <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "6px", minWidth: 0 }}>
+                          <span style={{ fontSize: "10px", color: "#64748b", flexShrink: 0 }}>{label}</span>
+                          <span style={{ fontSize: "11px", color: "#1e293b", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Pago y pedido */}
+                <div>
+                  <p style={{ fontSize: "9px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.14em", color: "#64748b", marginBottom: "8px", paddingBottom: "5px", borderBottom: "1px solid #e2e8f0" }}>Pago y pedido</p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                    {[
+                      { label: "Vendedor",         value: p.vendedor },
+                      { label: "Día y hora pedido",value: p.diaHoraPedido ? p.diaHoraPedido.replace("T", " ") : "" },
+                      { label: "Teléfono",         value: p.telefono },
+                      { label: "Recibo",           value: p.recibo },
+                      { label: "Fact.",            value: p.fact },
+                      { label: "Crédito",          value: p.credito },
+                      { label: "Método pago",      value: p.metodoPago },
+                      { label: "Fecha pago",       value: p.fechaPago },
+                    ].filter((f) => f.value).map(({ label, value }) => (
+                      <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px" }}>
+                        <span style={{ fontSize: "10px", color: "#64748b" }}>{label}</span>
+                        <span style={{ fontSize: "11px", color: "#1e293b", fontFamily: "monospace" }}>{value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
               </div>
             </div>
           </td>
@@ -897,6 +947,8 @@ function TableRow({ p, onEdit, onDelete }: { p: Programacion; onEdit: () => void
 export default function ProgramacionPage() {
   const [programaciones, setProgramaciones] = useState<Programacion[]>([]);
   const [operadoresList, setOperadoresList] = useState<Pick<Operador, "id" | "nombre">[]>([]);
+  const [clientesList, setClientesList] = useState<string[]>([]);
+  const [clientesSet, setClientesSet] = useState<Set<string>>(new Set());
   const [diaActivo, setDiaActivo] = useState(todayISO);
   const [showDrawer, setShowDrawer] = useState(false);
   const [editing, setEditing] = useState<Programacion | undefined>();
@@ -906,9 +958,42 @@ export default function ProgramacionPage() {
     Promise.all([
       getCollectionDocs<Programacion>(COLLECTIONS.programaciones),
       getCollectionDocs<Operador>(COLLECTIONS.operadores),
-    ]).then(([progs, ops]) => {
+      getCollectionDocs<Cliente>(COLLECTIONS.clientes),
+    ]).then(([progs, ops, clientes]) => {
       setProgramaciones(filterByPlanta(progs));
       setOperadoresList(ops.filter((o) => o.estatus === "Activo").map((o) => ({ id: o.id, nombre: o.nombre })));
+
+      // Build unique client list from both sources, deduplicated
+      const fromProgs = progs.map((p) => p.cliente).filter(Boolean);
+      const fromClientes = clientes.flatMap((c) => [c.razonSocial, c.nombreComercial].filter(Boolean));
+      const allNames = Array.from(new Set([...fromClientes, ...fromProgs])).sort();
+      setClientesList(allNames);
+
+      // Keep a normalized set of existing clientes for quick lookup
+      const existingSet = new Set(clientes.map((c) => c.razonSocial.toLowerCase().trim()));
+      setClientesSet(existingSet);
+
+      // Migrate clients from programaciones that don't exist yet in clientes collection
+      const today = new Date().toISOString().slice(0, 10);
+      const nuevos = Array.from(new Set(fromProgs.map((n) => n.trim()).filter(Boolean)))
+        .filter((nombre) => !existingSet.has(nombre.toLowerCase()));
+      if (nuevos.length > 0) {
+        Promise.all(
+          nuevos.map((nombre) => {
+            const id = `CL-prog-${nombre.toLowerCase().replace(/[^a-z0-9]/g, "-").slice(0, 30)}-${Date.now()}`;
+            return upsertDocument(COLLECTIONS.clientes, id, {
+              razonSocial: nombre,
+              nombreComercial: nombre,
+              rfc: "", domicilio: "", colonia: "", municipio: "", estado: "", cp: "",
+              contacto: "", cargo: "", telefono: "", email: "",
+              tipoCliente: "Particular", vendedorAsignado: "",
+              limiteCredito: 0, saldoPendiente: 0, diasCredito: 0,
+              ultimaCompra: today, totalComprasAnio: 0, m3Acumulados: 0,
+              estatus: "Activo", calificacion: "B", fechaAlta: today, notas: "",
+            });
+          })
+        ).catch((err) => console.error("Error migrando clientes:", err));
+      }
     }).catch((err) => {
       console.error("Error cargando programaciones:", err);
     }).finally(() => setLoading(false));
@@ -933,6 +1018,42 @@ export default function ProgramacionPage() {
       const updated = { ...p, id };
       return idx >= 0 ? prev.map((x, i) => (i === idx ? updated : x)) : [updated, ...prev];
     });
+
+    // Auto-registrar cliente en base de clientes si no existe
+    const nombreCliente = p.cliente.trim();
+    if (nombreCliente && !clientesSet.has(nombreCliente.toLowerCase())) {
+      const clienteId = `CL-${Date.now()}`;
+      const today = new Date().toISOString().slice(0, 10);
+      const nuevoCliente: Omit<Cliente, "id"> = {
+        razonSocial: nombreCliente,
+        nombreComercial: nombreCliente,
+        rfc: "",
+        domicilio: p.direccion ?? "",
+        colonia: "",
+        municipio: "",
+        estado: "",
+        cp: "",
+        contacto: "",
+        cargo: "",
+        telefono: p.telefono ?? "",
+        email: "",
+        tipoCliente: "Particular",
+        vendedorAsignado: p.vendedor ?? "",
+        limiteCredito: 0,
+        saldoPendiente: 0,
+        diasCredito: 0,
+        ultimaCompra: today,
+        totalComprasAnio: 0,
+        m3Acumulados: 0,
+        estatus: "Activo",
+        calificacion: "B",
+        fechaAlta: today,
+        notas: "",
+      };
+      await upsertDocument(COLLECTIONS.clientes, clienteId, nuevoCliente);
+      setClientesSet((prev) => new Set([...prev, nombreCliente.toLowerCase()]));
+      setClientesList((prev) => Array.from(new Set([...prev, nombreCliente])).sort());
+    }
   }
 
   async function handleDelete(id: string) {
@@ -1089,6 +1210,7 @@ export default function ProgramacionPage() {
         initial={editing}
         dia={diaActivo}
         operadoresList={operadoresList}
+        clientesList={clientesList}
       />
     </div>
   );

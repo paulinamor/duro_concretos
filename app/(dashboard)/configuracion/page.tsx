@@ -38,7 +38,7 @@ const SUPERADMIN = "leonardo@lpsoft.mx";
 
 export default function ConfiguracionPage() {
   const [activeTab, setActiveTab] = useState<Tab>("usuarios");
-  const [session, setSession] = useState<ReturnType<typeof getStoredSession>>(() => getStoredSession());
+  const [session, setSession] = useState<ReturnType<typeof getStoredSession>>(null);
   const isSuperAdmin = session?.email?.toLowerCase() === SUPERADMIN;
 
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
@@ -46,9 +46,11 @@ export default function ConfiguracionPage() {
   const [savingUser, setSavingUser] = useState(false);
   const [userSearch, setUserSearch] = useState("");
   const [userDraft, setUserDraft] = useState<UserDraft | null>(null);
-  const [currentTheme, setCurrentTheme] = useState<AppTheme>(() => getStoredTheme());
+  const [currentTheme, setCurrentTheme] = useState<AppTheme>("dark");
 
   useEffect(() => {
+    setSession(getStoredSession());
+    setCurrentTheme(getStoredTheme());
     getAllUserProfiles()
       .then((list) => setProfiles(list.filter((p) => p.status !== "Inactivo")))
       .catch(() => {/* silently fail - show empty */})
@@ -227,7 +229,7 @@ export default function ConfiguracionPage() {
   function handleThemeSelect(theme: AppTheme) {
     setStoredTheme(theme);
     setCurrentTheme(theme);
-    showToast("success", theme === "dark" ? "Modo oscuro activado" : "Modo noche activado", "El tema se aplicó correctamente.");
+    showToast("success", theme === "dark" ? "Modo claro activado" : "Modo noche activado", "El tema se aplicó correctamente.");
   }
 
   return (
@@ -308,7 +310,7 @@ export default function ConfiguracionPage() {
                     : `${(user.modules as string[]).length} módulo${(user.modules as string[]).length === 1 ? "" : "s"}`;
 
                   return (
-                    <tr key={user.id} className="hover:bg-[#2A2A2A] transition-colors">
+                    <tr key={user.id} className="transition-colors">
                       <td className="px-5 py-4 text-white font-medium">{user.nombre}</td>
                       <td className="px-5 py-4 text-gray-400">{user.email}</td>
                       <td className="px-5 py-4">
@@ -368,7 +370,7 @@ export default function ConfiguracionPage() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Oscuro: hybrid Grill Team */}
+              {/* Claro: sidebar dark + contenido blanco */}
               <button
                 onClick={() => handleThemeSelect("dark")}
                 className={`group relative flex flex-col gap-3 rounded-xl border-2 p-4 text-left transition-all duration-200 cursor-pointer ${
@@ -379,12 +381,12 @@ export default function ConfiguracionPage() {
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#0B1220] border border-white/10">
-                      <Moon size={18} className="text-slate-300" />
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#F1F5F9] border border-slate-200/80">
+                      <Sun size={18} className="text-slate-600" />
                     </div>
                     <div>
-                      <p className="text-white text-sm font-semibold">Oscuro</p>
-                      <p className="text-gray-500 text-xs">Sidebar dark · contenido claro</p>
+                      <p className="text-white text-sm font-semibold">Claro</p>
+                      <p className="text-gray-500 text-xs">Fondo blanco · sidebar oscuro</p>
                     </div>
                   </div>
                   <div className={`h-4 w-4 rounded-full border-2 transition-colors ${
@@ -393,7 +395,7 @@ export default function ConfiguracionPage() {
                       : "border-[#3A3A3A]"
                   }`} />
                 </div>
-                {/* Preview: sidebar strip izquierda dark + contenido derecha claro */}
+                {/* Preview: sidebar oscuro + contenido blanco */}
                 <div className="rounded-lg overflow-hidden border border-white/10 pointer-events-none select-none flex h-16">
                   <div className="w-8 bg-[#0B1220] flex flex-col gap-1 p-1.5">
                     <div className="h-1.5 w-full rounded-full bg-white/20" />
@@ -422,7 +424,7 @@ export default function ConfiguracionPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
                     <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#111318] border border-white/10">
-                      <Sun size={18} className="text-slate-400" />
+                      <Moon size={18} className="text-slate-300" />
                     </div>
                     <div>
                       <p className="text-white text-sm font-semibold">Noche</p>

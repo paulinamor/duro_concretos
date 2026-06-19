@@ -17,7 +17,7 @@ const pageTitles: Record<string, string> = {
   "/transporte/disponibilidad": "Disponibilidad de cargas",
   "/transporte/pagos": "Pago por viaje / m³",
   "/transporte/diesel": "Consumo de diésel",
-  "/transporte/mantenimiento": "Mantenimiento + refacciones",
+  "/transporte/mantenimiento": "Mantenimiento · Reparaciones · Fallas",
   "/transporte/seguros": "Seguros de flota",
   "/administracion/viajes-chofer": "Viajes por Chofer",
   "/operaciones/inventario": "Inventarios",

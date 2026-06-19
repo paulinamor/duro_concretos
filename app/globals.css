@@ -571,3 +571,69 @@ body.duro-theme-light main [class*="bg-[#CC2229]/15"] {
 body.duro-theme-light main [class*="divide-[#3A3A3A]"] > * + * {
   border-color: #E5E7EB !important;
 }
+
+/* ── Slate colors en modo Claro (diesel + páginas con diseño slate) ── */
+
+body.duro-theme-light main [class*="bg-slate-950"] {
+  background-color: #F8FAFC !important;
+}
+body.duro-theme-light main [class*="bg-slate-900"] {
+  background-color: #FFFFFF !important;
+}
+body.duro-theme-light main [class*="bg-slate-800"] {
+  background-color: #F1F5F9 !important;
+}
+body.duro-theme-light main [class*="border-slate-800"] {
+  border-color: #E2E8F0 !important;
+}
+body.duro-theme-light main [class*="border-slate-700"] {
+  border-color: #CBD5E1 !important;
+}
+body.duro-theme-light main [class*="divide-slate-800"] > * + * {
+  border-color: #E2E8F0 !important;
+}
+body.duro-theme-light main [class*="text-slate-100"] {
+  color: #0F172A !important;
+}
+body.duro-theme-light main [class*="text-slate-200"] {
+  color: #1E293B !important;
+}
+body.duro-theme-light main [class*="text-slate-300"] {
+  color: #475569 !important;
+}
+body.duro-theme-light main [class*="text-slate-400"] {
+  color: #64748B !important;
+}
+body.duro-theme-light main [class*="text-slate-500"] {
+  color: #94A3B8 !important;
+}
+body.duro-theme-light main [class*="text-slate-600"] {
+  color: #CBD5E1 !important;
+}
+
+/* ── Sky (rendimiento) en modo Claro ── */
+body.duro-theme-light main [class*="bg-sky-500"] {
+  background-color: #E0F2FE !important;
+}
+body.duro-theme-light main [class*="border-sky-500"] {
+  border-color: #7DD3FC !important;
+}
+body.duro-theme-light main [class*="text-sky-400"] {
+  color: #0284C7 !important;
+}
+
+/* ── Orange-500 safety en modo Claro ── */
+body.duro-theme-light main [class*="bg-orange-500"] {
+  background-color: #FFEDD5 !important;
+}
+body.duro-theme-light main [class*="border-orange-500"] {
+  border-color: #FB923C !important;
+}
+body.duro-theme-light main [class*="text-orange-500"] {
+  color: #EA580C !important;
+}
+
+/* ── Cards slate en modo Claro — sombra sutil ── */
+body.duro-theme-light main [class*="bg-slate-900"] {
+  box-shadow: 0 1px 6px rgba(15, 23, 42, 0.06);
+}

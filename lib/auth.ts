@@ -43,6 +43,9 @@ export const moduleCatalog = [
   { href: "/crm/seguimiento", label: "Seguimiento de oportunidades" },
   { href: "/crm/clientes-vendedor", label: "Clientes por vendedor" },
   { href: "/ventas/recibos-concreto", label: "Recibos de concreto" },
+  { href: "/finanzas/cxc", label: "Cuentas por Cobrar" },
+  { href: "/finanzas/cxp", label: "Cuentas por Pagar" },
+  { href: "/finanzas/estado-cuenta-clientes", label: "Estados de Cuenta" },
   { href: "/configuracion", label: "Autenticación y roles" },
 ];
 
@@ -153,6 +156,9 @@ export function getDefaultModulesForRole(role: UserRole) {
     "/crm/seguimiento",
     "/crm/clientes-vendedor",
     "/ventas/recibos-concreto",
+    "/finanzas/cxc",
+    "/finanzas/cxp",
+    "/finanzas/estado-cuenta-clientes",
   ];
 }
 
