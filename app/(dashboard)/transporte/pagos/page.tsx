@@ -232,7 +232,7 @@ export default function PagosPage() {
                 const receiptName = uploadedReceipts[o.nombre];
 
                 return (
-                <tr key={o.nombre} className="hover:bg-[#2A2A2A] transition-colors">
+                <tr key={o.nombre} className="transition-colors">
                   <td className="px-4 py-3 text-white font-medium">{o.nombre}</td>
                   <td className="px-4 py-3 text-gray-300">{o.viajes}</td>
                   <td className="px-4 py-3 text-gray-300">{o.m3Total} m³</td>

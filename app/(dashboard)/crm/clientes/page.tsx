@@ -305,7 +305,7 @@ export default function CrmClientesPage() {
                   return (
                     <tr
                       key={c.id}
-                      className="hover:bg-[#2A2A2A] transition-colors cursor-pointer"
+                      className="transition-colors cursor-pointer"
                       onClick={() => setDetail(c)}
                     >
                       <td className="px-4 py-3">

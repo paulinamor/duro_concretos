@@ -359,7 +359,7 @@ export default function EfectivoPage() {
             </thead>
             <tbody className="divide-y divide-[#3A3A3A]">
               {filteredTransacciones.map((t, i) => (
-                <tr key={i} className="hover:bg-[#2A2A2A] transition-colors">
+                <tr key={i} className="transition-colors">
                   <td className="px-4 py-3 text-gray-400 font-mono text-xs">{t.fecha}</td>
                   <td className="px-4 py-3 text-white font-semibold">{t.cliente}</td>
                   <td className="px-4 py-3 text-gray-200">{t.descripcion}</td>

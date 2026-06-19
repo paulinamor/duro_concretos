@@ -214,7 +214,7 @@ export default function ViajesPage() {
                   </td>
                 </tr>
               ) : filtered.map((v) => (
-                <tr key={v.folio} className="hover:bg-[#2A2A2A] transition-colors">
+                <tr key={v.folio} className="transition-colors">
                   <td className="px-4 py-3 text-[#CC2229] font-mono text-xs">{v.folio}</td>
                   <td className="px-4 py-3 text-gray-400 text-xs">{v.fecha}</td>
                   <td className="px-4 py-3 text-gray-200 font-medium text-xs">{v.unidad}</td>

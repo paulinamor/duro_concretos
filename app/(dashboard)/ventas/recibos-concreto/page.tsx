@@ -563,7 +563,7 @@ export default function RecibosConcretoPage() {
               {receipts.map((savedReceipt) => {
                 const amounts = getTicketAmounts(savedReceipt);
                 return (
-                  <tr key={savedReceipt.id} className="transition-colors hover:bg-[#2A2A2A]">
+                  <tr key={savedReceipt.id} className="transition-colors">
                     <td className="px-4 py-3 font-mono text-xs text-[#CC2229]">{savedReceipt.receiptNumber}</td>
                     <td className="px-4 py-3 text-xs text-gray-400">{savedReceipt.fecha}</td>
                     <td className="px-4 py-3 font-medium text-white">{savedReceipt.cliente}</td>

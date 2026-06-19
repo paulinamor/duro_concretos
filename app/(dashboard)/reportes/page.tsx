@@ -745,7 +745,7 @@ export default function ReportesPage() {
                   return (
                     <tr
                       key={row.operador}
-                      className="hover:bg-[#2A2A2A] transition-colors"
+                      className="transition-colors"
                     >
                       <td className="px-4 py-3 text-gray-500 text-xs font-mono">
                         {i + 1}
@@ -862,7 +862,7 @@ export default function ReportesPage() {
                 tableRows.map((v) => (
                   <tr
                     key={v.folio}
-                    className="hover:bg-[#2A2A2A] transition-colors"
+                    className="transition-colors"
                   >
                     <td className="px-4 py-2.5 text-[#CC2229] font-mono text-xs">
                       {v.folio}

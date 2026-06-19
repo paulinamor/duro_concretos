@@ -184,7 +184,7 @@ export default function CrmSeguimientoPage() {
             </thead>
             <tbody className="divide-y divide-[#3A3A3A]">
               {filtered.map((item) => (
-                <tr key={item.id} className="hover:bg-[#2A2A2A] transition-colors">
+                <tr key={item.id} className="transition-colors">
                   <td className="px-4 py-3 text-white font-medium">{item.cliente}</td>
                   <td className="px-4 py-3">
                     <p className="text-gray-200">{item.contacto}</p>

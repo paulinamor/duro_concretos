@@ -345,7 +345,7 @@ export default function CajaChicaPage() {
               </thead>
               <tbody className="divide-y divide-[#3A3A3A]">
                 {filtered.map((g) => (
-                  <tr key={g.folio} className="hover:bg-[#2A2A2A] transition-colors">
+                  <tr key={g.folio} className="transition-colors">
                     <td className="px-4 py-3 text-[#CC2229] font-mono text-xs">{g.folio}</td>
                     <td className="px-4 py-3 text-gray-400 text-xs">{g.fecha}</td>
                     <td className="px-4 py-3 text-gray-200">{g.descripcion}</td>

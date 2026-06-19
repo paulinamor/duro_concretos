@@ -228,7 +228,7 @@ export default function HorasLlegadaSalidaPage() {
               {filtered.map((entrega) => {
                 const diferencia = calcularDiferenciaMinutos(entrega.horaLlegadaManual, entrega.horaLlegadaGps);
                 return (
-                  <tr key={entrega.folio} className="hover:bg-[#2A2A2A] transition-colors">
+                  <tr key={entrega.folio} className="transition-colors">
                     <td className="px-4 py-3 text-[#CC2229] font-mono text-xs">{entrega.folio}</td>
                     <td className="px-4 py-3">
                       <p className="text-white font-medium">{entrega.cliente}</p>

@@ -301,7 +301,7 @@ export default function OperadoresPage() {
                 </tr>
               ) : (
                 filtered.map((op) => (
-                  <tr key={op.id} className="hover:bg-[#2A2A2A] transition-colors">
+                  <tr key={op.id} className="transition-colors">
                     <td className="px-5 py-3 font-mono text-xs text-[#CC2229] whitespace-nowrap">{op.id}</td>
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-2">

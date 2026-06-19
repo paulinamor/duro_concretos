@@ -151,7 +151,7 @@ export default function DashboardPage() {
                   </td>
                 </tr>
               ) : recentTrips.map((t) => (
-                <tr key={t.folio} className="hover:bg-[#2A2A2A] transition-colors">
+                <tr key={t.folio} className="transition-colors">
                   <td className="px-4 py-3 text-[#CC2229] font-mono text-xs">{t.folio}</td>
                   <td className="px-4 py-3 text-gray-200 font-semibold">{t.unidad}</td>
                   <td className="px-4 py-3 text-gray-200">{t.operador}</td>

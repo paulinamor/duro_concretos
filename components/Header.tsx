@@ -21,8 +21,8 @@ export default function Header({ title, onMobileMenu }: HeaderProps) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [plantaOpen, setPlantaOpen] = useState(false);
-  const [session, setSession] = useState(() => getStoredSession());
-  const [plantaActiva, setPlantaActivaState] = useState<Planta>(() => getActivePlanta());
+  const [session, setSession] = useState<ReturnType<typeof getStoredSession>>(null);
+  const [plantaActiva, setPlantaActivaState] = useState<Planta>("Todas");
   const [notifications, setNotifications] = useState([
     { title: "Caja chica requiere reposición", detail: "Disponible bajo el punto definido", href: "/operaciones/caja-chica", read: false, icon: Wallet, tag: "Operaciones" },
     { title: "Unidad DC-02 próxima a servicio", detail: "Restan menos de 2,000 km", href: "/transporte/mantenimiento", read: false, icon: Truck, tag: "Transporte" },
@@ -458,6 +458,11 @@ export default function Header({ title, onMobileMenu }: HeaderProps) {
     printable.document.write(html.replace("</body>", "<script>window.onload = () => window.print();</script></body>"));
     printable.document.close();
   }
+
+  useEffect(() => {
+    setSession(getStoredSession());
+    setPlantaActivaState(getActivePlanta());
+  }, []);
 
   useEffect(() => {
     function handleSessionUpdate() {

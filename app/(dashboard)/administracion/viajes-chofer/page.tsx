@@ -79,7 +79,7 @@ export default function ViajesChoferPage() {
           </div>
           <div className="divide-y divide-[#3A3A3A]">
             {selectedSummaries.map((summary) => (
-              <div key={summary.operador} className="p-4 hover:bg-[#2A2A2A] transition-colors">
+              <div key={summary.operador} className="p-4 transition-colors">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-white font-semibold">{summary.operador}</p>
@@ -123,7 +123,7 @@ export default function ViajesChoferPage() {
               </thead>
               <tbody className="divide-y divide-[#3A3A3A]">
                 {selectedTrips.map((trip) => (
-                  <tr key={trip.folio} className="hover:bg-[#2A2A2A] transition-colors">
+                  <tr key={trip.folio} className="transition-colors">
                     <td className="px-4 py-3 text-[#CC2229] font-mono text-xs">{trip.folio}</td>
                     <td className="px-4 py-3 text-gray-400 text-xs">{trip.fecha}</td>
                     <td className="px-4 py-3 text-white font-medium">{trip.operador}</td>

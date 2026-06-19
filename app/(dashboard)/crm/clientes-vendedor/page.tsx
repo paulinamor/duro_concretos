@@ -266,7 +266,7 @@ export default function ClientesPorVendedorPage() {
             </thead>
             <tbody className="divide-y divide-[#3A3A3A]">
               {filtered.map((client) => (
-                <tr key={client.id} className="transition-colors hover:bg-[#2A2A2A]">
+                <tr key={client.id} className="transition-colors">
                   <td className="px-4 py-3">
                     <p className="font-semibold text-white">{client.cliente}</p>
                     <p className="text-xs text-[#CC2229]">{client.id}</p>
