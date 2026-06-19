@@ -551,10 +551,8 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
     };
     setCuentas((p) => p.map((c) => (c.id === cuenta.id ? updatedCuenta : c)));
     const id = cuenta.id!;
-    await upsertDocument(collection, id, withPlantaTag({
-      ...updatedCuenta,
-      id: undefined,
-    } as Omit<Cuenta, "id"> & { id?: string }));
+    const { id: _cid, ...cuentaData } = updatedCuenta;
+    await upsertDocument(collection, id, withPlantaTag(cuentaData));
     showToast("success", isCxc ? "Cobro registrado" : "Pago registrado", `${currency(abono.monto)} a ${cuenta.contraparte}`);
   }
 

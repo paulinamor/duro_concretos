@@ -607,7 +607,8 @@ export default function InventarioPage() {
 
   const handleSaveEntrada = async (e: EntradaMaterial) => {
     const id = `em-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    await upsertDocument(COLLECTIONS.entradasMaterial, id, withPlantaTag({ ...e, id: undefined }));
+    const { id: _id, ...data } = e;
+    await upsertDocument(COLLECTIONS.entradasMaterial, id, withPlantaTag(data));
     setEntradasMaterial((prev) => [{ ...e, id }, ...prev]);
   };
 

@@ -581,7 +581,8 @@ export default function SegurosPage() {
 
   const handleSave = async (s: Seguro) => {
     const id = s.id!;
-    await upsertDocument(COLLECTIONS.seguros, id, withPlantaTag({ ...s, id: undefined }));
+    const { id: _id, ...data } = s;
+    await upsertDocument(COLLECTIONS.seguros, id, withPlantaTag(data));
     setSeguros((prev) => {
       const idx = prev.findIndex((x) => x.id === s.id);
       return idx >= 0 ? prev.map((x, i) => (i === idx ? s : x)) : [...prev, s];
