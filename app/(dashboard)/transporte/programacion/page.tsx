@@ -137,14 +137,13 @@ function calcTotalesProg(p: Programacion): { totalXM3: number | null; total: num
     nv(p.precioM3Bomba) +
     (n(String(p.color ?? "")) ?? 0) +
     (n(String(p.tiempoExtraDescarga ?? "")) ?? 0) +
-    nv(p.m3Vacios) +
     nv(p.ltoAcelr) +
     nv(p.kiloFibra) +
     nv(p.m3Imper) +
     nv(p.tuberiaExtra) +
     nv(p.permisosOC);
   if (txm3 === 0 || p.m3Totales == null) return { totalXM3: null, total: null };
-  return { totalXM3: txm3, total: txm3 * p.m3Totales };
+  return { totalXM3: txm3, total: txm3 * p.m3Totales + nv(p.m3Vacios) };
 }
 
 function currency(v: number | null) {
@@ -416,19 +415,18 @@ function FormDrawer({
       (n(form.precioM3Bomba) ?? 0) +
       (n(form.color) ?? 0) +
       (n(form.tiempoExtraDescarga) ?? 0) +
-      (n(form.m3Vacios) ?? 0) +
       (n(form.ltoAcelr) ?? 0) +
       (n(form.kiloFibra) ?? 0) +
       (n(form.m3Imper) ?? 0) +
       (n(form.tuberiaExtra) ?? 0) +
       (n(form.permisosOC) ?? 0);
     return sum > 0 ? sum : null;
-  }, [form.precioM3, form.precioM3Bomba, form.color, form.tiempoExtraDescarga, form.m3Vacios, form.ltoAcelr, form.kiloFibra, form.m3Imper, form.tuberiaExtra, form.permisosOC]);
+  }, [form.precioM3, form.precioM3Bomba, form.color, form.tiempoExtraDescarga, form.ltoAcelr, form.kiloFibra, form.m3Imper, form.tuberiaExtra, form.permisosOC]);
 
   const totalAuto = useMemo(() => {
     if (totalXM3Auto == null || m3TotalesAuto == null) return null;
-    return totalXM3Auto * m3TotalesAuto;
-  }, [totalXM3Auto, m3TotalesAuto]);
+    return totalXM3Auto * m3TotalesAuto + (n(form.m3Vacios) ?? 0);
+  }, [totalXM3Auto, m3TotalesAuto, form.m3Vacios]);
 
   async function handleSave() {
     if (!form.cliente.trim()) {
