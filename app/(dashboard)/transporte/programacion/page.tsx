@@ -391,23 +391,24 @@ function FormDrawer({
   }, [form.choferes]);
 
   const totalXM3Auto = useMemo(() => {
-    const pm3 = n(form.precioM3) ?? 0;
-    const pm3b = n(form.precioM3Bomba) ?? 0;
-    return pm3 + pm3b > 0 ? pm3 + pm3b : null;
-  }, [form.precioM3, form.precioM3Bomba]);
+    const sum =
+      (n(form.precioM3) ?? 0) +
+      (n(form.precioM3Bomba) ?? 0) +
+      (n(form.color) ?? 0) +
+      (n(form.tiempoExtraDescarga) ?? 0) +
+      (n(form.m3Vacios) ?? 0) +
+      (n(form.ltoAcelr) ?? 0) +
+      (n(form.kiloFibra) ?? 0) +
+      (n(form.m3Imper) ?? 0) +
+      (n(form.tuberiaExtra) ?? 0) +
+      (n(form.permisosOC) ?? 0);
+    return sum > 0 ? sum : null;
+  }, [form.precioM3, form.precioM3Bomba, form.color, form.tiempoExtraDescarga, form.m3Vacios, form.ltoAcelr, form.kiloFibra, form.m3Imper, form.tuberiaExtra, form.permisosOC]);
 
   const totalAuto = useMemo(() => {
     if (totalXM3Auto == null || m3TotalesAuto == null) return null;
-    return (
-      totalXM3Auto * m3TotalesAuto
-      + (n(form.ltoAcelr) ?? 0)
-      + (n(form.m3Vacios) ?? 0)
-      + (n(form.kiloFibra) ?? 0)
-      + (n(form.m3Imper) ?? 0)
-      + (n(form.tuberiaExtra) ?? 0)
-      + (n(form.permisosOC) ?? 0)
-    );
-  }, [totalXM3Auto, m3TotalesAuto, form.ltoAcelr, form.m3Vacios, form.kiloFibra, form.m3Imper, form.tuberiaExtra, form.permisosOC]);
+    return totalXM3Auto * m3TotalesAuto;
+  }, [totalXM3Auto, m3TotalesAuto]);
 
   async function handleSave() {
     if (!form.cliente.trim()) {
