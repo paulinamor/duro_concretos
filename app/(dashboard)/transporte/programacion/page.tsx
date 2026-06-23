@@ -51,6 +51,8 @@ interface Programacion {
   m3Vacios: number | null;
   precioM3: number | null;
   precioM3Bomba: number | null;
+  factorBomba: number | null;
+  aplicarFactorBomba: boolean;
   ltoAcelr: number | null;
   kiloFibra: number | null;
   m3Imper: number | null;
@@ -89,6 +91,7 @@ interface FormState {
   tiempoExtraDescarga: string;
   extras: string; tdBom: string; resistencia: string; color: string;
   m3Vacios: string; precioM3: string; precioM3Bomba: string;
+  factorBomba: string; aplicarFactorBomba: boolean;
   ltoAcelr: string; kiloFibra: string; m3Imper: string;
   aditivo: string; tuberiaExtra: string; permisosOC: string;
   recibo: string; credito: string; fact: string; pagado: string;
@@ -132,18 +135,21 @@ function nv(v: number | null | undefined): number {
 }
 
 function calcTotalesProg(p: Programacion): { totalXM3: number | null; total: number | null } {
+  const factorBomba = p.aplicarFactorBomba ? (p.factorBomba ?? 1) : 1;
   const txm3 =
     nv(p.precioM3) +
-    nv(p.precioM3Bomba) +
+    nv(p.precioM3Bomba) * factorBomba +
     (n(String(p.color ?? "")) ?? 0) +
-    (n(String(p.tiempoExtraDescarga ?? "")) ?? 0) +
     nv(p.ltoAcelr) +
     nv(p.kiloFibra) +
     nv(p.m3Imper) +
-    nv(p.tuberiaExtra) +
     nv(p.permisosOC);
+  const flatExtras =
+    nv(p.m3Vacios) +
+    nv(p.tuberiaExtra) +
+    (n(String(p.tiempoExtraDescarga ?? "")) ?? 0);
   if (txm3 === 0 || p.m3Totales == null) return { totalXM3: null, total: null };
-  return { totalXM3: txm3, total: txm3 * p.m3Totales + nv(p.m3Vacios) };
+  return { totalXM3: txm3, total: txm3 * p.m3Totales + flatExtras };
 }
 
 function currency(v: number | null) {
@@ -167,7 +173,8 @@ function emptyForm(dia: string): FormState {
     hora: "", hsr: "", choferes: [emptyChofer()],
     tiempoExtraDescarga: "",
     extras: "", tdBom: "", resistencia: "", color: "", m3Vacios: "",
-    precioM3: "", precioM3Bomba: "", ltoAcelr: "", kiloFibra: "", m3Imper: "",
+    precioM3: "", precioM3Bomba: "", factorBomba: "1.16", aplicarFactorBomba: false,
+    ltoAcelr: "", kiloFibra: "", m3Imper: "",
     aditivo: "", tuberiaExtra: "", permisosOC: "",
     recibo: "", credito: "", fact: "", pagado: "", metodoPago: "", fechaPago: "",
   };
@@ -213,6 +220,8 @@ function formFromProg(p: Programacion): FormState {
     m3Vacios: p.m3Vacios != null ? String(p.m3Vacios) : "",
     precioM3: p.precioM3 != null ? String(p.precioM3) : "",
     precioM3Bomba: p.precioM3Bomba != null ? String(p.precioM3Bomba) : "",
+    factorBomba: p.factorBomba != null ? String(p.factorBomba) : "1.16",
+    aplicarFactorBomba: p.aplicarFactorBomba ?? false,
     ltoAcelr: p.ltoAcelr != null ? String(p.ltoAcelr) : "",
     kiloFibra: p.kiloFibra != null ? String(p.kiloFibra) : "",
     m3Imper: p.m3Imper != null ? String(p.m3Imper) : "",
@@ -327,7 +336,7 @@ function ChoferCard({
         </div>
         <div>
           <label className={lbl}>M3</label>
-          <input type="number" step="0.5" min="0" value={entry.m3} onChange={(e) => set("m3", e.target.value)} placeholder="0.0" className={inp} />
+          <input type="number" step="0.5" min="0" value={entry.m3} onChange={(e) => set("m3", e.target.value)} placeholder="0.0" className={inp} onWheel={(e) => e.currentTarget.blur()} />
         </div>
         <div>
           <label className={lbl}>CR</label>
@@ -391,7 +400,9 @@ function FormDrawer({
     setForm(initial ? formFromProg(initial) : emptyForm(dia));
   }, [open, initial, dia]);
 
-  const set = (k: keyof Omit<FormState, "choferes">, v: string) =>
+  const set = (k: keyof Omit<FormState, "choferes" | "aplicarFactorBomba">, v: string) =>
+    setForm((p) => ({ ...p, [k]: v }));
+  const setBool = (k: keyof FormState, v: boolean) =>
     setForm((p) => ({ ...p, [k]: v }));
 
   const setChofer = (idx: number, updated: ChoferFormEntry) =>
@@ -410,23 +421,26 @@ function FormDrawer({
   }, [form.choferes]);
 
   const totalXM3Auto = useMemo(() => {
+    const factorBomba = form.aplicarFactorBomba ? (n(form.factorBomba) ?? 1) : 1;
     const sum =
       (n(form.precioM3) ?? 0) +
-      (n(form.precioM3Bomba) ?? 0) +
+      (n(form.precioM3Bomba) ?? 0) * factorBomba +
       (n(form.color) ?? 0) +
-      (n(form.tiempoExtraDescarga) ?? 0) +
       (n(form.ltoAcelr) ?? 0) +
       (n(form.kiloFibra) ?? 0) +
       (n(form.m3Imper) ?? 0) +
-      (n(form.tuberiaExtra) ?? 0) +
       (n(form.permisosOC) ?? 0);
     return sum > 0 ? sum : null;
-  }, [form.precioM3, form.precioM3Bomba, form.color, form.tiempoExtraDescarga, form.ltoAcelr, form.kiloFibra, form.m3Imper, form.tuberiaExtra, form.permisosOC]);
+  }, [form.precioM3, form.precioM3Bomba, form.aplicarFactorBomba, form.factorBomba, form.color, form.ltoAcelr, form.kiloFibra, form.m3Imper, form.permisosOC]);
 
   const totalAuto = useMemo(() => {
     if (totalXM3Auto == null || m3TotalesAuto == null) return null;
-    return totalXM3Auto * m3TotalesAuto + (n(form.m3Vacios) ?? 0);
-  }, [totalXM3Auto, m3TotalesAuto, form.m3Vacios]);
+    const flatExtras =
+      (n(form.m3Vacios) ?? 0) +
+      (n(form.tuberiaExtra) ?? 0) +
+      (n(form.tiempoExtraDescarga) ?? 0);
+    return totalXM3Auto * m3TotalesAuto + flatExtras;
+  }, [totalXM3Auto, m3TotalesAuto, form.m3Vacios, form.tuberiaExtra, form.tiempoExtraDescarga]);
 
   async function handleSave() {
     if (!form.cliente.trim()) {
@@ -472,6 +486,8 @@ function FormDrawer({
         m3Vacios: n(form.m3Vacios),
         precioM3: n(form.precioM3),
         precioM3Bomba: n(form.precioM3Bomba),
+        factorBomba: form.aplicarFactorBomba ? (n(form.factorBomba) ?? null) : null,
+        aplicarFactorBomba: form.aplicarFactorBomba,
         ltoAcelr: n(form.ltoAcelr),
         kiloFibra: n(form.kiloFibra),
         m3Imper: n(form.m3Imper),
@@ -632,7 +648,7 @@ function FormDrawer({
             </div>
             <div>
               <label className={lbl}>M3 vacíos</label>
-              <input type="number" step="0.5" min="0" value={form.m3Vacios} onChange={(e) => set("m3Vacios", e.target.value)} placeholder="0.0" className={inp} />
+              <input type="number" step="0.5" min="0" value={form.m3Vacios} onChange={(e) => set("m3Vacios", e.target.value)} placeholder="0.0" className={inp} onWheel={(e) => e.currentTarget.blur()} />
             </div>
             <div>
               <label className={lbl}>Resistencia</label>
@@ -656,11 +672,34 @@ function FormDrawer({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={lbl}>Precio M3 $</label>
-              <input type="number" step="0.01" min="0" value={form.precioM3} onChange={(e) => set("precioM3", e.target.value)} placeholder="0.00" className={inp} />
+              <input type="number" step="0.01" min="0" value={form.precioM3} onChange={(e) => set("precioM3", e.target.value)} placeholder="0.00" className={inp} onWheel={(e) => e.currentTarget.blur()} />
             </div>
             <div>
-              <label className={lbl}>$ M3 Bomba</label>
-              <input type="number" step="0.01" min="0" value={form.precioM3Bomba} onChange={(e) => set("precioM3Bomba", e.target.value)} placeholder="0.00" className={inp} />
+              <div className="flex items-center justify-between mb-1.5">
+                <label className={lbl} style={{ marginBottom: 0 }}>$ M3 Bomba</label>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={form.aplicarFactorBomba}
+                    onChange={(e) => setBool("aplicarFactorBomba", e.target.checked)}
+                    className="w-3.5 h-3.5 accent-[#CC2229] cursor-pointer"
+                  />
+                  <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Factor rend.</span>
+                </label>
+              </div>
+              <div className="flex gap-2">
+                <input type="number" step="0.01" min="0" value={form.precioM3Bomba} onChange={(e) => set("precioM3Bomba", e.target.value)} placeholder="0.00" className={inp} onWheel={(e) => e.currentTarget.blur()} />
+                {form.aplicarFactorBomba && (
+                  <input
+                    type="number" step="0.01" min="0"
+                    value={form.factorBomba}
+                    onChange={(e) => set("factorBomba", e.target.value)}
+                    placeholder="1.16"
+                    onWheel={(e) => e.currentTarget.blur()}
+                    className={`${inp} w-24 shrink-0`}
+                  />
+                )}
+              </div>
             </div>
             <div className="col-span-2">
               <label className={lbl}>Total x M3 <span className="text-emerald-600 normal-case font-normal">(Precio M3 + $ M3 Bomba — auto)</span></label>
@@ -673,23 +712,23 @@ function FormDrawer({
             </div>
             <div>
               <label className={lbl}>$ Lto Acelr</label>
-              <input type="number" step="0.01" min="0" value={form.ltoAcelr} onChange={(e) => set("ltoAcelr", e.target.value)} placeholder="0.00" className={inp} />
+              <input type="number" step="0.01" min="0" value={form.ltoAcelr} onChange={(e) => set("ltoAcelr", e.target.value)} placeholder="0.00" className={inp} onWheel={(e) => e.currentTarget.blur()} />
             </div>
             <div>
               <label className={lbl}>$ Kilo Fibra</label>
-              <input type="number" step="0.01" min="0" value={form.kiloFibra} onChange={(e) => set("kiloFibra", e.target.value)} placeholder="0.00" className={inp} />
+              <input type="number" step="0.01" min="0" value={form.kiloFibra} onChange={(e) => set("kiloFibra", e.target.value)} placeholder="0.00" className={inp} onWheel={(e) => e.currentTarget.blur()} />
             </div>
             <div>
               <label className={lbl}>$ M3 Imper</label>
-              <input type="number" step="0.01" min="0" value={form.m3Imper} onChange={(e) => set("m3Imper", e.target.value)} placeholder="0.00" className={inp} />
+              <input type="number" step="0.01" min="0" value={form.m3Imper} onChange={(e) => set("m3Imper", e.target.value)} placeholder="0.00" className={inp} onWheel={(e) => e.currentTarget.blur()} />
             </div>
             <div>
               <label className={lbl}>Tubería extra $</label>
-              <input type="number" step="0.01" min="0" value={form.tuberiaExtra} onChange={(e) => set("tuberiaExtra", e.target.value)} placeholder="0.00" className={inp} />
+              <input type="number" step="0.01" min="0" value={form.tuberiaExtra} onChange={(e) => set("tuberiaExtra", e.target.value)} placeholder="0.00" className={inp} onWheel={(e) => e.currentTarget.blur()} />
             </div>
             <div>
               <label className={lbl}>Permisos O/C $</label>
-              <input type="number" step="0.01" min="0" value={form.permisosOC} onChange={(e) => set("permisosOC", e.target.value)} placeholder="0.00" className={inp} />
+              <input type="number" step="0.01" min="0" value={form.permisosOC} onChange={(e) => set("permisosOC", e.target.value)} placeholder="0.00" className={inp} onWheel={(e) => e.currentTarget.blur()} />
             </div>
             <div>
               <label className={lbl}>Aditivo</label>
