@@ -123,8 +123,28 @@ function calcTiempoDescarga(inicio: string, fin: string): string {
 }
 
 function n(v: string): number | null {
-  const p = parseFloat(v.replace(/,/g, ""));
+  const p = parseFloat(String(v ?? "").replace(/,/g, ""));
   return isNaN(p) ? null : p;
+}
+
+function nv(v: number | null | undefined): number {
+  return v ?? 0;
+}
+
+function calcTotalesProg(p: Programacion): { totalXM3: number | null; total: number | null } {
+  const txm3 =
+    nv(p.precioM3) +
+    nv(p.precioM3Bomba) +
+    (n(String(p.color ?? "")) ?? 0) +
+    (n(String(p.tiempoExtraDescarga ?? "")) ?? 0) +
+    nv(p.m3Vacios) +
+    nv(p.ltoAcelr) +
+    nv(p.kiloFibra) +
+    nv(p.m3Imper) +
+    nv(p.tuberiaExtra) +
+    nv(p.permisosOC);
+  if (txm3 === 0 || p.m3Totales == null) return { totalXM3: null, total: null };
+  return { totalXM3: txm3, total: txm3 * p.m3Totales };
 }
 
 function currency(v: number | null) {
@@ -963,6 +983,22 @@ export default function ProgramacionPage() {
     ]).then(([progs, ops, clientes]) => {
       setProgramaciones(filterByPlanta(progs));
       setOperadoresList(ops.filter((o) => o.estatus === "Activo").map((o) => ({ id: o.id, nombre: o.nombre })));
+
+      // Migrate existing records with incorrect totalXM3 / total values
+      const toFix = progs.filter((p) => {
+        const { totalXM3, total } = calcTotalesProg(p);
+        return (totalXM3 !== null && p.totalXM3 !== totalXM3) ||
+               (total !== null && p.total !== total);
+      });
+      if (toFix.length > 0) {
+        Promise.all(
+          toFix.map((p) => {
+            const { totalXM3, total } = calcTotalesProg(p);
+            const { id: _id, ...data } = p;
+            return upsertDocument(COLLECTIONS.programaciones, p.id!, withPlantaTag({ ...data, totalXM3, total }));
+          })
+        ).catch((err) => console.error("Error migrando totales:", err));
+      }
 
       // Build unique client list from both sources, deduplicated
       const fromProgs = progs.map((p) => p.cliente).filter(Boolean);
