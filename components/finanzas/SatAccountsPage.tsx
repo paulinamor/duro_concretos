@@ -186,7 +186,7 @@ function FormDrawer({
 
   const inp = "w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-900 text-sm placeholder-gray-400 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors";
   const lbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5";
-  const contraparteLabel = kind === "cxc" ? "Cliente" : "Proveedor";
+  const contraparteLabel = kind === "cxc" ? "Nombre Receptor" : "Nombre Emisor";
   const title = kind === "cxc" ? "Nueva cuenta por cobrar" : "Nueva cuenta por pagar";
 
   if (!open) return null;
@@ -235,7 +235,7 @@ function FormDrawer({
               <input type="text" value={form.serie} onChange={(e) => setForm({ ...form, serie: e.target.value })} placeholder="F" className={inp} />
             </div>
             <div>
-              <label className={lbl}>RFC</label>
+              <label className={lbl}>RFC Receptor</label>
               <input type="text" value={form.rfc} onChange={(e) => setForm({ ...form, rfc: e.target.value.toUpperCase() })} placeholder="RFC del receptor" className={`${inp} uppercase`} />
             </div>
             <div className="col-span-2">
@@ -268,7 +268,7 @@ function FormDrawer({
                 value={form.contraparte}
                 onChange={(v) => setForm({ ...form, contraparte: v })}
                 options={clientesList}
-                placeholder="Buscar o escribir cliente…"
+                placeholder="Buscar nombre receptor…"
               />
             ) : (
               <>
@@ -315,7 +315,7 @@ function FormDrawer({
               </select>
             </div>
             <div>
-              <label className={lbl}>Banco / referencia cobro</label>
+              <label className={lbl}>COSEC. TC</label>
               <input type="text" value={form.banco} onChange={(e) => setForm({ ...form, banco: e.target.value })} placeholder="BBVA 28/1" className={inp} />
             </div>
           </div>
@@ -548,7 +548,7 @@ function CuentaRow({
                 )}
                 {cuenta.rfc && (
                   <div>
-                    <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-0.5">RFC</p>
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-0.5">RFC Receptor</p>
                     <p className="text-gray-300 text-xs font-mono">{cuenta.rfc}</p>
                   </div>
                 )}
@@ -560,7 +560,7 @@ function CuentaRow({
                 )}
                 {cuenta.banco && (
                   <div>
-                    <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-0.5">Banco</p>
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-0.5">COSEC. TC</p>
                     <p className="text-gray-200 text-xs font-semibold">{cuenta.banco}</p>
                   </div>
                 )}
@@ -701,7 +701,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
     showToast("success", isCxc ? "Cobro registrado" : "Pago registrado", `${currency(abono.monto)} a ${cuenta.contraparte}`);
   }
 
-  const contraparteLabel = isCxc ? "Cliente" : "Proveedor";
+  const contraparteLabel = isCxc ? "Nombre Receptor" : "Nombre Emisor";
 
   return (
     <div className="space-y-5">
@@ -797,7 +797,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-[#1A1A1A] border-b border-[#3A3A3A]">
-                {["SAT", "Tipo", "Fecha", "Folio", contraparteLabel, "RFC", "Banco", "Concepto", "Total", "Progreso", "Status", ""].map((h) => (
+                {["SAT", "Tipo", "Fecha", "Folio", contraparteLabel, "RFC Receptor", "COSEC. TC", "Concepto", "Total", "Progreso", "Status", ""].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                 ))}
               </tr>
