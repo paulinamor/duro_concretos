@@ -26,6 +26,14 @@ import type { SatDownloadKind } from "@/lib/satDownloads";
 
 export interface Cuenta {
   id?: string;
+  // Datos CFDI / SAT
+  estadoSAT: "Vigente" | "Cancelado" | "Sustituida";
+  tipo: "Factura" | "Nota de Crédito" | "Complemento de Pago";
+  serie: string;
+  uuid: string;
+  uuidRelacion: string;
+  rfc: string;
+  // Datos del documento
   fecha: string;
   folio: string;
   contraparte: string;
@@ -33,6 +41,9 @@ export interface Cuenta {
   subtotal: number;
   iva: number;
   total: number;
+  formaPago: string;
+  banco: string;
+  // Cobro / pago
   montoPagado: number;
   vencimiento: string;
   status: "Pendiente" | "Parcial" | "Pagado" | "Vencido";
@@ -109,19 +120,33 @@ function FormDrawer({
   onSave: (data: Omit<Cuenta, "id" | "abonos" | "planta">) => Promise<void>;
 }) {
   const [form, setForm] = useState({
+    estadoSAT: "Vigente" as Cuenta["estadoSAT"],
+    tipo: "Factura" as Cuenta["tipo"],
+    serie: "F",
+    uuid: "",
+    uuidRelacion: "",
+    rfc: "",
     fecha: todayISO(),
     folio: "",
     contraparte: "",
     concepto: "",
     subtotal: "",
     iva: "",
+    formaPago: "99 - Por definir",
+    banco: "",
     vencimiento: "",
     notas: "",
   });
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (open) setForm({ fecha: todayISO(), folio: "", contraparte: "", concepto: "", subtotal: "", iva: "", vencimiento: "", notas: "" });
+    if (open) setForm({
+      estadoSAT: "Vigente", tipo: "Factura", serie: "F",
+      uuid: "", uuidRelacion: "", rfc: "",
+      fecha: todayISO(), folio: "", contraparte: "", concepto: "",
+      subtotal: "", iva: "", formaPago: "99 - Por definir", banco: "",
+      vencimiento: "", notas: "",
+    });
   }, [open]);
 
   const subtotalNum = parseFloat(form.subtotal) || 0;
@@ -133,6 +158,12 @@ function FormDrawer({
     setSaving(true);
     try {
       await onSave({
+        estadoSAT: form.estadoSAT,
+        tipo: form.tipo,
+        serie: form.serie,
+        uuid: form.uuid,
+        uuidRelacion: form.uuidRelacion,
+        rfc: form.rfc,
         fecha: isoToDisplay(form.fecha),
         folio: form.folio,
         contraparte: form.contraparte,
@@ -140,6 +171,8 @@ function FormDrawer({
         subtotal: subtotalNum,
         iva: ivaNum,
         total: totalNum,
+        formaPago: form.formaPago,
+        banco: form.banco,
         montoPagado: 0,
         vencimiento: isoToDisplay(form.vencimiento || form.fecha),
         status: "Pendiente",
@@ -178,14 +211,53 @@ function FormDrawer({
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+          {/* Datos CFDI */}
+          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Datos CFDI / SAT</p>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={lbl}>Fecha del documento</label>
+              <label className={lbl}>Estado SAT</label>
+              <select value={form.estadoSAT} onChange={(e) => setForm({ ...form, estadoSAT: e.target.value as Cuenta["estadoSAT"] })} className={inp}>
+                <option>Vigente</option>
+                <option>Cancelado</option>
+                <option>Sustituida</option>
+              </select>
+            </div>
+            <div>
+              <label className={lbl}>Tipo</label>
+              <select value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value as Cuenta["tipo"] })} className={inp}>
+                <option>Factura</option>
+                <option>Nota de Crédito</option>
+                <option>Complemento de Pago</option>
+              </select>
+            </div>
+            <div>
+              <label className={lbl}>Serie</label>
+              <input type="text" value={form.serie} onChange={(e) => setForm({ ...form, serie: e.target.value })} placeholder="F" className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>RFC</label>
+              <input type="text" value={form.rfc} onChange={(e) => setForm({ ...form, rfc: e.target.value.toUpperCase() })} placeholder="RFC del receptor" className={`${inp} uppercase`} />
+            </div>
+            <div className="col-span-2">
+              <label className={lbl}>UUID (Folio fiscal)</label>
+              <input type="text" value={form.uuid} onChange={(e) => setForm({ ...form, uuid: e.target.value.toUpperCase() })} placeholder="XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX" className={`${inp} font-mono text-xs uppercase`} />
+            </div>
+            <div className="col-span-2">
+              <label className={lbl}>UUID Relación</label>
+              <input type="text" value={form.uuidRelacion} onChange={(e) => setForm({ ...form, uuidRelacion: e.target.value.toUpperCase() })} placeholder="Solo si aplica (complemento de pago)" className={`${inp} font-mono text-xs uppercase`} />
+            </div>
+          </div>
+
+          {/* Datos del documento */}
+          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 pt-1">Documento</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={lbl}>Fecha de emisión</label>
               <input type="date" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} className={inp} />
             </div>
             <div>
               <label className={lbl}>Folio / # factura</label>
-              <input type="text" value={form.folio} onChange={(e) => setForm({ ...form, folio: e.target.value })} placeholder="F-001" className={inp} />
+              <input type="text" value={form.folio} onChange={(e) => setForm({ ...form, folio: e.target.value })} placeholder="5884" className={inp} />
             </div>
           </div>
           <div>
@@ -231,6 +303,22 @@ function FormDrawer({
               <span className="text-lg font-bold text-gray-900">{currency(totalNum)}</span>
             </div>
           )}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={lbl}>Forma de pago</label>
+              <select value={form.formaPago} onChange={(e) => setForm({ ...form, formaPago: e.target.value })} className={inp}>
+                <option>99 - Por definir</option>
+                <option>01 - Efectivo</option>
+                <option>03 - Transferencia electrónica</option>
+                <option>04 - Tarjeta de crédito</option>
+                <option>28 - Tarjeta de débito</option>
+              </select>
+            </div>
+            <div>
+              <label className={lbl}>Banco / referencia cobro</label>
+              <input type="text" value={form.banco} onChange={(e) => setForm({ ...form, banco: e.target.value })} placeholder="BBVA 28/1" className={inp} />
+            </div>
+          </div>
           <div>
             <label className={lbl}>Fecha de vencimiento</label>
             <input type="date" value={form.vencimiento} onChange={(e) => setForm({ ...form, vencimiento: e.target.value })} className={inp} />
@@ -373,10 +461,18 @@ function CuentaRow({
         className={`cursor-pointer transition-colors ${expanded ? "bg-[#1A1A1A]" : "hover:bg-[#1A1A1A]"}`}
         onClick={() => setExpanded((v) => !v)}
       >
+        <td className="px-4 py-3 whitespace-nowrap">
+          <span className={`text-[10px] font-semibold ${cuenta.estadoSAT === "Vigente" ? "text-emerald-400" : cuenta.estadoSAT === "Cancelado" ? "text-red-400" : "text-amber-400"}`}>
+            {cuenta.estadoSAT || "—"}
+          </span>
+        </td>
+        <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{cuenta.tipo || "—"}</td>
         <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{cuenta.fecha}</td>
         <td className="px-4 py-3 text-[#CC2229] font-mono text-xs">{cuenta.folio || "—"}</td>
         <td className="px-4 py-3 text-white font-semibold text-sm">{cuenta.contraparte}</td>
-        <td className="px-4 py-3 text-gray-400 text-sm max-w-[180px] truncate">{cuenta.concepto || "—"}</td>
+        <td className="px-4 py-3 text-gray-400 text-xs font-mono">{cuenta.rfc || "—"}</td>
+        <td className="px-4 py-3 text-gray-300 text-xs whitespace-nowrap">{cuenta.banco || "—"}</td>
+        <td className="px-4 py-3 text-gray-400 text-sm max-w-[160px] truncate">{cuenta.concepto || "—"}</td>
         <td className="px-4 py-3 text-white font-semibold tabular-nums">{currency(cuenta.total)}</td>
         <td className="px-4 py-3">
           <div className="flex flex-col gap-1 min-w-[100px]">
@@ -415,9 +511,10 @@ function CuentaRow({
       </tr>
       {expanded && (
         <tr className="bg-[#111318]">
-          <td colSpan={8} className="px-5 pb-4 pt-3">
+          <td colSpan={12} className="px-5 pb-4 pt-3">
             <div className="flex flex-wrap gap-6 items-start justify-between">
-              <div className="flex flex-wrap gap-6 text-sm">
+              <div className="flex flex-wrap gap-x-6 gap-y-3 text-sm">
+                {/* Fila 1: montos */}
                 <div>
                   <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-0.5">Subtotal</p>
                   <p className="text-gray-200">{currency(cuenta.subtotal)}</p>
@@ -434,6 +531,51 @@ function CuentaRow({
                   <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-0.5">Vencimiento</p>
                   <p className="text-gray-200">{cuenta.vencimiento}</p>
                 </div>
+                {/* Fila 2: datos CFDI */}
+                <div>
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-0.5">Estado SAT</p>
+                  <p className={`text-xs font-semibold ${cuenta.estadoSAT === "Vigente" ? "text-emerald-400" : cuenta.estadoSAT === "Cancelado" ? "text-red-400" : "text-amber-400"}`}>{cuenta.estadoSAT || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-0.5">Tipo</p>
+                  <p className="text-gray-300 text-xs">{cuenta.tipo || "—"}</p>
+                </div>
+                {cuenta.serie && (
+                  <div>
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-0.5">Serie</p>
+                    <p className="text-gray-300 text-xs">{cuenta.serie}</p>
+                  </div>
+                )}
+                {cuenta.rfc && (
+                  <div>
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-0.5">RFC</p>
+                    <p className="text-gray-300 text-xs font-mono">{cuenta.rfc}</p>
+                  </div>
+                )}
+                {cuenta.formaPago && (
+                  <div>
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-0.5">Forma pago</p>
+                    <p className="text-gray-300 text-xs">{cuenta.formaPago}</p>
+                  </div>
+                )}
+                {cuenta.banco && (
+                  <div>
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-0.5">Banco</p>
+                    <p className="text-gray-200 text-xs font-semibold">{cuenta.banco}</p>
+                  </div>
+                )}
+                {cuenta.uuid && (
+                  <div className="w-full">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-0.5">UUID</p>
+                    <p className="text-gray-500 text-[10px] font-mono break-all">{cuenta.uuid}</p>
+                  </div>
+                )}
+                {cuenta.uuidRelacion && (
+                  <div className="w-full">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-0.5">UUID Relación</p>
+                    <p className="text-gray-500 text-[10px] font-mono break-all">{cuenta.uuidRelacion}</p>
+                  </div>
+                )}
                 {cuenta.notas && (
                   <div>
                     <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-0.5">Notas</p>
@@ -521,7 +663,10 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
       return (
         c.contraparte.toLowerCase().includes(q) ||
         c.folio.toLowerCase().includes(q) ||
-        (c.concepto ?? "").toLowerCase().includes(q)
+        (c.concepto ?? "").toLowerCase().includes(q) ||
+        (c.uuid ?? "").toLowerCase().includes(q) ||
+        (c.rfc ?? "").toLowerCase().includes(q) ||
+        (c.banco ?? "").toLowerCase().includes(q)
       );
     });
   }, [cuentas, query, filterStatus, filterMes]);
@@ -652,7 +797,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-[#1A1A1A] border-b border-[#3A3A3A]">
-                {["Fecha", "Folio", contraparteLabel, "Concepto", "Total", "Progreso", "Status", ""].map((h) => (
+                {["SAT", "Tipo", "Fecha", "Folio", contraparteLabel, "RFC", "Banco", "Concepto", "Total", "Progreso", "Status", ""].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -660,7 +805,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
             <tbody className="divide-y divide-[#3A3A3A]">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-14 text-center text-sm text-gray-600">
+                  <td colSpan={12} className="px-4 py-14 text-center text-sm text-gray-600">
                     {cuentas.length === 0
                       ? `Sin ${isCxc ? "cuentas por cobrar" : "cuentas por pagar"} registradas`
                       : "Sin resultados para el filtro actual"}
