@@ -9,8 +9,10 @@ import {
   Clock,
   DollarSign,
   FileText,
+  Pencil,
   Plus,
   Search,
+  Trash2,
   TrendingDown,
   TrendingUp,
   X,
@@ -18,7 +20,7 @@ import {
 import KPICard from "@/components/KPICard";
 import StatusBadge from "@/components/StatusBadge";
 import ClienteCombobox from "@/components/ClienteCombobox";
-import { getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
+import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
 import { filterByPlanta, withPlantaTag } from "@/lib/auth";
 import type { SatDownloadKind } from "@/lib/satDownloads";
 
@@ -42,7 +44,12 @@ export interface Cuenta {
   iva: number;
   total: number;
   formaPago: string;
-  banco: string;
+  banco: string;       // COSEC. TC
+  bancoPago?: string;  // BANCO (CxP: banco desde donde se paga)
+  // CxP-específicos
+  retenidoIVA?: number;
+  retenidoISR?: number;
+  ish?: number;
   // Cobro / pago
   montoPagado: number;
   vencimiento: string;
@@ -112,14 +119,18 @@ function FormDrawer({
   clientesList,
   onClose,
   onSave,
+  initial,
 }: {
   open: boolean;
   kind: SatDownloadKind;
   clientesList: string[];
   onClose: () => void;
   onSave: (data: Omit<Cuenta, "id" | "abonos" | "planta">) => Promise<void>;
+  initial?: Cuenta;
 }) {
-  const [form, setForm] = useState({
+  const isCxp = kind === "cxp";
+
+  const emptyForm = () => ({
     estadoSAT: "Vigente" as Cuenta["estadoSAT"],
     tipo: "Factura" as Cuenta["tipo"],
     serie: "F",
@@ -132,26 +143,57 @@ function FormDrawer({
     concepto: "",
     subtotal: "",
     iva: "",
+    retenidoIVA: "",
+    retenidoISR: "",
+    ish: "",
     formaPago: "99 - Por definir",
     banco: "",
+    bancoPago: "",
     vencimiento: "",
     notas: "",
   });
+
+  const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (open) setForm({
-      estadoSAT: "Vigente", tipo: "Factura", serie: "F",
-      uuid: "", uuidRelacion: "", rfc: "",
-      fecha: todayISO(), folio: "", contraparte: "", concepto: "",
-      subtotal: "", iva: "", formaPago: "99 - Por definir", banco: "",
-      vencimiento: "", notas: "",
-    });
-  }, [open]);
+    if (!open) return;
+    if (initial) {
+      setForm({
+        estadoSAT: initial.estadoSAT ?? "Vigente",
+        tipo: initial.tipo ?? "Factura",
+        serie: initial.serie ?? "F",
+        uuid: initial.uuid ?? "",
+        uuidRelacion: initial.uuidRelacion ?? "",
+        rfc: initial.rfc ?? "",
+        fecha: initial.fecha.includes("/") ? displayToISO(initial.fecha) : initial.fecha,
+        folio: initial.folio ?? "",
+        contraparte: initial.contraparte ?? "",
+        concepto: initial.concepto ?? "",
+        subtotal: String(initial.subtotal ?? ""),
+        iva: String(initial.iva ?? ""),
+        retenidoIVA: String(initial.retenidoIVA ?? ""),
+        retenidoISR: String(initial.retenidoISR ?? ""),
+        ish: String(initial.ish ?? ""),
+        formaPago: initial.formaPago ?? "99 - Por definir",
+        banco: initial.banco ?? "",
+        bancoPago: initial.bancoPago ?? "",
+        vencimiento: initial.vencimiento
+          ? (initial.vencimiento.includes("/") ? displayToISO(initial.vencimiento) : initial.vencimiento)
+          : "",
+        notas: initial.notas ?? "",
+      });
+    } else {
+      setForm(emptyForm());
+    }
+  }, [open, initial]);
 
   const subtotalNum = parseFloat(form.subtotal) || 0;
-  const ivaNum = parseFloat(form.iva) || subtotalNum * 0.16;
-  const totalNum = subtotalNum + ivaNum;
+  const ivaNum = parseFloat(form.iva) || (isCxp ? 0 : subtotalNum * 0.16);
+  const retenidoIVANum = parseFloat(form.retenidoIVA) || 0;
+  const retenidoISRNum = parseFloat(form.retenidoISR) || 0;
+  const ishNum = parseFloat(form.ish) || 0;
+  const totalNum = subtotalNum + ivaNum - retenidoIVANum - retenidoISRNum - ishNum;
 
   async function handleSave() {
     if (!form.contraparte || totalNum <= 0) return;
@@ -170,12 +212,13 @@ function FormDrawer({
         concepto: form.concepto,
         subtotal: subtotalNum,
         iva: ivaNum,
+        ...(isCxp && { retenidoIVA: retenidoIVANum, retenidoISR: retenidoISRNum, ish: ishNum, bancoPago: form.bancoPago }),
         total: totalNum,
         formaPago: form.formaPago,
         banco: form.banco,
-        montoPagado: 0,
+        montoPagado: initial?.montoPagado ?? 0,
         vencimiento: isoToDisplay(form.vencimiento || form.fecha),
-        status: "Pendiente",
+        status: initial?.status ?? "Pendiente",
         notas: form.notas,
       });
       onClose();
@@ -187,7 +230,11 @@ function FormDrawer({
   const inp = "w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-900 text-sm placeholder-gray-400 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors";
   const lbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5";
   const contraparteLabel = kind === "cxc" ? "Nombre Receptor" : "Nombre Emisor";
-  const title = kind === "cxc" ? "Nueva cuenta por cobrar" : "Nueva cuenta por pagar";
+  const rfcLabel = kind === "cxc" ? "RFC Receptor" : "RFC Emisor";
+  const isEditing = !!initial;
+  const title = isEditing
+    ? (kind === "cxc" ? "Editar cuenta por cobrar" : "Editar cuenta por pagar")
+    : (kind === "cxc" ? "Nueva cuenta por cobrar" : "Nueva cuenta por pagar");
 
   if (!open) return null;
 
@@ -235,8 +282,8 @@ function FormDrawer({
               <input type="text" value={form.serie} onChange={(e) => setForm({ ...form, serie: e.target.value })} placeholder="F" className={inp} />
             </div>
             <div>
-              <label className={lbl}>RFC Receptor</label>
-              <input type="text" value={form.rfc} onChange={(e) => setForm({ ...form, rfc: e.target.value.toUpperCase() })} placeholder="RFC del receptor" className={`${inp} uppercase`} />
+              <label className={lbl}>{rfcLabel}</label>
+              <input type="text" value={form.rfc} onChange={(e) => setForm({ ...form, rfc: e.target.value.toUpperCase() })} placeholder={`RFC del ${isCxp ? "emisor" : "receptor"}`} className={`${inp} uppercase`} />
             </div>
             <div className="col-span-2">
               <label className={lbl}>UUID (Folio fiscal)</label>
@@ -290,12 +337,28 @@ function FormDrawer({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={lbl}>Subtotal ($)</label>
-              <input type="number" min="0" step="0.01" value={form.subtotal} onChange={(e) => setForm({ ...form, subtotal: e.target.value })} placeholder="0.00" className={inp} />
+              <input type="number" min="0" step="0.01" value={form.subtotal} onChange={(e) => setForm({ ...form, subtotal: e.target.value })} placeholder="0.00" className={inp} onWheel={(e) => e.currentTarget.blur()} />
             </div>
             <div>
-              <label className={lbl}>IVA ($)</label>
-              <input type="number" min="0" step="0.01" value={form.iva} onChange={(e) => setForm({ ...form, iva: e.target.value })} placeholder={subtotalNum ? String(Math.round(subtotalNum * 0.16)) : "0.00"} className={inp} />
+              <label className={lbl}>IVA 16% ($)</label>
+              <input type="number" min="0" step="0.01" value={form.iva} onChange={(e) => setForm({ ...form, iva: e.target.value })} placeholder={subtotalNum ? String(Math.round(subtotalNum * 0.16)) : "0.00"} className={inp} onWheel={(e) => e.currentTarget.blur()} />
             </div>
+            {isCxp && (
+              <>
+                <div>
+                  <label className={lbl}>Retenido IVA ($)</label>
+                  <input type="number" min="0" step="0.01" value={form.retenidoIVA} onChange={(e) => setForm({ ...form, retenidoIVA: e.target.value })} placeholder="0.00" className={inp} onWheel={(e) => e.currentTarget.blur()} />
+                </div>
+                <div>
+                  <label className={lbl}>Retenido ISR ($)</label>
+                  <input type="number" min="0" step="0.01" value={form.retenidoISR} onChange={(e) => setForm({ ...form, retenidoISR: e.target.value })} placeholder="0.00" className={inp} onWheel={(e) => e.currentTarget.blur()} />
+                </div>
+                <div>
+                  <label className={lbl}>ISH ($)</label>
+                  <input type="number" min="0" step="0.01" value={form.ish} onChange={(e) => setForm({ ...form, ish: e.target.value })} placeholder="0.00" className={inp} onWheel={(e) => e.currentTarget.blur()} />
+                </div>
+              </>
+            )}
           </div>
           {totalNum > 0 && (
             <div className="rounded-xl bg-gray-50 border border-gray-200 px-4 py-3 flex items-center justify-between">
@@ -318,6 +381,12 @@ function FormDrawer({
               <label className={lbl}>COSEC. TC</label>
               <input type="text" value={form.banco} onChange={(e) => setForm({ ...form, banco: e.target.value })} placeholder="BBVA 28/1" className={inp} />
             </div>
+            {isCxp && (
+              <div className="col-span-2">
+                <label className={lbl}>BANCO</label>
+                <input type="text" value={form.bancoPago} onChange={(e) => setForm({ ...form, bancoPago: e.target.value })} placeholder="bbva 02/12" className={inp} />
+              </div>
+            )}
           </div>
           <div>
             <label className={lbl}>Fecha de vencimiento</label>
@@ -445,10 +514,14 @@ function CuentaRow({
   cuenta,
   kind,
   onAbono,
+  onEdit,
+  onDelete,
 }: {
   cuenta: Cuenta;
   kind: SatDownloadKind;
   onAbono: (c: Cuenta) => void;
+  onEdit: (c: Cuenta) => void;
+  onDelete: (c: Cuenta) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const saldo = cuenta.total - cuenta.montoPagado;
@@ -583,7 +656,7 @@ function CuentaRow({
                   </div>
                 )}
               </div>
-              <div className="flex flex-col gap-2 items-end">
+              <div className="flex flex-col gap-2 items-end shrink-0">
                 {cuenta.abonos && cuenta.abonos.length > 0 && (
                   <div className="text-xs text-gray-500 space-y-1 text-right">
                     <p className="text-[10px] uppercase tracking-wider text-gray-600 mb-1">Abonos</p>
@@ -595,15 +668,31 @@ function CuentaRow({
                     ))}
                   </div>
                 )}
-                {cuenta.status !== "Pagado" && (
+                <div className="flex gap-2 mt-1">
+                  {cuenta.status !== "Pagado" && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onAbono(cuenta); }}
+                      className="flex items-center gap-1.5 rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-3 py-1.5 text-xs font-medium text-gray-200 transition-colors hover:border-emerald-500/50 hover:text-emerald-400 cursor-pointer"
+                    >
+                      <CheckCircle2 size={13} />
+                      {kind === "cxc" ? "Registrar cobro" : "Registrar pago"}
+                    </button>
+                  )}
                   <button
-                    onClick={(e) => { e.stopPropagation(); onAbono(cuenta); }}
-                    className="flex items-center gap-1.5 rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-4 py-2 text-sm font-medium text-gray-200 transition-colors hover:border-emerald-500/50 hover:text-emerald-400 cursor-pointer"
+                    onClick={(e) => { e.stopPropagation(); onEdit(cuenta); }}
+                    className="flex items-center gap-1.5 rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-3 py-1.5 text-xs font-medium text-gray-200 transition-colors hover:border-blue-500/50 hover:text-blue-400 cursor-pointer"
                   >
-                    <CheckCircle2 size={14} />
-                    {kind === "cxc" ? "Registrar cobro" : "Registrar pago"}
+                    <Pencil size={12} />
+                    Editar
                   </button>
-                )}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onDelete(cuenta); }}
+                    className="flex items-center gap-1.5 rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-3 py-1.5 text-xs font-medium text-gray-200 transition-colors hover:border-red-500/50 hover:text-red-400 cursor-pointer"
+                  >
+                    <Trash2 size={12} />
+                    Borrar
+                  </button>
+                </div>
               </div>
             </div>
           </td>
@@ -622,6 +711,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
   const [cuentas, setCuentas] = useState<Cuenta[]>([]);
   const [clientesList, setClientesList] = useState<string[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<Cuenta | null>(null);
   const [abonoTarget, setAbonoTarget] = useState<Cuenta | null>(null);
   const [query, setQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("todos");
@@ -678,11 +768,27 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
   const proximos = filtered.filter((c) => c.status === "Pendiente" && diasVencimiento(c.vencimiento) <= 7 && diasVencimiento(c.vencimiento) >= 0).length;
 
   async function handleSave(data: Omit<Cuenta, "id" | "abonos" | "planta">) {
-    const id = Date.now().toString();
-    const item: Cuenta = { ...data, id, abonos: [] };
-    setCuentas((p) => [item, ...p]);
-    await upsertDocument(collection, id, withPlantaTag({ ...data, abonos: [] }));
-    showToast("success", isCxc ? "Cuenta por cobrar agregada" : "Cuenta por pagar agregada", `${data.contraparte} · ${data.folio || "Sin folio"}`);
+    if (editing) {
+      const updated: Cuenta = { ...editing, ...data };
+      setCuentas((p) => p.map((c) => (c.id === editing.id ? updated : c)));
+      const { id: _id, ...rest } = updated;
+      await upsertDocument(collection, editing.id!, withPlantaTag(rest));
+      showToast("success", "Registro actualizado", `${data.contraparte} · ${data.folio || "Sin folio"}`);
+      setEditing(null);
+    } else {
+      const id = Date.now().toString();
+      const item: Cuenta = { ...data, id, abonos: [] };
+      setCuentas((p) => [item, ...p]);
+      await upsertDocument(collection, id, withPlantaTag({ ...data, abonos: [] }));
+      showToast("success", isCxc ? "Cuenta por cobrar agregada" : "Cuenta por pagar agregada", `${data.contraparte} · ${data.folio || "Sin folio"}`);
+    }
+  }
+
+  async function handleDelete(cuenta: Cuenta) {
+    if (!confirm("¿Eliminar este registro?")) return;
+    setCuentas((p) => p.filter((c) => c.id !== cuenta.id));
+    await deleteDocument(collection, cuenta.id!);
+    showToast("success", "Registro eliminado", `${cuenta.contraparte} · ${cuenta.folio || "Sin folio"}`);
   }
 
   async function handleAbono(cuenta: Cuenta, abono: Abono) {
@@ -812,14 +918,21 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
                   </td>
                 </tr>
               ) : filtered.map((c, i) => (
-                <CuentaRow key={c.id ?? i} cuenta={c} kind={kind} onAbono={setAbonoTarget} />
+                <CuentaRow
+                  key={c.id ?? i}
+                  cuenta={c}
+                  kind={kind}
+                  onAbono={setAbonoTarget}
+                  onEdit={(c) => { setEditing(c); setShowForm(true); }}
+                  onDelete={handleDelete}
+                />
               ))}
             </tbody>
           </table>
         </div>
       </div>
 
-      <FormDrawer open={showForm} kind={kind} clientesList={clientesList} onClose={() => setShowForm(false)} onSave={handleSave} />
+      <FormDrawer open={showForm} kind={kind} clientesList={clientesList} initial={editing ?? undefined} onClose={() => { setShowForm(false); setEditing(null); }} onSave={handleSave} />
       <AbonoDrawer cuenta={abonoTarget} kind={kind} onClose={() => setAbonoTarget(null)} onSave={handleAbono} />
     </div>
   );
