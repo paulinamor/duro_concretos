@@ -3,6 +3,7 @@ export type EstatusOperador = "Activo" | "Inactivo" | "Vacaciones";
 export interface Operador {
   id: string;
   nombre: string;
+  puesto: string;
   telefono: string;
   email: string;
   curp: string;
@@ -22,6 +23,7 @@ export const operadores: Operador[] = [
   {
     id: "OP-001",
     nombre: "Roberto Garza Treviño",
+    puesto: "Operador",
     telefono: "81 8234 5678",
     email: "r.garza@duroconcretos.mx",
     curp: "GATR850312HNLRZB02",
@@ -38,6 +40,7 @@ export const operadores: Operador[] = [
   {
     id: "OP-002",
     nombre: "Juan Carlos Méndez Flores",
+    puesto: "Operador",
     telefono: "81 9120 3344",
     email: "jc.mendez@duroconcretos.mx",
     curp: "MEFJ900610HNLNDL08",
@@ -54,6 +57,7 @@ export const operadores: Operador[] = [
   {
     id: "OP-003",
     nombre: "Miguel Ángel Rodríguez Sáenz",
+    puesto: "Operador",
     telefono: "81 7743 9921",
     email: "ma.rodriguez@duroconcretos.mx",
     curp: "ROSM780820HNLDGM05",
@@ -70,6 +74,7 @@ export const operadores: Operador[] = [
   {
     id: "OP-004",
     nombre: "Ernesto Leal Villanueva",
+    puesto: "Operador",
     telefono: "81 6612 8854",
     email: "e.leal@duroconcretos.mx",
     curp: "LAVE820415HNLLLR00",
@@ -86,6 +91,7 @@ export const operadores: Operador[] = [
   {
     id: "OP-005",
     nombre: "Héctor Ramírez Castillo",
+    puesto: "Operador",
     telefono: "81 5538 7761",
     email: "h.ramirez@duroconcretos.mx",
     curp: "RACH870901HNLMSH09",
@@ -102,6 +108,7 @@ export const operadores: Operador[] = [
   {
     id: "OP-006",
     nombre: "Arturo Peña González",
+    puesto: "Operador",
     telefono: "81 4421 6609",
     email: "a.pena@duroconcretos.mx",
     curp: "PEGA940215HNLNNR07",
@@ -118,6 +125,7 @@ export const operadores: Operador[] = [
   {
     id: "OP-007",
     nombre: "Fernando Morales Ibarra",
+    puesto: "Operador",
     telefono: "81 3309 5578",
     email: "f.morales@duroconcretos.mx",
     curp: "MOIF760530HNLRBR04",
@@ -134,6 +142,7 @@ export const operadores: Operador[] = [
   {
     id: "OP-008",
     nombre: "Luis Alberto Torres Serna",
+    puesto: "Operador",
     telefono: "81 2201 4437",
     email: "la.torres@duroconcretos.mx",
     curp: "TOSL810712HNLRRS01",

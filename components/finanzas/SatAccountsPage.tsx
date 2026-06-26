@@ -12,6 +12,7 @@ import {
   Pencil,
   Plus,
   Search,
+  Sparkles,
   Trash2,
   TrendingDown,
   TrendingUp,
@@ -20,6 +21,7 @@ import {
 import KPICard from "@/components/KPICard";
 import StatusBadge from "@/components/StatusBadge";
 import ClienteCombobox from "@/components/ClienteCombobox";
+import CargaMasivaModal from "@/components/finanzas/CargaMasivaModal";
 import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
 import { filterByPlanta, withPlantaTag } from "@/lib/auth";
 import type { SatDownloadKind } from "@/lib/satDownloads";
@@ -713,6 +715,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Cuenta | null>(null);
   const [abonoTarget, setAbonoTarget] = useState<Cuenta | null>(null);
+  const [showCargaMasiva, setShowCargaMasiva] = useState(false);
   const [query, setQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("todos");
   const [filterMes, setFilterMes] = useState("todos");
@@ -807,6 +810,23 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
     showToast("success", isCxc ? "Cobro registrado" : "Pago registrado", `${currency(abono.monto)} a ${cuenta.contraparte}`);
   }
 
+  async function handleCargaMasiva(records: Omit<Cuenta, "id" | "planta">[]) {
+    const items: Cuenta[] = records.map((r) => ({
+      ...r,
+      id: Date.now().toString() + Math.random().toString(36).slice(2),
+      abonos: [],
+      status: computeStatus(r as Cuenta),
+    }));
+    await Promise.all(
+      items.map((item) => {
+        const { id, ...data } = item;
+        return upsertDocument(collection, id!, withPlantaTag({ ...data }));
+      })
+    );
+    setCuentas((p) => [...items, ...p]);
+    showToast("success", "Carga masiva completada", `${items.length} registros importados`);
+  }
+
   const contraparteLabel = isCxc ? "Nombre Receptor" : "Nombre Emisor";
 
   return (
@@ -814,13 +834,22 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
       {/* Header row */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-gray-500">{filtered.length} documentos</p>
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#B01E24] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-[#CC2229]/20 cursor-pointer"
-        >
-          <Plus size={16} />
-          {isCxc ? "Nueva cuenta por cobrar" : "Nueva cuenta por pagar"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowCargaMasiva(true)}
+            className="flex items-center gap-2 border border-[#3A3A3A] bg-[#1A1A1A] hover:border-purple-500/50 hover:text-purple-300 text-gray-300 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+          >
+            <Sparkles size={15} />
+            Carga masiva con IA
+          </button>
+          <button
+            onClick={() => setShowForm(true)}
+            className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#B01E24] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-[#CC2229]/20 cursor-pointer"
+          >
+            <Plus size={16} />
+            {isCxc ? "Nueva cuenta por cobrar" : "Nueva cuenta por pagar"}
+          </button>
+        </div>
       </div>
 
       {/* KPIs */}
@@ -934,6 +963,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
 
       <FormDrawer open={showForm} kind={kind} clientesList={clientesList} initial={editing ?? undefined} onClose={() => { setShowForm(false); setEditing(null); }} onSave={handleSave} />
       <AbonoDrawer cuenta={abonoTarget} kind={kind} onClose={() => setAbonoTarget(null)} onSave={handleAbono} />
+      <CargaMasivaModal open={showCargaMasiva} kind={kind} onClose={() => setShowCargaMasiva(false)} onConfirm={handleCargaMasiva} />
     </div>
   );
 }

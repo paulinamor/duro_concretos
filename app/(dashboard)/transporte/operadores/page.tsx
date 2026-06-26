@@ -30,7 +30,7 @@ const TIPOS_LICENCIA = ["E", "D", "C", "A", "B"];
 const ESTATUS_OPTIONS: EstatusOperador[] = ["Activo", "Inactivo", "Vacaciones"];
 const CURRENT_TIME = new Date().getTime();
 
-export default function OperadoresPage() {
+export default function EmpleadosPage() {
   const [operadores, setOperadores] = useState<Operador[]>([]);
   const [unidadesList, setUnidadesList] = useState<Unidad[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,6 +55,7 @@ export default function OperadoresPage() {
       const matchQuery =
         !term ||
         op.nombre.toLowerCase().includes(term) ||
+        (op.puesto ?? "").toLowerCase().includes(term) ||
         op.noLicencia.toLowerCase().includes(term) ||
         op.unidadAsignada.toLowerCase().includes(term);
       const matchEstatus = filtroEstatus === "Todos" || op.estatus === filtroEstatus;
@@ -92,12 +93,13 @@ export default function OperadoresPage() {
     const isDuplicate = operadores.some((op) =>
       op.noLicencia.toLowerCase() === noLicencia.toLowerCase() && op.id !== editing?.id,
     );
-    if (isDuplicate) return "Ya existe un operador con ese número de licencia.";
+    if (isDuplicate) return "Ya existe un empleado con ese número de licencia.";
 
     const id = editing?.id ?? `OP-${Date.now()}`;
     const next: Operador = {
       id,
       nombre,
+      puesto: values["Puesto"] ?? "",
       telefono,
       email: email ?? "",
       curp: values["CURP"] ?? "",
@@ -197,7 +199,7 @@ export default function OperadoresPage() {
     <div className="space-y-6">
       {/* KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <KPICard title="Total operadores" value={String(operadores.length)} icon={Users} />
+        <KPICard title="Total empleados" value={String(operadores.length)} icon={Users} />
         <KPICard
           title="Activos"
           value={String(totalActivos)}
@@ -230,7 +232,7 @@ export default function OperadoresPage() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar nombre, licencia, unidad..."
+            placeholder="Buscar nombre, puesto, licencia, unidad..."
             className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg pl-9 pr-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
           />
         </div>
@@ -245,7 +247,7 @@ export default function OperadoresPage() {
           </select>
           <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
         </div>
-        <span className="text-xs text-gray-500 ml-auto">{filtered.length} operadores</span>
+        <span className="text-xs text-gray-500 ml-auto">{filtered.length} empleados</span>
         <button
           type="button"
           onClick={exportExcel}
@@ -267,7 +269,7 @@ export default function OperadoresPage() {
           className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#991A1E] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
         >
           <Plus size={15} />
-          Nuevo operador
+          Nuevo empleado
         </button>
       </div>
 
@@ -277,7 +279,7 @@ export default function OperadoresPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-[#1A1A1A] border-b border-[#3A3A3A]">
-                {["ID", "Nombre", "Teléfono", "No. Licencia", "Tipo", "Vencimiento", "Unidad asignada", "Salario/día", "Ingreso", "Estatus", "Acciones"].map(
+                {["ID", "Nombre", "Puesto", "Teléfono", "No. Licencia", "Tipo", "Vencimiento", "Unidad asignada", "Salario/día", "Ingreso", "Estatus", "Acciones"].map(
                   (h) => (
                     <th key={h} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-400 whitespace-nowrap">
                       {h}
@@ -289,14 +291,14 @@ export default function OperadoresPage() {
             <tbody className="divide-y divide-[#3A3A3A]">
               {loading ? (
                 <tr>
-                  <td colSpan={11} className="px-5 py-10 text-center text-gray-500">
-                    Cargando operadores...
+                  <td colSpan={12} className="px-5 py-10 text-center text-gray-500">
+                    Cargando empleados...
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-5 py-10 text-center text-gray-500">
-                    No se encontraron operadores con ese filtro.
+                  <td colSpan={12} className="px-5 py-10 text-center text-gray-500">
+                    No se encontraron empleados con ese filtro.
                   </td>
                 </tr>
               ) : (
@@ -311,6 +313,7 @@ export default function OperadoresPage() {
                         <span className="text-white font-medium whitespace-nowrap">{op.nombre}</span>
                       </div>
                     </td>
+                    <td className="px-5 py-3 text-gray-300 whitespace-nowrap text-xs">{op.puesto || <span className="text-gray-600">—</span>}</td>
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-1.5 text-gray-400 whitespace-nowrap">
                         <Phone size={12} />
@@ -342,14 +345,14 @@ export default function OperadoresPage() {
                         <button
                           onClick={() => openEdit(op)}
                           className="rounded-lg p-2 text-gray-400 hover:bg-[#1A1A1A] hover:text-white transition-colors"
-                          aria-label={`Editar ${op.nombre}`}
+                          aria-label={`Editar empleado ${op.nombre}`}
                         >
                           <Pencil size={14} />
                         </button>
                         <button
                           onClick={() => handleDelete(op.id)}
                           className="rounded-lg p-2 text-gray-400 hover:bg-[#1A1A1A] hover:text-[#CC2229] transition-colors"
-                          aria-label={`Eliminar ${op.nombre}`}
+                          aria-label={`Eliminar empleado ${op.nombre}`}
                         >
                           <Trash2 size={14} />
                         </button>
@@ -366,7 +369,7 @@ export default function OperadoresPage() {
       {/* Form Modal */}
       <FormModal
         open={showForm}
-        title={editing ? `Editar operador — ${editing.nombre}` : "Nuevo operador"}
+        title={editing ? `Editar empleado — ${editing.nombre}` : "Nuevo empleado"}
         onClose={() => { setShowForm(false); setEditing(null); }}
         onSave={handleSave}
         footer={
@@ -378,7 +381,7 @@ export default function OperadoresPage() {
               Cancelar
             </button>
             <button className="px-5 py-2.5 text-sm font-medium bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-xl transition-colors shadow-md shadow-[#CC2229]/20">
-              Guardar operador
+              Guardar empleado
             </button>
           </>
         }
@@ -391,6 +394,7 @@ export default function OperadoresPage() {
               <FormSection title="Datos personales">
                 {[
                   { label: "Nombre completo", type: "text", defaultValue: editing?.nombre },
+                  { label: "Puesto", type: "text", defaultValue: editing?.puesto },
                   { label: "Teléfono", type: "text", defaultValue: editing?.telefono },
                   { label: "Correo electrónico", type: "email", defaultValue: editing?.email },
                   { label: "CURP", type: "text", defaultValue: editing?.curp },

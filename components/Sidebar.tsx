@@ -72,7 +72,7 @@ const administracionItems = [
 const transporteItems = [
   { href: "/transporte/programacion", icon: CalendarDays, label: "Programación" },
   { href: "/transporte/viajes", icon: Truck, label: "Control de viajes y choferes" },
-  { href: "/transporte/operadores", icon: HardHat, label: "Operadores" },
+  { href: "/transporte/operadores", icon: HardHat, label: "Empleados" },
   { href: "/transporte/unidades", icon: Truck, label: "Unidades / Flota" },
   { href: "/transporte/disponibilidad", icon: CalendarClock, label: "Disponibilidad de cargas" },
   { href: "/transporte/pagos", icon: DollarSign, label: "Pago por viaje / m³" },
