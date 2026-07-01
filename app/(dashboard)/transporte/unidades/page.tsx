@@ -329,7 +329,7 @@ export default function UnidadesPage() {
                       </span>
                     </td>
                     <td className="px-5 py-3 text-white whitespace-nowrap">{u.marca} {u.modelo}</td>
-                    <td className="px-5 py-3 text-gray-400 whitespace-nowrap">{u.anio ?? "—"}</td>
+                    <td className="px-5 py-3 text-gray-400 whitespace-nowrap">{u.anio && !isNaN(Number(u.anio)) ? u.anio : "—"}</td>
                     <td className="px-5 py-3 whitespace-nowrap">
                       {u.capacidadM3 != null && !isNaN(Number(u.capacidadM3)) ? (
                         <>
@@ -428,11 +428,11 @@ export default function UnidadesPage() {
                   <label className={lbl}>Chofer asignado</label>
                   <select defaultValue={editing?.choferAsignado || "N/A"} className={inp} data-catalog-locked="true">
                     <option value="N/A">N/A</option>
-                    {operadoresList.filter((o) => o.estatus === "Activo").map((o) => (
+                    {operadoresList.filter((o) => !o.baja).map((o) => (
                       <option key={o.id} value={o.nombre}>{o.nombre}</option>
                     ))}
                   </select>
-                  {operadoresList.filter((o) => o.estatus === "Activo").length === 0 && (
+                  {operadoresList.filter((o) => !o.baja).length === 0 && (
                     <p className="mt-1 text-xs text-gray-400">Sin operadores activos — agrégalos en Transporte → Operadores.</p>
                   )}
                 </div>

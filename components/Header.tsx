@@ -11,10 +11,11 @@ import { auth } from "@/lib/firebase";
 
 interface HeaderProps {
   title: string;
+  section?: string;
   onMobileMenu: () => void;
 }
 
-export default function Header({ title, onMobileMenu }: HeaderProps) {
+export default function Header({ title, section, onMobileMenu }: HeaderProps) {
   const router = useRouter();
   const headerActionsRef = useRef<HTMLDivElement>(null);
   const plantaRef = useRef<HTMLDivElement>(null);
@@ -514,7 +515,15 @@ export default function Header({ title, onMobileMenu }: HeaderProps) {
     <header className="sticky top-0 z-50 flex shrink-0 items-center justify-between border-b border-[#1E293B] bg-[#0B1220] px-4 py-3">
       <div className="flex items-center gap-3">
         <MobileMenuButton onClick={onMobileMenu} />
-        <h2 className="text-lg font-semibold text-white">{title}</h2>
+        <div className="flex items-center gap-3">
+          {section && (
+            <div className="hidden sm:flex flex-col border-l-2 border-[#CC2229] pl-3">
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">{section}</span>
+              <span className="text-sm font-bold text-white leading-tight">{title}</span>
+            </div>
+          )}
+          {!section && <h2 className="text-lg font-semibold text-white">{title}</h2>}
+        </div>
         {plantaDisplay && (
           <div className="relative hidden sm:block" ref={plantaRef}>
             {isMultiPlanta ? (

@@ -33,17 +33,13 @@ import {
 } from "lucide-react";
 import { getAllowedModuleSet, getStoredSession } from "@/lib/auth";
 
-const COMING_SOON = new Set([
-  "/transporte/viajes",
-  "/transporte/disponibilidad",
-  "/transporte/pagos",
-]);
+const COMING_SOON = new Set<string>([]);
 
 const navItems = [
   {
     href: "/dashboard",
     icon: LayoutDashboard,
-    label: "Dashboard operativo",
+    label: "Dashboard",
   },
   {
     href: "/reportes",
@@ -71,27 +67,20 @@ const administracionItems = [
 
 const transporteItems = [
   { href: "/transporte/programacion", icon: CalendarDays, label: "Programación" },
-  { href: "/transporte/viajes", icon: Truck, label: "Control de viajes y choferes" },
-  { href: "/transporte/operadores", icon: HardHat, label: "Empleados" },
   { href: "/transporte/unidades", icon: Truck, label: "Unidades / Flota" },
-  { href: "/transporte/disponibilidad", icon: CalendarClock, label: "Disponibilidad de cargas" },
-  { href: "/transporte/pagos", icon: DollarSign, label: "Pago por viaje / m³" },
-  { href: "/transporte/diesel", icon: Fuel, label: "Consumo de diésel" },
-  { href: "/transporte/mantenimiento", icon: Wrench, label: "Mantenimiento + refacciones" },
-  { href: "/transporte/seguros", icon: ShieldCheck, label: "Seguros de flota" },
+  { href: "/transporte/diesel", icon: Fuel, label: "Consumo de Diésel" },
+  { href: "/transporte/mantenimiento", icon: Wrench, label: "Mantenimiento de Flota" },
+  { href: "/transporte/seguros", icon: ShieldCheck, label: "Seguro de Flota" },
 ];
 
 const operacionesItems = [
   { href: "/operaciones/inventario", icon: Package, label: "Inventarios" },
-  { href: "/operaciones/caja-chica", icon: Wallet, label: "Caja Chica" },
 ];
 
 const ventasItems = [
-  { href: "/crm/clientes", icon: BookUser, label: "Base de clientes" },
+  { href: "/crm/clientes", icon: BookUser, label: "Base de Clientes" },
   { href: "/crm/pipeline", icon: ChartNoAxesColumn, label: "Pipeline CRM" },
-  { href: "/crm/seguimiento", icon: UsersRound, label: "Seguimiento de oportunidades" },
-  { href: "/crm/clientes-vendedor", icon: UsersRound, label: "Clientes por vendedor" },
-  { href: "/ventas/recibos-concreto", icon: ReceiptText, label: "Recibos de concreto" },
+  { href: "/ventas/recibos-concreto", icon: ReceiptText, label: "Recibos de Concreto" },
   { href: "/ventas/horas-llegada-salida", icon: ClipboardClock, label: "Horas Llegada/Salida" },
 ];
 
@@ -102,6 +91,7 @@ const finanzasItems = [
 ];
 
 const recursosHumanosItems = [
+  { href: "/transporte/operadores", icon: HardHat, label: "Empleados" },
   { href: "/recursos-humanos/nomina", icon: ReceiptText, label: "Nómina Timbrada" },
 ];
 

@@ -82,7 +82,7 @@ export default function ConfiguracionPage() {
       password: "",
       role: "operador",
       status: "Activo",
-      modules: ["/dashboard", "/transporte/viajes"],
+      modules: ["/dashboard"],
       planta: "Pesquería",
     });
   }
@@ -176,7 +176,7 @@ export default function ConfiguracionPage() {
       setProfiles(updated.filter((p) => p.status !== "Inactivo"));
 
       // Keep current session in sync if editing own profile
-      if (session?.email === normalizedEmail) {
+      if (session?.email?.toLowerCase() === normalizedEmail) {
         saveSession({
           email: normalizedEmail,
           password: "",

@@ -7,33 +7,52 @@ import Header from "@/components/Header";
 import { getAllowedModuleSet, getStoredSession } from "@/lib/auth";
 
 const pageTitles: Record<string, string> = {
-  "/dashboard": "Dashboard operativo",
+  "/dashboard": "Dashboard",
   "/reportes": "Reportes",
   "/perfil": "Mi Perfil",
   "/configuracion": "Configuración",
   "/automatizaciones": "Automatizaciones",
   "/transporte/programacion": "Programación",
-  "/transporte/viajes": "Control de viajes y choferes",
-  "/transporte/disponibilidad": "Disponibilidad de cargas",
-  "/transporte/pagos": "Pago por viaje / m³",
-  "/transporte/diesel": "Consumo de diésel",
-  "/transporte/mantenimiento": "Mantenimiento · Reparaciones · Fallas",
-  "/transporte/seguros": "Seguros de flota",
+  "/transporte/diesel": "Consumo de Diésel",
+  "/transporte/mantenimiento": "Mantenimiento de Flota",
+  "/transporte/seguros": "Seguro de Flota",
   "/administracion/viajes-chofer": "Viajes por Chofer",
   "/operaciones/inventario": "Inventarios",
   "/operaciones/efectivo": "Control de efectivo",
-  "/operaciones/caja-chica": "Caja Chica",
-  "/transporte/operadores": "Operadores",
-  "/transporte/unidades": "Unidades · Flota vehicular",
-  "/crm/clientes": "Base de clientes",
+  "/transporte/operadores": "Empleados",
+  "/transporte/unidades": "Flota vehicular",
+  "/crm/clientes": "Base de Clientes",
   "/crm/pipeline": "Pipeline CRM",
-  "/crm/seguimiento": "Seguimiento de oportunidades",
-  "/crm/clientes-vendedor": "Clientes por vendedor",
-  "/ventas/recibos-concreto": "Recibos de concreto",
+  "/ventas/recibos-concreto": "Recibos de Concreto",
   "/ventas/horas-llegada-salida": "Horas de Llegada y Salida",
   "/finanzas/cxc": "Cuentas por Cobrar",
   "/finanzas/cxp": "Cuentas por Pagar",
   "/finanzas/estado-cuenta-clientes": "Estados de Cuenta",
+  "/recursos-humanos/nomina": "Recursos Humanos",
+};
+
+const pageSections: Record<string, string> = {
+  "/dashboard": "Inicio",
+  "/reportes": "Reportes",
+  "/perfil": "Sistema",
+  "/configuracion": "Sistema",
+  "/automatizaciones": "Sistema",
+  "/transporte/programacion": "Transporte",
+  "/transporte/diesel": "Transporte",
+  "/transporte/mantenimiento": "Transporte",
+  "/transporte/seguros": "Transporte",
+  "/transporte/operadores": "Recursos Humanos",
+  "/transporte/unidades": "Transporte",
+  "/administracion/viajes-chofer": "Administración",
+  "/operaciones/inventario": "Operación",
+  "/operaciones/efectivo": "Operación",
+  "/crm/clientes": "CRM",
+  "/crm/pipeline": "CRM",
+  "/ventas/recibos-concreto": "Ventas",
+  "/ventas/horas-llegada-salida": "Ventas",
+  "/finanzas/cxc": "Finanzas",
+  "/finanzas/cxp": "Finanzas",
+  "/finanzas/estado-cuenta-clientes": "Finanzas",
   "/recursos-humanos/nomina": "Recursos Humanos",
 };
 
@@ -46,6 +65,7 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const router = useRouter();
   const title = pageTitles[pathname] ?? "ERP Duro Concretos";
+  const section = pageSections[pathname] ?? "";
 
   useEffect(() => {
     const session = getStoredSession();
@@ -83,7 +103,7 @@ export default function DashboardLayout({
     <div className="flex h-screen overflow-hidden bg-background text-foreground">
       <Sidebar mobileOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="flex min-h-0 flex-1 flex-col min-w-0">
-        <Header title={title} onMobileMenu={() => setSidebarOpen(true)} />
+        <Header title={title} section={section} onMobileMenu={() => setSidebarOpen(true)} />
         <main id="duro-module-content" className="min-h-0 flex-1 overflow-y-auto bg-[#1A1A1A] p-3 lg:p-5">
           <div className="w-full min-w-0">
             {children}

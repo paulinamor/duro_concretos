@@ -100,6 +100,8 @@ interface FormState {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+type ViewMode = "dia" | "semana" | "mes" | "rango";
+
 function todayISO() { return new Date().toISOString().slice(0, 10); }
 
 function addDays(iso: string, d: number) {
@@ -108,10 +110,40 @@ function addDays(iso: string, d: number) {
   return dt.toISOString().slice(0, 10);
 }
 
+function addMonths(iso: string, m: number) {
+  const dt = new Date(iso + "T12:00:00");
+  dt.setMonth(dt.getMonth() + m);
+  return dt.toISOString().slice(0, 10);
+}
+
+function weekRange(iso: string): [string, string] {
+  const d = new Date(iso + "T12:00:00");
+  const dow = d.getDay();
+  const start = new Date(d);
+  start.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1)); // Monday
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  return [start.toISOString().slice(0, 10), end.toISOString().slice(0, 10)];
+}
+
 function formatDateLabel(iso: string) {
   return new Date(iso + "T12:00:00").toLocaleDateString("es-MX", {
     weekday: "long", day: "numeric", month: "long", year: "numeric",
   });
+}
+
+function formatShort(iso: string) {
+  return new Date(iso + "T12:00:00").toLocaleDateString("es-MX", { day: "numeric", month: "short" });
+}
+
+function periodLabel(mode: ViewMode, anchor: string, ri: string, rf: string): string {
+  if (mode === "dia") return formatDateLabel(anchor);
+  if (mode === "semana") {
+    const [s, e] = weekRange(anchor);
+    return `${formatShort(s)} – ${formatShort(e)} ${new Date(e + "T12:00:00").getFullYear()}`;
+  }
+  if (mode === "mes") return new Date(anchor + "T12:00:00").toLocaleDateString("es-MX", { month: "long", year: "numeric" });
+  return `${formatShort(ri)} – ${formatShort(rf)}`;
 }
 
 function calcTiempoDescarga(inicio: string, fin: string): string {
@@ -806,7 +838,7 @@ function FormDrawer({
 
 // ─── TableRow ─────────────────────────────────────────────────────────────────
 
-function TableRow({ p, onEdit, onDelete }: { p: Programacion; onEdit: () => void; onDelete: () => void }) {
+function TableRow({ p, onEdit, onDelete, showFecha }: { p: Programacion; onEdit: () => void; onDelete: () => void; showFecha?: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const pagadoColor = p.pagado === "Sí"
     ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
@@ -824,6 +856,9 @@ function TableRow({ p, onEdit, onDelete }: { p: Programacion; onEdit: () => void
         className="cursor-pointer"
         onClick={() => setExpanded((v) => !v)}
       >
+        {showFecha && (
+          <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap font-mono">{p.dia || "—"}</td>
+        )}
         <td className="px-4 py-3 text-white font-mono text-sm font-semibold whitespace-nowrap">{p.hora || "—"}</td>
         <td className="px-4 py-3 max-w-[160px]">
           {choferesList.length === 0 ? (
@@ -882,7 +917,7 @@ function TableRow({ p, onEdit, onDelete }: { p: Programacion; onEdit: () => void
 
       {expanded && (
         <tr>
-          <td colSpan={10} style={{ backgroundColor: "#F8FAFC", padding: "16px 20px", borderTop: "2px solid #CC2229", borderBottom: "1px solid #e2e8f0", maxWidth: 0 }}>
+          <td colSpan={showFecha ? 11 : 10} style={{ backgroundColor: "#F8FAFC", padding: "16px 20px", borderTop: "2px solid #CC2229", borderBottom: "1px solid #e2e8f0", maxWidth: 0 }}>
             <div style={{ display: "flex", flexDirection: "column", gap: "16px", overflow: "hidden" }}>
 
               {/* Tarjetas de choferes */}
@@ -1008,6 +1043,9 @@ export default function ProgramacionPage() {
   const [clientesList, setClientesList] = useState<string[]>([]);
   const [clientesSet, setClientesSet] = useState<Set<string>>(new Set());
   const [diaActivo, setDiaActivo] = useState(todayISO);
+  const [viewMode, setViewMode] = useState<ViewMode>("dia");
+  const [rangoInicio, setRangoInicio] = useState(todayISO);
+  const [rangoFin, setRangoFin] = useState(todayISO);
   const [showDrawer, setShowDrawer] = useState(false);
   const [editing, setEditing] = useState<Programacion | undefined>();
   const [loading, setLoading] = useState(true);
@@ -1019,7 +1057,7 @@ export default function ProgramacionPage() {
       getCollectionDocs<Cliente>(COLLECTIONS.clientes),
     ]).then(([progs, ops, clientes]) => {
       setProgramaciones(filterByPlanta(progs));
-      setOperadoresList(ops.filter((o) => o.estatus === "Activo").map((o) => ({ id: o.id, nombre: o.nombre })));
+      setOperadoresList(ops.filter((o) => !o.baja).map((o) => ({ id: o.id, nombre: o.nombre })));
 
       // Migrate existing records with incorrect totalXM3 / total values
       const toFix = progs.filter((p) => {
@@ -1073,15 +1111,29 @@ export default function ProgramacionPage() {
     }).finally(() => setLoading(false));
   }, []);
 
-  const delDia = useMemo(
-    () => programaciones.filter((p) => p.dia === diaActivo).sort((a, b) => (a.hora || "").localeCompare(b.hora || "")),
-    [programaciones, diaActivo],
-  );
+  const filtered = useMemo(() => {
+    let list: Programacion[];
+    if (viewMode === "dia") {
+      list = programaciones.filter((p) => p.dia === diaActivo);
+    } else if (viewMode === "semana") {
+      const [s, e] = weekRange(diaActivo);
+      list = programaciones.filter((p) => (p.dia ?? "") >= s && (p.dia ?? "") <= e);
+    } else if (viewMode === "mes") {
+      const mesKey = diaActivo.slice(0, 7);
+      list = programaciones.filter((p) => (p.dia ?? "").startsWith(mesKey));
+    } else {
+      list = programaciones.filter((p) => (p.dia ?? "") >= rangoInicio && (p.dia ?? "") <= rangoFin);
+    }
+    return list.sort((a, b) => {
+      const dc = (a.dia ?? "").localeCompare(b.dia ?? "");
+      return dc !== 0 ? dc : (a.hora ?? "").localeCompare(b.hora ?? "");
+    });
+  }, [programaciones, diaActivo, viewMode, rangoInicio, rangoFin]);
 
-  const totalM3 = delDia.reduce((s, p) => s + (p.m3Totales ?? 0), 0);
-  const totalFacturado = delDia.reduce((s, p) => s + (p.total ?? 0), 0);
-  const totalM3Vacios = delDia.reduce((s, p) => s + (p.m3Vacios ?? 0), 0);
-  const totalPagado = delDia.filter((p) => p.pagado === "Sí").length;
+  const totalM3 = filtered.reduce((s, p) => s + (p.m3Totales ?? 0), 0);
+  const totalFacturado = filtered.reduce((s, p) => s + (p.total ?? 0), 0);
+  const totalM3Vacios = filtered.reduce((s, p) => s + (p.m3Vacios ?? 0), 0);
+  const totalPagado = filtered.filter((p) => p.pagado === "Sí").length;
 
   async function handleSave(p: Programacion) {
     const id = p.id!;
@@ -1138,59 +1190,116 @@ export default function ProgramacionPage() {
 
   return (
     <div className="space-y-6">
-      {/* Nav de día */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setDiaActivo((d) => addDays(d, -1))}
-            className="rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] p-2 text-gray-400 hover:border-[#CC2229]/60 hover:text-white transition-colors"
-          >
-            <ChevronLeft size={15} />
-          </button>
-          <input
-            type="date"
-            value={diaActivo}
-            onChange={(e) => setDiaActivo(e.target.value)}
-            className="bg-[#1A1A1A] border border-[#3A3A3A] text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#CC2229] cursor-pointer"
-          />
-          <button
-            onClick={() => setDiaActivo((d) => addDays(d, 1))}
-            className="rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] p-2 text-gray-400 hover:border-[#CC2229]/60 hover:text-white transition-colors"
-          >
-            <ChevronRight size={15} />
-          </button>
-          <button
-            onClick={() => setDiaActivo(todayISO())}
-            className="rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-3 py-2 text-xs text-gray-400 hover:border-[#CC2229]/60 hover:text-white transition-colors"
-          >
-            Hoy
-          </button>
-          <span className="hidden sm:block text-sm text-gray-400 capitalize">{formatDateLabel(diaActivo)}</span>
+      {/* Nav + filtros */}
+      <div className="space-y-3">
+        {/* Fila 1: tabs de modo + botones acción */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* Tabs de modo */}
+          <div className="flex items-center gap-1 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg p-1">
+            {(["dia", "semana", "mes", "rango"] as ViewMode[]).map((m) => (
+              <button
+                key={m}
+                onClick={() => setViewMode(m)}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer capitalize ${viewMode === m ? "bg-[#CC2229] text-white" : "text-gray-400 hover:text-white"}`}
+              >
+                {m === "dia" ? "Día" : m === "semana" ? "Semana" : m === "mes" ? "Mes" : "Rango"}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => filtered.length > 0 && exportCSV(filtered)}
+              disabled={filtered.length === 0}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-300 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg hover:border-[#CC2229]/60 transition-colors disabled:opacity-40"
+            >
+              <Download size={13} />
+              CSV
+            </button>
+            <button
+              onClick={() => { setEditing(undefined); setShowDrawer(true); }}
+              className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#B01E24] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-[#CC2229]/20"
+            >
+              <Plus size={15} />
+              Nueva programación
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => delDia.length > 0 && exportCSV(delDia)}
-            disabled={delDia.length === 0}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-300 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg hover:border-[#CC2229]/60 transition-colors disabled:opacity-40"
-          >
-            <Download size={13} />
-            CSV
-          </button>
-          <button
-            onClick={() => { setEditing(undefined); setShowDrawer(true); }}
-            className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#B01E24] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-[#CC2229]/20"
-          >
-            <Plus size={15} />
-            Nueva programación
-          </button>
+
+        {/* Fila 2: controles de fecha según modo */}
+        <div className="flex flex-wrap items-center gap-2">
+          {viewMode !== "rango" && (
+            <>
+              <button
+                onClick={() => {
+                  if (viewMode === "dia") setDiaActivo((d) => addDays(d, -1));
+                  else if (viewMode === "semana") setDiaActivo((d) => addDays(d, -7));
+                  else setDiaActivo((d) => addMonths(d, -1));
+                }}
+                className="rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] p-2 text-gray-400 hover:border-[#CC2229]/60 hover:text-white transition-colors cursor-pointer"
+              >
+                <ChevronLeft size={15} />
+              </button>
+              {viewMode === "dia" ? (
+                <input
+                  type="date"
+                  value={diaActivo}
+                  onChange={(e) => setDiaActivo(e.target.value)}
+                  className="bg-[#1A1A1A] border border-[#3A3A3A] text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#CC2229] cursor-pointer"
+                />
+              ) : (
+                <span className="text-sm text-white font-medium px-1 capitalize">
+                  {periodLabel(viewMode, diaActivo, rangoInicio, rangoFin)}
+                </span>
+              )}
+              <button
+                onClick={() => {
+                  if (viewMode === "dia") setDiaActivo((d) => addDays(d, 1));
+                  else if (viewMode === "semana") setDiaActivo((d) => addDays(d, 7));
+                  else setDiaActivo((d) => addMonths(d, 1));
+                }}
+                className="rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] p-2 text-gray-400 hover:border-[#CC2229]/60 hover:text-white transition-colors cursor-pointer"
+              >
+                <ChevronRight size={15} />
+              </button>
+              <button
+                onClick={() => setDiaActivo(todayISO())}
+                className="rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-3 py-2 text-xs text-gray-400 hover:border-[#CC2229]/60 hover:text-white transition-colors cursor-pointer"
+              >
+                Hoy
+              </button>
+            </>
+          )}
+          {viewMode === "rango" && (
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={rangoInicio}
+                onChange={(e) => setRangoInicio(e.target.value)}
+                className="bg-[#1A1A1A] border border-[#3A3A3A] text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#CC2229] cursor-pointer"
+              />
+              <span className="text-gray-600 text-sm">—</span>
+              <input
+                type="date"
+                value={rangoFin}
+                min={rangoInicio}
+                onChange={(e) => setRangoFin(e.target.value)}
+                className="bg-[#1A1A1A] border border-[#3A3A3A] text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#CC2229] cursor-pointer"
+              />
+            </div>
+          )}
+          {filtered.length > 0 && (
+            <span className="text-xs text-gray-500 ml-1 capitalize">
+              {viewMode !== "rango" && viewMode !== "dia" ? "" : ""}{filtered.length} programación{filtered.length !== 1 ? "es" : ""}
+            </span>
+          )}
         </div>
       </div>
 
       {/* KPIs */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
         <KPICard
-          title="Viajes del día"
-          value={String(delDia.length)}
+          title={viewMode === "dia" ? "Viajes del día" : viewMode === "semana" ? "Viajes semana" : viewMode === "mes" ? "Viajes mes" : "Viajes rango"}
+          value={String(filtered.length)}
           icon={CalendarDays}
           iconColor="text-[#CC2229]"
           subtitle={`${programaciones.length} total registradas`}
@@ -1212,10 +1321,10 @@ export default function ProgramacionPage() {
         />
         <KPICard
           title="Viajes pagados"
-          value={`${totalPagado} / ${delDia.length}`}
+          value={`${totalPagado} / ${filtered.length}`}
           icon={Clock}
-          iconColor={totalPagado === delDia.length && delDia.length > 0 ? "text-emerald-400" : "text-amber-400"}
-          iconBg={totalPagado === delDia.length && delDia.length > 0 ? "bg-emerald-500/10" : "bg-amber-500/10"}
+          iconColor={totalPagado === filtered.length && filtered.length > 0 ? "text-emerald-400" : "text-amber-400"}
+          iconBg={totalPagado === filtered.length && filtered.length > 0 ? "bg-emerald-500/10" : "bg-amber-500/10"}
         />
       </div>
 
@@ -1223,15 +1332,15 @@ export default function ProgramacionPage() {
       <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
         <div className="px-5 py-3 border-b border-[#3A3A3A] flex items-center justify-between">
           <p className="text-sm font-semibold text-white">
-            {delDia.length > 0 ? `${delDia.length} programación${delDia.length !== 1 ? "es" : ""}` : "Sin programaciones para este día"}
+            {filtered.length > 0 ? `${filtered.length} programación${filtered.length !== 1 ? "es" : ""}` : "Sin programaciones para este período"}
           </p>
-          <p className="text-xs text-gray-500 capitalize">{formatDateLabel(diaActivo)}</p>
+          <p className="text-xs text-gray-500 capitalize">{periodLabel(viewMode, diaActivo, rangoInicio, rangoFin)}</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-[#1A1A1A]">
-                {["Hora", "Chofer", "CR", "Cliente", "M3 totales", "Remisión", "Resistencia", "Total", "Pagado", ""].map((h) => (
+                {[...(viewMode !== "dia" ? ["Fecha"] : []), "Hora", "Chofer", "CR", "Cliente", "M3 totales", "Remisión", "Resistencia", "Total", "Pagado", ""].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
                     {h}
                   </th>
@@ -1240,15 +1349,15 @@ export default function ProgramacionPage() {
             </thead>
             <tbody className="divide-y divide-[#2A2A2A]">
               {loading ? (
-                <tr><td colSpan={10} className="px-4 py-12 text-center text-sm text-gray-600">Cargando…</td></tr>
-              ) : delDia.length === 0 ? (
+                <tr><td colSpan={viewMode !== "dia" ? 11 : 10} className="px-4 py-12 text-center text-sm text-gray-600">Cargando…</td></tr>
+              ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-16 text-center">
+                  <td colSpan={viewMode !== "dia" ? 11 : 10} className="px-4 py-16 text-center">
                     <div className="flex flex-col items-center gap-3">
                       <div className="h-12 w-12 rounded-xl bg-[#1A1A1A] flex items-center justify-center">
                         <CalendarDays size={22} className="text-gray-600" />
                       </div>
-                      <p className="text-sm text-gray-500">Sin programaciones para este día</p>
+                      <p className="text-sm text-gray-500">Sin programaciones para este período</p>
                       <button
                         onClick={() => { setEditing(undefined); setShowDrawer(true); }}
                         className="text-xs text-[#CC2229] hover:underline"
@@ -1258,10 +1367,11 @@ export default function ProgramacionPage() {
                     </div>
                   </td>
                 </tr>
-              ) : delDia.map((p) => (
+              ) : filtered.map((p) => (
                 <TableRow
                   key={p.id}
                   p={p}
+                  showFecha={viewMode !== "dia"}
                   onEdit={() => { setEditing(p); setShowDrawer(true); }}
                   onDelete={() => p.id && handleDelete(p.id)}
                 />
@@ -1269,9 +1379,9 @@ export default function ProgramacionPage() {
             </tbody>
           </table>
         </div>
-        {delDia.length > 0 && (
+        {filtered.length > 0 && (
           <div className="px-5 py-3 border-t border-[#3A3A3A] flex items-center justify-between text-xs text-gray-600">
-            <span>{delDia.length} viaje{delDia.length !== 1 ? "s" : ""} · {totalM3.toLocaleString("es-MX")} m³ totales</span>
+            <span>{filtered.length} viaje{filtered.length !== 1 ? "s" : ""} · {totalM3.toLocaleString("es-MX")} m³ totales</span>
             {totalFacturado > 0 && <span className="font-semibold text-white">{currency(totalFacturado)}</span>}
           </div>
         )}
