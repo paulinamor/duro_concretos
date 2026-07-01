@@ -3,10 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle, CheckCircle2, Clock, Download, Plus, Search,
-  Shield, ShieldOff, X,
+  Shield, ShieldOff, Trash2, X,
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
-import { getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
+import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
 import { filterByPlanta, withPlantaTag } from "@/lib/auth";
 import type { Unidad } from "@/lib/unidades";
 
@@ -511,6 +511,7 @@ export default function SegurosPage() {
   const [drawerUnidad, setDrawerUnidad] = useState<Unidad | null>(null);
   const [drawerExisting, setDrawerExisting] = useState<Seguro | undefined>();
   const [showDrawer, setShowDrawer] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<Seguro | null>(null);
 
   useEffect(() => {
     getCollectionDocs<Unidad>(COLLECTIONS.unidades).then((data) => setUnidades(filterByPlanta(data)));
@@ -588,6 +589,15 @@ export default function SegurosPage() {
       return idx >= 0 ? prev.map((x, i) => (i === idx ? s : x)) : [...prev, s];
     });
   };
+
+  async function handleDelete(s: Seguro) {
+    setSeguros((prev) => prev.filter((x) => x.id !== s.id));
+    await deleteDocument(COLLECTIONS.seguros, s.id!);
+    setConfirmDelete(null);
+    window.dispatchEvent(new CustomEvent("duro:toast", {
+      detail: { type: "success", message: `Seguro de ${s.noEconomico} eliminado.` },
+    }));
+  }
 
   function openDrawer(unidad: Unidad | null, existing?: Seguro) {
     setDrawerUnidad(unidad);
@@ -752,13 +762,24 @@ export default function SegurosPage() {
                         {seguro?.tenencia || <span className="text-gray-700">—</span>}
                       </td>
                       <td className="px-3 py-3 whitespace-nowrap">
-                        <button
-                          onClick={() => openDrawer(unidad, seguro)}
-                          className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium text-gray-400 hover:text-white bg-[#1A1A1A] hover:bg-[#252D3D] border border-[#3A3A3A] hover:border-[#CC2229]/40 rounded-lg transition-colors"
-                        >
-                          <Shield size={11} />
-                          {seguro ? "Editar" : "Registrar"}
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => openDrawer(unidad, seguro)}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium text-gray-400 hover:text-white bg-[#1A1A1A] hover:bg-[#252D3D] border border-[#3A3A3A] hover:border-[#CC2229]/40 rounded-lg transition-colors"
+                          >
+                            <Shield size={11} />
+                            {seguro ? "Editar" : "Registrar"}
+                          </button>
+                          {seguro && (
+                            <button
+                              onClick={() => setConfirmDelete(seguro)}
+                              className="flex items-center justify-center p-1.5 text-gray-600 hover:text-red-400 bg-[#1A1A1A] hover:bg-red-500/10 border border-[#3A3A3A] hover:border-red-500/30 rounded-lg transition-colors"
+                              aria-label="Eliminar"
+                            >
+                              <Trash2 size={11} />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -788,6 +809,35 @@ export default function SegurosPage() {
         existing={drawerExisting}
         unidadesList={unidades}
       />
+
+      {confirmDelete && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center">
+          <button className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setConfirmDelete(null)} />
+          <div className="relative bg-[#1A1A1A] border border-[#3A3A3A] rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-500/10 mb-4">
+              <Trash2 size={20} className="text-red-400" />
+            </div>
+            <h3 className="text-sm font-semibold text-white mb-1">Eliminar seguro</h3>
+            <p className="text-xs text-gray-500 mb-5">
+              ¿Eliminar el registro de póliza de la unidad <span className="text-gray-300 font-medium">{confirmDelete.noEconomico}</span>? Esta acción no se puede deshacer.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                className="flex-1 px-4 py-2.5 text-sm text-gray-400 border border-[#3A3A3A] rounded-xl hover:border-gray-500 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => handleDelete(confirmDelete)}
+                className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors"
+              >
+                Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

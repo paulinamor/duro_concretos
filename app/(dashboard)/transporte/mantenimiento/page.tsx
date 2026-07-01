@@ -7,8 +7,10 @@ import {
   ChevronDown,
   ChevronRight,
   DollarSign,
+  Pencil,
   Plus,
   Search,
+  Trash2,
   Truck,
   Wrench,
   X,
@@ -16,7 +18,7 @@ import {
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
 import { filterByPlanta, withPlantaTag } from "@/lib/auth";
-import { COLLECTIONS, getCollectionDocs, upsertDocument } from "@/lib/db";
+import { COLLECTIONS, deleteDocument, getCollectionDocs, upsertDocument } from "@/lib/db";
 import type { Unidad } from "@/lib/unidades";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -117,9 +119,13 @@ const STATUS_BADGE: Record<string, string> = {
 function EventoRow({
   ev,
   onComplete,
+  onEdit,
+  onDelete,
 }: {
   ev: Evento;
   onComplete: (ev: Evento) => void;
+  onEdit: (ev: Evento) => void;
+  onDelete: (ev: Evento) => void;
 }) {
   const isDone = ev.status === "Completado" || ev.status === "Resuelta";
   const statusBadge = STATUS_BADGE[ev.status] ?? "bg-gray-500/15 text-gray-400 border border-gray-500/30";
@@ -164,7 +170,7 @@ function EventoRow({
         {currency(ev.costo)}
       </span>
 
-      {/* Status + action */}
+      {/* Status + actions */}
       <div className="flex items-center gap-2 shrink-0">
         <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${statusBadge}`}>
           {ev.status}
@@ -177,6 +183,12 @@ function EventoRow({
             ✓ Cerrar
           </button>
         )}
+        <button onClick={() => onEdit(ev)} className="p-1 text-gray-600 hover:text-blue-400 transition-colors cursor-pointer" aria-label="Editar">
+          <Pencil size={11} />
+        </button>
+        <button onClick={() => onDelete(ev)} className="p-1 text-gray-600 hover:text-red-400 transition-colors cursor-pointer" aria-label="Eliminar">
+          <Trash2 size={11} />
+        </button>
       </div>
     </div>
   );
@@ -188,10 +200,14 @@ function UnitCard({
   summary,
   onAddEvento,
   onComplete,
+  onEdit,
+  onDelete,
 }: {
   summary: UnitSummary;
   onAddEvento: (unidad: string) => void;
   onComplete: (ev: Evento) => void;
+  onEdit: (ev: Evento) => void;
+  onDelete: (ev: Evento) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const { unidad: u, eventos, costoTotal, pendientes, fallasActivas, ultimaFecha } = summary;
@@ -307,7 +323,7 @@ function UnitCard({
           ) : (
             <div className="py-1">
               {eventos.map((ev) => (
-                <EventoRow key={ev.id} ev={ev} onComplete={onComplete} />
+                <EventoRow key={ev.id} ev={ev} onComplete={onComplete} onEdit={onEdit} onDelete={onDelete} />
               ))}
             </div>
           )}
@@ -325,23 +341,42 @@ function RegistroDrawer({
   preselectedUnidad,
   onClose,
   onSave,
+  editing,
 }: {
   open: boolean;
   unidadesList: string[];
   preselectedUnidad: string;
   onClose: () => void;
   onSave: (ev: EventoRaw) => Promise<void>;
+  editing?: Evento | null;
 }) {
   const [tipo, setTipo] = useState<EventoTipo>("Mantenimiento");
   const [form, setForm] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (open) {
+    if (!open) return;
+    if (editing) {
+      const toISO = (f: string) => f.includes("/") ? f.split("/").reverse().join("-") : f;
+      setTipo(editing.tipo);
+      setForm({
+        fecha: toISO(editing.fecha),
+        unidad: editing.unidad,
+        descripcion: editing.descripcion,
+        costo: String(editing.costo || ""),
+        taller: editing.taller ?? "",
+        status: editing.status,
+        notas: editing.notas ?? "",
+        subtipo: editing.subtipo ?? "Preventivo",
+        causa: editing.causa ?? "",
+        severidad: editing.severidad ?? "Media",
+        reportadoPor: editing.reportadoPor ?? "",
+      });
+    } else {
       setTipo("Mantenimiento");
       setForm({ fecha: todayISO(), unidad: preselectedUnidad, status: "Pendiente" });
     }
-  }, [open, preselectedUnidad]);
+  }, [open, preselectedUnidad, editing]);
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -350,6 +385,7 @@ function RegistroDrawer({
     setSaving(true);
     try {
       const base: EventoRaw = {
+        ...(editing?.id ? { id: editing.id } : {}),
         tipo,
         unidad: form.unidad,
         fecha: form.fecha ?? todayISO(),
@@ -389,7 +425,7 @@ function RegistroDrawer({
               <Wrench size={18} />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-gray-900">Nuevo registro</h2>
+              <h2 className="text-sm font-semibold text-gray-900">{editing ? "Editar registro" : "Nuevo registro"}</h2>
               <p className="text-xs text-gray-500">Mantenimiento · Reparación · Falla</p>
             </div>
           </div>
@@ -546,6 +582,8 @@ export default function MantenimientoPage() {
   const [showDrawer, setShowDrawer] = useState(false);
   const [preselectedUnidad, setPreselectedUnidad] = useState("");
   const [viewMode, setViewMode] = useState<"unidades" | "cronologico">("unidades");
+  const [editingEvento, setEditingEvento] = useState<Evento | null>(null);
+  const [confirmDeleteEvento, setConfirmDeleteEvento] = useState<Evento | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -638,16 +676,29 @@ export default function MantenimientoPage() {
   const fallasActivas = useMemo(() => eventos.filter((e) => e.tipo === "Falla" && e.status !== "Resuelta").length, [eventos]);
 
   async function handleSave(ev: EventoRaw) {
-    const id = `evt-${Date.now()}`;
-    // Route to the right collection for backward compat
+    const isUpdate = !!ev.id;
+    const id = ev.id ?? `evt-${Date.now()}`;
     const col = ev.tipo === "Mantenimiento" ? COLLECTIONS.mantenimientos : ev.tipo === "Reparación" ? COLLECTIONS.reparaciones : COLLECTIONS.fallas;
     const full: Evento = { ...ev, id };
-    setEventos((prev) => [full, ...prev].sort((a, b) => {
+    const sort = (arr: Evento[]) => arr.sort((a, b) => {
       const toISO = (f: string) => { if (f.includes("/")) { const [d, m, y] = f.split("/"); return `${y}-${m}-${d}`; } return f; };
       return toISO(b.fecha).localeCompare(toISO(a.fecha));
-    }));
+    });
+    if (isUpdate) {
+      setEventos((prev) => sort(prev.map((e) => e.id === id ? full : e)));
+    } else {
+      setEventos((prev) => sort([full, ...prev]));
+    }
     await upsertDocument(col, id, withPlantaTag(ev));
-    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `${ev.tipo} registrada para ${ev.unidad}.` } }));
+    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `${ev.tipo} ${isUpdate ? "actualizada" : "registrada"} para ${ev.unidad}.` } }));
+  }
+
+  async function handleDelete(ev: Evento) {
+    setEventos((prev) => prev.filter((e) => e.id !== ev.id));
+    const col = ev.tipo === "Mantenimiento" ? COLLECTIONS.mantenimientos : ev.tipo === "Reparación" ? COLLECTIONS.reparaciones : COLLECTIONS.fallas;
+    await deleteDocument(col, ev.id);
+    setConfirmDeleteEvento(null);
+    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `Registro de ${ev.unidad} eliminado.` } }));
   }
 
   async function handleComplete(ev: Evento) {
@@ -661,6 +712,13 @@ export default function MantenimientoPage() {
 
   function openDrawer(unidad = "") {
     setPreselectedUnidad(unidad);
+    setEditingEvento(null);
+    setShowDrawer(true);
+  }
+
+  function openEdit(ev: Evento) {
+    setEditingEvento(ev);
+    setPreselectedUnidad(ev.unidad);
     setShowDrawer(true);
   }
 
@@ -737,6 +795,8 @@ export default function MantenimientoPage() {
               summary={s}
               onAddEvento={openDrawer}
               onComplete={handleComplete}
+              onEdit={openEdit}
+              onDelete={setConfirmDeleteEvento}
             />
           ))}
         </div>
@@ -792,12 +852,20 @@ export default function MantenimientoPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        {!isDone && (
-                          <button onClick={() => handleComplete(ev)}
-                            className="text-xs text-emerald-400 hover:text-emerald-300 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1">
-                            <CheckCircle2 size={13} /> Cerrar
+                        <div className="flex items-center gap-2">
+                          {!isDone && (
+                            <button onClick={() => handleComplete(ev)}
+                              className="text-xs text-emerald-400 hover:text-emerald-300 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1">
+                              <CheckCircle2 size={13} /> Cerrar
+                            </button>
+                          )}
+                          <button onClick={() => openEdit(ev)} className="p-1 text-gray-600 hover:text-blue-400 transition-colors cursor-pointer" aria-label="Editar">
+                            <Pencil size={12} />
                           </button>
-                        )}
+                          <button onClick={() => setConfirmDeleteEvento(ev)} className="p-1 text-gray-600 hover:text-red-400 transition-colors cursor-pointer" aria-label="Eliminar">
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -818,9 +886,33 @@ export default function MantenimientoPage() {
         open={showDrawer}
         unidadesList={unidades.filter((u) => u.estatus !== "Baja").map((u) => u.noEconomico)}
         preselectedUnidad={preselectedUnidad}
-        onClose={() => { setShowDrawer(false); setPreselectedUnidad(""); }}
+        onClose={() => { setShowDrawer(false); setPreselectedUnidad(""); setEditingEvento(null); }}
         onSave={handleSave}
+        editing={editingEvento}
       />
+
+      {confirmDeleteEvento && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center">
+          <button className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setConfirmDeleteEvento(null)} />
+          <div className="relative bg-[#1A1A1A] border border-[#3A3A3A] rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-500/10 mb-4">
+              <Trash2 size={20} className="text-red-400" />
+            </div>
+            <h3 className="text-sm font-semibold text-white mb-1">Eliminar registro</h3>
+            <p className="text-xs text-gray-500 mb-5">
+              ¿Eliminar <span className="text-gray-300 font-medium">{confirmDeleteEvento.descripcion}</span> de {confirmDeleteEvento.unidad}? Esta acción no se puede deshacer.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmDeleteEvento(null)} className="flex-1 px-4 py-2.5 text-sm text-gray-400 border border-[#3A3A3A] rounded-xl hover:border-gray-500 transition-colors">
+                Cancelar
+              </button>
+              <button onClick={() => handleDelete(confirmDeleteEvento)} className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors">
+                Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

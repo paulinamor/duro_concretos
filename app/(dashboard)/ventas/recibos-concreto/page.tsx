@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Calculator, MessageCircle, Printer, ReceiptText, Save } from "lucide-react";
+import { Calculator, MessageCircle, Printer, ReceiptText, Save, Trash2 } from "lucide-react";
 import {
   calculateConcreteReceiptTotal,
   ConcreteExtra,
@@ -58,6 +58,7 @@ function createReceipt(receipts: ConcreteReceipt[]): ConcreteReceipt {
 export default function RecibosConcretoPage() {
   const [receipts, setReceipts] = useState<ConcreteReceipt[]>([]);
   const [receipt, setReceipt] = useState<ConcreteReceipt>(() => createReceipt([]));
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const totals = useMemo(() => calculateConcreteReceiptTotal(receipt), [receipt]);
   const receiptDate = formatReceiptDate(receipt.fecha);
@@ -167,6 +168,15 @@ export default function RecibosConcretoPage() {
 
     window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
     if (saved) setReceipt(createReceipt(saved.nextReceipts));
+  }
+
+  function deleteReceipt(id: string) {
+    const next = receipts.filter((r) => r.id !== id);
+    setReceipts(next);
+    saveConcreteReceipts(next);
+    window.dispatchEvent(new CustomEvent("duro:toast", {
+      detail: { type: "success", message: "Recibo eliminado." },
+    }));
   }
 
   function loadSavedReceipt(savedReceipt: ConcreteReceipt) {
@@ -595,6 +605,14 @@ export default function RecibosConcretoPage() {
                         >
                           WhatsApp
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(savedReceipt.id)}
+                          className="rounded-lg border border-[#3A3A3A] p-1.5 text-gray-600 transition-colors hover:border-red-500/30 hover:text-red-400 hover:bg-red-500/10"
+                          aria-label="Eliminar"
+                        >
+                          <Trash2 size={13} />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -604,6 +622,33 @@ export default function RecibosConcretoPage() {
           </table>
         </div>
       </section>
+
+      {confirmDeleteId && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center">
+          <button className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setConfirmDeleteId(null)} />
+          <div className="relative bg-[#1A1A1A] border border-[#3A3A3A] rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-500/10 mb-4">
+              <Trash2 size={20} className="text-red-400" />
+            </div>
+            <h3 className="text-sm font-semibold text-white mb-1">Eliminar recibo</h3>
+            <p className="text-xs text-gray-500 mb-5">¿Eliminar este recibo guardado? Esta acción no se puede deshacer.</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmDeleteId(null)}
+                className="flex-1 px-4 py-2.5 text-sm text-gray-400 border border-[#3A3A3A] rounded-xl hover:border-gray-500 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => { deleteReceipt(confirmDeleteId); setConfirmDeleteId(null); }}
+                className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors"
+              >
+                Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style jsx>{`
         .receipt-line {

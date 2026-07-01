@@ -10,11 +10,11 @@ import {
   ArrowDownToLine, ArrowUpToLine,
   Boxes, ChevronDown, ChevronUp,
   Download, Edit2,
-  FlaskConical, Package, Plus, Search, Users, X,
+  FlaskConical, Package, Pencil, Plus, Search, Trash2, Users, X,
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
 import ClienteCombobox from "@/components/ClienteCombobox";
-import { getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
+import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
 import { filterByPlanta, getStoredSession, withPlantaTag } from "@/lib/auth";
 import type { Cliente } from "@/lib/crmClientes";
 import type { Operador } from "@/lib/operadores";
@@ -408,7 +408,11 @@ function ExistenciaModal({ open, onClose, periodo, current, onSave }: {
 
 // ─── Remision Table Row ───────────────────────────────────────────────────────
 
-function RemisionRow({ r }: { r: Remision }) {
+function RemisionRow({ r, onEdit, onDelete }: {
+  r: Remision;
+  onEdit?: (r: Remision) => void;
+  onDelete?: (r: Remision) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   return (
     <>
@@ -449,6 +453,20 @@ function RemisionRow({ r }: { r: Remision }) {
                 </div>
               ))}
             </div>
+            {(onEdit || onDelete) && (
+              <div style={{ marginTop: "12px", paddingTop: "10px", borderTop: "1px solid #e2e8f0", display: "flex", gap: "8px" }}>
+                {onEdit && (
+                  <button onClick={(e) => { e.stopPropagation(); onEdit(r); }} style={{ display: "flex", alignItems: "center", gap: "5px", padding: "6px 12px", fontSize: "11px", fontWeight: 600, color: "#64748b", backgroundColor: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px", cursor: "pointer" }}>
+                    <Pencil size={11} /> Editar
+                  </button>
+                )}
+                {onDelete && (
+                  <button onClick={(e) => { e.stopPropagation(); onDelete(r); }} style={{ display: "flex", alignItems: "center", gap: "5px", padding: "6px 12px", fontSize: "11px", fontWeight: 600, color: "#94a3b8", backgroundColor: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px", cursor: "pointer" }}>
+                    <Trash2 size={11} /> Eliminar
+                  </button>
+                )}
+              </div>
+            )}
           </td>
         </tr>
       )}
@@ -488,6 +506,9 @@ export default function InventarioPage() {
   const [showRemisionForm, setShowRemisionForm] = useState(false);
   const [showEntradaForm, setShowEntradaForm] = useState(false);
   const [showExistenciaForm, setShowExistenciaForm] = useState(false);
+  const [editingRemision, setEditingRemision] = useState<Remision | undefined>(undefined);
+  const [confirmDeleteRemision, setConfirmDeleteRemision] = useState<Remision | null>(null);
+  const [confirmDeleteMovimiento, setConfirmDeleteMovimiento] = useState<EntradaMaterial | null>(null);
   const [search, setSearch] = useState("");
   const [filterMezcla, setFilterMezcla] = useState("Todos");
   const [searchMovimientos, setSearchMovimientos] = useState("");
@@ -522,6 +543,20 @@ export default function InventarioPage() {
     const id = `em-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     await upsertDocument(COLLECTIONS.entradasMaterial, id, withPlantaTag(e));
     setEntradasMaterial((prev) => [{ ...e, id }, ...prev]);
+  };
+
+  const handleDeleteRemision = async (r: Remision) => {
+    setRemisiones((prev) => prev.filter((x) => x.id !== r.id));
+    if (r.id) await deleteDocument(COLLECTIONS.remisiones, r.id);
+    setConfirmDeleteRemision(null);
+    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `Remisión ${r.noRemision} eliminada.` } }));
+  };
+
+  const handleDeleteMovimiento = async (e: EntradaMaterial) => {
+    setEntradasMaterial((prev) => prev.filter((x) => x.id !== e.id));
+    if (e.id) await deleteDocument(COLLECTIONS.entradasMaterial, e.id);
+    setConfirmDeleteMovimiento(null);
+    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: "Movimiento eliminado." } }));
   };
 
   const handleSaveExistencia = async (e: Omit<ExistenciaInicial, "id">) => {
@@ -747,7 +782,14 @@ export default function InventarioPage() {
                 <tbody className="divide-y divide-[#2A2A2A]">
                   {filtered.length === 0
                     ? <tr><td colSpan={7} className="px-4 py-14 text-center text-sm text-gray-600">Sin remisiones para este filtro</td></tr>
-                    : filtered.map((r) => <RemisionRow key={r.id ?? r.noRemision} r={r} />)}
+                    : filtered.map((r) => (
+                      <RemisionRow
+                        key={r.id ?? r.noRemision}
+                        r={r}
+                        onEdit={(r) => { setEditingRemision(r); setShowRemisionForm(true); }}
+                        onDelete={setConfirmDeleteRemision}
+                      />
+                    ))}
                 </tbody>
               </table>
             </div>
@@ -888,14 +930,14 @@ export default function InventarioPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-[#1A1A1A]">
-                  {["Fecha", "Tipo", "Categoría", "Material", "Cantidad", "Proveedor", "Factura"].map((h) => (
+                  {["Fecha", "Tipo", "Categoría", "Material", "Cantidad", "Proveedor", "Factura", ""].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#2A2A2A]">
                 {filteredMovimientos.length === 0
-                  ? <tr><td colSpan={7} className="px-4 py-14 text-center text-sm text-gray-600">Sin movimientos registrados. Usa "Registrar movimiento" para agregar una entrada o salida.</td></tr>
+                  ? <tr><td colSpan={8} className="px-4 py-14 text-center text-sm text-gray-600">Sin movimientos registrados. Usa "Registrar movimiento" para agregar una entrada o salida.</td></tr>
                   : filteredMovimientos.map((e) => (
                     <tr key={e.id} className="hover:bg-[#2A2A2A] transition-colors">
                       <td className="px-4 py-3 text-gray-500 text-xs font-mono">{e.fecha}</td>
@@ -913,6 +955,15 @@ export default function InventarioPage() {
                       <td className="px-4 py-3 text-white font-mono font-semibold">{fmt(e.cantidad)}{e.unidad ? ` ${e.unidad}` : ""}</td>
                       <td className="px-4 py-3 text-gray-400 text-sm">{e.proveedor || "—"}</td>
                       <td className="px-4 py-3 text-gray-500 text-xs font-mono">{e.noFactura || "—"}</td>
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => setConfirmDeleteMovimiento(e)}
+                          className="p-1.5 text-gray-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
+                          aria-label="Eliminar"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </td>
                     </tr>
                   ))}
               </tbody>
@@ -925,10 +976,48 @@ export default function InventarioPage() {
       )}
 
       {/* Drawers / Modals */}
-      <RemisionDrawer open={showRemisionForm} onClose={() => setShowRemisionForm(false)} onSave={handleSaveRemision} clientes={clientesList} operadores={operadoresList} nextRemision={nextRemision} />
+      <RemisionDrawer open={showRemisionForm} onClose={() => { setShowRemisionForm(false); setEditingRemision(undefined); }} onSave={handleSaveRemision} initial={editingRemision} clientes={clientesList} operadores={operadoresList} nextRemision={nextRemision} />
       <EntradaDrawer open={showEntradaForm} onClose={() => setShowEntradaForm(false)} onSave={handleSaveEntrada} />
       {isSuperAdmin && (
         <ExistenciaModal open={showExistenciaForm} onClose={() => setShowExistenciaForm(false)} periodo={periodo} current={existenciaInicial} onSave={handleSaveExistencia} />
+      )}
+
+      {confirmDeleteRemision && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center">
+          <button className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setConfirmDeleteRemision(null)} />
+          <div className="relative bg-[#1A1A1A] border border-[#3A3A3A] rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-500/10 mb-4">
+              <Trash2 size={20} className="text-red-400" />
+            </div>
+            <h3 className="text-sm font-semibold text-white mb-1">Eliminar remisión</h3>
+            <p className="text-xs text-gray-500 mb-5">
+              ¿Eliminar remisión <span className="text-gray-300 font-medium">{confirmDeleteRemision.noRemision}</span>? Esta acción no se puede deshacer.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmDeleteRemision(null)} className="flex-1 px-4 py-2.5 text-sm text-gray-400 border border-[#3A3A3A] rounded-xl hover:border-gray-500 transition-colors">Cancelar</button>
+              <button onClick={() => handleDeleteRemision(confirmDeleteRemision)} className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors">Eliminar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDeleteMovimiento && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center">
+          <button className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setConfirmDeleteMovimiento(null)} />
+          <div className="relative bg-[#1A1A1A] border border-[#3A3A3A] rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-500/10 mb-4">
+              <Trash2 size={20} className="text-red-400" />
+            </div>
+            <h3 className="text-sm font-semibold text-white mb-1">Eliminar movimiento</h3>
+            <p className="text-xs text-gray-500 mb-5">
+              ¿Eliminar movimiento de <span className="text-gray-300 font-medium">{confirmDeleteMovimiento.material}</span>? Esta acción no se puede deshacer.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmDeleteMovimiento(null)} className="flex-1 px-4 py-2.5 text-sm text-gray-400 border border-[#3A3A3A] rounded-xl hover:border-gray-500 transition-colors">Cancelar</button>
+              <button onClick={() => handleDeleteMovimiento(confirmDeleteMovimiento)} className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors">Eliminar</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

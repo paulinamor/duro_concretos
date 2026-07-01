@@ -22,15 +22,17 @@ import {
   Gauge,
   MapPin,
   MessageSquare,
+  Pencil,
   Plus,
   Receipt,
   Search,
   Shield,
+  Trash2,
   Truck,
   X,
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
-import { getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
+import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
 import { filterByPlanta, withPlantaTag } from "@/lib/auth";
 import type { Unidad } from "@/lib/unidades";
 
@@ -146,22 +148,42 @@ function FormDrawer({
   onClose,
   onSave,
   unidadesList,
+  editing,
 }: {
   open: boolean;
   onClose: () => void;
   onSave: (carga: CargaDiesel) => Promise<void>;
   unidadesList: string[];
+  editing?: CargaDiesel | null;
 }) {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
 
   useEffect(() => {
-    if (open) {
+    if (!open) return;
+    if (editing) {
+      const toISO = (f: string) => f.includes("/") ? f.split("/").reverse().join("-") : f;
+      setForm({
+        fecha: toISO(editing.fecha),
+        unidad: editing.unidad,
+        combustible: editing.combustible,
+        litros: String(editing.litros),
+        kmAnterior: editing.kmAnterior != null ? String(editing.kmAnterior) : "",
+        kmNuevo: editing.kmNuevo != null ? String(editing.kmNuevo) : "",
+        kmRecorridos: editing.kmRecorridos != null ? String(editing.kmRecorridos) : "",
+        total: String(editing.total),
+        recibo: editing.recibo,
+        sellosAnt: editing.sellosAnt,
+        sellosNuevo: editing.sellosNuevo,
+        lugar: editing.lugar,
+        comentarios: editing.comentarios,
+      });
+    } else {
       setForm(emptyForm());
-      setErrors({});
     }
-  }, [open]);
+    setErrors({});
+  }, [open, editing]);
 
   const kmAnt = parseNum(form.kmAnterior);
   const kmNue = parseNum(form.kmNuevo);
@@ -194,6 +216,7 @@ function FormDrawer({
     setSaving(true);
     try {
       const carga: CargaDiesel = {
+        ...(editing?.id ? { id: editing.id } : {}),
         fecha: isoToDisplay(form.fecha),
         unidad: form.unidad.trim(),
         combustible: form.combustible,
@@ -240,7 +263,7 @@ function FormDrawer({
               <Fuel size={18} />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-gray-900">Registrar carga</h2>
+              <h2 className="text-sm font-semibold text-gray-900">{editing ? "Editar carga" : "Registrar carga"}</h2>
               <p className="text-xs text-gray-500">Carga de combustible</p>
             </div>
           </div>
@@ -386,7 +409,7 @@ function FormDrawer({
             {saving ? (
               <><span className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />Guardando...</>
             ) : (
-              <><Fuel size={15} />Guardar carga</>
+              <><Fuel size={15} />{editing ? "Actualizar" : "Guardar carga"}</>
             )}
           </button>
         </div>
@@ -397,7 +420,11 @@ function FormDrawer({
 
 // ─── Expandable table row ──────────────────────────────────────────────────────
 
-function TableRow({ carga }: { carga: CargaDiesel }) {
+function TableRow({ carga, onEdit, onDelete }: {
+  carga: CargaDiesel;
+  onEdit?: (c: CargaDiesel) => void;
+  onDelete?: (c: CargaDiesel) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   const lowRend = carga.rendimiento != null && carga.rendimiento < 2.9;
 
@@ -519,6 +546,26 @@ function TableRow({ carga }: { carga: CargaDiesel }) {
                 </div>
               ) : null}
             </div>
+            {(onEdit || onDelete) && (
+              <div className="mt-3 pt-3 border-t border-[#2A2A2A] flex gap-2">
+                {onEdit && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onEdit(carga); }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-400 hover:text-white bg-[#1A1A1A] hover:bg-[#252D3D] border border-[#3A3A3A] hover:border-blue-500/40 rounded-lg transition-colors cursor-pointer"
+                  >
+                    <Pencil size={11} /> Editar
+                  </button>
+                )}
+                {onDelete && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onDelete(carga); }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-600 hover:text-red-400 bg-[#1A1A1A] hover:bg-red-500/10 border border-[#3A3A3A] hover:border-red-500/30 rounded-lg transition-colors cursor-pointer"
+                  >
+                    <Trash2 size={11} /> Eliminar
+                  </button>
+                )}
+              </div>
+            )}
           </td>
         </tr>
       )}
@@ -608,6 +655,8 @@ export default function DieselPage() {
   const [cargas, setCargas] = useState<CargaDiesel[]>([]);
   const [unidadesList, setUnidadesList] = useState<string[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [editingCarga, setEditingCarga] = useState<CargaDiesel | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<CargaDiesel | null>(null);
   const [filterUnidad, setFilterUnidad] = useState("Todas");
   const [filterCombustible, setFilterCombustible] = useState("Todos");
   const [filterMes, setFilterMes] = useState("todos");
@@ -746,10 +795,24 @@ export default function DieselPage() {
   }
 
   async function handleSave(carga: CargaDiesel) {
-    const id = Date.now().toString();
+    const id = carga.id ?? Date.now().toString();
     const withId = { ...carga, id };
-    setCargas((prev) => [withId, ...prev]);
-    await upsertDocument(COLLECTIONS.diesel, id, withPlantaTag(carga));
+    if (carga.id) {
+      setCargas((prev) => prev.map((c) => c.id === id ? withId : c));
+    } else {
+      setCargas((prev) => [withId, ...prev]);
+    }
+    const { id: _id, planta: _p, ...data } = withId;
+    await upsertDocument(COLLECTIONS.diesel, id, withPlantaTag(data));
+  }
+
+  async function handleDelete(carga: CargaDiesel) {
+    setCargas((prev) => prev.filter((c) => c.id !== carga.id));
+    await deleteDocument(COLLECTIONS.diesel, carga.id!);
+    setConfirmDelete(null);
+    window.dispatchEvent(new CustomEvent("duro:toast", {
+      detail: { type: "success", message: `Carga de ${carga.unidad} eliminada.` },
+    }));
   }
 
   const selCls = "bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[#CC2229]/60 cursor-pointer";
@@ -949,7 +1012,14 @@ export default function DieselPage() {
                   </td>
                 </tr>
               ) : (
-                filtered.map((c) => <TableRow key={c.id ?? c.recibo + c.fecha} carga={c} />)
+                filtered.map((c) => (
+                  <TableRow
+                    key={c.id ?? c.recibo + c.fecha}
+                    carga={c}
+                    onEdit={(c) => { setEditingCarga(c); setShowForm(true); }}
+                    onDelete={setConfirmDelete}
+                  />
+                ))
               )}
             </tbody>
           </table>
@@ -958,12 +1028,36 @@ export default function DieselPage() {
 
       <FormDrawer
         open={showForm}
-        onClose={() => setShowForm(false)}
+        onClose={() => { setShowForm(false); setEditingCarga(null); }}
         onSave={handleSave}
+        editing={editingCarga}
         unidadesList={[...unidadesList, ...cargas.map((c) => c.unidad)]
           .filter((v, i, a) => v && a.indexOf(v) === i)
           .sort()}
       />
+
+      {confirmDelete && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center">
+          <button className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setConfirmDelete(null)} />
+          <div className="relative bg-[#1A1A1A] border border-[#3A3A3A] rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-500/10 mb-4">
+              <Trash2 size={20} className="text-red-400" />
+            </div>
+            <h3 className="text-sm font-semibold text-white mb-1">Eliminar carga</h3>
+            <p className="text-xs text-gray-500 mb-5">
+              ¿Eliminar la carga de <span className="text-gray-300 font-medium">{confirmDelete.unidad}</span> del {confirmDelete.fecha}? Esta acción no se puede deshacer.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmDelete(null)} className="flex-1 px-4 py-2.5 text-sm text-gray-400 border border-[#3A3A3A] rounded-xl hover:border-gray-500 transition-colors">
+                Cancelar
+              </button>
+              <button onClick={() => handleDelete(confirmDelete)} className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors">
+                Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

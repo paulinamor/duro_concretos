@@ -1,40 +1,165 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CalendarDays,
   DollarSign,
   FileSpreadsheet,
   FileText,
+  Pencil,
   Phone,
   Plus,
   Search,
   Target,
+  Trash2,
   TrendingUp,
   UsersRound,
+  X,
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
-import FormModal from "@/components/FormModal";
 import {
   crmOpportunities,
   pipelineStages,
   PipelineStage,
 } from "@/lib/crmPipeline";
 
+type Opp = typeof crmOpportunities[number];
+
+interface OppForm {
+  cliente: string; obra: string; contacto: string; telefono: string;
+  valorEstimado: string; m3Estimados: string; fechaSeguimiento: string;
+  responsable: string; etapa: PipelineStage; proximaAccion: string;
+}
+
+const emptyOppForm = (): OppForm => ({
+  cliente: "", obra: "", contacto: "", telefono: "",
+  valorEstimado: "", m3Estimados: "",
+  fechaSeguimiento: new Date().toISOString().slice(0, 10),
+  responsable: "", etapa: "Prospecto", proximaAccion: "",
+});
+
+const probabilidadPorEtapa: Record<PipelineStage, number> = {
+  Prospecto: 20, Calificado: 35, Cotización: 55, Negociación: 70, Cierre: 90,
+};
+
+function OppDrawer({ open, onClose, onSave, editing }: {
+  open: boolean;
+  onClose: () => void;
+  onSave: (form: OppForm, id?: string) => void;
+  editing?: Opp | null;
+}) {
+  const [form, setForm] = useState<OppForm>(emptyOppForm);
+
+  useEffect(() => {
+    if (!open) return;
+    if (editing) {
+      setForm({
+        cliente: editing.cliente, obra: editing.obra,
+        contacto: editing.contacto, telefono: editing.telefono,
+        valorEstimado: String(editing.valorEstimado),
+        m3Estimados: String(editing.m3Estimados),
+        fechaSeguimiento: editing.fechaSeguimiento,
+        responsable: editing.responsable,
+        etapa: editing.etapa,
+        proximaAccion: editing.proximaAccion,
+      });
+    } else {
+      setForm(emptyOppForm());
+    }
+  }, [open, editing]);
+
+  const set = (k: keyof OppForm, v: string) => setForm((f) => ({ ...f, [k]: v }));
+
+  const inp = "w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-900 text-sm placeholder-gray-400 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors";
+  const lbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5";
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative ml-auto flex h-full w-full max-w-lg flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#CC2229]/10 text-[#CC2229]">
+              <Target size={18} />
+            </div>
+            <h2 className="text-sm font-semibold text-gray-900">{editing ? "Editar oportunidad" : "Nueva oportunidad"}</h2>
+          </div>
+          <button onClick={onClose} className="rounded-xl p-2 text-gray-400 hover:bg-gray-100 transition-colors cursor-pointer">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <label className={lbl}>Cliente</label>
+              <input type="text" value={form.cliente} onChange={(e) => set("cliente", e.target.value)} placeholder="Nombre del cliente" className={inp} />
+            </div>
+            <div className="col-span-2">
+              <label className={lbl}>Obra / Proyecto</label>
+              <input type="text" value={form.obra} onChange={(e) => set("obra", e.target.value)} placeholder="Nombre del proyecto" className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Contacto</label>
+              <input type="text" value={form.contacto} onChange={(e) => set("contacto", e.target.value)} placeholder="Nombre" className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Teléfono</label>
+              <input type="text" value={form.telefono} onChange={(e) => set("telefono", e.target.value)} placeholder="81 xxxx xxxx" className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Valor estimado $</label>
+              <input type="number" value={form.valorEstimado} onChange={(e) => set("valorEstimado", e.target.value)} placeholder="0" className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>M3 estimados</label>
+              <input type="number" value={form.m3Estimados} onChange={(e) => set("m3Estimados", e.target.value)} placeholder="0" className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Etapa</label>
+              <select value={form.etapa} onChange={(e) => set("etapa", e.target.value as PipelineStage)} className={inp}>
+                {pipelineStages.map((s) => <option key={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={lbl}>Fecha seguimiento</label>
+              <input type="date" value={form.fechaSeguimiento} onChange={(e) => set("fechaSeguimiento", e.target.value)} className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Responsable</label>
+              <input type="text" value={form.responsable} onChange={(e) => set("responsable", e.target.value)} placeholder="Ej. Ventas MTY" className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Próxima acción</label>
+              <input type="text" value={form.proximaAccion} onChange={(e) => set("proximaAccion", e.target.value)} placeholder="Ej. Llamar para cotizar" className={inp} />
+            </div>
+          </div>
+        </div>
+        <div className="shrink-0 border-t border-gray-100 px-6 py-4 flex items-center justify-end gap-3">
+          <button onClick={onClose} className="px-4 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:border-gray-300 transition-colors">Cancelar</button>
+          <button
+            onClick={() => { if (form.cliente) { onSave(form, editing?.id); onClose(); } }}
+            disabled={!form.cliente}
+            className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-xl transition-colors disabled:opacity-60 shadow-lg shadow-[#CC2229]/20"
+          >
+            <Target size={14} />
+            {editing ? "Actualizar" : "Guardar oportunidad"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function CrmPipelinePage() {
   const [opportunities, setOpportunities] = useState(crmOpportunities);
   const [query, setQuery] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [editingOpp, setEditingOpp] = useState<Opp | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<PipelineStage | null>(null);
-
-  const probabilidadPorEtapa: Record<PipelineStage, number> = {
-    Prospecto: 20,
-    Calificado: 35,
-    Cotización: 55,
-    Negociación: 70,
-    Cierre: 90,
-  };
 
   const filtered = useMemo(() => {
     const term = query.toLowerCase();
@@ -52,27 +177,36 @@ export default function CrmPipelinePage() {
   const totalM3 = opportunities.reduce((sum, item) => sum + item.m3Estimados, 0);
   const cierre = opportunities.filter((item) => item.etapa === "Cierre").length;
 
-  function handleSave(values: Record<string, string>) {
-    const next = opportunities.length + 1;
-    const etapa = (values.Etapa || "Prospecto") as PipelineStage;
-
-    setOpportunities((current) => [
-      {
+  function handleSave(form: OppForm, existingId?: string) {
+    if (existingId) {
+      setOpportunities((current) => current.map((o) =>
+        o.id === existingId ? {
+          ...o,
+          cliente: form.cliente, obra: form.obra, contacto: form.contacto,
+          telefono: form.telefono, valorEstimado: Number(form.valorEstimado) || 0,
+          m3Estimados: Number(form.m3Estimados) || 0, etapa: form.etapa,
+          probabilidad: probabilidadPorEtapa[form.etapa],
+          fechaSeguimiento: form.fechaSeguimiento, responsable: form.responsable,
+          proximaAccion: form.proximaAccion,
+        } : o
+      ));
+    } else {
+      const next = opportunities.length + 1;
+      setOpportunities((current) => [{
         id: `CRM-${String(next).padStart(3, "0")}`,
-        cliente: values.Cliente || "Grupo Alfa Logistica",
-        contacto: values.Contacto || "Mariana Robles",
-        telefono: values.Teléfono || "81 1200 8841",
-        obra: values.Obra || "Nave industrial Apodaca",
-        etapa,
-        valorEstimado: Number(values["Valor estimado"]?.replace(/[$,]/g, "") || 0),
-        m3Estimados: Number(values["M3 estimados"]?.replace(" m3", "") || 0),
-        probabilidad: probabilidadPorEtapa[etapa],
-        proximaAccion: "Dar seguimiento comercial",
-        fechaSeguimiento: values["Fecha seguimiento"] || "2026-05-26",
-        responsable: values.Responsable || "Ventas MTY",
-      },
-      ...current,
-    ]);
+        cliente: form.cliente, obra: form.obra, contacto: form.contacto,
+        telefono: form.telefono, valorEstimado: Number(form.valorEstimado) || 0,
+        m3Estimados: Number(form.m3Estimados) || 0, etapa: form.etapa,
+        probabilidad: probabilidadPorEtapa[form.etapa],
+        proximaAccion: form.proximaAccion || "Dar seguimiento comercial",
+        fechaSeguimiento: form.fechaSeguimiento, responsable: form.responsable,
+      }, ...current]);
+    }
+  }
+
+  function handleDelete(id: string) {
+    setOpportunities((current) => current.filter((o) => o.id !== id));
+    setConfirmDeleteId(null);
   }
 
   function handleDragStart(opportunityId: string) {
@@ -292,73 +426,12 @@ export default function CrmPipelinePage() {
         </button>
       </div>
 
-      <FormModal
+      <OppDrawer
         open={showForm}
-        title="Nueva oportunidad CRM"
-        onClose={() => setShowForm(false)}
+        onClose={() => { setShowForm(false); setEditingOpp(null); }}
         onSave={handleSave}
-        footer={
-          <>
-            <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-[#3A3A3A] rounded-lg transition-colors">Cancelar</button>
-            <button className="px-4 py-2 text-sm bg-[#CC2229] hover:bg-[#991A1E] text-white rounded-lg transition-colors">Guardar oportunidad</button>
-          </>
-        }
-      >
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Cliente</label>
-            <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
-              {opportunities.map((item) => <option key={item.id}>{item.cliente}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Contacto</label>
-            <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
-              {opportunities.map((item) => <option key={`${item.id}-contacto`}>{item.contacto}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Teléfono</label>
-            <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
-              {opportunities.map((item) => <option key={`${item.id}-telefono`}>{item.telefono}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Obra</label>
-            <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
-              {opportunities.map((item) => <option key={`${item.id}-obra`}>{item.obra}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Valor estimado</label>
-            <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
-              {[96000, 185000, 228000, 342000, 410000, 512000].map((valor) => <option key={valor}>${valor.toLocaleString()}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">M3 estimados</label>
-            <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
-              {[48, 100, 120, 180, 205, 256].map((m3) => <option key={m3}>{m3} m3</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Fecha seguimiento</label>
-            <input type="date" className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]" />
-          </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Responsable</label>
-            <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
-              {["Ventas MTY", "Ana López", "Carlos Ortiz"].map((responsable) => <option key={responsable}>{responsable}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Etapa</label>
-            <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
-              {pipelineStages.map((stage) => <option key={stage}>{stage}</option>)}
-            </select>
-          </div>
-        </div>
-      </FormModal>
+        editing={editingOpp}
+      />
 
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
         {pipelineStages.map((stage: PipelineStage) => {
@@ -420,6 +493,22 @@ export default function CrmPipelinePage() {
                       <p className="text-gray-500 text-[11px]">Próxima acción</p>
                       <p className="text-gray-300 text-xs mt-0.5">{opportunity.proximaAccion}</p>
                     </div>
+                    <div className="mt-3 pt-2 border-t border-[#2A2A2A] flex justify-end gap-1">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setEditingOpp(opportunity); setShowForm(true); }}
+                        className="p-1.5 text-gray-600 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors cursor-pointer"
+                        aria-label="Editar"
+                      >
+                        <Pencil size={12} />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(opportunity.id); }}
+                        className="p-1.5 text-gray-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
+                        aria-label="Eliminar"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -427,6 +516,27 @@ export default function CrmPipelinePage() {
           );
         })}
       </div>
+
+      {confirmDeleteId && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center">
+          <button className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setConfirmDeleteId(null)} />
+          <div className="relative bg-[#1A1A1A] border border-[#3A3A3A] rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-500/10 mb-4">
+              <Trash2 size={20} className="text-red-400" />
+            </div>
+            <h3 className="text-sm font-semibold text-white mb-1">Eliminar oportunidad</h3>
+            <p className="text-xs text-gray-500 mb-5">¿Eliminar esta oportunidad del pipeline? Esta acción no se puede deshacer.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmDeleteId(null)} className="flex-1 px-4 py-2.5 text-sm text-gray-400 border border-[#3A3A3A] rounded-xl hover:border-gray-500 transition-colors">
+                Cancelar
+              </button>
+              <button onClick={() => handleDelete(confirmDeleteId)} className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors">
+                Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
