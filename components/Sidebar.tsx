@@ -30,8 +30,9 @@ import {
   HardHat,
   BookUser,
   CalendarDays,
+  Building2,
 } from "lucide-react";
-import { getAllowedModuleSet, getStoredSession } from "@/lib/auth";
+import { getAllowedModuleSet, getActivePlanta, getStoredSession, Planta, setActivePlanta } from "@/lib/auth";
 
 const COMING_SOON = new Set<string>([]);
 
@@ -177,6 +178,12 @@ interface SidebarProps {
 
 export default function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
   const [session, setSession] = useState(() => getStoredSession());
+  const [activePlanta, setActivePlantaState] = useState<Planta>("Todas");
+  const canSwitchPlanta = !session?.planta || session.planta === "Todas";
+
+  useEffect(() => {
+    setActivePlantaState(getActivePlanta());
+  }, []);
   const [transporteOpen, setTransporteOpen] = useState(true);
   const [administracionOpen, setAdministracionOpen] = useState(true);
   const [operacionesOpen, setOperacionesOpen] = useState(true);
@@ -197,11 +204,18 @@ export default function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
   useEffect(() => {
     function handleSessionUpdate() {
       setSession(getStoredSession());
+      setActivePlantaState(getActivePlanta());
     }
 
     window.addEventListener("duro:session-updated", handleSessionUpdate);
     return () => window.removeEventListener("duro:session-updated", handleSessionUpdate);
   }, []);
+
+  function handlePlantaChange(p: Planta) {
+    setActivePlanta(p);
+    setActivePlantaState(p);
+    window.location.reload();
+  }
 
   const content = (
     <div className="flex flex-col h-full">
@@ -227,6 +241,35 @@ export default function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
           <button onClick={onClose} className="shrink-0 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-white/10 hover:text-white lg:hidden">
             <X size={18} />
           </button>
+        )}
+      </div>
+
+      {/* Plant switcher */}
+      <div className="px-3 py-2.5 border-b border-white/10">
+        {canSwitchPlanta ? (
+          <>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 mb-2 px-0.5">Planta activa</p>
+            <div className="flex gap-1">
+              {(["Allende", "Pesquería", "Todas"] as Planta[]).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => handlePlantaChange(p)}
+                  className={`flex-1 py-1.5 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
+                    activePlanta === p
+                      ? "bg-[#CC2229] text-white shadow-md shadow-[#CC2229]/30"
+                      : "bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white"
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="flex items-center gap-2 px-0.5">
+            <Building2 size={13} className="text-[#CC2229] shrink-0" />
+            <span className="text-xs text-white font-semibold">Planta {session?.planta}</span>
+          </div>
         )}
       </div>
 

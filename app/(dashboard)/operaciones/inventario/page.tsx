@@ -8,14 +8,14 @@ import {
 import {
   AlertTriangle,
   ArrowDownToLine, ArrowUpToLine,
-  Boxes, ChevronDown, ChevronUp,
+  Boxes, CalendarDays, ChevronDown, ChevronUp,
   Download, Edit2,
   FlaskConical, Package, Pencil, Plus, Search, Trash2, Users, X,
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
 import ClienteCombobox from "@/components/ClienteCombobox";
 import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
-import { filterByPlanta, getStoredSession, withPlantaTag } from "@/lib/auth";
+import { filterByPlanta, getActivePlanta, getStoredSession, Planta, withPlantaTag } from "@/lib/auth";
 import type { Cliente } from "@/lib/crmClientes";
 import type { Operador } from "@/lib/operadores";
 
@@ -50,13 +50,18 @@ interface FormState {
   fecha: string; noRemision: string; cliente: string; metros: string; mezcla: string;
   cr: string; operador: string; cemento: string; grava: string; arena4: string;
   arena5: string; agua: string; aditivo: string; acelerante: string; imper: string;
-  fibra: string; color: string; ligsthone: string;
+  fibra: string; color: string; ligsthone: string; planta: string;
 }
 interface EntradaFormState {
   fecha: string; categoria: "inventario" | "almacen"; material: string;
   tipo: "entrada" | "salida"; cantidad: string; unidad: string;
   proveedor: string; noFactura: string; observaciones: string;
 }
+
+type MovRow =
+  | { _source: "manual"; data: EntradaMaterial }
+  | { _source: "remision"; data: Remision }
+  | { _source: "existencia"; material: MatKey; label: string; cantidad: number; unidad: string; fecha: string };
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -92,6 +97,11 @@ function fmt(v: number): string {
   if (v === 0) return "0";
   return v.toLocaleString("es-MX", { maximumFractionDigits: 2 });
 }
+function adjMonth(p: string, delta: number): string {
+  const [y, m] = p.split("-").map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
 function exportCSV(rows: Remision[]) {
   const headers = ["FECHA","REMISION","CLIENTE","METROS","CONCRETO","CR","OPERADOR","CEMENTO","GRAVA","ARENA 4","ARENA 5","AGUA","ADITIVO","ACELERANTE","IMPER","FIBRA","COLOR","LIGSTHONE"];
   const lines = rows.map((r) => [r.fecha, r.noRemision, r.cliente, r.metros, r.mezcla, r.cr ?? "", r.operador, r.cemento ?? "", r.grava ?? "", r.arena4 ?? "", r.arena5 ?? "", r.agua ?? "", r.aditivo ?? "", r.acelerante, r.imper, r.fibra ?? "", r.color, r.ligsthone].map((v) => `"${v}"`).join(","));
@@ -117,10 +127,15 @@ function RemisionDrawer({ open, onClose, onSave, initial, clientes, operadores, 
   operadores: Pick<Operador, "id" | "nombre">[];
   nextRemision: string;
 }) {
+  const defaultPlanta = (): string => {
+    const ap = getActivePlanta();
+    return ap === "Todas" ? "Allende" : ap;
+  };
   const emptyForm = (): FormState => ({
     fecha: todayISO(), noRemision: "", cliente: "", metros: "", mezcla: "",
     cr: "", operador: "", cemento: "", grava: "", arena4: "", arena5: "",
     agua: "", aditivo: "", acelerante: "", imper: "", fibra: "", color: "", ligsthone: "",
+    planta: defaultPlanta(),
   });
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
@@ -142,6 +157,7 @@ function RemisionDrawer({ open, onClose, onSave, initial, clientes, operadores, 
         acelerante: initial.acelerante, imper: initial.imper,
         fibra: initial.fibra != null ? String(initial.fibra) : "",
         color: initial.color, ligsthone: initial.ligsthone,
+        planta: initial.planta ?? defaultPlanta(),
       });
     } else {
       setForm({ ...emptyForm(), noRemision: nextRemision });
@@ -162,6 +178,7 @@ function RemisionDrawer({ open, onClose, onSave, initial, clientes, operadores, 
         arena5: n(form.arena5), agua: n(form.agua), aditivo: n(form.aditivo),
         acelerante: form.acelerante.trim(), imper: form.imper.trim(),
         fibra: n(form.fibra), color: form.color.trim(), ligsthone: form.ligsthone.trim(),
+        planta: form.planta || defaultPlanta(),
       });
       onClose();
     } finally { setSaving(false); }
@@ -184,6 +201,21 @@ function RemisionDrawer({ open, onClose, onSave, initial, clientes, operadores, 
           <div className="grid grid-cols-2 gap-3">
             <div><label className={lbl}>Fecha <span className="text-[#CC2229]">*</span></label><input type="date" value={form.fecha} onChange={(e) => set("fecha", e.target.value)} className={inp} /></div>
             <div><label className={lbl}>No. Remisión <span className="text-[#CC2229]">*</span></label><input type="text" value={form.noRemision} onChange={(e) => set("noRemision", e.target.value)} placeholder="18945" className={inp} /></div>
+            <div className="col-span-2">
+              <label className={lbl}>Planta <span className="text-[#CC2229]">*</span></label>
+              <div className="flex gap-2">
+                {(["Allende", "Pesquería"] as Planta[]).map((p) => (
+                  <button key={p} type="button" onClick={() => set("planta", p)}
+                    className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-colors cursor-pointer ${
+                      form.planta === p
+                        ? "bg-[#CC2229] border-[#CC2229] text-white"
+                        : "bg-white border-gray-200 text-gray-500 hover:border-[#CC2229]/40"
+                    }`}>
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="col-span-2">
               <ClienteCombobox label="Cliente" value={form.cliente} onChange={(v) => set("cliente", v)} options={clientes.map((c) => c.nombreComercial || c.razonSocial)} placeholder="Buscar o escribir cliente…" />
             </div>
@@ -266,24 +298,12 @@ function EntradaDrawer({ open, onClose, onSave }: {
         <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-4 shrink-0">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#CC2229]/10 text-[#CC2229]"><ArrowDownToLine size={18} /></div>
           <div>
-            <h2 className="text-sm font-semibold text-gray-900">Registrar movimiento</h2>
-            <p className="text-xs text-gray-500">Entrada o salida de material</p>
+            <h2 className="text-sm font-semibold text-gray-900">Registrar entrada</h2>
+            <p className="text-xs text-gray-500">Recepción de material al inventario</p>
           </div>
           <button onClick={onClose} className="ml-auto rounded-xl p-2 text-gray-400 hover:bg-gray-100 transition-colors cursor-pointer"><X size={16} /></button>
         </div>
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
-          {/* Tipo toggle */}
-          <div>
-            <label className={lbl}>Tipo de movimiento</label>
-            <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
-              <button type="button" onClick={() => set("tipo", "entrada")} className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${form.tipo === "entrada" ? "bg-white text-emerald-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
-                <ArrowDownToLine size={13} /> Entrada
-              </button>
-              <button type="button" onClick={() => set("tipo", "salida")} className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${form.tipo === "salida" ? "bg-white text-orange-500 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
-                <ArrowUpToLine size={13} /> Salida
-              </button>
-            </div>
-          </div>
           {/* Categoria toggle */}
           <div>
             <label className={lbl}>Categoría</label>
@@ -426,7 +446,14 @@ function RemisionRow({ r, onEdit, onDelete }: {
         </td>
         <td className="px-4 py-3 text-gray-400 text-sm">{r.operador || <span className="text-gray-600">—</span>}</td>
         <td className="px-4 py-3">
-          {expanded ? <ChevronUp size={14} className="text-gray-500" /> : <ChevronDown size={14} className="text-gray-500" />}
+          <div className="flex items-center gap-2 justify-end">
+            {r.planta && r.planta !== "Todas" && (
+              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border whitespace-nowrap ${r.planta === "Allende" ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : "bg-blue-500/10 border-blue-500/20 text-blue-400"}`}>
+                {r.planta}
+              </span>
+            )}
+            {expanded ? <ChevronUp size={14} className="text-gray-500" /> : <ChevronDown size={14} className="text-gray-500" />}
+          </div>
         </td>
       </tr>
       {expanded && (
@@ -490,12 +517,15 @@ function StockBar({ inicial, entradas, consumo }: { inicial: number; entradas: n
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-type Tab = "remisiones" | "inventario" | "movimientos";
+type Tab = "remisiones" | "control" | "inventario" | "movimientos";
 
 export default function InventarioPage() {
-  const [tab, setTab] = useState<Tab>("remisiones");
+  const [tab, setTab] = useState<Tab>("control");
   const [periodo, setPeriodo] = useState(currentPeriod());
-  const isSuperAdmin = getStoredSession()?.email?.toLowerCase() === SUPERADMIN;
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  useEffect(() => {
+    setIsSuperAdmin(getStoredSession()?.email?.toLowerCase() === SUPERADMIN);
+  }, []);
 
   const [remisiones, setRemisiones] = useState<Remision[]>([]);
   const [entradasMaterial, setEntradasMaterial] = useState<EntradaMaterial[]>([]);
@@ -514,9 +544,22 @@ export default function InventarioPage() {
   const [searchMovimientos, setSearchMovimientos] = useState("");
   const [filterCatMov, setFilterCatMov] = useState<"Todos" | "inventario" | "almacen">("Todos");
   const [filterTipoMov, setFilterTipoMov] = useState<"Todos" | "entrada" | "salida">("Todos");
+  const [controlDate, setControlDate] = useState(() => todayISO());
+  const [showAllHistory, setShowAllHistory] = useState(false);
 
   useEffect(() => {
-    getCollectionDocs<Remision>(COLLECTIONS.remisiones).then((d) => setRemisiones(filterByPlanta(d)));
+    getCollectionDocs<Remision>(COLLECTIONS.remisiones).then((d) => {
+      const items = filterByPlanta(d);
+      setRemisiones(items);
+      // Auto-set period to most recent month with data
+      const sorted = items
+        .filter((r) => r.fecha?.includes("/"))
+        .map((r) => displayToISO(r.fecha))
+        .filter(Boolean)
+        .sort()
+        .reverse();
+      if (sorted.length > 0) setPeriodo(sorted[0].slice(0, 7));
+    });
     getCollectionDocs<EntradaMaterial>(COLLECTIONS.entradasMaterial).then((d) => setEntradasMaterial(filterByPlanta(d)));
     getCollectionDocs<ExistenciaInicial>(COLLECTIONS.existenciasIniciales).then((d) => setExistenciasIniciales(filterByPlanta(d)));
     getCollectionDocs<Cliente>(COLLECTIONS.clientes).then((l) => setClientesList(l.map((c) => ({ id: c.id, razonSocial: c.razonSocial, nombreComercial: c.nombreComercial }))));
@@ -531,7 +574,8 @@ export default function InventarioPage() {
   const handleSaveRemision = async (r: Remision) => {
     const id = r.id ?? `rem-${r.noRemision}-${Date.now()}`;
     const { id: _id, ...data } = r;
-    await upsertDocument(COLLECTIONS.remisiones, id, withPlantaTag(data));
+    const effectivePlanta = (r.planta && r.planta !== "Todas") ? r.planta : getActivePlanta();
+    await upsertDocument(COLLECTIONS.remisiones, id, { ...data, planta: effectivePlanta });
     setRemisiones((prev) => {
       const idx = prev.findIndex((x) => x.id === r.id);
       const updated = { ...r, id };
@@ -573,11 +617,11 @@ export default function InventarioPage() {
   const mezclas = useMemo(() => ["Todos", ...Array.from(new Set(remisiones.map((r) => r.mezcla).filter(Boolean))).sort()], [remisiones]);
   const remisionesPeriodo = useMemo(() => remisiones.filter((r) => inPeriod(r.fecha, periodo)), [remisiones, periodo]);
   const filtered = useMemo(() => {
-    let rows = remisiones;
+    let rows = showAllHistory ? remisiones : remisionesPeriodo;
     if (search) { const q = search.toLowerCase(); rows = rows.filter((r) => r.cliente.toLowerCase().includes(q) || r.noRemision.includes(q) || r.operador.toLowerCase().includes(q)); }
     if (filterMezcla !== "Todos") rows = rows.filter((r) => r.mezcla === filterMezcla);
     return rows;
-  }, [remisiones, search, filterMezcla]);
+  }, [remisiones, remisionesPeriodo, search, filterMezcla, showAllHistory]);
 
   const totalM3Periodo = remisionesPeriodo.reduce((s, r) => s + r.metros, 0);
   const uniqueClientesPeriodo = new Set(remisionesPeriodo.map((r) => r.cliente)).size;
@@ -643,68 +687,182 @@ export default function InventarioPage() {
 
   const materialesConProblema = useMemo(() => stockRows.filter((r) => r.estado !== "ok").length, [stockRows]);
 
-  // ─ Movimientos ─
-  const filteredMovimientos = useMemo(() => {
-    let rows = entradasMaterial;
-    if (filterCatMov !== "Todos") rows = rows.filter((e) => e.categoria === filterCatMov);
-    if (filterTipoMov !== "Todos") rows = rows.filter((e) => e.tipo === filterTipoMov);
-    if (searchMovimientos) { const q = searchMovimientos.toLowerCase(); rows = rows.filter((e) => e.material.toLowerCase().includes(q) || e.proveedor.toLowerCase().includes(q) || e.noFactura.toLowerCase().includes(q)); }
-    return [...rows].sort((a, b) => {
-      const toISO = (f: string) => f?.includes("/") ? displayToISO(f) : "";
-      return toISO(b.fecha).localeCompare(toISO(a.fecha));
+  // ─ Control diario ─
+  const controlPeriodo = controlDate.slice(0, 7);
+  const existenciaInicialControl = useMemo(
+    () => existenciasIniciales.find((e) => e.periodo === controlPeriodo) ?? null,
+    [existenciasIniciales, controlPeriodo],
+  );
+  const remisionesDia = useMemo(
+    () => remisiones.filter((r) => r.fecha?.includes("/") && displayToISO(r.fecha) === controlDate),
+    [remisiones, controlDate],
+  );
+  const remisionesBeforeControl = useMemo(
+    () => remisiones.filter((r) => {
+      if (!r.fecha?.includes("/")) return false;
+      const iso = displayToISO(r.fecha);
+      return iso.startsWith(controlPeriodo) && iso < controlDate;
+    }),
+    [remisiones, controlPeriodo, controlDate],
+  );
+  const entradasDia = useMemo(
+    () => entradasMaterial.filter((e) => e.categoria === "inventario" && e.fecha === controlDate),
+    [entradasMaterial, controlDate],
+  );
+  const entradasBeforeControl = useMemo(
+    () => entradasMaterial.filter((e) => e.categoria === "inventario" && e.fecha.startsWith(controlPeriodo) && e.fecha < controlDate),
+    [entradasMaterial, controlPeriodo, controlDate],
+  );
+  const existenciaInicialDia = useMemo(() => {
+    const r = {} as Record<MatKey, number>;
+    INVENTARIO_MATERIALES.forEach(({ key }) => { r[key] = existenciaInicialControl?.[key] ?? 0; });
+    entradasBeforeControl.forEach((e) => {
+      const k = e.material as MatKey;
+      if (k in r) r[k] += e.tipo === "entrada" ? e.cantidad : -e.cantidad;
     });
-  }, [entradasMaterial, filterCatMov, filterTipoMov, searchMovimientos]);
+    remisionesBeforeControl.forEach((rem) => {
+      INVENTARIO_MATERIALES.forEach(({ key, remKey }) => {
+        const val = rem[remKey];
+        const parsed = typeof val === "number" ? val : parseFloat(String(val ?? ""));
+        if (!isNaN(parsed) && parsed > 0) r[key] -= parsed;
+      });
+    });
+    return r;
+  }, [existenciaInicialControl, entradasBeforeControl, remisionesBeforeControl]);
+  const consumoDia = useMemo(() => {
+    const r = {} as Record<MatKey, number>;
+    INVENTARIO_MATERIALES.forEach(({ key }) => { r[key] = 0; });
+    remisionesDia.forEach((rem) => {
+      INVENTARIO_MATERIALES.forEach(({ key, remKey }) => {
+        const val = rem[remKey];
+        const parsed = typeof val === "number" ? val : parseFloat(String(val ?? ""));
+        if (!isNaN(parsed) && parsed > 0) r[key] += parsed;
+      });
+    });
+    return r;
+  }, [remisionesDia]);
+  const entradasNetaDia = useMemo(() => {
+    const r = {} as Record<MatKey, number>;
+    INVENTARIO_MATERIALES.forEach(({ key }) => { r[key] = 0; });
+    entradasDia.forEach((e) => {
+      const k = e.material as MatKey;
+      if (k in r) r[k] += e.tipo === "entrada" ? e.cantidad : -e.cantidad;
+    });
+    return r;
+  }, [entradasDia]);
 
-  const movsPeriodo = entradasMaterial.filter((e) => inPeriod(e.fecha, periodo));
+  // ─ Movimientos ─ (existencia inicial + entradas manuales + remisiones como salidas automáticas)
+  const filteredMovimientos = useMemo(() => {
+    let rows: MovRow[] = [];
+
+    // Existencia inicial como entrada virtual el día 1 del mes
+    if (existenciaInicial) {
+      const [y, m] = periodo.split("-");
+      const fechaExi = `01/${m}/${y}`;
+      INVENTARIO_MATERIALES.forEach(({ key, label, unidad }) => {
+        const cantidad = existenciaInicial[key] ?? 0;
+        if (cantidad > 0) rows.push({ _source: "existencia", material: key, label, cantidad, unidad, fecha: fechaExi });
+      });
+    }
+
+    entradasMaterial
+      .filter((e) => inPeriod(e.fecha, periodo))
+      .forEach((e) => rows.push({ _source: "manual", data: e }));
+
+    remisiones
+      .filter((r) => r.fecha?.includes("/") && inPeriod(r.fecha, periodo))
+      .forEach((r) => rows.push({ _source: "remision", data: r }));
+
+    if (filterTipoMov === "entrada") rows = rows.filter((row) => row._source === "existencia" || (row._source === "manual" && row.data.tipo === "entrada"));
+    if (filterTipoMov === "salida") rows = rows.filter((row) => row._source === "remision" || (row._source === "manual" && row.data.tipo === "salida"));
+    if (filterCatMov === "inventario") rows = rows.filter((row) => row._source === "existencia" || row._source === "remision" || (row._source === "manual" && row.data.categoria === "inventario"));
+    if (filterCatMov === "almacen") rows = rows.filter((row) => row._source === "manual" && row.data.categoria === "almacen");
+
+    if (searchMovimientos) {
+      const q = searchMovimientos.toLowerCase();
+      rows = rows.filter((row) => {
+        if (row._source === "existencia") return row.label.toLowerCase().includes(q);
+        if (row._source === "manual") {
+          const e = row.data;
+          return e.material.toLowerCase().includes(q) || e.proveedor?.toLowerCase().includes(q) || e.noFactura?.toLowerCase().includes(q);
+        }
+        const r = row.data;
+        return r.noRemision.toLowerCase().includes(q) || (r.cliente?.toLowerCase().includes(q) ?? false) || (r.mezcla?.toLowerCase().includes(q) ?? false);
+      });
+    }
+
+    return [...rows].sort((a, b) => {
+      const getDate = (row: MovRow) => {
+        const f = row._source === "existencia" ? row.fecha : row.data.fecha;
+        return f?.includes("/") ? displayToISO(f) : (f ?? "");
+      };
+      return getDate(b).localeCompare(getDate(a));
+    });
+  }, [existenciaInicial, entradasMaterial, remisiones, periodo, filterCatMov, filterTipoMov, searchMovimientos]);
+
+  const movsPeriodo =
+    entradasMaterial.filter((e) => inPeriod(e.fecha, periodo)).length +
+    remisiones.filter((r) => r.fecha?.includes("/") && inPeriod(r.fecha, periodo)).length;
 
   const TABS: { key: Tab; label: string; icon: React.ElementType; badge?: number }[] = [
-    { key: "remisiones",  label: "Remisiones",  icon: FlaskConical,     badge: remisionesPeriodo.length },
-    { key: "inventario",  label: "Inventario",  icon: Package,          badge: materialesConProblema || undefined },
-    { key: "movimientos", label: "Movimientos", icon: ArrowDownToLine,  badge: movsPeriodo.length || undefined },
+    { key: "control",     label: "Hoy",            icon: CalendarDays,    badge: remisionesDia.length || undefined },
+    { key: "remisiones",  label: "Remisiones",     icon: FlaskConical,    badge: remisionesPeriodo.length || undefined },
+    { key: "inventario",  label: "Stock",           icon: Package,         badge: materialesConProblema || undefined },
+    { key: "movimientos", label: "Movimientos",     icon: ArrowDownToLine, badge: movsPeriodo || undefined },
   ];
 
   return (
     <div className="space-y-5">
       {/* ── Top toolbar ──────────────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-3">
-        {/* Period selector — always visible */}
-        <div className="flex items-center gap-2 bg-[#242424] border border-[#3A3A3A] rounded-lg px-3 py-2">
-          <span className="text-xs text-gray-500 whitespace-nowrap">Período</span>
-          <input type="month" value={periodo} onChange={(e) => setPeriodo(e.target.value)} className="bg-transparent text-white text-sm focus:outline-none cursor-pointer" />
-        </div>
-        <span className="text-xs text-gray-500 capitalize hidden sm:block">{periodLabel(periodo)}</span>
-
-        <div className="ml-auto flex items-center gap-2">
-          {isSuperAdmin && (tab === "inventario") && (
-            <button onClick={() => setShowExistenciaForm(true)} className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-300 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg hover:border-[#CC2229]/60 transition-colors cursor-pointer">
-              <Edit2 size={13} /> Existencia inicial
-            </button>
-          )}
-          {tab === "remisiones" && (
-            <>
-              <button onClick={() => exportCSV(filtered)} disabled={filtered.length === 0} className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-300 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg hover:border-[#CC2229]/60 transition-colors disabled:opacity-40 cursor-pointer">
-                <Download size={13} /> CSV
+      {tab !== "control" && (
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center bg-[#242424] border border-[#3A3A3A] rounded-lg overflow-hidden">
+            <button
+              onClick={() => { setPeriodo(adjMonth(periodo, -1)); setShowAllHistory(false); }}
+              className="px-3 py-2 text-gray-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer text-lg leading-none"
+              aria-label="Mes anterior"
+            >‹</button>
+            <span className="text-white text-sm font-medium capitalize min-w-[140px] text-center py-2 select-none">{periodLabel(periodo)}</span>
+            <button
+              onClick={() => { setPeriodo(adjMonth(periodo, +1)); setShowAllHistory(false); }}
+              className="px-3 py-2 text-gray-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer text-lg leading-none"
+              aria-label="Mes siguiente"
+            >›</button>
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            {isSuperAdmin && tab === "inventario" && (
+              <button onClick={() => setShowExistenciaForm(true)} className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-300 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg hover:border-[#CC2229]/60 transition-colors cursor-pointer">
+                <Edit2 size={13} /> Existencia inicial
               </button>
-              <button onClick={() => setShowRemisionForm(true)} className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#B01E24] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-[#CC2229]/20 cursor-pointer">
-                <Plus size={15} /> Nueva remisión
+            )}
+            {tab === "remisiones" && (
+              <>
+                <button onClick={() => exportCSV(filtered)} disabled={filtered.length === 0} className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-300 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg hover:border-[#CC2229]/60 transition-colors disabled:opacity-40 cursor-pointer">
+                  <Download size={13} /> CSV
+                </button>
+                <button onClick={() => setShowRemisionForm(true)} className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#B01E24] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-[#CC2229]/20 cursor-pointer">
+                  <Plus size={15} /> Nueva remisión
+                </button>
+              </>
+            )}
+            {tab === "movimientos" && (
+              <button onClick={() => setShowEntradaForm(true)} className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#B01E24] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-[#CC2229]/20 cursor-pointer">
+                <Plus size={15} /> Entrada
               </button>
-            </>
-          )}
-          {tab === "movimientos" && (
-            <button onClick={() => setShowEntradaForm(true)} className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#B01E24] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-[#CC2229]/20 cursor-pointer">
-              <Plus size={15} /> Registrar movimiento
-            </button>
-          )}
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* ── KPIs ──────────────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        <KPICard title="Remisiones del período" value={String(remisionesPeriodo.length)} icon={FlaskConical} iconColor="text-[#CC2229]" subtitle={`${remisiones.length} total histórico`} />
-        <KPICard title="M³ despachados" value={`${totalM3Periodo.toFixed(1)} m³`} icon={Package} iconColor="text-blue-400" iconBg="bg-blue-500/10" subtitle={`${(totalM3Periodo / Math.max(remisionesPeriodo.length, 1)).toFixed(1)} m³ promedio`} />
-        <KPICard title="Clientes atendidos" value={String(uniqueClientesPeriodo)} icon={Users} iconColor="text-emerald-400" iconBg="bg-emerald-500/10" />
-        <KPICard title="Materiales con alerta" value={String(materialesConProblema)} icon={AlertTriangle} iconColor={materialesConProblema > 0 ? "text-amber-400" : "text-gray-500"} iconBg={materialesConProblema > 0 ? "bg-amber-500/10" : "bg-gray-500/10"} subtitle={materialesConProblema > 0 ? "Stock bajo o en déficit" : "Stock en orden"} />
-      </div>
+      {/* ── KPIs (solo fuera del tab Hoy) ─────────────────────────────────────── */}
+      {tab !== "control" && (
+        <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+          <KPICard title="Remisiones del período" value={String(remisionesPeriodo.length)} icon={FlaskConical} iconColor="text-[#CC2229]" subtitle={`${remisiones.length} total histórico`} />
+          <KPICard title="M³ despachados" value={`${totalM3Periodo.toFixed(1)} m³`} icon={Package} iconColor="text-blue-400" iconBg="bg-blue-500/10" subtitle={`${(totalM3Periodo / Math.max(remisionesPeriodo.length, 1)).toFixed(1)} m³ promedio`} />
+          <KPICard title="Clientes atendidos" value={String(uniqueClientesPeriodo)} icon={Users} iconColor="text-emerald-400" iconBg="bg-emerald-500/10" />
+          <KPICard title="Materiales con alerta" value={String(materialesConProblema)} icon={AlertTriangle} iconColor={materialesConProblema > 0 ? "text-amber-400" : "text-gray-500"} iconBg={materialesConProblema > 0 ? "bg-amber-500/10" : "bg-gray-500/10"} subtitle={materialesConProblema > 0 ? "Stock bajo o en déficit" : "Stock en orden"} />
+        </div>
+      )}
 
       {/* ── Tabs ──────────────────────────────────────────────────────────────── */}
       <div className="flex gap-0 border-b border-[#3A3A3A]">
@@ -793,8 +951,21 @@ export default function InventarioPage() {
                 </tbody>
               </table>
             </div>
-            <div className="px-5 py-3 border-t border-[#3A3A3A]">
-              <p className="text-xs text-gray-600">{filtered.length} remisión{filtered.length !== 1 ? "es" : ""} · {filtered.reduce((s, r) => s + r.metros, 0).toFixed(1)} m³ total</p>
+            <div className="px-5 py-3 border-t border-[#3A3A3A] flex items-center justify-between gap-3">
+              <p className="text-xs text-gray-600">
+                {filtered.length} remisión{filtered.length !== 1 ? "es" : ""} · {filtered.reduce((s, r) => s + r.metros, 0).toFixed(1)} m³
+                {!showAllHistory && <span className="text-gray-700"> · de {remisionesPeriodo.length} en {periodLabel(periodo)}</span>}
+              </p>
+              {!showAllHistory && remisiones.length > remisionesPeriodo.length && (
+                <button onClick={() => setShowAllHistory(true)} className="text-xs text-gray-500 hover:text-white transition-colors whitespace-nowrap cursor-pointer">
+                  Ver {remisiones.length} histórico →
+                </button>
+              )}
+              {showAllHistory && (
+                <button onClick={() => setShowAllHistory(false)} className="text-xs text-[#CC2229] hover:underline whitespace-nowrap cursor-pointer">
+                  ← Volver a {periodLabel(periodo)}
+                </button>
+              )}
             </div>
           </div>
         </>
@@ -859,7 +1030,7 @@ export default function InventarioPage() {
               </table>
             </div>
             <div className="px-5 py-3 border-t border-[#3A3A3A] text-xs text-gray-600">
-              Consumo calculado de {remisionesPeriodo.length} remisión{remisionesPeriodo.length !== 1 ? "es" : ""} del período
+              Salidas calculadas de {remisionesPeriodo.length} remisión{remisionesPeriodo.length !== 1 ? "es" : ""} del período · Para ver día por día usa la pestaña <span className="text-gray-400">Hoy</span>
             </div>
           </div>
 
@@ -900,6 +1071,182 @@ export default function InventarioPage() {
         </div>
       )}
 
+      {/* ── Hoy (control diario) ──────────────────────────────────────────────── */}
+      {tab === "control" && (
+        <div className="space-y-4">
+          {/* Header: fecha + stats + acciones */}
+          <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl px-5 py-4 space-y-3">
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex items-center gap-2">
+                <CalendarDays size={15} className="text-[#CC2229]" />
+                <input type="date" value={controlDate} onChange={(e) => setControlDate(e.target.value)}
+                  className="bg-transparent text-white text-base font-semibold focus:outline-none cursor-pointer" />
+              </div>
+              <div className="h-4 w-px bg-[#3A3A3A] hidden sm:block" />
+              <div className="flex items-center gap-5 text-xs text-gray-500">
+                <span><span className="text-white font-bold text-sm">{remisionesDia.length}</span> remisiones (salidas)</span>
+                <span><span className="text-white font-bold text-sm">{remisionesDia.reduce((s, r) => s + r.metros, 0).toFixed(1)}</span> m³</span>
+                <span><span className="text-emerald-400 font-bold text-sm">{entradasDia.length}</span> mat. recibido</span>
+              </div>
+              <div className="ml-auto flex items-center gap-2">
+                <button onClick={() => setShowEntradaForm(true)}
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-lg hover:bg-emerald-500/20 transition-colors cursor-pointer">
+                  <Plus size={13} /> Entrada
+                </button>
+                <button onClick={() => setShowRemisionForm(true)}
+                  className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#B01E24] text-white px-4 py-2 rounded-lg text-xs font-semibold transition-colors shadow-lg shadow-[#CC2229]/20 cursor-pointer">
+                  <Plus size={13} /> Nueva remisión
+                </button>
+              </div>
+            </div>
+            {!existenciaInicialControl && (
+              <div className="flex items-center gap-2 pt-3 border-t border-[#3A3A3A]">
+                <AlertTriangle size={13} className="text-amber-400 shrink-0" />
+                <span className="text-xs text-amber-300">
+                  Sin existencia inicial para {periodLabel(controlPeriodo)}.
+                  {isSuperAdmin ? " Ve al tab Stock → Existencia inicial para configurarla." : " El cálculo parte de cero."}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Balance del día */}
+          <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
+            <div className="px-5 py-3 border-b border-[#3A3A3A] flex items-center gap-3">
+              <h3 className="text-white font-semibold text-sm flex-1">Balance del día</h3>
+              <span className="text-[11px] text-gray-600">Inicial + Entradas − Salidas = Stock final</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-[#1A1A1A]">
+                    <th className="px-4 py-3 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Material</th>
+                    <th className="px-4 py-3 text-right text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Inicial</th>
+                    <th className="px-4 py-3 text-right text-[10px] font-semibold text-emerald-500 uppercase tracking-wider">+ Entradas</th>
+                    <th className="px-4 py-3 text-right text-[10px] font-semibold text-orange-500 uppercase tracking-wider">− Salidas (remisiones)</th>
+                    <th className="px-4 py-3 text-right text-[10px] font-semibold text-white uppercase tracking-wider">= Stock final</th>
+                    <th className="px-4 py-3 text-[10px] font-semibold text-gray-500 uppercase tracking-wider w-24"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#2A2A2A]">
+                  {INVENTARIO_MATERIALES.map(({ key, label, unidad }) => {
+                    const ini = existenciaInicialDia[key] ?? 0;
+                    const ent = entradasNetaDia[key] ?? 0;
+                    const con = consumoDia[key] ?? 0;
+                    const fin = ini + ent - con;
+                    const hasData = ini !== 0 || ent !== 0 || con !== 0;
+                    const estado = fin < 0 ? "deficit" : (ini + ent) > 0 && fin / (ini + ent) < 0.2 ? "bajo" : "ok";
+                    return (
+                      <tr key={key} className={`hover:bg-[#2A2A2A] transition-colors ${!hasData ? "opacity-40" : ""}`}>
+                        <td className="px-4 py-3 text-gray-200 font-medium">
+                          {label} {unidad && <span className="text-gray-600 text-xs font-normal">{unidad}</span>}
+                        </td>
+                        <td className="px-4 py-3 text-gray-400 font-mono text-right tabular-nums">{fmt(ini)}</td>
+                        <td className="px-4 py-3 text-right font-mono tabular-nums">
+                          <span className={ent !== 0 ? (ent > 0 ? "text-emerald-400" : "text-orange-400") : "text-gray-700"}>
+                            {ent !== 0 ? (ent > 0 ? `+${fmt(ent)}` : fmt(ent)) : "—"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono tabular-nums">
+                          <span className={con > 0 ? "text-orange-400 font-semibold" : "text-gray-700"}>{con > 0 ? `−${fmt(con)}` : "—"}</span>
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono tabular-nums font-bold text-base">
+                          <span className={fin < 0 ? "text-red-400" : fin === 0 ? "text-gray-600" : "text-white"}>{fmt(fin)}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {hasData && estado === "deficit" && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/30">Déficit</span>}
+                          {hasData && estado === "bajo"    && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30">Stock bajo</span>}
+                          {hasData && estado === "ok"      && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">OK</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="px-5 py-3 border-t border-[#3A3A3A] text-[11px] text-gray-600 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-orange-500/60 shrink-0" />
+              Las salidas se calculan automáticamente de las remisiones capturadas en el día
+            </div>
+          </div>
+
+          {/* Salidas (remisiones) y Entradas en dos columnas */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Salidas = remisiones del día */}
+            <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden flex flex-col">
+              <div className="px-5 py-3 border-b border-[#3A3A3A] flex items-center gap-3">
+                <span className="w-2 h-2 rounded-full bg-orange-400 shrink-0" />
+                <h3 className="text-white font-semibold text-sm flex-1">
+                  Salidas del día <span className="text-gray-500 font-normal text-xs">· remisiones despachadas</span>
+                </h3>
+                <span className="text-xs font-bold text-orange-400">{remisionesDia.length}</span>
+              </div>
+              {remisionesDia.length === 0 ? (
+                <div className="flex flex-col items-center justify-center flex-1 py-10 px-5 text-center gap-2">
+                  <FlaskConical size={24} className="text-gray-700" />
+                  <p className="text-xs text-gray-600">Sin remisiones para esta fecha.</p>
+                  <button onClick={() => setShowRemisionForm(true)} className="text-xs text-[#CC2229] hover:underline cursor-pointer">+ Capturar remisión</button>
+                </div>
+              ) : (
+                <div className="divide-y divide-[#2A2A2A]">
+                  {remisionesDia.map((r) => (
+                    <div key={r.id ?? r.noRemision} className="px-5 py-3 flex items-center gap-3 hover:bg-[#2A2A2A] transition-colors">
+                      <div className="shrink-0">
+                        <p className="text-xs font-mono font-bold text-[#CC2229]">#{r.noRemision}</p>
+                        <p className="text-[11px] text-gray-500 truncate max-w-[140px]">{r.cliente || "—"}</p>
+                      </div>
+                      <div className="ml-auto text-right shrink-0">
+                        <p className="text-sm font-bold text-white">{r.metros} m³</p>
+                        <p className="text-[11px] text-gray-500">{r.mezcla || "—"}</p>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="px-5 py-2.5 flex items-center justify-between">
+                    <span className="text-xs text-gray-600">{remisionesDia.length} remisiones · {remisionesDia.reduce((s, r) => s + r.metros, 0).toFixed(1)} m³</span>
+                    <button onClick={() => setShowRemisionForm(true)} className="text-xs text-gray-500 hover:text-white transition-colors cursor-pointer">+ Nueva</button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Entradas del día */}
+            <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden flex flex-col">
+              <div className="px-5 py-3 border-b border-[#3A3A3A] flex items-center gap-3">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                <h3 className="text-white font-semibold text-sm flex-1">
+                  Entradas del día <span className="text-gray-500 font-normal text-xs">· materiales recibidos</span>
+                </h3>
+                <span className="text-xs font-bold text-emerald-400">{entradasDia.length}</span>
+              </div>
+              {entradasDia.length === 0 ? (
+                <div className="flex flex-col items-center justify-center flex-1 py-10 px-5 text-center gap-2">
+                  <ArrowDownToLine size={24} className="text-gray-700" />
+                  <p className="text-xs text-gray-600">Sin entradas registradas para esta fecha.</p>
+                  <button onClick={() => setShowEntradaForm(true)} className="text-xs text-emerald-400 hover:underline cursor-pointer">+ Registrar entrada</button>
+                </div>
+              ) : (
+                <div className="divide-y divide-[#2A2A2A]">
+                  {entradasDia.map((e) => (
+                    <div key={e.id} className="px-5 py-3 flex items-center gap-3 hover:bg-[#2A2A2A] transition-colors">
+                      <div className="shrink-0 flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-gray-200 truncate">{INVENTARIO_MATERIALES.find((m) => m.key === e.material)?.label ?? e.material}</p>
+                        <p className="text-[11px] text-gray-500">{e.proveedor || "Sin proveedor"}</p>
+                      </div>
+                      <span className={`text-sm font-bold font-mono shrink-0 ${e.tipo === "entrada" ? "text-emerald-400" : "text-orange-400"}`}>
+                        {e.tipo === "entrada" ? "+" : "−"}{fmt(e.cantidad)} {e.unidad}
+                      </span>
+                    </div>
+                  ))}
+                  <div className="px-5 py-2.5 flex justify-end">
+                    <button onClick={() => setShowEntradaForm(true)} className="text-xs text-gray-500 hover:text-white transition-colors cursor-pointer">+ Registrar</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Movimientos ───────────────────────────────────────────────────────── */}
       {tab === "movimientos" && (
         <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
@@ -937,40 +1284,89 @@ export default function InventarioPage() {
               </thead>
               <tbody className="divide-y divide-[#2A2A2A]">
                 {filteredMovimientos.length === 0
-                  ? <tr><td colSpan={8} className="px-4 py-14 text-center text-sm text-gray-600">Sin movimientos registrados. Usa "Registrar movimiento" para agregar una entrada o salida.</td></tr>
-                  : filteredMovimientos.map((e) => (
-                    <tr key={e.id} className="hover:bg-[#2A2A2A] transition-colors">
-                      <td className="px-4 py-3 text-gray-500 text-xs font-mono">{e.fecha}</td>
-                      <td className="px-4 py-3">
-                        <span className={`flex items-center gap-1 text-xs font-semibold ${e.tipo === "entrada" ? "text-emerald-400" : "text-orange-400"}`}>
-                          {e.tipo === "entrada" ? <><ArrowDownToLine size={11} /> Entrada</> : <><ArrowUpToLine size={11} /> Salida</>}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${e.categoria === "inventario" ? "bg-blue-500/10 border-blue-500/20 text-blue-300" : "bg-purple-500/10 border-purple-500/20 text-purple-300"}`}>
-                          {e.categoria === "inventario" ? "Producción" : "Almacén"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-gray-200">{e.categoria === "inventario" ? (INVENTARIO_MATERIALES.find((m) => m.key === e.material)?.label ?? e.material) : e.material}</td>
-                      <td className="px-4 py-3 text-white font-mono font-semibold">{fmt(e.cantidad)}{e.unidad ? ` ${e.unidad}` : ""}</td>
-                      <td className="px-4 py-3 text-gray-400 text-sm">{e.proveedor || "—"}</td>
-                      <td className="px-4 py-3 text-gray-500 text-xs font-mono">{e.noFactura || "—"}</td>
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={() => setConfirmDeleteMovimiento(e)}
-                          className="p-1.5 text-gray-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
-                          aria-label="Eliminar"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  ? <tr><td colSpan={8} className="px-4 py-14 text-center text-sm text-gray-600">Sin movimientos en {periodLabel(periodo)}. Las remisiones del período aparecen automáticamente como salidas.</td></tr>
+                  : filteredMovimientos.map((row, idx) => {
+                    if (row._source === "existencia") {
+                      return (
+                        <tr key={`exi-${row.material}`} className="hover:bg-[#2A2A2A] transition-colors">
+                          <td className="px-4 py-3 text-gray-500 text-xs font-mono">{row.fecha}</td>
+                          <td className="px-4 py-3">
+                            <span className="flex items-center gap-1 text-xs font-semibold text-emerald-400">
+                              <ArrowDownToLine size={11} /> Entrada
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-emerald-500/10 border-emerald-500/20 text-emerald-300">
+                              Stock inicial
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-gray-200">{row.label}</td>
+                          <td className="px-4 py-3 text-white font-mono font-semibold">{fmt(row.cantidad)}{row.unidad ? ` ${row.unidad}` : ""}</td>
+                          <td className="px-4 py-3 text-gray-600 text-sm">—</td>
+                          <td className="px-4 py-3 text-gray-600 text-xs font-mono capitalize">{periodLabel(periodo)}</td>
+                          <td className="px-4 py-3 text-gray-700 text-[10px]">Auto</td>
+                        </tr>
+                      );
+                    }
+                    if (row._source === "remision") {
+                      const r = row.data;
+                      return (
+                        <tr key={r.id ?? r.noRemision} className="hover:bg-[#2A2A2A] transition-colors">
+                          <td className="px-4 py-3 text-gray-500 text-xs font-mono">{r.fecha}</td>
+                          <td className="px-4 py-3">
+                            <span className="flex items-center gap-1 text-xs font-semibold text-orange-400">
+                              <ArrowUpToLine size={11} /> Salida
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-orange-500/10 border-orange-500/20 text-orange-300">
+                              Remisión
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-gray-200">{r.mezcla || "Concreto"}</td>
+                          <td className="px-4 py-3 text-white font-mono font-semibold">{r.metros} m³</td>
+                          <td className="px-4 py-3 text-gray-400 text-sm truncate max-w-[160px]">{r.cliente || "—"}</td>
+                          <td className="px-4 py-3 text-gray-500 text-xs font-mono">#{r.noRemision}</td>
+                          <td className="px-4 py-3 text-gray-700 text-[10px]">Auto</td>
+                        </tr>
+                      );
+                    }
+                    const e = row.data;
+                    return (
+                      <tr key={e.id ?? idx} className="hover:bg-[#2A2A2A] transition-colors">
+                        <td className="px-4 py-3 text-gray-500 text-xs font-mono">{e.fecha}</td>
+                        <td className="px-4 py-3">
+                          <span className={`flex items-center gap-1 text-xs font-semibold ${e.tipo === "entrada" ? "text-emerald-400" : "text-orange-400"}`}>
+                            {e.tipo === "entrada" ? <><ArrowDownToLine size={11} /> Entrada</> : <><ArrowUpToLine size={11} /> Salida</>}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${e.categoria === "inventario" ? "bg-blue-500/10 border-blue-500/20 text-blue-300" : "bg-purple-500/10 border-purple-500/20 text-purple-300"}`}>
+                            {e.categoria === "inventario" ? "Producción" : "Almacén"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-gray-200">{e.categoria === "inventario" ? (INVENTARIO_MATERIALES.find((m) => m.key === e.material)?.label ?? e.material) : e.material}</td>
+                        <td className="px-4 py-3 text-white font-mono font-semibold">{fmt(e.cantidad)}{e.unidad ? ` ${e.unidad}` : ""}</td>
+                        <td className="px-4 py-3 text-gray-400 text-sm">{e.proveedor || "—"}</td>
+                        <td className="px-4 py-3 text-gray-500 text-xs font-mono">{e.noFactura || "—"}</td>
+                        <td className="px-4 py-3">
+                          <button
+                            onClick={() => setConfirmDeleteMovimiento(e)}
+                            className="p-1.5 text-gray-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
+                            aria-label="Eliminar"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
               </tbody>
             </table>
           </div>
-          <div className="px-5 py-3 border-t border-[#3A3A3A] text-xs text-gray-600">
-            {filteredMovimientos.length} movimiento{filteredMovimientos.length !== 1 ? "s" : ""}
+          <div className="px-5 py-3 border-t border-[#3A3A3A] flex items-center justify-between text-xs text-gray-600">
+            <span>{filteredMovimientos.length} movimiento{filteredMovimientos.length !== 1 ? "s" : ""} en {periodLabel(periodo)}</span>
+            <span className="text-gray-700">Salidas = remisiones automáticas · Entradas = material recibido</span>
           </div>
         </div>
       )}
