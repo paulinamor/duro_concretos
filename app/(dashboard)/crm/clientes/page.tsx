@@ -82,8 +82,41 @@ export default function CrmClientesPage() {
       const matchTipo = filtroTipo === "Todos" || c.tipoCliente === filtroTipo;
       const matchVendedor = filtroVendedor === "Todos" || c.vendedorAsignado === filtroVendedor;
       return matchQuery && matchEstatus && matchTipo && matchVendedor;
-    });
+    }).sort((a, b) => a.razonSocial.localeCompare(b.razonSocial, "es", { sensitivity: "base" }));
   }, [clientes, query, filtroEstatus, filtroTipo, filtroVendedor]);
+
+  // Strips spaces, punctuation and accents for fuzzy name comparison
+  function normalizeNombre(s: string) {
+    return s.trim().toLowerCase()
+      .normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]/g, "");
+  }
+
+  // Detect duplicates by normalized razonSocial
+  const duplicados = useMemo(() => {
+    const groups = new Map<string, Cliente[]>();
+    clientes.forEach((c) => {
+      const key = normalizeNombre(c.razonSocial);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(c);
+    });
+    const extras: Cliente[] = [];
+    groups.forEach((group) => {
+      if (group.length > 1) {
+        const sorted = [...group].sort((a, b) => a.fechaAlta.localeCompare(b.fechaAlta));
+        extras.push(...sorted.slice(1));
+      }
+    });
+    return extras;
+  }, [clientes]);
+
+  async function deduplicar() {
+    if (duplicados.length === 0) return;
+    await Promise.all(duplicados.map((c) => deleteDocument(COLLECTIONS.clientes, c.id!)));
+    const idsEliminar = new Set(duplicados.map((c) => c.id));
+    setClientes((curr) => curr.filter((c) => !idsEliminar.has(c.id)));
+    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `${duplicados.length} cliente${duplicados.length !== 1 ? "s" : ""} duplicado${duplicados.length !== 1 ? "s" : ""} eliminado${duplicados.length !== 1 ? "s" : ""}.` } }));
+  }
 
   const totalActivos = clientes.filter((c) => c.estatus === "Activo").length;
   const totalCarteraAnio = clientes.reduce((sum, c) => sum + c.totalComprasAnio, 0);
@@ -114,10 +147,15 @@ export default function CrmClientesPage() {
 
     if (!razonSocial || !rfc || !contacto) return false;
 
-    const isDuplicate = clientes.some(
+    const isDuplicateRFC = rfc.length > 3 && clientes.some(
       (c) => c.rfc.toLowerCase() === rfc.toLowerCase() && c.id !== editing?.id,
     );
-    if (isDuplicate) return "Ya existe un cliente con ese RFC.";
+    if (isDuplicateRFC) return "Ya existe un cliente con ese RFC.";
+
+    const isDuplicateName = clientes.some(
+      (c) => normalizeNombre(c.razonSocial) === normalizeNombre(razonSocial) && c.id !== editing?.id,
+    );
+    if (isDuplicateName) return "Ya existe un cliente con ese nombre.";
 
     const id = editing?.id ?? `CL-${Date.now()}`;
     const next: Cliente = {
@@ -254,6 +292,16 @@ export default function CrmClientesPage() {
           </div>
         ))}
         <span className="text-xs text-gray-500 ml-auto">{filtered.length} clientes</span>
+        {duplicados.length > 0 && (
+          <button
+            type="button"
+            onClick={deduplicar}
+            className="flex items-center gap-2 rounded-lg border border-amber-500/40 px-3 py-2 text-sm text-amber-300 hover:bg-amber-500/10 transition-colors"
+          >
+            <Trash2 size={14} />
+            {duplicados.length} duplicado{duplicados.length !== 1 ? "s" : ""}
+          </button>
+        )}
         <button
           type="button"
           onClick={exportExcel}
@@ -277,7 +325,7 @@ export default function CrmClientesPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-[#1A1A1A] border-b border-[#3A3A3A]">
-                {["Cal.", "Razón Social / RFC", "Municipio", "Tipo", "Contacto", "Vendedor", "Crédito", "Saldo", "Estatus", "Acciones"].map(
+                {["Razón Social / RFC", "Municipio", "Tipo", "Contacto", "Vendedor", "Crédito", "Saldo", "Estatus", "Acciones"].map(
                   (h) => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-400 whitespace-nowrap">
                       {h}
@@ -289,13 +337,13 @@ export default function CrmClientesPage() {
             <tbody className="divide-y divide-[#3A3A3A]">
               {loading ? (
                 <tr>
-                  <td colSpan={10} className="px-5 py-10 text-center text-gray-500">
+                  <td colSpan={9} className="px-5 py-10 text-center text-gray-500">
                     Cargando clientes...
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-5 py-10 text-center text-gray-500">
+                  <td colSpan={9} className="px-5 py-10 text-center text-gray-500">
                     No se encontraron clientes con ese filtro.
                   </td>
                 </tr>
@@ -308,11 +356,6 @@ export default function CrmClientesPage() {
                       className="transition-colors cursor-pointer"
                       onClick={() => setDetail(c)}
                     >
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center justify-center h-6 w-6 rounded-full text-xs font-bold ${calificacionBadge[c.calificacion]}`}>
-                          {c.calificacion}
-                        </span>
-                      </td>
                       <td className="px-4 py-3 max-w-[240px]">
                         <p className="text-white font-medium">{c.razonSocial}</p>
                         <p className="text-gray-500 text-xs font-mono mt-0.5 whitespace-nowrap">{c.rfc}</p>

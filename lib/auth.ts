@@ -127,14 +127,28 @@ export function getActivePlanta(): Planta {
   return session.plantaActiva ?? session.planta ?? "Todas";
 }
 
+/** Records with no planta, empty string, or "Todas" are legacy Allende data. */
+function isLegacyAllende(planta?: string) {
+  return !planta || planta === "Todas";
+}
+
 export function filterByPlanta<T extends { planta?: string }>(docs: T[]): T[] {
   const active = getActivePlanta();
   if (active === "Todas") return docs;
-  return docs.filter((doc) => !doc.planta || doc.planta === active);
+  if (active === "Allende") return docs.filter((doc) => isLegacyAllende(doc.planta) || doc.planta === "Allende");
+  return docs.filter((doc) => doc.planta === active); // Pesquería: exact match only
+}
+
+/** Returns the concrete plant for a new record — never "Todas". */
+export function getCapturePlanta(): "Allende" | "Pesquería" {
+  const session = getStoredSession();
+  if (session?.planta && session.planta !== "Todas") return session.planta;
+  const active = getActivePlanta();
+  return active === "Todas" ? "Allende" : active;
 }
 
 export function withPlantaTag<T extends object>(data: T): T & { planta: string } {
-  return { ...data, planta: getActivePlanta() };
+  return { ...data, planta: getCapturePlanta() };
 }
 
 export function getDefaultModulesForRole(role: UserRole) {

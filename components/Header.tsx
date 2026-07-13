@@ -545,7 +545,7 @@ export default function Header({ title, section, onMobileMenu }: HeaderProps) {
                       {(["Todas", "Pesquería", "Allende"] as Planta[]).map((p) => (
                         <button
                           key={p}
-                          onClick={() => { setActivePlanta(p); setPlantaActivaState(p); setPlantaOpen(false); }}
+                          onClick={() => { setActivePlanta(p); setPlantaActivaState(p); setPlantaOpen(false); window.location.reload(); }}
                           className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                             plantaActiva === p
                               ? plantaItemActiveCls(p)

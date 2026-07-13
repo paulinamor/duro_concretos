@@ -391,12 +391,12 @@ export default function EfectivoPage() {
 
       {/* Table */}
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto overflow-y-auto max-h-[65vh]">
           <table className="w-full text-sm">
-            <thead>
+            <thead className="sticky top-0 z-10">
               <tr className="bg-gray-50 border-b border-gray-200">
                 {["Folio", "Fecha", "Cliente", "Importe", "m³", "Precio", "Cemento", "Resistencia", "Tipo tiro", "Dirección obra", "Entregado", ""].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-500 whitespace-nowrap">{h}</th>
+                  <th key={h} className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-500 whitespace-nowrap bg-gray-50">{h}</th>
                 ))}
               </tr>
             </thead>
