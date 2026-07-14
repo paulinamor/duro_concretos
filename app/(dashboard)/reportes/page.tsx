@@ -337,21 +337,24 @@ export default function ReportesPage() {
       });
   }, [filtered, query, sortBy]);
 
-  // ── Export CSV ────────────────────────────────────────────────────────────
-  function exportCSV() {
-    const headers = ["Fecha", "Cliente", "Recibo", "M³", "Precio/m³", "Total", "Resistencia", "Pagado", "Método Pago"];
-    const rows = filtered.map((r) =>
-      [r.dia, `"${r.cliente}"`, r.recibo ?? "", r.m3Totales ?? "", r.precioM3 ?? "", r.total ?? "",
-        `"${r.resistencia}"`, r.pagado, r.metodoPago].join(","),
-    );
-    const csv = [headers.join(","), ...rows].join("\n");
-    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `reporte-programacion-${period}-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  // ── Export Excel ──────────────────────────────────────────────────────────
+  function exportXLSX() {
+    const XLSX = require("xlsx");
+    const data = filtered.map((r) => ({
+      "Fecha": r.dia,
+      "Cliente": r.cliente,
+      "Recibo": r.recibo ?? "",
+      "M³": r.m3Totales ?? "",
+      "Precio/m³": r.precioM3 ?? "",
+      "Total": r.total ?? "",
+      "Resistencia": r.resistencia,
+      "Pagado": r.pagado,
+      "Método Pago": r.metodoPago,
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Reporte");
+    XLSX.writeFile(wb, `reporte-programacion-${period}-${new Date().toISOString().slice(0, 10)}.xlsx`);
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -374,12 +377,12 @@ export default function ReportesPage() {
             ))}
           </div>
           <button
-            onClick={exportCSV}
+            onClick={exportXLSX}
             disabled={filtered.length === 0}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-300 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg hover:border-[#CC2229]/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Download size={13} />
-            Exportar CSV
+            Exportar Excel
           </button>
         </div>
       </div>

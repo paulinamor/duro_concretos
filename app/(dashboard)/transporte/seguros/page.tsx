@@ -166,31 +166,38 @@ function formFromSeguro(s: Seguro): FormState {
   };
 }
 
-function exportCSV(rows: Seguro[]) {
-  const headers = [
-    "TIPO","NO.ECO","PLACA","ESTADO","MARCA","MODELO","SERIE","AÑO","COLOR","MOTOR",
-    "NO.TC","VIGENCIA TC","ASEGURADORA","NO.POLIZA","STATUS POLIZA",
-    "VIGENCIA INI","VIGENCIA FIN","DIAS","COSTO POLIZA","VALOR MERCADO","TENENCIA","AGENTE","OBSERVACIONES",
-  ];
+function exportXLSX(rows: Seguro[]) {
+  const XLSX = require("xlsx");
   const today = new Date(); today.setHours(0,0,0,0);
-  const lines = rows.map((s) => {
-    const dias = s.vigenciaFin
-      ? Math.ceil((new Date(s.vigenciaFin+"T00:00:00").getTime()-today.getTime())/(1000*60*60*24))
-      : "";
-    return [
-      s.tipoUnidad, s.noEconomico, s.placa, s.estadoPlaca, s.marca, s.modelo,
-      s.noSerie, s.anio??'', s.color, s.motor,
-      s.noTarjetaCirculacion, s.vigenciaTarjetaCirculacion,
-      s.aseguradora, s.noPoliza, s.statusPoliza,
-      s.vigenciaInicio, s.vigenciaFin, dias,
-      s.costoPoliza??'', s.valorMercado??'', s.tenencia, s.agente, s.observaciones,
-    ].map((v) => `"${v}"`).join(",");
-  });
-  const blob = new Blob(["﻿"+[headers.join(","), ...lines].join("\n")], { type: "text/csv" });
-  const a = Object.assign(document.createElement("a"), {
-    href: URL.createObjectURL(blob), download: "seguros-flota.csv",
-  });
-  a.click();
+  const data = rows.map((s) => ({
+    "TIPO": s.tipoUnidad,
+    "NO.ECO": s.noEconomico,
+    "PLACA": s.placa,
+    "ESTADO": s.estadoPlaca,
+    "MARCA": s.marca,
+    "MODELO": s.modelo,
+    "SERIE": s.noSerie,
+    "AÑO": s.anio ?? "",
+    "COLOR": s.color,
+    "MOTOR": s.motor,
+    "NO.TC": s.noTarjetaCirculacion,
+    "VIGENCIA TC": s.vigenciaTarjetaCirculacion,
+    "ASEGURADORA": s.aseguradora,
+    "NO.POLIZA": s.noPoliza,
+    "STATUS POLIZA": s.statusPoliza,
+    "VIGENCIA INI": s.vigenciaInicio,
+    "VIGENCIA FIN": s.vigenciaFin,
+    "DIAS": s.vigenciaFin ? Math.ceil((new Date(s.vigenciaFin+"T00:00:00").getTime()-today.getTime())/(1000*60*60*24)) : "",
+    "COSTO POLIZA": s.costoPoliza ?? "",
+    "VALOR MERCADO": s.valorMercado ?? "",
+    "TENENCIA": s.tenencia,
+    "AGENTE": s.agente,
+    "OBSERVACIONES": s.observaciones,
+  }));
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Seguros");
+  XLSX.writeFile(wb, "seguros-flota.xlsx");
 }
 
 const STATUS_VIG: Record<VigenciaStatus, { label: string; cls: string }> = {
@@ -608,18 +615,15 @@ export default function SegurosPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-white">Seguros de flota</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Catálogo maestro · Pólizas, tarjetas de circulación y valores</p>
-        </div>
+        <p className="text-sm text-gray-500">Catálogo maestro · Pólizas, tarjetas de circulación y valores</p>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => exportCSV(seguros)}
+            onClick={() => exportXLSX(seguros)}
             disabled={seguros.length === 0}
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-300 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg hover:border-[#CC2229]/60 transition-colors disabled:opacity-40"
           >
             <Download size={14} />
-            Exportar CSV
+            Exportar Excel
           </button>
           <button
             onClick={() => openDrawer(null)}
@@ -668,7 +672,7 @@ export default function SegurosPage() {
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead>
+            <thead className="sticky top-0 z-10 bg-[#1A1A1A]">
               <tr className="bg-[#1A1A1A]">
                 {[
                   "Tipo","No. Eco.","Placa","Marca / Modelo","No. T.C.","Vence TC",

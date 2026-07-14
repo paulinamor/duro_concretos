@@ -102,11 +102,32 @@ function adjMonth(p: string, delta: number): string {
   const d = new Date(y, m - 1 + delta, 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
-function exportCSV(rows: Remision[]) {
-  const headers = ["FECHA","REMISION","CLIENTE","METROS","CONCRETO","CR","OPERADOR","CEMENTO","GRAVA","ARENA 4","ARENA 5","AGUA","ADITIVO","ACELERANTE","IMPER","FIBRA","COLOR","LIGSTHONE"];
-  const lines = rows.map((r) => [r.fecha, r.noRemision, r.cliente, r.metros, r.mezcla, r.cr ?? "", r.operador, r.cemento ?? "", r.grava ?? "", r.arena4 ?? "", r.arena5 ?? "", r.agua ?? "", r.aditivo ?? "", r.acelerante, r.imper, r.fibra ?? "", r.color, r.ligsthone].map((v) => `"${v}"`).join(","));
-  const blob = new Blob(["﻿" + [headers.join(","), ...lines].join("\n")], { type: "text/csv" });
-  Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: "remisiones.csv" }).click();
+function exportXLSX(rows: Remision[]) {
+  const XLSX = require("xlsx");
+  const data = rows.map((r) => ({
+    "FECHA": r.fecha,
+    "REMISION": r.noRemision,
+    "CLIENTE": r.cliente,
+    "METROS": r.metros,
+    "CONCRETO": r.mezcla,
+    "CR": r.cr ?? "",
+    "OPERADOR": r.operador,
+    "CEMENTO": r.cemento ?? "",
+    "GRAVA": r.grava ?? "",
+    "ARENA 4": r.arena4 ?? "",
+    "ARENA 5": r.arena5 ?? "",
+    "AGUA": r.agua ?? "",
+    "ADITIVO": r.aditivo ?? "",
+    "ACELERANTE": r.acelerante,
+    "IMPER": r.imper,
+    "FIBRA": r.fibra ?? "",
+    "COLOR": r.color,
+    "LIGSTHONE": r.ligsthone,
+  }));
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Remisiones");
+  XLSX.writeFile(wb, "remisiones.xlsx");
 }
 const SUPERADMIN = "leonardo@lpsoft.mx";
 function getPlantaSlug() {
@@ -458,7 +479,7 @@ function RemisionRow({ r, onEdit, onDelete }: {
       </tr>
       {expanded && (
         <tr>
-          <td colSpan={7} style={{ backgroundColor: "#F8FAFC", padding: "16px 20px", borderTop: "2px solid #CC2229", borderBottom: "1px solid #e2e8f0", maxWidth: 0 }}>
+          <td colSpan={7} className="bg-[#1A1A1A]" style={{ padding: "16px 20px", borderTop: "2px solid #CC2229", borderBottom: "1px solid #e2e8f0", maxWidth: 0 }}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
               {[
                 { label: "Cemento",   value: r.cemento,              unit: "kg" },
@@ -837,8 +858,8 @@ export default function InventarioPage() {
             )}
             {tab === "remisiones" && (
               <>
-                <button onClick={() => exportCSV(filtered)} disabled={filtered.length === 0} className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-300 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg hover:border-[#CC2229]/60 transition-colors disabled:opacity-40 cursor-pointer">
-                  <Download size={13} /> CSV
+                <button onClick={() => exportXLSX(filtered)} disabled={filtered.length === 0} className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-300 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg hover:border-[#CC2229]/60 transition-colors disabled:opacity-40 cursor-pointer">
+                  <Download size={13} /> Excel
                 </button>
                 <button onClick={() => setShowRemisionForm(true)} className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#B01E24] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-[#CC2229]/20 cursor-pointer">
                   <Plus size={15} /> Nueva remisión

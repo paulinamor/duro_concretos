@@ -406,7 +406,7 @@ export default function EmpleadosPage() {
       <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead>
+            <thead className="sticky top-0 z-10 bg-[#1A1A1A]">
               <tr className="bg-[#1A1A1A] border-b border-[#3A3A3A]">
                 {["Empleado", "Puesto", "Días ingreso", "Sueldo base", "Licencia", "Vto. credencial", "Vto. contrato", "Estatus", ""].map((h) => (
                   <th key={h} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-400 whitespace-nowrap">{h}</th>

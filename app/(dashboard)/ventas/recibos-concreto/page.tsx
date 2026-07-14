@@ -211,13 +211,13 @@ export default function RecibosConcretoPage() {
             width: 100vw !important;
             min-height: 100vh !important;
             background: white !important;
-            padding: 24px !important;
+            padding: 0.35in !important;
             color: black !important;
           }
 
           @page {
             size: letter landscape;
-            margin: 0.35in;
+            margin: 0;
           }
         }
       `}</style>

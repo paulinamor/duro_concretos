@@ -24,6 +24,7 @@ import {
 import { getCollectionDocs, COLLECTIONS } from "@/lib/db";
 import { filterByPlanta } from "@/lib/auth";
 import type { Unidad } from "@/lib/unidades";
+import { TOOLTIP_STYLE } from "@/lib/chartStyles";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -80,13 +81,6 @@ function diasHasta(iso: string) {
 
 const MES_LABELS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
-const TOOLTIP_STYLE = {
-  backgroundColor: "#1A1A1A",
-  border: "1px solid #3A3A3A",
-  borderRadius: "8px",
-  color: "#fff",
-  fontSize: 12,
-};
 
 // ─── Component ────────────────────────────────────────────────────────────────
 

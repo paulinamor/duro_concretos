@@ -9,6 +9,7 @@ import {
   Clock,
   DollarSign,
   FileText,
+  Link2,
   Pencil,
   Plus,
   Search,
@@ -58,6 +59,7 @@ export interface Cuenta {
   status: "Pendiente" | "Parcial" | "Pagado" | "Vencido";
   notas?: string;
   abonos?: Abono[];
+  programacionId?: string;
   planta?: string;
 }
 
@@ -670,6 +672,12 @@ function CuentaRow({
                     ))}
                   </div>
                 )}
+                {cuenta.programacionId && (
+                  <div className="flex items-center gap-1.5 text-[10px] text-blue-400 bg-blue-500/10 border border-blue-500/20 rounded-lg px-2.5 py-1.5 mb-1 w-fit">
+                    <Link2 size={10} />
+                    Origen: Programación
+                  </div>
+                )}
                 <div className="flex gap-2 mt-1">
                   {cuenta.status !== "Pagado" && (
                     <button
@@ -734,6 +742,11 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
   function showToast(type: "success" | "error", title: string, msg: string) {
     window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type, title, message: msg } }));
   }
+
+  const existingUuids = useMemo(
+    () => new Set(cuentas.map((c) => c.uuid?.trim().toUpperCase()).filter((u): u is string => !!u)),
+    [cuentas],
+  );
 
   const mesesDisponibles = useMemo(() => {
     const set = new Set<string>();
@@ -811,19 +824,23 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
   }
 
   async function handleCargaMasiva(records: Omit<Cuenta, "id" | "planta">[]) {
-    const items: Cuenta[] = records.map((r) => ({
-      ...r,
-      id: Date.now().toString() + Math.random().toString(36).slice(2),
-      abonos: [],
-      status: computeStatus(r as Cuenta),
-    }));
+    const items: Cuenta[] = records.map((r) => {
+      const id = r.uuid?.trim()
+        ? r.uuid.trim().replace(/[^a-zA-Z0-9-]/g, "").toLowerCase()
+        : Date.now().toString() + Math.random().toString(36).slice(2);
+      return { ...r, id, abonos: r.abonos ?? [], status: computeStatus(r as Cuenta) };
+    });
     await Promise.all(
       items.map((item) => {
         const { id, ...data } = item;
         return upsertDocument(collection, id!, withPlantaTag({ ...data }));
       })
     );
-    setCuentas((p) => [...items, ...p]);
+    setCuentas((p) => {
+      const existingIds = new Set(p.map((c) => c.id));
+      const newItems = items.filter((i) => !existingIds.has(i.id));
+      return [...newItems, ...p];
+    });
     showToast("success", "Carga masiva completada", `${items.length} registros importados`);
   }
 
@@ -963,7 +980,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
 
       <FormDrawer open={showForm} kind={kind} clientesList={clientesList} initial={editing ?? undefined} onClose={() => { setShowForm(false); setEditing(null); }} onSave={handleSave} />
       <AbonoDrawer cuenta={abonoTarget} kind={kind} onClose={() => setAbonoTarget(null)} onSave={handleAbono} />
-      <CargaMasivaModal open={showCargaMasiva} kind={kind} onClose={() => setShowCargaMasiva(false)} onConfirm={handleCargaMasiva} />
+      <CargaMasivaModal open={showCargaMasiva} kind={kind} existingUuids={existingUuids} onClose={() => setShowCargaMasiva(false)} onConfirm={handleCargaMasiva} />
     </div>
   );
 }

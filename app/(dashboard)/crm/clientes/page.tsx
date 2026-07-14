@@ -20,8 +20,6 @@ import {
   X,
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
-import FormModal from "@/components/FormModal";
-import FormSection from "@/components/FormSection";
 import StatusBadge from "@/components/StatusBadge";
 import {
   estatusCliente,
@@ -51,6 +49,301 @@ const tipoBadge: Record<TipoCliente, string> = {
   Industrial: "bg-amber-500/10 text-amber-300",
 };
 
+// ─── Form state ───────────────────────────────────────────────────────────────
+
+interface ClienteForm {
+  razonSocial: string;
+  nombreComercial: string;
+  rfc: string;
+  domicilio: string;
+  colonia: string;
+  municipio: string;
+  estado: string;
+  cp: string;
+  contacto: string;
+  cargo: string;
+  telefono: string;
+  email: string;
+  tipoCliente: TipoCliente;
+  vendedorAsignado: string;
+  calificacion: CalificacionCliente;
+  diasCredito: string;
+  limiteCredito: string;
+  saldoPendiente: string;
+  estatus: EstatusCliente;
+  notas: string;
+}
+
+function emptyForm(): ClienteForm {
+  return {
+    razonSocial: "", nombreComercial: "", rfc: "", domicilio: "", colonia: "",
+    municipio: "", estado: "Nuevo León", cp: "", contacto: "", cargo: "",
+    telefono: "", email: "", tipoCliente: "Constructora",
+    vendedorAsignado: "Ventas MTY", calificacion: "B", diasCredito: "30",
+    limiteCredito: "0", saldoPendiente: "0", estatus: "Activo", notas: "",
+  };
+}
+
+function fromCliente(c: Cliente): ClienteForm {
+  return {
+    razonSocial: c.razonSocial ?? "",
+    nombreComercial: c.nombreComercial ?? "",
+    rfc: c.rfc ?? "",
+    domicilio: c.domicilio ?? "",
+    colonia: c.colonia ?? "",
+    municipio: c.municipio ?? "",
+    estado: c.estado ?? "Nuevo León",
+    cp: c.cp ?? "",
+    contacto: c.contacto ?? "",
+    cargo: c.cargo ?? "",
+    telefono: c.telefono ?? "",
+    email: c.email ?? "",
+    tipoCliente: c.tipoCliente ?? "Constructora",
+    vendedorAsignado: c.vendedorAsignado ?? "Ventas MTY",
+    calificacion: c.calificacion ?? "B",
+    diasCredito: c.diasCredito ? String(c.diasCredito) : "30",
+    limiteCredito: c.limiteCredito ? String(c.limiteCredito) : "0",
+    saldoPendiente: c.saldoPendiente ? String(c.saldoPendiente) : "0",
+    estatus: c.estatus ?? "Activo",
+    notas: c.notas ?? "",
+  };
+}
+
+// ─── Drawer ───────────────────────────────────────────────────────────────────
+
+const lbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5";
+const inp = "w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-900 text-sm placeholder-gray-400 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors";
+
+function SectionDivider({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-3 mb-4">
+      <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 whitespace-nowrap">{label}</span>
+      <span className="h-px flex-1 bg-gray-100" />
+    </div>
+  );
+}
+
+function ClienteDrawer({ open, editing, onClose, onSave, errorMsg }: {
+  open: boolean;
+  editing: Cliente | null;
+  onClose: () => void;
+  onSave: (f: ClienteForm) => Promise<string | false | void>;
+  errorMsg: string;
+}) {
+  const [form, setForm] = useState<ClienteForm>(emptyForm);
+  const [saving, setSaving] = useState(false);
+  const [localError, setLocalError] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    setLocalError("");
+    setForm(editing ? fromCliente(editing) : emptyForm());
+  }, [open, editing]);
+
+  const set = <K extends keyof ClienteForm>(k: K, v: ClienteForm[K]) =>
+    setForm((p) => ({ ...p, [k]: v }));
+
+  const handleSave = async () => {
+    if (!form.razonSocial.trim() || !form.rfc.trim() || !form.contacto.trim()) {
+      setLocalError("Razón social, RFC y contacto son obligatorios.");
+      return;
+    }
+    setSaving(true);
+    setLocalError("");
+    try {
+      const result = await onSave(form);
+      if (typeof result === "string") {
+        setLocalError(result);
+      } else {
+        onClose();
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!open) return null;
+
+  const displayError = localError || errorMsg;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex">
+      <button className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} aria-label="Cerrar" />
+      <div className="relative ml-auto flex h-full w-full max-w-xl flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-4 shrink-0">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#CC2229]/10 text-[#CC2229]">
+            <Users size={18} />
+          </div>
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">
+              {editing ? `Editar — ${editing.razonSocial}` : "Nuevo cliente"}
+            </h2>
+            <p className="text-xs text-gray-500">Razón social, RFC y contacto son obligatorios</p>
+          </div>
+          <button onClick={onClose} className="ml-auto rounded-xl p-2 text-gray-400 hover:bg-gray-100 transition-colors cursor-pointer">
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+          {displayError && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600">
+              {displayError}
+            </div>
+          )}
+
+          {/* Datos fiscales */}
+          <div>
+            <SectionDivider label="Datos fiscales" />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <label className={lbl}>Razón social <span className="text-[#CC2229]">*</span></label>
+                <input type="text" value={form.razonSocial} onChange={(e) => set("razonSocial", e.target.value)} placeholder="Nombre fiscal completo" className={inp} />
+              </div>
+              <div>
+                <label className={lbl}>Nombre comercial</label>
+                <input type="text" value={form.nombreComercial} onChange={(e) => set("nombreComercial", e.target.value)} placeholder="Nombre de marca" className={inp} />
+              </div>
+              <div>
+                <label className={lbl}>RFC <span className="text-[#CC2229]">*</span></label>
+                <input type="text" value={form.rfc} onChange={(e) => set("rfc", e.target.value.toUpperCase())} placeholder="RFC" className={`${inp} uppercase`} />
+              </div>
+            </div>
+          </div>
+
+          {/* Domicilio */}
+          <div>
+            <SectionDivider label="Domicilio" />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <label className={lbl}>Domicilio</label>
+                <input type="text" value={form.domicilio} onChange={(e) => set("domicilio", e.target.value)} placeholder="Calle y número" className={inp} />
+              </div>
+              <div>
+                <label className={lbl}>Colonia</label>
+                <input type="text" value={form.colonia} onChange={(e) => set("colonia", e.target.value)} placeholder="Colonia" className={inp} />
+              </div>
+              <div>
+                <label className={lbl}>Municipio</label>
+                <input type="text" value={form.municipio} onChange={(e) => set("municipio", e.target.value)} placeholder="Municipio" className={inp} />
+              </div>
+              <div>
+                <label className={lbl}>Estado</label>
+                <input type="text" value={form.estado} onChange={(e) => set("estado", e.target.value)} placeholder="Estado" className={inp} />
+              </div>
+              <div>
+                <label className={lbl}>C.P.</label>
+                <input type="text" value={form.cp} onChange={(e) => set("cp", e.target.value)} placeholder="Código postal" className={inp} />
+              </div>
+            </div>
+          </div>
+
+          {/* Contacto */}
+          <div>
+            <SectionDivider label="Contacto" />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={lbl}>Contacto principal <span className="text-[#CC2229]">*</span></label>
+                <input type="text" value={form.contacto} onChange={(e) => set("contacto", e.target.value)} placeholder="Nombre del contacto" className={inp} />
+              </div>
+              <div>
+                <label className={lbl}>Cargo</label>
+                <input type="text" value={form.cargo} onChange={(e) => set("cargo", e.target.value)} placeholder="Ej. Director de compras" className={inp} />
+              </div>
+              <div>
+                <label className={lbl}>Teléfono</label>
+                <input type="text" value={form.telefono} onChange={(e) => set("telefono", e.target.value)} placeholder="81 1234 5678" className={inp} />
+              </div>
+              <div>
+                <label className={lbl}>Correo electrónico</label>
+                <input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} placeholder="correo@empresa.com" className={inp} />
+              </div>
+            </div>
+          </div>
+
+          {/* Clasificación y crédito */}
+          <div>
+            <SectionDivider label="Clasificación y crédito" />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={lbl}>Tipo de cliente</label>
+                <select value={form.tipoCliente} onChange={(e) => set("tipoCliente", e.target.value as TipoCliente)} className={inp}>
+                  {tiposCliente.map((t) => <option key={t}>{t}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={lbl}>Vendedor asignado</label>
+                <select value={form.vendedorAsignado} onChange={(e) => set("vendedorAsignado", e.target.value)} className={inp}>
+                  {vendedores.map((v) => <option key={v}>{v}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={lbl}>Calificación</label>
+                <select value={form.calificacion} onChange={(e) => set("calificacion", e.target.value as CalificacionCliente)} className={inp}>
+                  {CALIFICACION_OPTIONS.map((c) => <option key={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={lbl}>Días de crédito</label>
+                <select value={form.diasCredito} onChange={(e) => set("diasCredito", e.target.value)} className={inp}>
+                  {DIAS_CREDITO_OPTIONS.map((d) => <option key={d}>{d}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={lbl}>Límite de crédito</label>
+                <input type="text" value={form.limiteCredito} onChange={(e) => set("limiteCredito", e.target.value)} placeholder="0" className={inp} />
+              </div>
+              <div>
+                <label className={lbl}>Saldo pendiente</label>
+                <input type="text" value={form.saldoPendiente} onChange={(e) => set("saldoPendiente", e.target.value)} placeholder="0" className={inp} />
+              </div>
+              <div className="col-span-2">
+                <label className={lbl}>Estatus</label>
+                <select value={form.estatus} onChange={(e) => set("estatus", e.target.value as EstatusCliente)} className={inp}>
+                  {estatusCliente.map((s) => <option key={s}>{s}</option>)}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Notas */}
+          <div>
+            <SectionDivider label="Notas" />
+            <textarea
+              value={form.notas}
+              onChange={(e) => set("notas", e.target.value)}
+              rows={3}
+              placeholder="Observaciones, condiciones especiales, etc."
+              className={`${inp} resize-none`}
+            />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="shrink-0 border-t border-gray-100 px-6 py-4 flex items-center justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="px-4 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 border border-gray-200 rounded-xl transition-colors cursor-pointer"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving || !form.razonSocial.trim() || !form.rfc.trim() || !form.contacto.trim()}
+            className="px-5 py-2.5 text-sm font-semibold bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-xl transition-colors disabled:opacity-60 shadow-lg shadow-[#CC2229]/20 cursor-pointer"
+          >
+            {saving ? "Guardando…" : editing ? "Guardar cambios" : "Crear cliente"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function CrmClientesPage() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,6 +354,7 @@ export default function CrmClientesPage() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Cliente | null>(null);
   const [detail, setDetail] = useState<Cliente | null>(null);
+  const [saveError, setSaveError] = useState("");
 
   useEffect(() => {
     getCollectionDocs<Cliente>(COLLECTIONS.clientes)
@@ -124,11 +418,13 @@ export default function CrmClientesPage() {
   const nuevosEsteAnio = clientes.filter((c) => c.fechaAlta.startsWith("2026")).length;
 
   function openCreate() {
+    setSaveError("");
     setEditing(null);
     setShowForm(true);
   }
 
   function openEdit(c: Cliente) {
+    setSaveError("");
     setDetail(null);
     setEditing(c);
     setShowForm(true);
@@ -140,10 +436,10 @@ export default function CrmClientesPage() {
     await deleteDocument(COLLECTIONS.clientes, id);
   }
 
-  async function handleSave(values: Record<string, string>) {
-    const razonSocial = values["Razón social"]?.trim();
-    const rfc = values["RFC"]?.trim();
-    const contacto = values["Contacto principal"]?.trim();
+  async function handleSave(f: ClienteForm): Promise<string | false | void> {
+    const razonSocial = f.razonSocial.trim();
+    const rfc = f.rfc.trim();
+    const contacto = f.contacto.trim();
 
     if (!razonSocial || !rfc || !contacto) return false;
 
@@ -161,29 +457,29 @@ export default function CrmClientesPage() {
     const next: Cliente = {
       id,
       razonSocial,
-      nombreComercial: values["Nombre comercial"] ?? razonSocial,
+      nombreComercial: f.nombreComercial || razonSocial,
       rfc,
-      domicilio: values["Domicilio"] ?? "",
-      colonia: values["Colonia"] ?? "",
-      municipio: values["Municipio"] ?? "",
-      estado: values["Estado"] ?? "Nuevo León",
-      cp: values["C.P."] ?? "",
+      domicilio: f.domicilio,
+      colonia: f.colonia,
+      municipio: f.municipio,
+      estado: f.estado || "Nuevo León",
+      cp: f.cp,
       contacto,
-      cargo: values["Cargo"] ?? "",
-      telefono: values["Teléfono"] ?? "",
-      email: values["Correo electrónico"] ?? "",
-      tipoCliente: (values["Tipo de cliente"] as TipoCliente) ?? "Constructora",
-      vendedorAsignado: values["Vendedor asignado"] ?? "Ventas MTY",
-      limiteCredito: Number(values["Límite de crédito"]?.replace(/[$,]/g, "") ?? 0),
-      saldoPendiente: Number(values["Saldo pendiente"]?.replace(/[$,]/g, "") ?? 0),
-      diasCredito: Number(values["Días de crédito"] ?? 30),
-      ultimaCompra: values["Última compra"] ?? "—",
-      totalComprasAnio: 0,
-      m3Acumulados: 0,
-      estatus: (values["Estatus"] as EstatusCliente) ?? "Activo",
-      calificacion: (values["Calificación"] as CalificacionCliente) ?? "B",
+      cargo: f.cargo,
+      telefono: f.telefono,
+      email: f.email,
+      tipoCliente: f.tipoCliente,
+      vendedorAsignado: f.vendedorAsignado,
+      limiteCredito: Number(f.limiteCredito?.replace(/[$,]/g, "") ?? 0),
+      saldoPendiente: Number(f.saldoPendiente?.replace(/[$,]/g, "") ?? 0),
+      diasCredito: Number(f.diasCredito ?? 30),
+      ultimaCompra: editing?.ultimaCompra ?? "—",
+      totalComprasAnio: editing?.totalComprasAnio ?? 0,
+      m3Acumulados: editing?.m3Acumulados ?? 0,
+      estatus: f.estatus,
+      calificacion: f.calificacion,
       fechaAlta: editing?.fechaAlta ?? new Date().toISOString().split("T")[0],
-      notas: values["Notas"] ?? "",
+      notas: f.notas,
     };
 
     setClientes((current) =>
@@ -193,8 +489,7 @@ export default function CrmClientesPage() {
     );
     const { id: _id, ...data } = next;
     await upsertDocument(COLLECTIONS.clientes, _id, data);
-    setShowForm(false);
-    setEditing(null);
+    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: editing ? "Cliente actualizado." : "Cliente creado." } }));
   }
 
   function exportExcel() {
@@ -323,8 +618,8 @@ export default function CrmClientesPage() {
       <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-[#1A1A1A] border-b border-[#3A3A3A]">
+            <thead className="sticky top-0 z-10 bg-[#1A1A1A]">
+              <tr className="border-b border-[#3A3A3A]">
                 {["Razón Social / RFC", "Municipio", "Tipo", "Contacto", "Vendedor", "Crédito", "Saldo", "Estatus", "Acciones"].map(
                   (h) => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-400 whitespace-nowrap">
@@ -353,7 +648,7 @@ export default function CrmClientesPage() {
                   return (
                     <tr
                       key={c.id}
-                      className="transition-colors cursor-pointer"
+                      className="transition-colors cursor-pointer hover:bg-[#2A2A2A]"
                       onClick={() => setDetail(c)}
                     >
                       <td className="px-4 py-3 max-w-[240px]">
@@ -551,110 +846,14 @@ export default function CrmClientesPage() {
         </div>
       )}
 
-      {/* Form Modal */}
-      <FormModal
+      {/* Drawer */}
+      <ClienteDrawer
         open={showForm}
-        title={editing ? `Editar cliente — ${editing.razonSocial}` : "Nuevo cliente"}
-        onClose={() => { setShowForm(false); setEditing(null); }}
+        editing={editing}
+        onClose={() => { setShowForm(false); setEditing(null); setSaveError(""); }}
         onSave={handleSave}
-        footer={
-          <>
-            <button
-              onClick={() => { setShowForm(false); setEditing(null); }}
-              className="px-5 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 border border-gray-200 rounded-xl transition-colors"
-            >
-              Cancelar
-            </button>
-            <button className="px-5 py-2.5 text-sm font-medium bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-xl transition-colors shadow-md shadow-[#CC2229]/20">
-              Guardar cliente
-            </button>
-          </>
-        }
-      >
-        {(() => {
-          const lbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5";
-          const inp = "w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-900 text-sm placeholder-gray-400 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors";
-          return (
-            <>
-              <FormSection title="Datos fiscales">
-                {[
-                  { label: "Razón social", defaultValue: editing?.razonSocial, span: "sm:col-span-2" },
-                  { label: "Nombre comercial", defaultValue: editing?.nombreComercial },
-                  { label: "RFC", defaultValue: editing?.rfc },
-                  { label: "Domicilio", defaultValue: editing?.domicilio, span: "sm:col-span-2" },
-                  { label: "Colonia", defaultValue: editing?.colonia },
-                  { label: "Municipio", defaultValue: editing?.municipio },
-                  { label: "Estado", defaultValue: editing?.estado ?? "Nuevo León" },
-                  { label: "C.P.", defaultValue: editing?.cp },
-                ].map(({ label, defaultValue, span }) => (
-                  <div key={label} className={span}>
-                    <label className={lbl}>{label}</label>
-                    <input type="text" defaultValue={defaultValue ?? ""} className={inp} />
-                  </div>
-                ))}
-              </FormSection>
-              <FormSection title="Contacto">
-                {[
-                  { label: "Contacto principal", defaultValue: editing?.contacto },
-                  { label: "Cargo", defaultValue: editing?.cargo },
-                  { label: "Teléfono", defaultValue: editing?.telefono },
-                  { label: "Correo electrónico", type: "email", defaultValue: editing?.email },
-                ].map(({ label, defaultValue, type }) => (
-                  <div key={label}>
-                    <label className={lbl}>{label}</label>
-                    <input type={type ?? "text"} defaultValue={defaultValue ?? ""} className={inp} />
-                  </div>
-                ))}
-              </FormSection>
-              <FormSection title="Clasificación y crédito">
-                <div>
-                  <label className={lbl}>Tipo de cliente</label>
-                  <select defaultValue={editing?.tipoCliente ?? "Constructora"} className={inp}>
-                    {tiposCliente.map((t) => <option key={t}>{t}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className={lbl}>Vendedor asignado</label>
-                  <select defaultValue={editing?.vendedorAsignado ?? "Ventas MTY"} className={inp}>
-                    {vendedores.map((v) => <option key={v}>{v}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className={lbl}>Calificación</label>
-                  <select defaultValue={editing?.calificacion ?? "B"} className={inp}>
-                    {CALIFICACION_OPTIONS.map((c) => <option key={c}>{c}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className={lbl}>Días de crédito</label>
-                  <select defaultValue={editing?.diasCredito ? String(editing.diasCredito) : "30"} className={inp}>
-                    {DIAS_CREDITO_OPTIONS.map((d) => <option key={d}>{d}</option>)}
-                  </select>
-                </div>
-                {[
-                  { label: "Límite de crédito", defaultValue: editing?.limiteCredito ? String(editing.limiteCredito) : "0" },
-                  { label: "Saldo pendiente", defaultValue: editing?.saldoPendiente ? String(editing.saldoPendiente) : "0" },
-                ].map(({ label, defaultValue }) => (
-                  <div key={label}>
-                    <label className={lbl}>{label}</label>
-                    <input type="text" defaultValue={defaultValue ?? ""} className={inp} />
-                  </div>
-                ))}
-                <div>
-                  <label className={lbl}>Estatus</label>
-                  <select defaultValue={editing?.estatus ?? "Activo"} className={inp}>
-                    {estatusCliente.map((s) => <option key={s}>{s}</option>)}
-                  </select>
-                </div>
-              </FormSection>
-              <div>
-                <label className={lbl}>Notas</label>
-                <textarea defaultValue={editing?.notas ?? ""} rows={3} className={`${inp} resize-none`} />
-              </div>
-            </>
-          );
-        })()}
-      </FormModal>
+        errorMsg={saveError}
+      />
     </div>
   );
 }

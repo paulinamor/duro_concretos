@@ -47,11 +47,6 @@ const navItems = [
     icon: BarChart3,
     label: "Reportes",
   },
-  {
-    href: "/automatizaciones",
-    icon: Bot,
-    label: "Automatizaciones",
-  },
 ];
 
 const systemItems = [
@@ -62,9 +57,7 @@ const systemItems = [
   },
 ];
 
-const administracionItems = [
-  { href: "/administracion/viajes-chofer", icon: UsersRound, label: "Viajes por Chofer" },
-];
+const administracionItems: { href: string; icon: React.ElementType; label: string }[] = [];
 
 const transporteItems = [
   { href: "/transporte/programacion", icon: CalendarDays, label: "Programación" },
@@ -82,7 +75,6 @@ const ventasItems = [
   { href: "/crm/clientes", icon: BookUser, label: "Base de Clientes" },
   { href: "/crm/pipeline", icon: ChartNoAxesColumn, label: "Pipeline CRM" },
   { href: "/ventas/recibos-concreto", icon: ReceiptText, label: "Recibos de Concreto" },
-  { href: "/ventas/horas-llegada-salida", icon: ClipboardClock, label: "Horas Llegada/Salida" },
 ];
 
 const finanzasItems = [
@@ -93,7 +85,6 @@ const finanzasItems = [
 
 const recursosHumanosItems = [
   { href: "/transporte/operadores", icon: HardHat, label: "Empleados" },
-  { href: "/recursos-humanos/nomina", icon: ReceiptText, label: "Nómina Timbrada" },
 ];
 
 function NavLink({

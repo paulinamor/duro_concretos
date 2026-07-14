@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
-  Clock, Download, Pencil, Plus, Trash2, UserRound, X,
+  Clock, Download, ExternalLink, Pencil, Plus, ReceiptText, Trash2, UserRound, X,
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
 import ClienteCombobox from "@/components/ClienteCombobox";
@@ -65,8 +65,10 @@ interface Programacion {
   credito: string;
   fact: string;
   pagado: string;
+  montoPagado: number | null;
   metodoPago: string;
   fechaPago: string;
+  cxcId?: string;
   planta?: string;
 }
 
@@ -95,6 +97,7 @@ interface FormState {
   ltoAcelr: string; kiloFibra: string; m3Imper: string;
   aditivo: string; tuberiaExtra: string; permisosOC: string;
   recibo: string; credito: string; fact: string; pagado: string;
+  montoPagado: string;
   metodoPago: string; fechaPago: string;
 }
 
@@ -208,7 +211,7 @@ function emptyForm(dia: string): FormState {
     precioM3: "", precioM3Bomba: "", factorBomba: "1.16", aplicarFactorBomba: false,
     ltoAcelr: "", kiloFibra: "", m3Imper: "",
     aditivo: "", tuberiaExtra: "", permisosOC: "",
-    recibo: "", credito: "", fact: "", pagado: "", metodoPago: "", fechaPago: "",
+    recibo: "", credito: "", fact: "", pagado: "", montoPagado: "", metodoPago: "", fechaPago: "",
   };
 }
 
@@ -261,46 +264,41 @@ function formFromProg(p: Programacion): FormState {
     tuberiaExtra: p.tuberiaExtra != null ? String(p.tuberiaExtra) : "",
     permisosOC: p.permisosOC != null ? String(p.permisosOC) : "",
     recibo: p.recibo, credito: p.credito, fact: p.fact, pagado: p.pagado,
+    montoPagado: p.montoPagado != null ? String(p.montoPagado) : "",
     metodoPago: p.metodoPago, fechaPago: p.fechaPago,
   };
 }
 
-function exportCSV(rows: Programacion[]) {
-  const headers = [
-    "DÍA","VENDEDOR","DÍA Y HORA PEDIDO","MUESTRAS","HORA","HSR",
-    "CHOFER","CR","HORA SALIDA","REMISIÓN","NUM SELLO",
-    "HORA LLEGADA OBRA","HORA INICIO DESC.","HORA FINAL DESC.",
-    "HORA SALIDA OBRA","TIEMPO DESC.","M3 CHOFER",
-    "CLIENTE","TELÉFONO","PARA USO","DIRECCIÓN",
-    "M3 TOTALES","M3 VACÍOS","T.EXTRA DESC.","EXTRAS","T/D BOM",
-    "RESISTENCIA","COLOR","PRECIO M3","$ M3 BOMBA","TOTAL X M3",
-    "$ LTO ACELR","$ KILO FIBRA","$ M3 IMPER","ADITIVO",
-    "TUBERÍA EXTRA","PERMISOS O/C","TOTAL",
-    "RECIBO","CRÉDITO","FACT","PAGADO","MÉTODO PAGO","FECHA PAGO",
-  ];
-  const lines: string[] = [];
+function exportXLSX(rows: Programacion[]) {
+  const XLSX = require("xlsx");
+  const data: Record<string, unknown>[] = [];
   for (const r of rows) {
     const choferes = r.choferes?.length ? r.choferes : [{ chofer: "", cr: "", horaSalida: "", remision: "", numSello: "", horaLlegadaObra: "", horaInicioDescarga: "", horaFinalDescarga: "", horaSalidaObra: "", tiempoDescarga: "", m3: null } as ChoferEntry];
     for (const c of choferes) {
-      lines.push([
-        r.dia, r.vendedor, r.diaHoraPedido, r.muestras, r.hora, r.hsr,
-        c.chofer, c.cr, c.horaSalida, c.remision, c.numSello,
-        c.horaLlegadaObra, c.horaInicioDescarga, c.horaFinalDescarga,
-        c.horaSalidaObra, c.tiempoDescarga, c.m3 ?? "",
-        r.cliente, r.telefono, r.paraUso, r.direccion,
-        r.m3Totales ?? "", r.m3Vacios ?? "", r.tiempoExtraDescarga, r.extras, r.tdBom,
-        r.resistencia, r.color, r.precioM3 ?? "", r.precioM3Bomba ?? "", r.totalXM3 ?? "",
-        r.ltoAcelr ?? "", r.kiloFibra ?? "", r.m3Imper ?? "", r.aditivo,
-        r.tuberiaExtra ?? "", r.permisosOC ?? "", r.total ?? "",
-        r.recibo, r.credito, r.fact, r.pagado, r.metodoPago, r.fechaPago,
-      ].map((v) => `"${v}"`).join(","));
+      data.push({
+        "DÍA": r.dia, "VENDEDOR": r.vendedor, "DÍA Y HORA PEDIDO": r.diaHoraPedido,
+        "MUESTRAS": r.muestras, "HORA": r.hora, "HSR": r.hsr,
+        "CHOFER": c.chofer, "CR": c.cr, "HORA SALIDA": c.horaSalida,
+        "REMISIÓN": c.remision, "NUM SELLO": c.numSello,
+        "HORA LLEGADA OBRA": c.horaLlegadaObra, "HORA INICIO DESC.": c.horaInicioDescarga,
+        "HORA FINAL DESC.": c.horaFinalDescarga, "HORA SALIDA OBRA": c.horaSalidaObra,
+        "TIEMPO DESC.": c.tiempoDescarga, "M3 CHOFER": c.m3 ?? "",
+        "CLIENTE": r.cliente, "TELÉFONO": r.telefono, "PARA USO": r.paraUso, "DIRECCIÓN": r.direccion,
+        "M3 TOTALES": r.m3Totales ?? "", "M3 VACÍOS": r.m3Vacios ?? "",
+        "T.EXTRA DESC.": r.tiempoExtraDescarga, "EXTRAS": r.extras, "T/D BOM": r.tdBom,
+        "RESISTENCIA": r.resistencia, "COLOR": r.color,
+        "PRECIO M3": r.precioM3 ?? "", "$ M3 BOMBA": r.precioM3Bomba ?? "", "TOTAL X M3": r.totalXM3 ?? "",
+        "$ LTO ACELR": r.ltoAcelr ?? "", "$ KILO FIBRA": r.kiloFibra ?? "", "$ M3 IMPER": r.m3Imper ?? "",
+        "ADITIVO": r.aditivo, "TUBERÍA EXTRA": r.tuberiaExtra ?? "", "PERMISOS O/C": r.permisosOC ?? "",
+        "TOTAL": r.total ?? "", "RECIBO": r.recibo, "CRÉDITO": r.credito,
+        "FACT": r.fact, "PAGADO": r.pagado, "MÉTODO PAGO": r.metodoPago, "FECHA PAGO": r.fechaPago,
+      });
     }
   }
-  const blob = new Blob(["﻿" + [headers.join(","), ...lines].join("\n")], { type: "text/csv" });
-  Object.assign(document.createElement("a"), {
-    href: URL.createObjectURL(blob),
-    download: `programacion-${rows[0]?.dia ?? "export"}.csv`,
-  }).click();
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Programación");
+  XLSX.writeFile(wb, `programacion-${rows[0]?.dia ?? "export"}.xlsx`);
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
@@ -532,6 +530,7 @@ function FormDrawer({
         credito: form.credito.trim(),
         fact: form.fact.trim(),
         pagado: form.pagado.trim(),
+        montoPagado: form.pagado === "Parcial" ? (n(form.montoPagado) ?? null) : null,
         metodoPago: form.metodoPago.trim(),
         fechaPago: form.fechaPago,
       });
@@ -800,6 +799,19 @@ function FormDrawer({
                 <option value="Parcial">Parcial</option>
               </select>
             </div>
+            {form.pagado === "Parcial" && (
+              <div>
+                <label className={lbl}>Monto pagado $</label>
+                <input
+                  type="number" step="0.01" min="0"
+                  value={form.montoPagado}
+                  onChange={(e) => set("montoPagado", e.target.value)}
+                  placeholder="0.00"
+                  className={inp}
+                  onWheel={(e) => e.currentTarget.blur()}
+                />
+              </div>
+            )}
             <div>
               <label className={lbl}>Método de pago</label>
               <select value={form.metodoPago} onChange={(e) => set("metodoPago", e.target.value)} className={inp}>
@@ -838,7 +850,7 @@ function FormDrawer({
 
 // ─── TableRow ─────────────────────────────────────────────────────────────────
 
-function TableRow({ p, onEdit, onDelete, showFecha }: { p: Programacion; onEdit: () => void; onDelete: () => void; showFecha?: boolean }) {
+function TableRow({ p, onEdit, onDelete, onCreateCxC, showFecha }: { p: Programacion; onEdit: () => void; onDelete: () => void; onCreateCxC: (p: Programacion) => void; showFecha?: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const pagadoColor = p.pagado === "Sí"
     ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
@@ -917,7 +929,7 @@ function TableRow({ p, onEdit, onDelete, showFecha }: { p: Programacion; onEdit:
 
       {expanded && (
         <tr>
-          <td colSpan={showFecha ? 11 : 10} style={{ backgroundColor: "#F8FAFC", padding: "16px 20px", borderTop: "2px solid #CC2229", borderBottom: "1px solid #e2e8f0", maxWidth: 0 }}>
+          <td colSpan={showFecha ? 11 : 10} className="bg-[#1A1A1A]" style={{ padding: "16px 20px", borderTop: "2px solid #CC2229", borderBottom: "1px solid #e2e8f0", maxWidth: 0 }}>
             <div style={{ display: "flex", flexDirection: "column", gap: "16px", overflow: "hidden" }}>
 
               {/* Tarjetas de choferes */}
@@ -1016,6 +1028,7 @@ function TableRow({ p, onEdit, onDelete, showFecha }: { p: Programacion; onEdit:
                       { label: "Fact.",            value: p.fact },
                       { label: "Crédito",          value: p.credito },
                       { label: "Método pago",      value: p.metodoPago },
+                      { label: "Monto pagado",     value: p.pagado === "Parcial" && p.montoPagado != null ? `$${p.montoPagado.toLocaleString("es-MX")}` : "" },
                       { label: "Fecha pago",       value: p.fechaPago },
                     ].filter((f) => f.value).map(({ label, value }) => (
                       <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px" }}>
@@ -1023,6 +1036,30 @@ function TableRow({ p, onEdit, onDelete, showFecha }: { p: Programacion; onEdit:
                         <span style={{ fontSize: "11px", color: "#1e293b", fontFamily: "monospace" }}>{value}</span>
                       </div>
                     ))}
+                  </div>
+
+                  {/* CxC link / action */}
+                  <div style={{ marginTop: "12px", paddingTop: "10px", borderTop: "1px solid #e2e8f0" }}>
+                    {p.cxcId ? (
+                      <a
+                        href="/finanzas/cxc"
+                        onClick={(e) => e.stopPropagation()}
+                        className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-600 hover:text-emerald-700 transition-colors"
+                      >
+                        <ReceiptText size={12} />
+                        En CxC
+                        <ExternalLink size={10} />
+                      </a>
+                    ) : p.total && p.pagado !== "Sí" ? (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onCreateCxC(p); }}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-blue-400/40 bg-blue-500/10 px-3 py-1.5 text-[11px] font-semibold text-blue-400 hover:border-blue-400/70 hover:bg-blue-500/20 transition-colors cursor-pointer"
+                      >
+                        <ReceiptText size={12} />
+                        Enviar a CxC
+                      </button>
+                    ) : null}
                   </div>
                 </div>
 
@@ -1188,6 +1225,56 @@ export default function ProgramacionPage() {
     window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: "Programación eliminada." } }));
   }
 
+  async function handleCreateCxC(p: Programacion) {
+    if (!p.id || !p.total) return;
+    const isoToDisplay = (iso: string) => {
+      if (!iso || !iso.includes("-")) return iso;
+      const [y, m, d] = iso.split("-");
+      return `${d}/${m}/${y}`;
+    };
+    const mapFormaPago = (m: string) => {
+      const lower = (m ?? "").toLowerCase();
+      if (lower.includes("efectivo")) return "01 - Efectivo";
+      if (lower.includes("transfer")) return "03 - Transferencia electrónica";
+      if (lower.includes("tarjeta") || lower.includes("créd")) return "04 - Tarjeta de crédito";
+      if (lower.includes("débito")) return "28 - Tarjeta de débito";
+      return "99 - Por definir";
+    };
+    const montoPagado = p.pagado === "Sí" ? p.total : (p.pagado === "Parcial" ? (p.montoPagado ?? 0) : 0);
+    const saldo = p.total - montoPagado;
+    const status: "Pagado" | "Parcial" | "Pendiente" = saldo <= 0 ? "Pagado" : montoPagado > 0 ? "Parcial" : "Pendiente";
+    const vencimiento = p.fechaPago ? isoToDisplay(p.fechaPago) : isoToDisplay(p.dia);
+    const cxcId = `cxc-prog-${p.id}`;
+    const cxcData = {
+      estadoSAT: "Vigente" as const,
+      tipo: "Factura" as const,
+      serie: "F",
+      uuid: "",
+      uuidRelacion: "",
+      rfc: "",
+      fecha: isoToDisplay(p.dia),
+      folio: p.recibo || "",
+      contraparte: p.cliente,
+      concepto: [`Concreto`, p.resistencia, p.m3Totales != null ? `${p.m3Totales} m³` : ""].filter(Boolean).join(" · "),
+      subtotal: p.total,
+      iva: 0,
+      total: p.total,
+      formaPago: mapFormaPago(p.metodoPago),
+      banco: "",
+      montoPagado,
+      vencimiento,
+      status,
+      notas: `Programación ${p.dia}${p.recibo ? ` · Recibo ${p.recibo}` : ""}`,
+      abonos: montoPagado > 0 ? [{ fecha: p.fechaPago ? isoToDisplay(p.fechaPago) : isoToDisplay(p.dia), monto: montoPagado, referencia: p.metodoPago }] : [],
+      programacionId: p.id,
+    };
+    await upsertDocument(COLLECTIONS.cuentasPorCobrar, cxcId, cxcData);
+    const { id: _id, ...rest } = p;
+    await upsertDocument(COLLECTIONS.programaciones, p.id, withPlantaTag({ ...rest, cxcId }));
+    setProgramaciones((prev) => prev.map((prog) => prog.id === p.id ? { ...prog, cxcId } : prog));
+    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", title: "Enviado a CxC", message: `${p.cliente} · ${currency(p.total)}` } }));
+  }
+
   return (
     <div className="space-y-6">
       {/* Nav + filtros */}
@@ -1208,12 +1295,12 @@ export default function ProgramacionPage() {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => filtered.length > 0 && exportCSV(filtered)}
+              onClick={() => filtered.length > 0 && exportXLSX(filtered)}
               disabled={filtered.length === 0}
               className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-300 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg hover:border-[#CC2229]/60 transition-colors disabled:opacity-40"
             >
               <Download size={13} />
-              CSV
+              Excel
             </button>
             <button
               onClick={() => { setEditing(undefined); setShowDrawer(true); }}
@@ -1338,7 +1425,7 @@ export default function ProgramacionPage() {
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead>
+            <thead className="sticky top-0 z-10 bg-[#1A1A1A]">
               <tr className="bg-[#1A1A1A]">
                 {[...(viewMode !== "dia" ? ["Fecha"] : []), "Hora", "Chofer", "CR", "Cliente", "M3 totales", "Remisión", "Resistencia", "Total", "Pagado", ""].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
@@ -1374,6 +1461,7 @@ export default function ProgramacionPage() {
                   showFecha={viewMode !== "dia"}
                   onEdit={() => { setEditing(p); setShowDrawer(true); }}
                   onDelete={() => p.id && handleDelete(p.id)}
+                  onCreateCxC={handleCreateCxC}
                 />
               ))}
             </tbody>

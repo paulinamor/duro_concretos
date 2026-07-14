@@ -9,6 +9,7 @@ import type { SatDownloadKind } from "@/lib/satDownloads";
 interface Props {
   open: boolean;
   kind: SatDownloadKind;
+  existingUuids: Set<string>;
   onClose: () => void;
   onConfirm: (records: Omit<Cuenta, "id" | "planta">[]) => Promise<void>;
 }
@@ -173,17 +174,18 @@ function downloadTemplate(kind: SatDownloadKind) {
 
 type Phase = "upload" | "preview" | "saving" | "done";
 
-export default function CargaMasivaModal({ open, kind, onClose, onConfirm }: Props) {
+export default function CargaMasivaModal({ open, kind, existingUuids, onClose, onConfirm }: Props) {
   const [phase, setPhase] = useState<Phase>("upload");
   const [file, setFile] = useState<File | null>(null);
   const [records, setRecords] = useState<Omit<Cuenta, "id" | "planta">[]>([]);
+  const [dupeUuids, setDupeUuids] = useState<Set<string>>(new Set());
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const isCxc = kind === "cxc";
   const cols = isCxc ? COLS_CXC : COLS_CXP;
 
-  function reset() { setPhase("upload"); setFile(null); setRecords([]); setProcessing(false); setError(""); }
+  function reset() { setPhase("upload"); setFile(null); setRecords([]); setDupeUuids(new Set()); setProcessing(false); setError(""); }
   function handleClose() { reset(); onClose(); }
 
   async function handleAnalyze() {
@@ -193,6 +195,12 @@ export default function CargaMasivaModal({ open, kind, onClose, onConfirm }: Pro
     try {
       const parsed = await parseExcel(file, kind);
       if (!parsed.length) throw new Error("No se encontraron registros. Verifica que el archivo tenga datos y el encabezado correcto.");
+      const dupes = new Set(
+        parsed
+          .map((r) => r.uuid?.trim().toUpperCase())
+          .filter((u): u is string => !!u && existingUuids.has(u)),
+      );
+      setDupeUuids(dupes);
       setRecords(parsed);
       setPhase("preview");
     } catch (e) {
@@ -203,15 +211,21 @@ export default function CargaMasivaModal({ open, kind, onClose, onConfirm }: Pro
   }
 
   async function handleImport() {
+    const toImport = records.filter((r) => {
+      const u = r.uuid?.trim().toUpperCase();
+      return !u || !dupeUuids.has(u);
+    });
     setPhase("saving");
     try {
-      await onConfirm(records);
+      await onConfirm(toImport);
       setPhase("done");
     } catch (e) {
       setError(String(e));
       setPhase("preview");
     }
   }
+
+  const newCount = records.length - dupeUuids.size;
 
   if (!open) return null;
 
@@ -248,7 +262,10 @@ export default function CargaMasivaModal({ open, kind, onClose, onConfirm }: Pro
                 <CheckCircle2 className="w-8 h-8 text-emerald-500" />
               </div>
               <div>
-                <h3 className="text-base font-bold text-slate-900">{records.length} registros importados</h3>
+                <h3 className="text-base font-bold text-slate-900">{newCount} registros importados</h3>
+                {dupeUuids.size > 0 && (
+                  <p className="text-xs text-amber-600 mt-1">{dupeUuids.size} duplicado{dupeUuids.size !== 1 ? "s" : ""} omitido{dupeUuids.size !== 1 ? "s" : ""}</p>
+                )}
                 <p className="text-xs text-slate-500 mt-1">La carga masiva finalizó correctamente</p>
               </div>
             </div>
@@ -328,7 +345,11 @@ export default function CargaMasivaModal({ open, kind, onClose, onConfirm }: Pro
                 <CheckCircle2 className="w-5 h-5 text-violet-600 shrink-0" />
                 <div>
                   <p className="text-sm font-semibold text-violet-800">{records.length} registros detectados</p>
-                  <p className="text-xs text-violet-600">Revisa antes de importar</p>
+                  <p className="text-xs text-violet-600">
+                    {dupeUuids.size > 0
+                      ? `${newCount} nuevos · ${dupeUuids.size} duplicado${dupeUuids.size !== 1 ? "s" : ""} (se omitirán)`
+                      : "Sin duplicados · listos para importar"}
+                  </p>
                 </div>
               </div>
               <div className="rounded-xl border border-slate-200 overflow-hidden">
@@ -336,28 +357,36 @@ export default function CargaMasivaModal({ open, kind, onClose, onConfirm }: Pro
                   <table className="min-w-full text-xs">
                     <thead className="bg-slate-50 sticky top-0">
                       <tr>
-                        {[isCxc ? "Nombre Receptor" : "Nombre Emisor", "RFC", "Folio", "Fecha", "SubTotal", "IVA", "Total", "SAT"].map((h) => (
+                        {[isCxc ? "Nombre Receptor" : "Nombre Emisor", "RFC", "Folio", "Fecha", "SubTotal", "IVA", "Total", "SAT", ""].map((h) => (
                           <th key={h} className="px-3 py-2 text-left font-semibold text-slate-500 whitespace-nowrap">{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {records.map((r, i) => (
-                        <tr key={i} className="hover:bg-slate-50">
-                          <td className="px-3 py-1.5 text-slate-700 max-w-[140px] truncate">{r.contraparte || "—"}</td>
-                          <td className="px-3 py-1.5 font-mono text-slate-500 whitespace-nowrap">{r.rfc || "—"}</td>
-                          <td className="px-3 py-1.5 text-slate-600">{r.folio || "—"}</td>
-                          <td className="px-3 py-1.5 whitespace-nowrap">{r.fecha || "—"}</td>
-                          <td className="px-3 py-1.5 tabular-nums whitespace-nowrap">{currency(r.subtotal)}</td>
-                          <td className="px-3 py-1.5 tabular-nums whitespace-nowrap">{currency(r.iva)}</td>
-                          <td className="px-3 py-1.5 tabular-nums font-semibold whitespace-nowrap">{currency(r.total)}</td>
-                          <td className="px-3 py-1.5">
-                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${r.estadoSAT === "Vigente" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-600"}`}>
-                              {r.estadoSAT}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
+                      {records.map((r, i) => {
+                        const isDupe = !!r.uuid?.trim() && dupeUuids.has(r.uuid.trim().toUpperCase());
+                        return (
+                          <tr key={i} className={isDupe ? "bg-amber-50/60 opacity-60" : "hover:bg-slate-50"}>
+                            <td className="px-3 py-1.5 text-slate-700 max-w-[140px] truncate">{r.contraparte || "—"}</td>
+                            <td className="px-3 py-1.5 font-mono text-slate-500 whitespace-nowrap">{r.rfc || "—"}</td>
+                            <td className="px-3 py-1.5 text-slate-600">{r.folio || "—"}</td>
+                            <td className="px-3 py-1.5 whitespace-nowrap">{r.fecha || "—"}</td>
+                            <td className="px-3 py-1.5 tabular-nums whitespace-nowrap">{currency(r.subtotal)}</td>
+                            <td className="px-3 py-1.5 tabular-nums whitespace-nowrap">{currency(r.iva)}</td>
+                            <td className="px-3 py-1.5 tabular-nums font-semibold whitespace-nowrap">{currency(r.total)}</td>
+                            <td className="px-3 py-1.5">
+                              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${r.estadoSAT === "Vigente" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-600"}`}>
+                                {r.estadoSAT}
+                              </span>
+                            </td>
+                            <td className="px-3 py-1.5">
+                              {isDupe && (
+                                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 whitespace-nowrap">Duplicado</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -382,11 +411,12 @@ export default function CargaMasivaModal({ open, kind, onClose, onConfirm }: Pro
               </button>
               <button
                 onClick={handleImport}
-                className="inline-flex items-center gap-2 rounded-xl px-5 py-2 text-sm font-medium text-white transition-all cursor-pointer"
+                disabled={newCount === 0}
+                className="inline-flex items-center gap-2 rounded-xl px-5 py-2 text-sm font-medium text-white transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ background: "linear-gradient(to right, #7c3aed, #4f46e5)", boxShadow: "0 0 14px rgba(139,92,246,0.35)" }}
               >
                 <Sparkles className="w-4 h-4" />
-                Importar {records.length} registros
+                {newCount === 0 ? "Todo duplicado" : `Importar ${newCount} registro${newCount !== 1 ? "s" : ""}`}
               </button>
             </>
           ) : phase === "upload" ? (

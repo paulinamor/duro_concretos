@@ -34,7 +34,7 @@ export const moduleCatalog = [
   { href: "/transporte/mantenimiento", label: "Mantenimiento de Flota" },
   { href: "/transporte/seguros", label: "Seguro de Flota" },
   { href: "/operaciones/inventario", label: "Inventarios" },
-  { href: "/operaciones/efectivo", label: "Control de efectivo" },
+  { href: "/efectivo", label: "Control de efectivo" },
   { href: "/crm/clientes", label: "Base de Clientes" },
   { href: "/crm/pipeline", label: "Pipeline CRM" },
   { href: "/ventas/recibos-concreto", label: "Recibos de Concreto" },
@@ -154,17 +154,20 @@ export function withPlantaTag<T extends object>(data: T): T & { planta: string }
 export function getDefaultModulesForRole(role: UserRole) {
   if (role === "admin") return "all" as const;
   return [
-    "/configuracion",
     "/dashboard",
+    "/reportes",
+    "/transporte/programacion",
     "/transporte/operadores",
     "/transporte/diesel",
     "/transporte/mantenimiento",
+    "/transporte/seguros",
     "/operaciones/inventario",
-    "/operaciones/efectivo",
+    "/efectivo",
     "/ventas/recibos-concreto",
     "/finanzas/cxc",
     "/finanzas/cxp",
     "/finanzas/estado-cuenta-clientes",
+    "/configuracion",
   ];
 }
 

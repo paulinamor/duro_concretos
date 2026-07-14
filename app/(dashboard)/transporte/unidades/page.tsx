@@ -13,10 +13,9 @@ import {
   Trash2,
   Truck,
   Wrench,
+  X,
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
-import FormModal from "@/components/FormModal";
-import FormSection from "@/components/FormSection";
 import StatusBadge from "@/components/StatusBadge";
 import { capacidadTotalM3, type EstatusUnidad, type Unidad } from "@/lib/unidades";
 import { type Operador } from "@/lib/operadores";
@@ -27,13 +26,345 @@ const MARCAS = ["Mercedes-Benz", "Volvo", "Kenworth", "Scania", "Freightliner", 
 const ESTATUS_OPTIONS: EstatusUnidad[] = ["Activo", "Mantenimiento", "Baja"];
 const CURRENT_TIME = new Date().getTime();
 
+// ─── Form state ───────────────────────────────────────────────────────────────
+
+interface FormState {
+  noEconomico: string;
+  placa: string;
+  marca: string;
+  modelo: string;
+  anio: string;
+  capacidadM3: string;
+  kmActual: string;
+  choferAsignado: string;
+  estatus: EstatusUnidad;
+  ultimoMantenimiento: string;
+  proximoMantenimiento: string;
+  seguroVigente: string;
+  tarjetaCirculacion: string;
+  verificacion: string;
+  observaciones: string;
+}
+
+function emptyForm(): FormState {
+  return {
+    noEconomico: "",
+    placa: "",
+    marca: "Mercedes-Benz",
+    modelo: "",
+    anio: "",
+    capacidadM3: "",
+    kmActual: "",
+    choferAsignado: "N/A",
+    estatus: "Activo",
+    ultimoMantenimiento: "",
+    proximoMantenimiento: "",
+    seguroVigente: "",
+    tarjetaCirculacion: "",
+    verificacion: "",
+    observaciones: "",
+  };
+}
+
+function fromUnidad(u: Unidad): FormState {
+  return {
+    noEconomico: u.noEconomico ?? "",
+    placa: u.placa ?? "",
+    marca: u.marca ?? "Mercedes-Benz",
+    modelo: u.modelo ?? "",
+    anio: u.anio ? String(u.anio) : "",
+    capacidadM3: u.capacidadM3 != null ? String(u.capacidadM3) : "",
+    kmActual: u.kmActual != null ? String(u.kmActual) : "",
+    choferAsignado: u.choferAsignado || "N/A",
+    estatus: u.estatus ?? "Activo",
+    ultimoMantenimiento: u.ultimoMantenimiento && u.ultimoMantenimiento !== "—" ? u.ultimoMantenimiento : "",
+    proximoMantenimiento: u.proximoMantenimiento && u.proximoMantenimiento !== "—" ? u.proximoMantenimiento : "",
+    seguroVigente: u.seguroVigente && u.seguroVigente !== "—" ? u.seguroVigente : "",
+    tarjetaCirculacion: u.tarjetaCirculacion && u.tarjetaCirculacion !== "—" ? u.tarjetaCirculacion : "",
+    verificacion: u.verificacion && u.verificacion !== "—" ? u.verificacion : "",
+    observaciones: u.observaciones ?? "",
+  };
+}
+
+// ─── Drawer ───────────────────────────────────────────────────────────────────
+
+const lbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5";
+const inp = "w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-900 text-sm placeholder-gray-400 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors";
+const sectionTitleClass = "flex items-center gap-3 mb-4";
+
+function SectionDivider({ label }: { label: string }) {
+  return (
+    <div className={sectionTitleClass}>
+      <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 whitespace-nowrap">{label}</span>
+      <span className="h-px flex-1 bg-gray-100" />
+    </div>
+  );
+}
+
+function UnidadDrawer({ open, editing, operadoresList, onClose, onSave }: {
+  open: boolean;
+  editing: Unidad | null;
+  operadoresList: Operador[];
+  onClose: () => void;
+  onSave: (f: FormState) => Promise<string | false | void>;
+}) {
+  const [form, setForm] = useState<FormState>(emptyForm);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setForm(editing ? fromUnidad(editing) : emptyForm());
+    setError(null);
+  }, [open, editing]);
+
+  const set = (k: keyof FormState, v: string) => setForm((p) => ({ ...p, [k]: v }));
+
+  const handleSave = async () => {
+    if (!form.noEconomico.trim() || !form.placa.trim() || !form.marca.trim() || !form.modelo.trim()) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await onSave(form);
+      if (typeof result === "string") {
+        setError(result);
+      } else {
+        onClose();
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const isValid = form.noEconomico.trim() && form.placa.trim() && form.marca.trim() && form.modelo.trim();
+
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[100] flex">
+      <button className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} aria-label="Cerrar" />
+      <div className="relative ml-auto flex h-full w-full max-w-lg flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-4 shrink-0">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-500/10 text-blue-500">
+            <Truck size={18} />
+          </div>
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">
+              {editing ? `Editar — ${editing.noEconomico}` : "Nueva unidad"}
+            </h2>
+            <p className="text-xs text-gray-500">No. económico, placa, marca y modelo son obligatorios</p>
+          </div>
+          <button onClick={onClose} className="ml-auto rounded-xl p-2 text-gray-400 hover:bg-gray-100 transition-colors cursor-pointer">
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+          {error && (
+            <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          )}
+
+          {/* Datos de la unidad */}
+          <div>
+            <SectionDivider label="Datos de la unidad" />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={lbl}>No. económico <span className="text-[#CC2229]">*</span></label>
+                <input
+                  type="text"
+                  value={form.noEconomico}
+                  onChange={(e) => set("noEconomico", e.target.value)}
+                  placeholder="Ej. U-01"
+                  className={inp}
+                />
+              </div>
+              <div>
+                <label className={lbl}>Placa <span className="text-[#CC2229]">*</span></label>
+                <input
+                  type="text"
+                  value={form.placa}
+                  onChange={(e) => set("placa", e.target.value.toUpperCase())}
+                  placeholder="Ej. ABC-1234"
+                  className={`${inp} uppercase`}
+                />
+              </div>
+              <div>
+                <label className={lbl}>Marca <span className="text-[#CC2229]">*</span></label>
+                <select value={form.marca} onChange={(e) => set("marca", e.target.value)} className={inp}>
+                  {MARCAS.map((m) => <option key={m}>{m}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={lbl}>Modelo <span className="text-[#CC2229]">*</span></label>
+                <input
+                  type="text"
+                  value={form.modelo}
+                  onChange={(e) => set("modelo", e.target.value)}
+                  placeholder="Ej. Actros 2651"
+                  className={inp}
+                />
+              </div>
+              <div>
+                <label className={lbl}>Año</label>
+                <input
+                  type="number"
+                  min="1990"
+                  max="2100"
+                  value={form.anio}
+                  onChange={(e) => set("anio", e.target.value)}
+                  placeholder="2024"
+                  className={inp}
+                />
+              </div>
+              <div>
+                <label className={lbl}>Capacidad m3</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  value={form.capacidadM3}
+                  onChange={(e) => set("capacidadM3", e.target.value)}
+                  placeholder="6"
+                  className={inp}
+                />
+              </div>
+              <div className="col-span-2">
+                <label className={lbl}>Km actual</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={form.kmActual}
+                  onChange={(e) => set("kmActual", e.target.value)}
+                  placeholder="0"
+                  className={inp}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Asignación */}
+          <div>
+            <SectionDivider label="Asignación" />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={lbl}>Chofer asignado</label>
+                <select value={form.choferAsignado} onChange={(e) => set("choferAsignado", e.target.value)} className={inp}>
+                  <option value="N/A">N/A</option>
+                  {operadoresList.filter((o) => !o.baja).map((o) => (
+                    <option key={o.id} value={o.nombre}>{o.nombre}</option>
+                  ))}
+                </select>
+                {operadoresList.filter((o) => !o.baja).length === 0 && (
+                  <p className="mt-1 text-xs text-gray-400">Sin operadores activos — agrégalos en Transporte → Operadores.</p>
+                )}
+              </div>
+              <div>
+                <label className={lbl}>Estatus</label>
+                <select value={form.estatus} onChange={(e) => set("estatus", e.target.value as EstatusUnidad)} className={inp}>
+                  {ESTATUS_OPTIONS.map((s) => <option key={s}>{s}</option>)}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Documentos y vencimientos */}
+          <div>
+            <SectionDivider label="Documentos y vencimientos" />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={lbl}>Último mantenimiento</label>
+                <input
+                  type="date"
+                  value={form.ultimoMantenimiento}
+                  onChange={(e) => set("ultimoMantenimiento", e.target.value)}
+                  className={inp}
+                />
+              </div>
+              <div>
+                <label className={lbl}>Próximo mantenimiento</label>
+                <input
+                  type="date"
+                  value={form.proximoMantenimiento}
+                  onChange={(e) => set("proximoMantenimiento", e.target.value)}
+                  className={inp}
+                />
+              </div>
+              <div>
+                <label className={lbl}>Seguro vigente hasta</label>
+                <input
+                  type="date"
+                  value={form.seguroVigente}
+                  onChange={(e) => set("seguroVigente", e.target.value)}
+                  className={inp}
+                />
+              </div>
+              <div>
+                <label className={lbl}>Tarjeta circulación</label>
+                <input
+                  type="date"
+                  value={form.tarjetaCirculacion}
+                  onChange={(e) => set("tarjetaCirculacion", e.target.value)}
+                  className={inp}
+                />
+              </div>
+              <div className="col-span-2">
+                <label className={lbl}>Verificación</label>
+                <input
+                  type="date"
+                  value={form.verificacion}
+                  onChange={(e) => set("verificacion", e.target.value)}
+                  className={inp}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Observaciones */}
+          <div>
+            <SectionDivider label="Observaciones" />
+            <textarea
+              value={form.observaciones}
+              onChange={(e) => set("observaciones", e.target.value)}
+              rows={3}
+              placeholder="Notas adicionales sobre la unidad..."
+              className={`${inp} resize-none`}
+            />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="shrink-0 border-t border-gray-100 px-6 py-4 flex items-center justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="px-4 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 border border-gray-200 rounded-xl transition-colors cursor-pointer"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving || !isValid}
+            className="px-5 py-2.5 text-sm font-semibold bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-xl transition-colors disabled:opacity-60 shadow-lg shadow-[#CC2229]/20 cursor-pointer"
+          >
+            {saving ? "Guardando…" : editing ? "Guardar cambios" : "Crear unidad"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function UnidadesPage() {
   const [unidades, setUnidades] = useState<Unidad[]>([]);
   const [operadoresList, setOperadoresList] = useState<Operador[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [filtroEstatus, setFiltroEstatus] = useState<EstatusUnidad | "Todos">("Todos");
-  const [showForm, setShowForm] = useState(false);
+  const [showDrawer, setShowDrawer] = useState(false);
   const [editing, setEditing] = useState<Unidad | null>(null);
 
   useEffect(() => {
@@ -75,12 +406,12 @@ export default function UnidadesPage() {
 
   function openCreate() {
     setEditing(null);
-    setShowForm(true);
+    setShowDrawer(true);
   }
 
   function openEdit(u: Unidad) {
     setEditing(u);
-    setShowForm(true);
+    setShowDrawer(true);
   }
 
   async function handleDelete(id: string) {
@@ -88,13 +419,13 @@ export default function UnidadesPage() {
     await deleteDocument(COLLECTIONS.unidades, id);
   }
 
-  async function handleSave(values: Record<string, string>) {
-    const noEconomico = values["No. económico"]?.trim();
-    const placa = values["Placa"]?.trim();
-    const marca = values["Marca"]?.trim();
-    const modelo = values["Modelo"]?.trim();
+  async function handleSave(f: FormState): Promise<string | false | void> {
+    const noEconomico = f.noEconomico.trim();
+    const placa = f.placa.trim();
+    const marca = f.marca.trim();
+    const modelo = f.modelo.trim();
 
-    if (!noEconomico || !placa || !marca || !modelo) return false;
+    if (!noEconomico || !placa || !marca || !modelo) return;
 
     const isDuplicate = unidades.some(
       (u) => u.placa.toLowerCase() === placa.toLowerCase() && u.id !== editing?.id,
@@ -108,17 +439,17 @@ export default function UnidadesPage() {
       placa: placa.toUpperCase(),
       marca,
       modelo,
-      anio: Number(values["Año"] ?? 2024),
-      capacidadM3: Number(values["Capacidad m3"] ?? 6),
-      kmActual: Number(values["Km actual"]?.replace(/,/g, "") ?? 0),
-      choferAsignado: values["Chofer asignado"] ?? "",
-      estatus: (values["Estatus"] as EstatusUnidad) ?? "Activo",
-      ultimoMantenimiento: values["Último mantenimiento"] ?? "",
-      proximoMantenimiento: values["Próximo mantenimiento"] ?? "",
-      seguroVigente: values["Seguro vigente hasta"] ?? "",
-      tarjetaCirculacion: values["Tarjeta circulación"] ?? "",
-      verificacion: values["Verificación"] ?? "",
-      observaciones: values["Observaciones"] ?? "",
+      anio: Number(f.anio) || 2024,
+      capacidadM3: Number(f.capacidadM3) || 6,
+      kmActual: Number(f.kmActual.replace(/,/g, "")) || 0,
+      choferAsignado: f.choferAsignado === "N/A" ? "" : f.choferAsignado,
+      estatus: f.estatus,
+      ultimoMantenimiento: f.ultimoMantenimiento || "",
+      proximoMantenimiento: f.proximoMantenimiento || "",
+      seguroVigente: f.seguroVigente || "",
+      tarjetaCirculacion: f.tarjetaCirculacion || "",
+      verificacion: f.verificacion || "",
+      observaciones: f.observaciones.trim(),
     };
 
     setUnidades((current) =>
@@ -128,8 +459,9 @@ export default function UnidadesPage() {
     );
     const { id: _id, ...data } = next;
     await upsertDocument(COLLECTIONS.unidades, _id, withPlantaTag(data));
-    setShowForm(false);
-    setEditing(null);
+    window.dispatchEvent(new CustomEvent("duro:toast", {
+      detail: { type: "success", message: editing ? "Unidad actualizada." : "Unidad creada." },
+    }));
   }
 
   function downloadFile(filename: string, content: string, mimeType: string) {
@@ -262,7 +594,7 @@ export default function UnidadesPage() {
         <button
           type="button"
           onClick={exportExcel}
-          className="flex items-center gap-2 rounded-lg border border-[#3A3A3A] px-3 py-2 text-sm text-gray-300 hover:border-green-500/50 hover:text-green-300 transition-colors"
+          className="flex items-center gap-2 rounded-lg border border-[#3A3A3A] px-3 py-2 text-sm text-gray-300 hover:border-green-500/50 hover:text-green-300 transition-colors cursor-pointer"
         >
           <FileSpreadsheet size={15} />
           Excel
@@ -270,14 +602,14 @@ export default function UnidadesPage() {
         <button
           type="button"
           onClick={exportPDF}
-          className="flex items-center gap-2 rounded-lg border border-[#3A3A3A] px-3 py-2 text-sm text-gray-300 hover:border-[#CC2229]/60 hover:text-[#CC2229] transition-colors"
+          className="flex items-center gap-2 rounded-lg border border-[#3A3A3A] px-3 py-2 text-sm text-gray-300 hover:border-[#CC2229]/60 hover:text-[#CC2229] transition-colors cursor-pointer"
         >
           <FileText size={15} />
           PDF
         </button>
         <button
           onClick={openCreate}
-          className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#991A1E] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+          className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#991A1E] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer"
         >
           <Plus size={15} />
           Nueva unidad
@@ -288,8 +620,8 @@ export default function UnidadesPage() {
       <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-[#1A1A1A] border-b border-[#3A3A3A]">
+            <thead className="sticky top-0 z-10 bg-[#1A1A1A]">
+              <tr className="border-b border-[#3A3A3A]">
                 {["No. Económico", "Placa", "Marca / Modelo", "Año", "m3", "Km actual", "Chofer", "Estatus", "Próx. Mtto", "Seguro", "Acciones"].map(
                   (h) => (
                     <th key={h} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-400 whitespace-nowrap">
@@ -314,7 +646,7 @@ export default function UnidadesPage() {
                 </tr>
               ) : (
                 filtered.map((u) => (
-                  <tr key={u.id} className="transition-colors">
+                  <tr key={u.id} className="hover:bg-[#2A2A2A] transition-colors">
                     <td className="px-5 py-3 whitespace-nowrap">
                       <div className="flex items-center gap-2">
                         <div className="h-8 w-8 rounded-full bg-[#1A1A1A] flex items-center justify-center shrink-0">
@@ -355,14 +687,14 @@ export default function UnidadesPage() {
                       <div className="flex items-center gap-1">
                         <button
                           onClick={() => openEdit(u)}
-                          className="rounded-lg p-2 text-gray-400 hover:bg-[#1A1A1A] hover:text-white transition-colors"
+                          className="rounded-lg p-2 text-gray-400 hover:bg-[#1A1A1A] hover:text-white transition-colors cursor-pointer"
                           aria-label={`Editar ${u.noEconomico}`}
                         >
                           <Pencil size={14} />
                         </button>
                         <button
                           onClick={() => handleDelete(u.id)}
-                          className="rounded-lg p-2 text-gray-400 hover:bg-[#1A1A1A] hover:text-[#CC2229] transition-colors"
+                          className="rounded-lg p-2 text-gray-400 hover:bg-[#1A1A1A] hover:text-[#CC2229] transition-colors cursor-pointer"
                           aria-label={`Eliminar ${u.noEconomico}`}
                         >
                           <Trash2 size={14} />
@@ -377,94 +709,14 @@ export default function UnidadesPage() {
         </div>
       </div>
 
-      {/* Form Modal */}
-      <FormModal
-        open={showForm}
-        title={editing ? `Editar unidad — ${editing.noEconomico}` : "Nueva unidad"}
-        onClose={() => { setShowForm(false); setEditing(null); }}
+      {/* Drawer */}
+      <UnidadDrawer
+        open={showDrawer}
+        editing={editing}
+        operadoresList={operadoresList}
+        onClose={() => { setShowDrawer(false); setEditing(null); }}
         onSave={handleSave}
-        footer={
-          <>
-            <button
-              onClick={() => { setShowForm(false); setEditing(null); }}
-              className="px-5 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 border border-gray-200 rounded-xl transition-colors"
-            >
-              Cancelar
-            </button>
-            <button className="px-5 py-2.5 text-sm font-medium bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-xl transition-colors shadow-md shadow-[#CC2229]/20">
-              Guardar unidad
-            </button>
-          </>
-        }
-      >
-        {(() => {
-          const lbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5";
-          const inp = "w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-900 text-sm placeholder-gray-400 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors";
-          return (
-            <>
-              <FormSection title="Datos de la unidad">
-                {[
-                  { label: "No. económico", defaultValue: editing?.noEconomico },
-                  { label: "Placa", defaultValue: editing?.placa },
-                  { label: "Modelo", defaultValue: editing?.modelo },
-                  { label: "Año", defaultValue: editing?.anio ? String(editing.anio) : "" },
-                  { label: "Capacidad m3", defaultValue: editing?.capacidadM3 ? String(editing.capacidadM3) : "" },
-                  { label: "Km actual", defaultValue: editing?.kmActual ? String(editing.kmActual) : "" },
-                ].map(({ label, defaultValue }) => (
-                  <div key={label}>
-                    <label className={lbl}>{label}</label>
-                    <input type="text" defaultValue={defaultValue ?? ""} className={inp} />
-                  </div>
-                ))}
-                <div>
-                  <label className={lbl}>Marca</label>
-                  <select defaultValue={editing?.marca ?? "Mercedes-Benz"} className={inp}>
-                    {MARCAS.map((m) => <option key={m}>{m}</option>)}
-                  </select>
-                </div>
-              </FormSection>
-              <FormSection title="Asignación">
-                <div>
-                  <label className={lbl}>Chofer asignado</label>
-                  <select defaultValue={editing?.choferAsignado || "N/A"} className={inp} data-catalog-locked="true">
-                    <option value="N/A">N/A</option>
-                    {operadoresList.filter((o) => !o.baja).map((o) => (
-                      <option key={o.id} value={o.nombre}>{o.nombre}</option>
-                    ))}
-                  </select>
-                  {operadoresList.filter((o) => !o.baja).length === 0 && (
-                    <p className="mt-1 text-xs text-gray-400">Sin operadores activos — agrégalos en Transporte → Operadores.</p>
-                  )}
-                </div>
-                <div>
-                  <label className={lbl}>Estatus</label>
-                  <select defaultValue={editing?.estatus ?? "Activo"} className={inp}>
-                    {ESTATUS_OPTIONS.map((s) => <option key={s}>{s}</option>)}
-                  </select>
-                </div>
-              </FormSection>
-              <FormSection title="Documentos y vencimientos">
-                {[
-                  { label: "Último mantenimiento", defaultValue: editing?.ultimoMantenimiento },
-                  { label: "Próximo mantenimiento", defaultValue: editing?.proximoMantenimiento },
-                  { label: "Seguro vigente hasta", defaultValue: editing?.seguroVigente },
-                  { label: "Tarjeta circulación", defaultValue: editing?.tarjetaCirculacion },
-                  { label: "Verificación", defaultValue: editing?.verificacion },
-                ].map(({ label, defaultValue }) => (
-                  <div key={label}>
-                    <label className={lbl}>{label}</label>
-                    <input type="date" defaultValue={defaultValue && defaultValue !== "—" ? defaultValue : ""} className={inp} />
-                  </div>
-                ))}
-              </FormSection>
-              <div>
-                <label className={lbl}>Observaciones</label>
-                <textarea defaultValue={editing?.observaciones ?? ""} rows={2} className={`${inp} resize-none`} />
-              </div>
-            </>
-          );
-        })()}
-      </FormModal>
+      />
 
       {enMantenimiento > 0 && (
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-5 py-4 flex items-start gap-3">

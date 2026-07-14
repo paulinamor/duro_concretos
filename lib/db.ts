@@ -11,8 +11,10 @@ import {
   QueryConstraint,
   DocumentData,
   WithFieldValue,
+  writeBatch,
 } from "firebase/firestore";
 import { db } from "./firebase";
+import type { Planta } from "./auth";
 
 // ---------- generic helpers ----------
 
@@ -133,3 +135,72 @@ export const COLLECTIONS = {
 } as const;
 
 export { where, orderBy };
+
+// ---------- multi-tenant server-side helpers ----------
+
+/**
+ * Fetches docs for a specific plant using Firestore server-side filtering.
+ * Pesquería: exact `where("planta", "==", "Pesquería")` — never sees Allende data.
+ * Allende / Todas: full fetch (legacy docs have no planta field, so we can't
+ *   filter server-side until migrateLegacyPlanta() has been run).
+ *
+ * After running migrateLegacyPlanta() on every collection, Allende can also
+ * use `where("planta", "in", ["Allende", "Todas"])` for true server-side filtering.
+ */
+export async function getCollectionDocsByPlanta<T extends { planta?: string }>(
+  collectionName: string,
+  planta: Planta,
+  extraConstraints: QueryConstraint[] = [],
+): Promise<T[]> {
+  if (planta === "Pesquería") {
+    return getCollectionDocs<T>(collectionName, [
+      where("planta", "==", "Pesquería"),
+      ...extraConstraints,
+    ]);
+  }
+  // Allende / Todas: still needs full fetch due to legacy docs without planta field.
+  // Run migrateLegacyPlanta() first to enable server-side filtering here too.
+  const all = await getCollectionDocs<T>(collectionName, extraConstraints);
+  if (planta === "Todas") return all;
+  // Allende: include docs with no planta (legacy) or planta === "Allende"
+  return all.filter((d) => !d.planta || d.planta === "Todas" || d.planta === "Allende");
+}
+
+/**
+ * One-time migration: sets planta: "Allende" on every document in the collection
+ * that is missing the planta field (or has planta: "Todas").
+ * Safe to run multiple times — skips docs that already have a concrete planta.
+ * After running this on all collections, Allende queries can use server-side
+ * where("planta", "in", ["Allende"]) instead of full-fetch + client filter.
+ *
+ * Usage (run once from the browser console or a one-off admin page):
+ *   import { migrateLegacyPlanta, COLLECTIONS } from "@/lib/db";
+ *   await migrateLegacyPlanta(COLLECTIONS.programaciones);
+ */
+export async function migrateLegacyPlanta(collectionName: string): Promise<{ migrated: number; skipped: number }> {
+  const database = getDb();
+  const snap = await getDocs(collection(database, collectionName));
+  let migrated = 0;
+  let skipped = 0;
+  let batch = writeBatch(database);
+  let batchCount = 0;
+
+  for (const docSnap of snap.docs) {
+    const data = docSnap.data();
+    if (!data.planta || data.planta === "Todas") {
+      batch.update(docSnap.ref, { planta: "Allende" });
+      migrated++;
+      batchCount++;
+      if (batchCount === 499) {
+        await batch.commit();
+        batch = writeBatch(database);
+        batchCount = 0;
+      }
+    } else {
+      skipped++;
+    }
+  }
+
+  if (batchCount > 0) await batch.commit();
+  return { migrated, skipped };
+}
