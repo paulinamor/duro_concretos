@@ -341,11 +341,13 @@ function TableRow({ carga, onEdit, onDelete }: {
 }) {
   const [expanded, setExpanded] = useState(false);
   const lowRend = carga.rendimiento != null && carga.rendimiento < 2.9;
+  const precioLCalc = carga.litros > 0 ? carga.total / carga.litros : null;
+  const isOutlier = precioLCalc != null && precioLCalc > 200;
 
   return (
     <>
       <tr
-        className={`cursor-pointer transition-colors ${expanded ? "bg-[#1A1A1A]" : "hover:bg-[#1A1A1A]"}`}
+        className={`cursor-pointer transition-colors ${isOutlier ? "bg-red-500/5" : ""} ${expanded ? "bg-[#1A1A1A]" : "hover:bg-[#1A1A1A]"}`}
         onClick={() => setExpanded((v) => !v)}
       >
         <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{carga.fecha}</td>
@@ -365,8 +367,15 @@ function TableRow({ carga, onEdit, onDelete }: {
         <td className="px-4 py-3 text-amber-600 font-semibold tabular-nums text-sm">
           {fmt(carga.litros, 1)} L
         </td>
-        <td className="px-4 py-3 text-gray-200 font-semibold tabular-nums">
-          {currency(carga.total)}
+        <td className="px-4 py-3 tabular-nums">
+          <div className="flex items-center gap-1.5">
+            <span className={`font-semibold ${isOutlier ? "text-red-400" : "text-gray-200"}`}>{currency(carga.total)}</span>
+            {isOutlier && (
+              <span title="Total sospechoso — revisa la captura" className="inline-flex items-center gap-1 rounded-full bg-red-500/15 border border-red-500/30 px-1.5 py-0.5 text-[10px] font-bold text-red-400 cursor-help">
+                <AlertTriangle size={9} /> Error
+              </span>
+            )}
+          </div>
         </td>
         <td className={`px-4 py-3 tabular-nums text-sm font-semibold ${lowRend ? "text-orange-500" : "text-sky-600"}`}>
           <div className="flex items-center gap-1">
@@ -597,6 +606,7 @@ export default function DieselPage() {
   const promRendimiento = rendValues.length > 0 ? rendValues.reduce((s, v) => s + v, 0) / rendValues.length : null;
   const bajoRendimiento = rendValues.filter((r) => r < 2.9).length;
   const promPrecioL = totalLitros > 0 ? totalCosto / totalLitros : null;
+  const outliers = filtered.filter((c) => c.litros > 0 && c.total / c.litros > 200);
 
   const litrosPorUnidad = useMemo(() => {
     const map = new Map<string, number>();
@@ -817,9 +827,34 @@ export default function DieselPage() {
 
         {/* Right: historial table */}
         <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden shadow-sm">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-[#3A3A3A]">
-            <h3 className="text-sm font-semibold text-white">Historial de cargas</h3>
-            <span className="text-xs text-gray-400">{filtered.length} registro{filtered.length !== 1 ? "s" : ""}</span>
+          <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b border-[#3A3A3A]">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-white">Historial de cargas</h3>
+              {outliers.length > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-red-500/15 border border-red-500/30 px-2 py-0.5 text-[10px] font-bold text-red-400">
+                  <AlertTriangle size={9} />
+                  {outliers.length} captura{outliers.length !== 1 ? "s" : ""} con error — el total está inflado
+                </span>
+              )}
+            </div>
+            {filtered.length > 0 && (
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Litros</span>
+                  <span className="text-sm font-bold text-amber-400">{totalLitros.toLocaleString("es-MX", { maximumFractionDigits: 0 })} L</span>
+                </div>
+                <div className="w-px h-4 bg-[#3A3A3A]" />
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Total</span>
+                  <span className={`text-sm font-bold ${outliers.length > 0 ? "text-red-400" : "text-white"}`}>{currency(totalCosto)}</span>
+                </div>
+                <div className="w-px h-4 bg-[#3A3A3A]" />
+                <span className="text-xs text-gray-500">{filtered.length} registro{filtered.length !== 1 ? "s" : ""}</span>
+              </div>
+            )}
+            {filtered.length === 0 && (
+              <span className="text-xs text-gray-500">0 registros</span>
+            )}
           </div>
           <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-320px)]">
             <table className="w-full text-sm">
