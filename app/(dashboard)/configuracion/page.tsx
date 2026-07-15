@@ -34,12 +34,12 @@ type UserDraft = {
 
 type Tab = "usuarios" | "apariencia";
 
-const SUPERADMIN = "leonardo@lpsoft.mx";
+// cualquier admin puede gestionar usuarios
 
 export default function ConfiguracionPage() {
   const [activeTab, setActiveTab] = useState<Tab>("usuarios");
   const [session, setSession] = useState<ReturnType<typeof getStoredSession>>(null);
-  const isSuperAdmin = session?.email?.toLowerCase() === SUPERADMIN;
+  const isSuperAdmin = session?.role === "admin";
 
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
