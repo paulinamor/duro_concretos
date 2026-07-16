@@ -17,6 +17,7 @@ export default function HScrollTable({
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
+    const container = el;
     let down = false, startX = 0, startLeft = 0, moved = false;
 
     function onDown(e: MouseEvent) {
@@ -24,37 +25,37 @@ export default function HScrollTable({
       if (t.closest("button,input,select,textarea,a,[role=button]")) return;
       if (e.button !== 0) return;
       down = true; moved = false;
-      startX = e.clientX; startLeft = el.scrollLeft;
+      startX = e.clientX; startLeft = container.scrollLeft;
     }
     function onMove(e: MouseEvent) {
       if (!down) return;
       const dx = e.clientX - startX;
       if (Math.abs(dx) > 4) {
         moved = true;
-        el.scrollLeft = startLeft - dx;
-        el.style.cursor = "grabbing";
-        el.style.userSelect = "none";
+        container.scrollLeft = startLeft - dx;
+        container.style.cursor = "grabbing";
+        container.style.userSelect = "none";
       }
     }
     function onUp() {
       if (!down) return;
       down = false;
-      el.style.cursor = "";
-      el.style.userSelect = "";
+      container.style.cursor = "";
+      container.style.userSelect = "";
     }
     function onClick(e: MouseEvent) {
       if (moved) { e.stopPropagation(); e.preventDefault(); moved = false; }
     }
 
-    el.addEventListener("mousedown", onDown);
+    container.addEventListener("mousedown", onDown);
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
-    el.addEventListener("click", onClick, true);
+    container.addEventListener("click", onClick, true);
     return () => {
-      el.removeEventListener("mousedown", onDown);
+      container.removeEventListener("mousedown", onDown);
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
-      el.removeEventListener("click", onClick, true);
+      container.removeEventListener("click", onClick, true);
     };
   }, []);
 
