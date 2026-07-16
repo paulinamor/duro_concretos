@@ -48,6 +48,7 @@ export default function ConfiguracionPage() {
   const [userDraft, setUserDraft] = useState<UserDraft | null>(null);
   const [currentTheme, setCurrentTheme] = useState<AppTheme>("dark");
 
+
   useEffect(() => {
     setSession(getStoredSession());
     setCurrentTheme(getStoredTheme());
@@ -232,6 +233,7 @@ export default function ConfiguracionPage() {
     showToast("success", theme === "dark" ? "Modo claro activado" : "Modo noche activado", "El tema se aplicó correctamente.");
   }
 
+
   return (
     <div className="space-y-6">
       <div>
@@ -314,7 +316,7 @@ export default function ConfiguracionPage() {
                       <td className="px-5 py-4 text-white font-medium">{user.nombre}</td>
                       <td className="px-5 py-4 text-gray-400">{user.email}</td>
                       <td className="px-5 py-4">
-                        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${user.role === "admin" ? "bg-amber-100 text-amber-800 dark:bg-yellow-900/40 dark:text-yellow-300" : "bg-slate-100 text-slate-600 dark:bg-gray-800 dark:text-gray-300"}`}>
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${user.role === "admin" ? "bg-amber-100 text-amber-800 dark:bg-yellow-900/40 dark:text-yellow-300" : "bg-slate-600 text-white dark:bg-slate-700 dark:text-slate-100"}`}>
                           {user.role === "admin" ? "Administrador" : "Operador"}
                         </span>
                       </td>
@@ -521,7 +523,7 @@ export default function ConfiguracionPage() {
                     className="w-full rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
                   >
                     <option value="admin">Administrador</option>
-                    <option value="operador">Usuario</option>
+                    <option value="operador">Operador</option>
                   </select>
                 </div>
                 <div>
@@ -566,25 +568,33 @@ export default function ConfiguracionPage() {
 
               <div>
                 <h4 className="text-white font-semibold mb-3">Módulos permitidos</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   {moduleCatalog.map((module) => {
                     const checked = userDraft.modules === "all" || userDraft.modules.includes(module.href);
+                    const disabled = userDraft.modules === "all";
                     return (
-                      <label
+                      <button
                         key={module.href}
-                        className={`flex items-center gap-3 rounded-lg border px-3 py-3 text-sm transition-colors ${
-                          checked ? "border-[#CC2229]/60 bg-[#CC2229]/10 text-white" : "border-[#3A3A3A] bg-[#1A1A1A] text-gray-400"
-                        } ${userDraft.modules === "all" ? "opacity-70" : "cursor-pointer hover:border-[#CC2229]"}`}
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => !disabled && toggleDraftModule(module.href)}
+                        className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-sm font-medium text-left transition-all cursor-pointer ${
+                          checked
+                            ? "border-[#CC2229] bg-[#CC2229] text-white shadow-md shadow-[#CC2229]/20"
+                            : "border-[#3A3A3A] bg-[#1A1A1A] text-gray-300 hover:border-[#CC2229]/50 hover:text-white"
+                        } ${disabled ? "opacity-60 cursor-not-allowed" : ""}`}
                       >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          disabled={userDraft.modules === "all"}
-                          onChange={() => toggleDraftModule(module.href)}
-                          className="h-4 w-4 accent-[#CC2229]"
-                        />
+                        <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition-all ${
+                          checked ? "border-white bg-white/20" : "border-gray-500"
+                        }`}>
+                          {checked && (
+                            <svg viewBox="0 0 10 8" className="h-3 w-3 fill-white" xmlns="http://www.w3.org/2000/svg">
+                              <path d="M1 4l3 3 5-6" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                            </svg>
+                          )}
+                        </span>
                         {module.label}
-                      </label>
+                      </button>
                     );
                   })}
                 </div>

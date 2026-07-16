@@ -209,6 +209,7 @@ body.duro-theme-light ::-webkit-scrollbar-thumb {
   box-sizing: border-box;
 }
 
+/* Vertical scrollbars — thin */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -221,6 +222,42 @@ body.duro-theme-light ::-webkit-scrollbar-thumb {
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
+  background: #CC2229;
+}
+
+/* Horizontal scrollbars on overflow-x containers — taller, always visible */
+.overflow-x-auto::-webkit-scrollbar,
+.overflow-x-scroll::-webkit-scrollbar {
+  height: 10px;
+}
+.overflow-x-auto::-webkit-scrollbar-track,
+.overflow-x-scroll::-webkit-scrollbar-track {
+  background: #2A2A2A;
+  border-radius: 0 0 8px 8px;
+}
+.overflow-x-auto::-webkit-scrollbar-thumb,
+.overflow-x-scroll::-webkit-scrollbar-thumb {
+  background: #666;
+  border-radius: 5px;
+  border: 2px solid #2A2A2A;
+}
+.overflow-x-auto::-webkit-scrollbar-thumb:hover,
+.overflow-x-scroll::-webkit-scrollbar-thumb:hover {
+  background: #CC2229;
+}
+
+body.duro-theme-light .overflow-x-auto::-webkit-scrollbar-track,
+body.duro-theme-light .overflow-x-scroll::-webkit-scrollbar-track {
+  background: #E5E7EB;
+  border-radius: 0 0 8px 8px;
+}
+body.duro-theme-light .overflow-x-auto::-webkit-scrollbar-thumb,
+body.duro-theme-light .overflow-x-scroll::-webkit-scrollbar-thumb {
+  background: #94A3B8;
+  border: 2px solid #E5E7EB;
+}
+body.duro-theme-light .overflow-x-auto::-webkit-scrollbar-thumb:hover,
+body.duro-theme-light .overflow-x-scroll::-webkit-scrollbar-thumb:hover {
   background: #CC2229;
 }
 

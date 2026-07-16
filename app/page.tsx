@@ -7,7 +7,7 @@ import Image from "next/image";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth, isFirebaseConfigured, missingFirebaseEnv } from "@/lib/firebase";
 import { getUserProfile, upsertUserProfile, withoutUserProfileId, type UserProfile } from "@/lib/db";
-import { recordAuthEvent, saveSession, getDefaultModulesForRole } from "@/lib/auth";
+import { recordAuthEvent, saveSession, getDefaultModulesForRole, getAllowedModuleSet, moduleCatalog } from "@/lib/auth";
 
 function getDefaultLoginProfile({
   uid,
@@ -118,7 +118,9 @@ export default function LoginPage() {
         status: profile.status,
       });
       recordAuthEvent({ type: "login_success", email: profile.email, message: `Acceso autorizado como ${profile.role}.` });
-      router.push("/dashboard");
+      const allowed = getAllowedModuleSet({ role: profile.role, modules: profile.modules });
+      const firstModule = moduleCatalog.find((m) => allowed.has(m.href));
+      router.push(firstModule?.href ?? "/dashboard");
     } catch (err: unknown) {
       setLoading(false);
       const code = (err as { code?: string }).code ?? "";

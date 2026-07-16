@@ -6,6 +6,7 @@ import {
   Shield, ShieldOff, Trash2, X,
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
+import HScrollTable from "@/components/HScrollTable";
 import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
 import { filterByPlanta, withPlantaTag } from "@/lib/auth";
 import type { Unidad } from "@/lib/unidades";
@@ -670,7 +671,7 @@ export default function SegurosPage() {
           <span className="text-xs text-gray-600 ml-auto">{filtered.length} unidades</span>
         </div>
 
-        <div className="overflow-x-auto">
+        <HScrollTable>
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-10 bg-[#1A1A1A]">
               <tr className="bg-[#1A1A1A]">
@@ -791,7 +792,7 @@ export default function SegurosPage() {
               )}
             </tbody>
           </table>
-        </div>
+        </HScrollTable>
 
         {(porVencer > 0 || sinCob > 0) && (
           <div className="px-5 py-3 border-t border-[#3A3A3A] flex items-center gap-2">

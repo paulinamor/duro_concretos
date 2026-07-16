@@ -841,7 +841,7 @@ export default function DieselPage() {
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-1.5">
                   <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Litros</span>
-                  <span className="text-sm font-bold text-amber-400">{totalLitros.toLocaleString("es-MX", { maximumFractionDigits: 0 })} L</span>
+                  <span className="text-sm font-bold text-amber-400">{totalLitros.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} L</span>
                 </div>
                 <div className="w-px h-4 bg-[#3A3A3A]" />
                 <div className="flex items-center gap-1.5">

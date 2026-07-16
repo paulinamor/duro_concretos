@@ -148,6 +148,23 @@ export function getCapturePlanta(): "Allende" | "Pesquería" {
 }
 
 export function withPlantaTag<T extends object>(data: T): T & { planta: string } {
+  const active = getActivePlanta();
+  if (active === "Todas") {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("duro:toast", {
+          detail: {
+            type: "error",
+            title: "Planta requerida",
+            message: "Selecciona Allende o Pesquería en el selector antes de capturar datos.",
+          },
+        }),
+      );
+    }
+    throw Object.assign(new Error("Selecciona una planta específica antes de guardar."), {
+      code: "PLANTA_REQUERIDA",
+    });
+  }
   return { ...data, planta: getCapturePlanta() };
 }
 

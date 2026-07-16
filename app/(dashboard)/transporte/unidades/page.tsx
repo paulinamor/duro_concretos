@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
 import StatusBadge from "@/components/StatusBadge";
+import HScrollTable from "@/components/HScrollTable";
 import { capacidadTotalM3, type EstatusUnidad, type Unidad } from "@/lib/unidades";
 import { type Operador } from "@/lib/operadores";
 import { filterByPlanta, withPlantaTag } from "@/lib/auth";
@@ -618,7 +619,7 @@ export default function UnidadesPage() {
 
       {/* Table */}
       <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
-        <div className="overflow-x-auto">
+        <HScrollTable>
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-10 bg-[#1A1A1A]">
               <tr className="border-b border-[#3A3A3A]">
@@ -706,7 +707,7 @@ export default function UnidadesPage() {
               )}
             </tbody>
           </table>
-        </div>
+        </HScrollTable>
       </div>
 
       {/* Drawer */}

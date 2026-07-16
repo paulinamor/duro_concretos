@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import Header from "@/components/Header";
-import { getAllowedModuleSet, getStoredSession } from "@/lib/auth";
+import { getAllowedModuleSet, getStoredSession, moduleCatalog } from "@/lib/auth";
 
 const pageTitles: Record<string, string> = {
   "/dashboard": "Dashboard",
@@ -59,16 +59,66 @@ export default function DashboardLayout({
   const title = pageTitles[pathname] ?? "ERP Duro Concretos";
   const section = pageSections[pathname] ?? "";
 
+  // Drag-to-scroll on all overflow-x containers (like Excel/Sheets)
+  useEffect(() => {
+    let down = false, startX = 0, startLeft = 0, moved = false;
+    let el: HTMLElement | null = null;
+
+    function findHScroll(t: HTMLElement | null): HTMLElement | null {
+      while (t && t !== document.body) {
+        const ox = getComputedStyle(t).overflowX;
+        if ((ox === "auto" || ox === "scroll") && t.scrollWidth > t.clientWidth + 1) return t;
+        t = t.parentElement;
+      }
+      return null;
+    }
+
+    function onDown(e: MouseEvent) {
+      if (e.button !== 0) return;
+      const t = e.target as HTMLElement;
+      if (t.closest("button,input,select,textarea,a,[role=button],[data-nodrag]")) return;
+      el = findHScroll(t);
+      if (!el) return;
+      down = true; moved = false;
+      startX = e.clientX;
+      startLeft = el.scrollLeft;
+    }
+    function onMove(e: MouseEvent) {
+      if (!down || !el) return;
+      const dx = e.clientX - startX;
+      if (!moved && Math.abs(dx) < 5) return;
+      moved = true;
+      el.scrollLeft = startLeft - dx;
+      el.style.cursor = "grabbing";
+    }
+    function onUp() {
+      if (!el) return;
+      el.style.cursor = "";
+      down = false; el = null;
+    }
+    function onClick(e: MouseEvent) {
+      if (moved) { e.stopPropagation(); e.preventDefault(); moved = false; }
+    }
+
+    document.addEventListener("mousedown", onDown);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    document.addEventListener("click", onClick, true);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      document.removeEventListener("click", onClick, true);
+    };
+  }, []);
+
+  // Auth guard
   useEffect(() => {
     const session = getStoredSession();
     if (!session) {
       window.dispatchEvent(
         new CustomEvent("duro:toast", {
-          detail: {
-            type: "error",
-            title: "Sesión requerida",
-            message: "Inicia sesión con un usuario autorizado para entrar al ERP.",
-          },
+          detail: { type: "error", title: "Sesión requerida", message: "Inicia sesión con un usuario autorizado para entrar al ERP." },
         }),
       );
       router.push("/");
@@ -81,15 +131,13 @@ export default function DashboardLayout({
 
     window.dispatchEvent(
       new CustomEvent("duro:toast", {
-        detail: {
-          type: "error",
-          title: "Módulo bloqueado",
-          message: "Tu usuario no tiene acceso a este módulo.",
-        },
+        detail: { type: "error", title: "Módulo bloqueado", message: "Tu usuario no tiene acceso a este módulo." },
       }),
     );
-    router.push("/dashboard");
+    const first = moduleCatalog.find((m) => allowedModules.has(m.href));
+    router.push(first?.href ?? "/");
   }, [pathname, router]);
+
 
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground">

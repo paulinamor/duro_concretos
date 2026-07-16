@@ -74,6 +74,7 @@ const operacionesItems = [
 const ventasItems = [
   { href: "/crm/clientes", icon: BookUser, label: "Base de Clientes" },
   { href: "/crm/pipeline", icon: ChartNoAxesColumn, label: "Pipeline CRM" },
+  { href: "/ventas/programacion", icon: CalendarDays, label: "Programación" },
   { href: "/ventas/recibos-concreto", icon: ReceiptText, label: "Recibos de Concreto" },
 ];
 

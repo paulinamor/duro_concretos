@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   Banknote,
@@ -22,7 +23,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { getCollectionDocs, COLLECTIONS } from "@/lib/db";
-import { filterByPlanta } from "@/lib/auth";
+import { filterByPlanta, getAllowedModuleSet, moduleCatalog, getStoredSession } from "@/lib/auth";
 import type { Unidad } from "@/lib/unidades";
 import { TOOLTIP_STYLE } from "@/lib/chartStyles";
 
@@ -85,6 +86,7 @@ const MES_LABELS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [progs, setProgs] = useState<Programacion[]>([]);
   const [recibos, setRecibos] = useState<Recibo[]>([]);
   const [cxc, setCxc] = useState<Cuenta[]>([]);
@@ -96,6 +98,13 @@ export default function DashboardPage() {
   const mesActual = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
   useEffect(() => {
+    const session = getStoredSession();
+    const allowed = getAllowedModuleSet(session);
+    if (!allowed.has("/dashboard")) {
+      const first = moduleCatalog.find((m) => allowed.has(m.href));
+      router.replace(first?.href ?? "/");
+      return;
+    }
     Promise.all([
       getCollectionDocs<Programacion>(COLLECTIONS.programaciones),
       getCollectionDocs<Recibo>(COLLECTIONS.efectivo),

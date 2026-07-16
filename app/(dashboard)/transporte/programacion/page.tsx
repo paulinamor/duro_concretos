@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
-  Clock, Download, ExternalLink, Pencil, Plus, ReceiptText, Trash2, UserRound, X,
+  Clock, Download, ExternalLink, Expand, LayoutList, Pencil, Plus, ReceiptText, Shrink, Table2, Trash2, UserRound, X,
 } from "lucide-react";
+import ExcelView from "./ExcelView";
+import type { ExcelProg } from "./ExcelView";
 import KPICard from "@/components/KPICard";
 import ClienteCombobox from "@/components/ClienteCombobox";
 import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
@@ -68,6 +70,7 @@ interface Programacion {
   montoPagado: number | null;
   metodoPago: string;
   fechaPago: string;
+  notas?: string;
   cxcId?: string;
   planta?: string;
 }
@@ -99,6 +102,7 @@ interface FormState {
   recibo: string; credito: string; fact: string; pagado: string;
   montoPagado: string;
   metodoPago: string; fechaPago: string;
+  notas: string;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -212,6 +216,7 @@ function emptyForm(dia: string): FormState {
     ltoAcelr: "", kiloFibra: "", m3Imper: "",
     aditivo: "", tuberiaExtra: "", permisosOC: "",
     recibo: "", credito: "", fact: "", pagado: "", montoPagado: "", metodoPago: "", fechaPago: "",
+    notas: "",
   };
 }
 
@@ -266,6 +271,7 @@ function formFromProg(p: Programacion): FormState {
     recibo: p.recibo, credito: p.credito, fact: p.fact, pagado: p.pagado,
     montoPagado: p.montoPagado != null ? String(p.montoPagado) : "",
     metodoPago: p.metodoPago, fechaPago: p.fechaPago,
+    notas: p.notas ?? "",
   };
 }
 
@@ -533,6 +539,7 @@ function FormDrawer({
         montoPagado: form.pagado === "Parcial" ? (n(form.montoPagado) ?? null) : null,
         metodoPago: form.metodoPago.trim(),
         fechaPago: form.fechaPago,
+        notas: form.notas.trim(),
       });
       onClose();
     } catch (err) {
@@ -829,6 +836,23 @@ function FormDrawer({
           </div>
         </div>
 
+        {/* Notas */}
+        <div className="shrink-0 px-6 pb-4">
+          <div className="rounded-xl border-2 border-amber-400 bg-amber-50 p-3">
+            <label className="flex items-center gap-1.5 text-xs font-bold text-amber-700 uppercase tracking-widest mb-2">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+              Notas del pedido
+            </label>
+            <textarea
+              rows={3}
+              value={form.notas}
+              onChange={(e) => set("notas", e.target.value)}
+              placeholder="Instrucciones especiales, observaciones, advertencias…"
+              className="w-full resize-none bg-white border border-amber-300 rounded-lg px-3 py-2 text-sm text-gray-800 placeholder-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-400"
+            />
+          </div>
+        </div>
+
         {/* Footer */}
         <div className="shrink-0 border-t border-gray-100 px-6 py-4 flex items-center justify-end gap-3">
           <button onClick={onClose} className="px-4 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 border border-gray-200 rounded-xl transition-colors">
@@ -1086,6 +1110,8 @@ export default function ProgramacionPage() {
   const [showDrawer, setShowDrawer] = useState(false);
   const [editing, setEditing] = useState<Programacion | undefined>();
   const [loading, setLoading] = useState(true);
+  const [tableView, setTableView] = useState<"lista" | "excel">("lista");
+  const [excelFullscreen, setExcelFullscreen] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -1294,6 +1320,33 @@ export default function ProgramacionPage() {
             ))}
           </div>
           <div className="flex items-center gap-2">
+            {/* Vista toggle */}
+            <div className="flex items-center gap-0.5 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg p-0.5">
+              <button
+                onClick={() => setTableView("lista")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer ${tableView === "lista" ? "bg-[#CC2229] text-white" : "text-gray-400 hover:text-white"}`}
+              >
+                <LayoutList size={13} />
+                Lista
+              </button>
+              <button
+                onClick={() => setTableView("excel")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer ${tableView === "excel" ? "bg-[#CC2229] text-white" : "text-gray-400 hover:text-white"}`}
+              >
+                <Table2 size={13} />
+                Tabla
+              </button>
+            </div>
+            {tableView === "excel" && (
+              <button
+                onClick={() => setExcelFullscreen(true)}
+                title="Pantalla completa"
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-300 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg hover:border-[#CC2229]/60 hover:text-white transition-colors cursor-pointer"
+              >
+                <Expand size={13} />
+                Expandir
+              </button>
+            )}
             <button
               onClick={() => filtered.length > 0 && exportXLSX(filtered)}
               disabled={filtered.length === 0}
@@ -1415,8 +1468,41 @@ export default function ProgramacionPage() {
         />
       </div>
 
+      {/* Excel view */}
+      {tableView === "excel" && !excelFullscreen && (
+        <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
+          <ExcelView
+            rows={filtered as unknown as ExcelProg[]}
+            onEdit={(p) => { setEditing(p as unknown as Programacion); setShowDrawer(true); }}
+          />
+        </div>
+      )}
+
+      {/* Excel fullscreen overlay */}
+      {tableView === "excel" && excelFullscreen && (
+        <div className="fixed inset-0 z-50 bg-[#1A1A1A] flex flex-col">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-[#3A3A3A] shrink-0">
+            <span className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Tabla — Programación</span>
+            <button
+              onClick={() => setExcelFullscreen(false)}
+              title="Salir de pantalla completa"
+              className="p-1.5 rounded-lg bg-[#242424] border border-[#3A3A3A] text-gray-400 hover:text-white hover:bg-[#2A2A2A] transition-colors cursor-pointer"
+            >
+              <Shrink size={14} />
+            </button>
+          </div>
+          <div className="flex-1 overflow-hidden bg-[#242424]">
+            <ExcelView
+              rows={filtered as unknown as ExcelProg[]}
+              onEdit={(p) => { setEditing(p as unknown as Programacion); setShowDrawer(true); }}
+              fullscreen
+            />
+          </div>
+        </div>
+      )}
+
       {/* Table */}
-      <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
+      {tableView === "lista" && <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
         <div className="px-5 py-3 border-b border-[#3A3A3A] flex items-center justify-between">
           <p className="text-sm font-semibold text-white">
             {filtered.length > 0 ? `${filtered.length} programación${filtered.length !== 1 ? "es" : ""}` : "Sin programaciones para este período"}
@@ -1473,7 +1559,7 @@ export default function ProgramacionPage() {
             {totalFacturado > 0 && <span className="font-semibold text-white">{currency(totalFacturado)}</span>}
           </div>
         )}
-      </div>
+      </div>}
 
       <FormDrawer
         open={showDrawer}

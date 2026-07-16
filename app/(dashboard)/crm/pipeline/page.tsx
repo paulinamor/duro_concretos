@@ -18,12 +18,13 @@ import {
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
 import {
-  crmOpportunities,
   pipelineStages,
   PipelineStage,
+  type CrmOpportunity,
 } from "@/lib/crmPipeline";
+import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
 
-type Opp = typeof crmOpportunities[number];
+type Opp = CrmOpportunity;
 
 interface OppForm {
   cliente: string; obra: string; contacto: string; telefono: string;
@@ -153,13 +154,21 @@ function OppDrawer({ open, onClose, onSave, editing }: {
 }
 
 export default function CrmPipelinePage() {
-  const [opportunities, setOpportunities] = useState(crmOpportunities);
+  const [opportunities, setOpportunities] = useState<Opp[]>([]);
+  const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editingOpp, setEditingOpp] = useState<Opp | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<PipelineStage | null>(null);
+
+  useEffect(() => {
+    getCollectionDocs<Opp>(COLLECTIONS.pipeline).then((docs) => {
+      setOpportunities(docs);
+      setLoading(false);
+    });
+  }, []);
 
   const filtered = useMemo(() => {
     const term = query.toLowerCase();
@@ -177,35 +186,26 @@ export default function CrmPipelinePage() {
   const totalM3 = opportunities.reduce((sum, item) => sum + item.m3Estimados, 0);
   const cierre = opportunities.filter((item) => item.etapa === "Cierre").length;
 
-  function handleSave(form: OppForm, existingId?: string) {
-    if (existingId) {
-      setOpportunities((current) => current.map((o) =>
-        o.id === existingId ? {
-          ...o,
-          cliente: form.cliente, obra: form.obra, contacto: form.contacto,
-          telefono: form.telefono, valorEstimado: Number(form.valorEstimado) || 0,
-          m3Estimados: Number(form.m3Estimados) || 0, etapa: form.etapa,
-          probabilidad: probabilidadPorEtapa[form.etapa],
-          fechaSeguimiento: form.fechaSeguimiento, responsable: form.responsable,
-          proximaAccion: form.proximaAccion,
-        } : o
-      ));
-    } else {
-      const next = opportunities.length + 1;
-      setOpportunities((current) => [{
-        id: `CRM-${String(next).padStart(3, "0")}`,
-        cliente: form.cliente, obra: form.obra, contacto: form.contacto,
-        telefono: form.telefono, valorEstimado: Number(form.valorEstimado) || 0,
-        m3Estimados: Number(form.m3Estimados) || 0, etapa: form.etapa,
-        probabilidad: probabilidadPorEtapa[form.etapa],
-        proximaAccion: form.proximaAccion || "Dar seguimiento comercial",
-        fechaSeguimiento: form.fechaSeguimiento, responsable: form.responsable,
-      }, ...current]);
-    }
+  async function handleSave(form: OppForm, existingId?: string) {
+    const id = existingId ?? `crm-${Date.now()}`;
+    const doc: Opp = {
+      id,
+      cliente: form.cliente, obra: form.obra, contacto: form.contacto,
+      telefono: form.telefono, valorEstimado: Number(form.valorEstimado) || 0,
+      m3Estimados: Number(form.m3Estimados) || 0, etapa: form.etapa,
+      probabilidad: probabilidadPorEtapa[form.etapa],
+      fechaSeguimiento: form.fechaSeguimiento, responsable: form.responsable,
+      proximaAccion: form.proximaAccion || "Dar seguimiento comercial",
+    };
+    await upsertDocument(COLLECTIONS.pipeline, id, doc);
+    setOpportunities((cur) =>
+      existingId ? cur.map((o) => o.id === id ? doc : o) : [doc, ...cur]
+    );
   }
 
-  function handleDelete(id: string) {
-    setOpportunities((current) => current.filter((o) => o.id !== id));
+  async function handleDelete(id: string) {
+    await deleteDocument(COLLECTIONS.pipeline, id);
+    setOpportunities((cur) => cur.filter((o) => o.id !== id));
     setConfirmDeleteId(null);
   }
 
@@ -220,23 +220,11 @@ export default function CrmPipelinePage() {
 
   function handleDrop(stage: PipelineStage) {
     if (!draggedId) return;
-
-    setOpportunities((current) => {
-      const dragged = current.find((item) => item.id === draggedId);
-      if (!dragged) return current;
-
-      const updated = {
-        ...dragged,
-        etapa: stage,
-        probabilidad: probabilidadPorEtapa[stage],
-      };
-
-      return [
-        updated,
-        ...current.filter((item) => item.id !== draggedId),
-      ];
-    });
-
+    const dragged = opportunities.find((item) => item.id === draggedId);
+    if (!dragged) { setDraggedId(null); setDragOverStage(null); return; }
+    const updated = { ...dragged, etapa: stage, probabilidad: probabilidadPorEtapa[stage] };
+    upsertDocument(COLLECTIONS.pipeline, dragged.id, updated);
+    setOpportunities((cur) => [updated, ...cur.filter((item) => item.id !== draggedId)]);
     setDraggedId(null);
     setDragOverStage(null);
   }
