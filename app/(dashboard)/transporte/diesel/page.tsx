@@ -6,7 +6,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
 import {
-  AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
+  AlertTriangle, ChevronDown, ChevronUp,
   DollarSign, Download, Fuel, Gauge, MapPin, MessageSquare,
   Pencil, Plus, Receipt, Search, Shield, Trash2, Truck, X,
 } from "lucide-react";
@@ -67,13 +67,6 @@ function currency(n: number) {
 function fmt(n: number | null | undefined, decimals = 2) {
   if (n == null) return "—";
   return n.toLocaleString("es-MX", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-}
-
-function mesLabel(key: string) {
-  if (key === "todos") return "Todos";
-  const [y, m] = key.split("-");
-  const d = new Date(Number(y), Number(m) - 1, 1);
-  return d.toLocaleDateString("es-MX", { month: "long", year: "numeric" });
 }
 
 const COMBUSTIBLE_BADGE: Record<TipoCombustible, string> = {
@@ -551,7 +544,8 @@ export default function DieselPage() {
   const [confirmDelete, setConfirmDelete] = useState<CargaDiesel | null>(null);
   const [filterUnidad, setFilterUnidad] = useState("Todas");
   const [filterCombustible, setFilterCombustible] = useState("Todos");
-  const [filterMes, setFilterMes] = useState("todos");
+  const [fechaDesde, setFechaDesde] = useState("");
+  const [fechaHasta, setFechaHasta] = useState("");
   const [query, setQuery] = useState("");
 
   useEffect(() => {
@@ -566,39 +560,27 @@ export default function DieselPage() {
     return ["Todas", ...Array.from(new Set([...unidadesList, ...fromCargas])).sort()];
   }, [cargas, unidadesList]);
 
-  const mesesDisponibles = useMemo(() => {
-    const meses = new Set<string>();
-    cargas.forEach((c) => {
-      if (!c.fecha) return;
-      const parts = c.fecha.split("/");
-      if (parts.length === 3) { const [, m, y] = parts; if (m && y) meses.add(`${y}-${m}`); }
-    });
-    return ["todos", ...Array.from(meses).sort().reverse()];
-  }, [cargas]);
-
   const filtered = useMemo(() => {
     const toMs = (f: string) => {
       const p = f.split("/");
       if (p.length !== 3) return 0;
       return new Date(`${p[2]}-${p[1]}-${p[0]}T00:00:00`).getTime();
     };
+    const desdeMs = fechaDesde ? new Date(fechaDesde + "T00:00:00").getTime() : null;
+    const hastaMs = fechaHasta ? new Date(fechaHasta + "T23:59:59").getTime() : null;
     return cargas
       .filter((c) => {
         const matchUnidad = filterUnidad === "Todas" || c.unidad === filterUnidad;
         const matchComb = filterCombustible === "Todos" || c.combustible === filterCombustible;
-        const matchMes = filterMes === "todos" || (() => {
-          if (!c.fecha) return false;
-          const parts = c.fecha.split("/");
-          if (parts.length !== 3) return false;
-          const [, m, y] = parts;
-          return `${y}-${m}` === filterMes;
-        })();
+        const cMs = toMs(c.fecha);
+        const matchDesde = desdeMs == null || cMs >= desdeMs;
+        const matchHasta = hastaMs == null || cMs <= hastaMs;
         const q = query.toLowerCase();
         const matchQ = !q || c.unidad.toLowerCase().includes(q) || c.recibo.toLowerCase().includes(q) || (c.lugar || "").toLowerCase().includes(q);
-        return matchUnidad && matchComb && matchMes && matchQ;
+        return matchUnidad && matchComb && matchDesde && matchHasta && matchQ;
       })
       .sort((a, b) => toMs(b.fecha) - toMs(a.fecha));
-  }, [cargas, filterUnidad, filterCombustible, filterMes, query]);
+  }, [cargas, filterUnidad, filterCombustible, fechaDesde, fechaHasta, query]);
 
   const totalLitros = filtered.reduce((s, c) => s + (c.litros ?? 0), 0);
   const totalCosto = filtered.reduce((s, c) => s + (c.total ?? 0), 0);
@@ -677,8 +659,7 @@ export default function DieselPage() {
     window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `Carga de ${carga.unidad} eliminada.` } }));
   }
 
-  const mesIdx = mesesDisponibles.indexOf(filterMes);
-  const hasFilters = filterMes !== "todos" || filterUnidad !== "Todas" || filterCombustible !== "Todos" || query;
+  const hasFilters = !!(fechaDesde || fechaHasta || filterUnidad !== "Todas" || filterCombustible !== "Todos" || query);
 
   return (
     <div className="space-y-5">
@@ -686,7 +667,9 @@ export default function DieselPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-gray-500">
           {filtered.length} de {cargas.length} registros
-          {filterMes !== "todos" && <span className="ml-1.5 text-[#CC2229] capitalize">· {mesLabel(filterMes)}</span>}
+          {(fechaDesde || fechaHasta) && (
+            <span className="ml-1.5 text-[#CC2229]">· {fechaDesde || "…"} — {fechaHasta || "hoy"}</span>
+          )}
         </p>
         <div className="flex items-center gap-2">
           <button onClick={exportXLSX} disabled={filtered.length === 0}
@@ -719,28 +702,14 @@ export default function DieselPage() {
 
         <div className="w-px h-5 bg-[#3A3A3A]" />
 
-        {/* Mes */}
-        <div className="flex items-center gap-1">
-          <button disabled={mesIdx >= mesesDisponibles.length - 1} onClick={() => setFilterMes(mesesDisponibles[mesIdx + 1])}
-            className="p-1 rounded-lg text-gray-400 hover:text-gray-300 hover:bg-[#3A3A3A] transition-colors disabled:opacity-30 cursor-pointer">
-            <ChevronLeft size={14} />
-          </button>
-          <button onClick={() => setFilterMes("todos")}
-            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer ${filterMes === "todos" ? "bg-[#CC2229] text-white" : "text-gray-400 hover:text-gray-200 hover:bg-[#3A3A3A]"}`}>
-            Todo
-          </button>
-          {filterMes !== "todos" && (
-            <button
-              onClick={() => setFilterMes("todos")}
-              className="px-3 py-1.5 text-xs font-semibold bg-[#CC2229] text-white rounded-lg capitalize whitespace-nowrap cursor-pointer"
-            >
-              {mesLabel(filterMes)}
-            </button>
-          )}
-          <button disabled={mesIdx <= 0} onClick={() => setFilterMes(mesesDisponibles[mesIdx - 1])}
-            className="p-1 rounded-lg text-gray-400 hover:text-gray-300 hover:bg-[#3A3A3A] transition-colors disabled:opacity-30 cursor-pointer">
-            <ChevronRight size={14} />
-          </button>
+        {/* Rango de fechas */}
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Del</span>
+          <input type="date" value={fechaDesde} onChange={(e) => setFechaDesde(e.target.value)}
+            className="bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[#CC2229]/60 cursor-pointer" />
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">al</span>
+          <input type="date" value={fechaHasta} onChange={(e) => setFechaHasta(e.target.value)}
+            className="bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[#CC2229]/60 cursor-pointer" />
         </div>
 
         <div className="w-px h-5 bg-[#3A3A3A]" />
@@ -764,8 +733,8 @@ export default function DieselPage() {
         </select>
 
         {hasFilters && (
-          <button onClick={() => { setFilterMes("todos"); setFilterUnidad("Todas"); setFilterCombustible("Todos"); setQuery(""); }}
-            className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700 transition-colors cursor-pointer ml-auto">
+          <button onClick={() => { setFechaDesde(""); setFechaHasta(""); setFilterUnidad("Todas"); setFilterCombustible("Todos"); setQuery(""); }}
+            className="flex items-center gap-1 text-xs text-gray-400 hover:text-white transition-colors cursor-pointer ml-auto">
             <X size={12} /> Limpiar
           </button>
         )}
