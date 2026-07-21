@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
-  Clock, Download, ExternalLink, Expand, LayoutList, Pencil, Plus, ReceiptText, Shrink, Table2, Trash2, UserRound, X,
+  CalendarDays, ChevronLeft, ChevronRight,
+  Clock, Download, Expand, Plus, Shrink, UserRound, X,
 } from "lucide-react";
 import ExcelView from "./ExcelView";
 import type { ExcelProg } from "./ExcelView";
@@ -872,230 +872,6 @@ function FormDrawer({
   );
 }
 
-// ─── TableRow ─────────────────────────────────────────────────────────────────
-
-function TableRow({ p, onEdit, onDelete, onCreateCxC, showFecha }: { p: Programacion; onEdit: () => void; onDelete: () => void; onCreateCxC: (p: Programacion) => void; showFecha?: boolean }) {
-  const [expanded, setExpanded] = useState(false);
-  const pagadoColor = p.pagado === "Sí"
-    ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
-    : p.pagado === "Parcial"
-      ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
-      : p.pagado === "No"
-        ? "bg-red-500/15 text-red-400 border-red-500/30"
-        : "bg-white/5 text-slate-500 border-white/10";
-
-  const choferesList = p.choferes?.filter((c) => c.chofer) ?? [];
-
-  return (
-    <>
-      <tr
-        className="cursor-pointer"
-        onClick={() => setExpanded((v) => !v)}
-      >
-        {showFecha && (
-          <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap font-mono">{p.dia || "—"}</td>
-        )}
-        <td className="px-4 py-3 text-white font-mono text-sm font-semibold whitespace-nowrap">{p.hora || "—"}</td>
-        <td className="px-4 py-3 max-w-[160px]">
-          {choferesList.length === 0 ? (
-            <span className="text-gray-600 text-sm">—</span>
-          ) : choferesList.length === 1 ? (
-            <span className="text-gray-200 text-sm">{choferesList[0].chofer}</span>
-          ) : (
-            <div className="flex flex-col gap-0.5">
-              <span className="text-gray-200 text-xs truncate">{choferesList[0].chofer}</span>
-              <span className="text-gray-500 text-[10px]">+{choferesList.length - 1} más</span>
-            </div>
-          )}
-        </td>
-        <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">
-          {choferesList.length === 1 ? choferesList[0].cr || "—"
-            : choferesList.length > 1 ? choferesList.map((c) => c.cr).filter(Boolean).join(", ") || "—"
-            : "—"}
-        </td>
-        <td className="px-4 py-3 max-w-[180px]">
-          <p className="text-gray-100 text-sm font-medium truncate">{p.cliente}</p>
-          {p.direccion && <p className="text-gray-600 text-xs truncate">{p.direccion}</p>}
-        </td>
-        <td className="px-4 py-3 whitespace-nowrap">
-          {p.m3Totales != null
-            ? <span className="text-blue-300 font-semibold text-sm">{p.m3Totales}<span className="text-gray-600 text-xs ml-1">m³</span></span>
-            : <span className="text-gray-600">—</span>}
-        </td>
-        <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">
-          {choferesList.length === 1 ? choferesList[0].remision || "—"
-            : choferesList.length > 1 ? choferesList.map((c) => c.remision).filter(Boolean).join(", ") || "—"
-            : "—"}
-        </td>
-        <td className="px-4 py-3 whitespace-nowrap">
-          {p.resistencia
-            ? <span className="rounded-full bg-[#CC2229]/15 border border-[#CC2229]/30 px-2 py-0.5 text-[11px] font-semibold text-[#CC2229]">{p.resistencia}</span>
-            : <span className="text-gray-600">—</span>}
-        </td>
-        <td className="px-4 py-3 text-white font-semibold text-sm whitespace-nowrap tabular-nums">{currency(p.total)}</td>
-        <td className="px-4 py-3 whitespace-nowrap">
-          {p.pagado
-            ? <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${pagadoColor}`}>{p.pagado}</span>
-            : <span className="text-gray-600 text-xs">—</span>}
-        </td>
-        <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-          <div className="flex items-center gap-1">
-            <button onClick={onEdit} className="rounded-lg p-1.5 text-gray-500 hover:bg-white/10 hover:text-white transition-colors" aria-label="Editar">
-              <Pencil size={13} />
-            </button>
-            <button onClick={onDelete} className="rounded-lg p-1.5 text-gray-500 hover:bg-red-500/10 hover:text-red-400 transition-colors" aria-label="Eliminar">
-              <Trash2 size={13} />
-            </button>
-            {expanded ? <ChevronUp size={13} className="text-gray-600 ml-1" /> : <ChevronDown size={13} className="text-gray-600 ml-1" />}
-          </div>
-        </td>
-      </tr>
-
-      {expanded && (
-        <tr>
-          <td colSpan={showFecha ? 11 : 10} className="bg-[#1A1A1A]" style={{ padding: "16px 20px", borderTop: "2px solid #CC2229", borderBottom: "1px solid #e2e8f0", maxWidth: 0 }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: "16px", overflow: "hidden" }}>
-
-              {/* Tarjetas de choferes */}
-              {choferesList.length > 0 && (
-                <div>
-                  <p style={{ fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.12em", color: "#64748b", marginBottom: "10px" }}>Choferes</p>
-                  <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-                    {choferesList.map((c) => (
-                      <div key={c.id} style={{ backgroundColor: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "10px 14px", minWidth: "160px", flex: "1 1 160px", maxWidth: "260px", display: "flex", flexDirection: "column", gap: "5px", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}>
-                        <p style={{ fontSize: "12px", fontWeight: 600, color: "#0f172a", marginBottom: "6px", borderBottom: "1px solid #f1f5f9", paddingBottom: "6px" }}>{c.chofer}</p>
-                        {[
-                          { label: "M3",           value: c.m3 != null ? `${c.m3} m³` : "", color: "#2563eb", bold: true },
-                          { label: "CR",           value: c.cr,                              color: "#1e293b", bold: false },
-                          { label: "Remisión",     value: c.remision,                        color: "#1e293b", bold: false },
-                          { label: "Sello",        value: c.numSello,                        color: "#1e293b", bold: false },
-                          { label: "Salida",       value: c.horaSalida,                      color: "#1e293b", bold: false },
-                          { label: "Llegada obra", value: c.horaLlegadaObra,                 color: "#1e293b", bold: false },
-                          { label: "Inicio desc.", value: c.horaInicioDescarga,               color: "#1e293b", bold: false },
-                          { label: "Final desc.",  value: c.horaFinalDescarga,                color: "#1e293b", bold: false },
-                          { label: "Salida obra",  value: c.horaSalidaObra,                  color: "#1e293b", bold: false },
-                          { label: "T. descarga",  value: c.tiempoDescarga,                  color: "#059669", bold: true },
-                        ].filter((f) => f.value).map(({ label, value, color, bold }) => (
-                          <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "6px", minWidth: 0 }}>
-                            <span style={{ fontSize: "10px", color: "#64748b", flexShrink: 0 }}>{label}</span>
-                            <span style={{ fontSize: "11px", color, fontFamily: "monospace", fontWeight: bold ? 600 : 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{String(value ?? "")}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Detalles en 3 columnas */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "16px" }}>
-
-                {/* Concreto */}
-                {[p.hsr, p.tiempoExtraDescarga, p.m3Vacios, p.tdBom, p.color, p.resistencia, p.extras, p.paraUso, p.muestras].some(Boolean) && (
-                  <div>
-                    <p style={{ fontSize: "9px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.14em", color: "#64748b", marginBottom: "8px", paddingBottom: "5px", borderBottom: "1px solid #e2e8f0" }}>Concreto</p>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                      {[
-                        { label: "Resistencia",   value: p.resistencia },
-                        { label: "T/D BOM",       value: p.tdBom },
-                        { label: "Color",         value: p.color },
-                        { label: "M3 vacíos",     value: p.m3Vacios != null ? `${p.m3Vacios} m³` : "" },
-                        { label: "HSR",           value: p.hsr },
-                        { label: "T. extra desc.",value: p.tiempoExtraDescarga },
-                        { label: "Extras",        value: p.extras },
-                        { label: "Para uso",      value: p.paraUso },
-                        { label: "Muestras",      value: p.muestras },
-                      ].filter((f) => f.value).map(({ label, value }) => (
-                        <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "6px", minWidth: 0 }}>
-                          <span style={{ fontSize: "10px", color: "#64748b", flexShrink: 0 }}>{label}</span>
-                          <span style={{ fontSize: "11px", color: "#1e293b", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{String(value)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Costos */}
-                {[p.precioM3, p.precioM3Bomba, p.totalXM3, p.ltoAcelr, p.kiloFibra, p.m3Imper, p.tuberiaExtra, p.permisosOC, p.aditivo].some((v) => v != null && v !== "") && (
-                  <div>
-                    <p style={{ fontSize: "9px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.14em", color: "#64748b", marginBottom: "8px", paddingBottom: "5px", borderBottom: "1px solid #e2e8f0" }}>Costos</p>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                      {[
-                        { label: "Precio M3",     value: p.precioM3 != null ? currency(p.precioM3) : "" },
-                        { label: "$ M3 Bomba",    value: p.precioM3Bomba != null ? currency(p.precioM3Bomba) : "" },
-                        { label: "Total x M3",    value: p.totalXM3 != null ? currency(p.totalXM3) : "" },
-                        { label: "$ Lto Acelr",   value: p.ltoAcelr != null ? currency(p.ltoAcelr) : "" },
-                        { label: "$ Kilo Fibra",  value: p.kiloFibra != null ? currency(p.kiloFibra) : "" },
-                        { label: "$ M3 Imper",    value: p.m3Imper != null ? currency(p.m3Imper) : "" },
-                        { label: "Tubería extra", value: p.tuberiaExtra != null ? currency(p.tuberiaExtra) : "" },
-                        { label: "Permisos O/C",  value: p.permisosOC != null ? currency(p.permisosOC) : "" },
-                        { label: "Aditivo",       value: p.aditivo },
-                      ].filter((f) => f.value).map(({ label, value }) => (
-                        <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "6px", minWidth: 0 }}>
-                          <span style={{ fontSize: "10px", color: "#64748b", flexShrink: 0 }}>{label}</span>
-                          <span style={{ fontSize: "11px", color: "#1e293b", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Pago y pedido */}
-                <div>
-                  <p style={{ fontSize: "9px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.14em", color: "#64748b", marginBottom: "8px", paddingBottom: "5px", borderBottom: "1px solid #e2e8f0" }}>Pago y pedido</p>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                    {[
-                      { label: "Vendedor",         value: p.vendedor },
-                      { label: "Día y hora pedido",value: p.diaHoraPedido ? p.diaHoraPedido.replace("T", " ") : "" },
-                      { label: "Teléfono",         value: p.telefono },
-                      { label: "Recibo",           value: p.recibo },
-                      { label: "Fact.",            value: p.fact },
-                      { label: "Crédito",          value: p.credito },
-                      { label: "Método pago",      value: p.metodoPago },
-                      { label: "Monto pagado",     value: p.pagado === "Parcial" && p.montoPagado != null ? `$${p.montoPagado.toLocaleString("es-MX")}` : "" },
-                      { label: "Fecha pago",       value: p.fechaPago },
-                    ].filter((f) => f.value).map(({ label, value }) => (
-                      <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px" }}>
-                        <span style={{ fontSize: "10px", color: "#64748b" }}>{label}</span>
-                        <span style={{ fontSize: "11px", color: "#1e293b", fontFamily: "monospace" }}>{value}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* CxC link / action */}
-                  <div style={{ marginTop: "12px", paddingTop: "10px", borderTop: "1px solid #e2e8f0" }}>
-                    {p.cxcId ? (
-                      <a
-                        href="/finanzas/cxc"
-                        onClick={(e) => e.stopPropagation()}
-                        className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-600 hover:text-emerald-700 transition-colors"
-                      >
-                        <ReceiptText size={12} />
-                        En CxC
-                        <ExternalLink size={10} />
-                      </a>
-                    ) : p.total && p.pagado !== "Sí" ? (
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); onCreateCxC(p); }}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-blue-400/40 bg-blue-500/10 px-3 py-1.5 text-[11px] font-semibold text-blue-400 hover:border-blue-400/70 hover:bg-blue-500/20 transition-colors cursor-pointer"
-                      >
-                        <ReceiptText size={12} />
-                        Enviar a CxC
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-
-              </div>
-            </div>
-          </td>
-        </tr>
-      )}
-    </>
-  );
-}
-
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ProgramacionPage() {
@@ -1110,7 +886,6 @@ export default function ProgramacionPage() {
   const [showDrawer, setShowDrawer] = useState(false);
   const [editing, setEditing] = useState<Programacion | undefined>();
   const [loading, setLoading] = useState(true);
-  const [tableView, setTableView] = useState<"lista" | "excel">("lista");
   const [excelFullscreen, setExcelFullscreen] = useState(false);
 
   useEffect(() => {
@@ -1320,33 +1095,14 @@ export default function ProgramacionPage() {
             ))}
           </div>
           <div className="flex items-center gap-2">
-            {/* Vista toggle */}
-            <div className="flex items-center gap-0.5 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg p-0.5">
-              <button
-                onClick={() => setTableView("lista")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer ${tableView === "lista" ? "bg-[#CC2229] text-white" : "text-gray-400 hover:text-white"}`}
-              >
-                <LayoutList size={13} />
-                Lista
-              </button>
-              <button
-                onClick={() => setTableView("excel")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer ${tableView === "excel" ? "bg-[#CC2229] text-white" : "text-gray-400 hover:text-white"}`}
-              >
-                <Table2 size={13} />
-                Tabla
-              </button>
-            </div>
-            {tableView === "excel" && (
-              <button
-                onClick={() => setExcelFullscreen(true)}
-                title="Pantalla completa"
-                className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-300 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg hover:border-[#CC2229]/60 hover:text-white transition-colors cursor-pointer"
-              >
-                <Expand size={13} />
-                Expandir
-              </button>
-            )}
+            <button
+              onClick={() => setExcelFullscreen(true)}
+              title="Pantalla completa"
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-300 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg hover:border-[#CC2229]/60 hover:text-white transition-colors cursor-pointer"
+            >
+              <Expand size={13} />
+              Expandir
+            </button>
             <button
               onClick={() => filtered.length > 0 && exportXLSX(filtered)}
               disabled={filtered.length === 0}
@@ -1469,7 +1225,7 @@ export default function ProgramacionPage() {
       </div>
 
       {/* Excel view */}
-      {tableView === "excel" && !excelFullscreen && (
+      {!excelFullscreen && (
         <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
           <ExcelView
             rows={filtered as unknown as ExcelProg[]}
@@ -1479,7 +1235,7 @@ export default function ProgramacionPage() {
       )}
 
       {/* Excel fullscreen overlay */}
-      {tableView === "excel" && excelFullscreen && (
+      {excelFullscreen && (
         <div className="fixed inset-0 z-50 bg-[#1A1A1A] flex flex-col">
           <div className="flex items-center justify-between px-4 py-2 border-b border-[#3A3A3A] shrink-0">
             <span className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Tabla — Programación</span>
@@ -1500,66 +1256,6 @@ export default function ProgramacionPage() {
           </div>
         </div>
       )}
-
-      {/* Table */}
-      {tableView === "lista" && <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
-        <div className="px-5 py-3 border-b border-[#3A3A3A] flex items-center justify-between">
-          <p className="text-sm font-semibold text-white">
-            {filtered.length > 0 ? `${filtered.length} programación${filtered.length !== 1 ? "es" : ""}` : "Sin programaciones para este período"}
-          </p>
-          <p className="text-xs text-gray-500 capitalize">{periodLabel(viewMode, diaActivo, rangoInicio, rangoFin)}</p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 z-10 bg-[#1A1A1A]">
-              <tr className="bg-[#1A1A1A]">
-                {[...(viewMode !== "dia" ? ["Fecha"] : []), "Hora", "Chofer", "CR", "Cliente", "M3 totales", "Remisión", "Resistencia", "Total", "Pagado", ""].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#2A2A2A]">
-              {loading ? (
-                <tr><td colSpan={viewMode !== "dia" ? 11 : 10} className="px-4 py-12 text-center text-sm text-gray-600">Cargando…</td></tr>
-              ) : filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={viewMode !== "dia" ? 11 : 10} className="px-4 py-16 text-center">
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="h-12 w-12 rounded-xl bg-[#1A1A1A] flex items-center justify-center">
-                        <CalendarDays size={22} className="text-gray-600" />
-                      </div>
-                      <p className="text-sm text-gray-500">Sin programaciones para este período</p>
-                      <button
-                        onClick={() => { setEditing(undefined); setShowDrawer(true); }}
-                        className="text-xs text-[#CC2229] hover:underline"
-                      >
-                        Agregar primera programación
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ) : filtered.map((p) => (
-                <TableRow
-                  key={p.id}
-                  p={p}
-                  showFecha={viewMode !== "dia"}
-                  onEdit={() => { setEditing(p); setShowDrawer(true); }}
-                  onDelete={() => p.id && handleDelete(p.id)}
-                  onCreateCxC={handleCreateCxC}
-                />
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {filtered.length > 0 && (
-          <div className="px-5 py-3 border-t border-[#3A3A3A] flex items-center justify-between text-xs text-gray-600">
-            <span>{filtered.length} viaje{filtered.length !== 1 ? "s" : ""} · {totalM3.toLocaleString("es-MX")} m³ totales</span>
-            {totalFacturado > 0 && <span className="font-semibold text-white">{currency(totalFacturado)}</span>}
-          </div>
-        )}
-      </div>}
 
       <FormDrawer
         open={showDrawer}

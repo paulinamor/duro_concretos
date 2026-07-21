@@ -61,10 +61,9 @@ const administracionItems: { href: string; icon: React.ElementType; label: strin
 
 const transporteItems = [
   { href: "/transporte/programacion", icon: CalendarDays, label: "Programación" },
-  { href: "/transporte/unidades", icon: Truck, label: "Unidades / Flota" },
+  { href: "/transporte/seguros", icon: Truck, label: "Flota" },
   { href: "/transporte/diesel", icon: Fuel, label: "Consumo de Diésel" },
   { href: "/transporte/mantenimiento", icon: Wrench, label: "Mantenimiento de Flota" },
-  { href: "/transporte/seguros", icon: ShieldCheck, label: "Seguro de Flota" },
 ];
 
 const operacionesItems = [

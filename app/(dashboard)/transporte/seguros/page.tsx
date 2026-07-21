@@ -9,7 +9,7 @@ import KPICard from "@/components/KPICard";
 import HScrollTable from "@/components/HScrollTable";
 import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
 import { filterByPlanta, withPlantaTag } from "@/lib/auth";
-import type { Unidad } from "@/lib/unidades";
+import type { Unidad, EstatusUnidad } from "@/lib/unidades";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -38,7 +38,7 @@ interface Seguro {
   aseguradora: string;
   noPoliza: string;
   statusPoliza: StatusPoliza;
-  vigenciaInicio: string;   // ISO yyyy-mm-dd
+  vigenciaInicio?: string;  // legacy — ya no se captura
   vigenciaFin: string;      // ISO yyyy-mm-dd
   costoPoliza: number | null;
   valorMercado: number | null;
@@ -49,6 +49,15 @@ interface Seguro {
 }
 
 interface FormState {
+  // ── Operativos (van a colección unidades) ──
+  estatus: EstatusUnidad;
+  capacidadM3: string;
+  kmActual: string;
+  choferAsignado: string;
+  ultimoMantenimiento: string;
+  proximoMantenimiento: string;
+  verificacion: string;
+  // ── Identificación ──
   tipoUnidad: string;
   noEconomico: string;
   placa: string;
@@ -61,10 +70,10 @@ interface FormState {
   motor: string;
   noTarjetaCirculacion: string;
   vigenciaTarjetaCirculacion: string;
+  // ── Póliza ──
   aseguradora: string;
   noPoliza: string;
   statusPoliza: StatusPoliza;
-  vigenciaInicio: string;
   vigenciaFin: string;
   costoPoliza: string;
   valorMercado: string;
@@ -113,24 +122,30 @@ function diasRestantes(fechaFin: string) {
   return Math.ceil((fin.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
 }
 
-function emptyForm(u?: Unidad): FormState {
+function emptyForm(): FormState {
   return {
+    estatus: "Activo",
+    capacidadM3: "",
+    kmActual: "",
+    choferAsignado: "",
+    ultimoMantenimiento: "",
+    proximoMantenimiento: "",
+    verificacion: "",
     tipoUnidad: "Revolvedora",
-    noEconomico: u?.noEconomico ?? "",
-    placa: u?.placa ?? "",
+    noEconomico: "",
+    placa: "",
     estadoPlaca: "Nuevo León",
-    marca: u?.marca ?? "",
-    modelo: u?.modelo ?? "",
+    marca: "",
+    modelo: "",
     noSerie: "",
-    anio: u?.anio ? String(u.anio) : "",
+    anio: "",
     color: "",
     motor: "",
-    noTarjetaCirculacion: u?.tarjetaCirculacion ?? "",
+    noTarjetaCirculacion: "",
     vigenciaTarjetaCirculacion: "",
     aseguradora: "",
     noPoliza: "",
     statusPoliza: "Condicionada",
-    vigenciaInicio: todayISO(),
     vigenciaFin: "",
     costoPoliza: "",
     valorMercado: "",
@@ -140,8 +155,15 @@ function emptyForm(u?: Unidad): FormState {
   };
 }
 
-function formFromSeguro(s: Seguro): FormState {
+function formFromRecord(s: Seguro, u?: Unidad): FormState {
   return {
+    estatus: u?.estatus ?? "Activo",
+    capacidadM3: u?.capacidadM3 != null ? String(u.capacidadM3) : "",
+    kmActual: u?.kmActual != null ? String(u.kmActual) : "",
+    choferAsignado: u?.choferAsignado ?? "",
+    ultimoMantenimiento: u?.ultimoMantenimiento ?? "",
+    proximoMantenimiento: u?.proximoMantenimiento === "—" ? "" : (u?.proximoMantenimiento ?? ""),
+    verificacion: u?.verificacion ?? "",
     tipoUnidad: s.tipoUnidad,
     noEconomico: s.noEconomico,
     placa: s.placa,
@@ -157,10 +179,9 @@ function formFromSeguro(s: Seguro): FormState {
     aseguradora: s.aseguradora,
     noPoliza: s.noPoliza,
     statusPoliza: s.statusPoliza,
-    vigenciaInicio: s.vigenciaInicio,
     vigenciaFin: s.vigenciaFin,
-    costoPoliza: s.costoPoliza != null ? String(s.costoPoliza) : "",
-    valorMercado: s.valorMercado != null ? String(s.valorMercado) : "",
+    costoPoliza: s.costoPoliza != null && !isNaN(s.costoPoliza) ? String(s.costoPoliza) : "",
+    valorMercado: s.valorMercado != null && !isNaN(s.valorMercado) ? String(s.valorMercado) : "",
     tenencia: s.tenencia,
     agente: s.agente,
     observaciones: s.observaciones,
@@ -186,8 +207,7 @@ function exportXLSX(rows: Seguro[]) {
     "ASEGURADORA": s.aseguradora,
     "NO.POLIZA": s.noPoliza,
     "STATUS POLIZA": s.statusPoliza,
-    "VIGENCIA INI": s.vigenciaInicio,
-    "VIGENCIA FIN": s.vigenciaFin,
+    "VIGENCIA": s.vigenciaFin,
     "DIAS": s.vigenciaFin ? Math.ceil((new Date(s.vigenciaFin+"T00:00:00").getTime()-today.getTime())/(1000*60*60*24)) : "",
     "COSTO POLIZA": s.costoPoliza ?? "",
     "VALOR MERCADO": s.valorMercado ?? "",
@@ -225,57 +245,58 @@ function Sec({ title }: { title: string }) {
 // ─── FormDrawer ───────────────────────────────────────────────────────────────
 
 function FormDrawer({
-  open, onClose, onSave, unidad, existing, unidadesList,
+  open, onClose, onSave, unidad, existing,
 }: {
   open: boolean;
   onClose: () => void;
-  onSave: (s: Seguro) => Promise<void>;
+  onSave: (s: Seguro, u: Unidad) => Promise<void>;
   unidad: Unidad | null;
   existing?: Seguro;
-  unidadesList: Unidad[];
 }) {
-  const [selectedUnidadId, setSelectedUnidadId] = useState<string>("");
-  const [form, setForm] = useState<FormState>(() => emptyForm(unidad ?? undefined));
+  const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
-    if (existing) {
-      setSelectedUnidadId(existing.unidadId ?? "");
-      setForm(formFromSeguro(existing));
-    } else {
-      setSelectedUnidadId(unidad?.id ?? "");
-      setForm(emptyForm(unidad ?? undefined));
-    }
+    setForm(existing ? formFromRecord(existing, unidad ?? undefined) : emptyForm());
   }, [open, existing, unidad]);
-
-  // When user picks a unit from the dropdown, auto-fill unit fields
-  function handleUnitSelect(id: string) {
-    setSelectedUnidadId(id);
-    const u = unidadesList.find((u) => u.id === id);
-    if (!u) return;
-    setForm((prev) => ({
-      ...prev,
-      noEconomico: u.noEconomico,
-      placa: u.placa,
-      marca: u.marca,
-      modelo: u.modelo,
-      anio: String(u.anio),
-      noTarjetaCirculacion: prev.noTarjetaCirculacion || u.tarjetaCirculacion || "",
-    }));
-  }
 
   const set = (k: keyof FormState, v: string) => setForm((p) => ({ ...p, [k]: v }));
 
   async function handleSave() {
-    if (!selectedUnidadId) return;
+    if (!form.noEconomico.trim()) {
+      window.dispatchEvent(new CustomEvent("duro:toast", {
+        detail: { type: "error", title: "Campo requerido", message: "Ingresa el No. Económico de la unidad." },
+      }));
+      return;
+    }
     setSaving(true);
-    const resolvedUnidadId = selectedUnidadId;
     try {
-      const id = existing?.id ?? `SEG-${(resolvedUnidadId || form.noEconomico || Date.now())}-${Date.now()}`;
-      await onSave({
-        id,
-        unidadId: resolvedUnidadId,
+      const unidadId = existing?.unidadId ?? `UN-${Date.now()}`;
+      const seguroId = existing?.id ?? `SEG-${unidadId}-${Date.now()}`;
+
+      const unidadDoc: Unidad = {
+        id: unidadId,
+        noEconomico: form.noEconomico.trim().toUpperCase(),
+        placa: form.placa.trim().toUpperCase(),
+        marca: form.marca.trim(),
+        modelo: form.modelo.trim(),
+        anio: form.anio ? parseInt(form.anio) : (unidad?.anio ?? 0),
+        capacidadM3: form.capacidadM3 ? parseFloat(form.capacidadM3) : (unidad?.capacidadM3 ?? 0),
+        kmActual: form.kmActual ? parseFloat(form.kmActual.replace(/,/g, "")) : (unidad?.kmActual ?? 0),
+        choferAsignado: form.choferAsignado.trim(),
+        estatus: form.estatus,
+        ultimoMantenimiento: form.ultimoMantenimiento || "",
+        proximoMantenimiento: form.proximoMantenimiento || "—",
+        seguroVigente: form.vigenciaFin || "",
+        tarjetaCirculacion: form.noTarjetaCirculacion.trim(),
+        verificacion: form.verificacion || "",
+        observaciones: form.observaciones.trim(),
+      };
+
+      const seguroDoc: Seguro = {
+        id: seguroId,
+        unidadId,
         tipoUnidad: form.tipoUnidad,
         noEconomico: form.noEconomico.trim(),
         placa: form.placa.trim(),
@@ -291,14 +312,15 @@ function FormDrawer({
         aseguradora: form.aseguradora.trim(),
         noPoliza: form.noPoliza.trim(),
         statusPoliza: form.statusPoliza,
-        vigenciaInicio: form.vigenciaInicio,
         vigenciaFin: form.vigenciaFin,
-        costoPoliza: form.costoPoliza ? parseFloat(form.costoPoliza.replace(/,/g, "")) : null,
-        valorMercado: form.valorMercado ? parseFloat(form.valorMercado.replace(/,/g, "")) : null,
+        costoPoliza: (() => { const v = parseFloat(form.costoPoliza.replace(/,/g, "")); return isNaN(v) ? null : v; })(),
+        valorMercado: (() => { const v = parseFloat(form.valorMercado.replace(/,/g, "")); return isNaN(v) ? null : v; })(),
         tenencia: form.tenencia.trim(),
         agente: form.agente.trim(),
         observaciones: form.observaciones.trim(),
-      });
+      };
+
+      await onSave(seguroDoc, unidadDoc);
       onClose();
     } finally {
       setSaving(false);
@@ -306,8 +328,6 @@ function FormDrawer({
   }
 
   if (!open) return null;
-
-  const selectedUnidad = unidadesList.find((u) => u.id === selectedUnidadId);
 
   return (
     <div className="fixed inset-0 z-[100] flex">
@@ -320,12 +340,12 @@ function FormDrawer({
           </div>
           <div>
             <h2 className="text-sm font-semibold text-gray-900">
-              {existing ? "Editar póliza" : "Registrar seguro"}
+              {existing ? "Editar unidad" : "Nueva unidad"}
             </h2>
             <p className="text-xs text-gray-500">
-              {selectedUnidad
-                ? `${selectedUnidad.noEconomico} · ${selectedUnidad.placa} · ${selectedUnidad.marca} ${selectedUnidad.modelo}`
-                : "Selecciona una unidad de la flota"}
+              {form.noEconomico
+                ? `${form.noEconomico} · ${form.placa} · ${form.marca} ${form.modelo}`.trim()
+                : "Datos de la unidad y su póliza"}
             </p>
           </div>
           <button onClick={onClose} className="ml-auto rounded-xl p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors">
@@ -336,157 +356,151 @@ function FormDrawer({
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
 
-          {/* Unidad selector */}
-          <div className="space-y-2">
-            <label className={lbl}>Unidad <span className="text-[#CC2229]">*</span></label>
-            <select
-              value={selectedUnidadId}
-              onChange={(e) => handleUnitSelect(e.target.value)}
-              className={inp}
-            >
-              <option value="">— Seleccionar unidad —</option>
-              {unidadesList.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.noEconomico} · {u.placa} · {u.marca} {u.modelo}
-                </option>
-              ))}
-            </select>
-            {!selectedUnidadId && unidadesList.length === 0 && (
-              <p className="text-[11px] text-red-400">
-                No hay unidades registradas. Agrégalas primero en Transporte → Unidades.
-              </p>
-            )}
-            {!selectedUnidadId && unidadesList.length > 0 && (
-              <p className="text-[11px] text-gray-400">
-                Si la unidad no aparece, regístrala primero en Transporte → Unidades.
-              </p>
-            )}
+          {/* Identificación */}
+          <Sec title="Identificación de la unidad" />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={lbl}>No. Económico <span className="text-[#CC2229]">*</span></label>
+              <input type="text" value={form.noEconomico} onChange={(e) => set("noEconomico", e.target.value)}
+                placeholder="DC-01" className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Tipo de unidad</label>
+              <select value={form.tipoUnidad} onChange={(e) => set("tipoUnidad", e.target.value)} className={inp}>
+                {TIPOS_UNIDAD.map((t) => <option key={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={lbl}>Placa</label>
+              <input type="text" value={form.placa} onChange={(e) => set("placa", e.target.value)} className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Estado placa</label>
+              <select value={form.estadoPlaca} onChange={(e) => set("estadoPlaca", e.target.value)} className={inp}>
+                {ESTADOS_MX.map((e) => <option key={e}>{e}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={lbl}>Marca</label>
+              <input type="text" value={form.marca} onChange={(e) => set("marca", e.target.value)} className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Modelo</label>
+              <input type="text" value={form.modelo} onChange={(e) => set("modelo", e.target.value)} className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Año</label>
+              <input type="number" value={form.anio} onChange={(e) => set("anio", e.target.value)} className={inp} />
+            </div>
+            <div>
+              <label className={lbl}># Serie</label>
+              <input type="text" value={form.noSerie} onChange={(e) => set("noSerie", e.target.value)} className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Color</label>
+              <input type="text" value={form.color} onChange={(e) => set("color", e.target.value)} className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Motor</label>
+              <input type="text" value={form.motor} onChange={(e) => set("motor", e.target.value)} className={inp} />
+            </div>
           </div>
 
-          {/* Bloqueo — no unit selected */}
-          {!selectedUnidadId && (
-            <div className="flex flex-col items-center justify-center py-12 text-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gray-100">
-                <Shield size={22} className="text-gray-400" />
-              </div>
-              <p className="text-sm font-medium text-gray-600">Selecciona una unidad para continuar</p>
-              <p className="text-xs text-gray-400 max-w-[240px]">
-                Solo se pueden registrar seguros de unidades que ya están en el catálogo de flota.
-              </p>
+          {/* Datos operativos */}
+          <Sec title="Datos operativos" />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={lbl}>Estatus</label>
+              <select value={form.estatus} onChange={(e) => set("estatus", e.target.value as EstatusUnidad)} className={inp}>
+                <option value="Activo">Activo</option>
+                <option value="Mantenimiento">Mantenimiento</option>
+                <option value="Baja">Baja</option>
+              </select>
             </div>
-          )}
+            <div>
+              <label className={lbl}>Capacidad m³</label>
+              <input type="number" value={form.capacidadM3} onChange={(e) => set("capacidadM3", e.target.value)} className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Km actual</label>
+              <input type="text" value={form.kmActual} onChange={(e) => set("kmActual", e.target.value)} className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Chofer asignado</label>
+              <input type="text" value={form.choferAsignado} onChange={(e) => set("choferAsignado", e.target.value)} className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Últ. mantenimiento</label>
+              <input type="date" value={form.ultimoMantenimiento} onChange={(e) => set("ultimoMantenimiento", e.target.value)} className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Próx. mantenimiento</label>
+              <input type="date" value={form.proximoMantenimiento} onChange={(e) => set("proximoMantenimiento", e.target.value)} className={inp} />
+            </div>
+            <div className="col-span-2">
+              <label className={lbl}>Verificación</label>
+              <input type="date" value={form.verificacion} onChange={(e) => set("verificacion", e.target.value)} className={inp} />
+            </div>
+          </div>
 
-          {/* Formulario — solo visible cuando hay unidad seleccionada */}
-          {selectedUnidadId && (
-            <>
-              {/* Resumen de unidad — solo lectura */}
-              <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 grid grid-cols-2 gap-x-6 gap-y-1.5">
-                {([
-                  ["No. Eco.", form.noEconomico],
-                  ["Placa", form.placa],
-                  ["Marca", form.marca],
-                  ["Modelo", form.modelo],
-                  ["Año", form.anio],
-                ] as [string, string][]).filter(([, v]) => v).map(([label, value]) => (
-                  <div key={label} className="flex items-baseline gap-1.5">
-                    <span className="text-[10px] uppercase tracking-wider text-gray-400 shrink-0">{label}</span>
-                    <span className="text-xs text-gray-700 truncate font-medium">{value}</span>
-                  </div>
-                ))}
-              </div>
+          {/* Tarjeta de Circulación */}
+          <Sec title="Tarjeta de circulación" />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={lbl}>No. Tarjeta</label>
+              <input type="text" value={form.noTarjetaCirculacion} onChange={(e) => set("noTarjetaCirculacion", e.target.value)} className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Vigencia TC</label>
+              <input type="date" value={form.vigenciaTarjetaCirculacion} onChange={(e) => set("vigenciaTarjetaCirculacion", e.target.value)} className={inp} />
+            </div>
+          </div>
 
-              {/* Campos adicionales de la unidad que pueden no estar en el catálogo */}
-              <Sec title="Datos complementarios de la unidad" />
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={lbl}>Tipo de unidad</label>
-                  <select value={form.tipoUnidad} onChange={(e) => set("tipoUnidad", e.target.value)} className={inp}>
-                    {TIPOS_UNIDAD.map((t) => <option key={t}>{t}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className={lbl}>Estado placa</label>
-                  <select value={form.estadoPlaca} onChange={(e) => set("estadoPlaca", e.target.value)} className={inp}>
-                    {ESTADOS_MX.map((e) => <option key={e}>{e}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className={lbl}># Serie</label>
-                  <input type="text" value={form.noSerie} onChange={(e) => set("noSerie", e.target.value)} className={inp} />
-                </div>
-                <div>
-                  <label className={lbl}>Color</label>
-                  <input type="text" value={form.color} onChange={(e) => set("color", e.target.value)} className={inp} />
-                </div>
-                <div className="col-span-2">
-                  <label className={lbl}>Motor</label>
-                  <input type="text" value={form.motor} onChange={(e) => set("motor", e.target.value)} className={inp} />
-                </div>
-              </div>
+          {/* Póliza */}
+          <Sec title="Póliza de seguro" />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <label className={lbl}>Aseguradora</label>
+              <input type="text" value={form.aseguradora} onChange={(e) => set("aseguradora", e.target.value)} className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>No. Póliza</label>
+              <input type="text" value={form.noPoliza} onChange={(e) => set("noPoliza", e.target.value)} className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Status póliza</label>
+              <select value={form.statusPoliza} onChange={(e) => set("statusPoliza", e.target.value as StatusPoliza)} className={inp}>
+                {STATUS_POLIZA_OPTS.map((s) => <option key={s}>{s}</option>)}
+              </select>
+            </div>
+            <div className="col-span-2">
+              <label className={lbl}>Vigencia</label>
+              <input type="date" value={form.vigenciaFin} onChange={(e) => set("vigenciaFin", e.target.value)} className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Costo póliza $</label>
+              <input type="text" value={form.costoPoliza} onChange={(e) => set("costoPoliza", e.target.value)} className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Valor mercado $</label>
+              <input type="text" value={form.valorMercado} onChange={(e) => set("valorMercado", e.target.value)} className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Tenencia (año)</label>
+              <input type="text" value={form.tenencia} onChange={(e) => set("tenencia", e.target.value)} className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Agente / Contacto</label>
+              <input type="text" value={form.agente} onChange={(e) => set("agente", e.target.value)} className={inp} />
+            </div>
+          </div>
 
-              {/* Tarjeta de Circulación */}
-              <Sec title="Tarjeta de circulación" />
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={lbl}>No. Tarjeta de circulación</label>
-                  <input type="text" value={form.noTarjetaCirculacion} onChange={(e) => set("noTarjetaCirculacion", e.target.value)} className={inp} />
-                </div>
-                <div>
-                  <label className={lbl}>Vigencia TC</label>
-                  <input type="date" value={form.vigenciaTarjetaCirculacion} onChange={(e) => set("vigenciaTarjetaCirculacion", e.target.value)} className={inp} />
-                </div>
-              </div>
-
-              {/* Póliza */}
-              <Sec title="Póliza de seguro" />
-              <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2">
-                  <label className={lbl}>Aseguradora / Agente</label>
-                  <input type="text" value={form.aseguradora} onChange={(e) => set("aseguradora", e.target.value)} className={inp} />
-                </div>
-                <div>
-                  <label className={lbl}>No. Póliza</label>
-                  <input type="text" value={form.noPoliza} onChange={(e) => set("noPoliza", e.target.value)} className={inp} />
-                </div>
-                <div>
-                  <label className={lbl}>Status póliza</label>
-                  <select value={form.statusPoliza} onChange={(e) => set("statusPoliza", e.target.value as StatusPoliza)} className={inp}>
-                    {STATUS_POLIZA_OPTS.map((s) => <option key={s}>{s}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className={lbl}>Vigencia inicio</label>
-                  <input type="date" value={form.vigenciaInicio} onChange={(e) => set("vigenciaInicio", e.target.value)} className={inp} />
-                </div>
-                <div>
-                  <label className={lbl}>Vigencia fin</label>
-                  <input type="date" value={form.vigenciaFin} onChange={(e) => set("vigenciaFin", e.target.value)} className={inp} />
-                </div>
-                <div>
-                  <label className={lbl}>Costo póliza $</label>
-                  <input type="text" value={form.costoPoliza} onChange={(e) => set("costoPoliza", e.target.value)} className={inp} />
-                </div>
-                <div>
-                  <label className={lbl}>Valor mercado $</label>
-                  <input type="text" value={form.valorMercado} onChange={(e) => set("valorMercado", e.target.value)} className={inp} />
-                </div>
-                <div>
-                  <label className={lbl}>Tenencia (año)</label>
-                  <input type="text" value={form.tenencia} onChange={(e) => set("tenencia", e.target.value)} className={inp} />
-                </div>
-                <div>
-                  <label className={lbl}>Agente / Contacto</label>
-                  <input type="text" value={form.agente} onChange={(e) => set("agente", e.target.value)} className={inp} />
-                </div>
-              </div>
-
-              {/* Observaciones */}
-              <div>
-                <label className={lbl}>Observaciones</label>
-                <textarea rows={2} value={form.observaciones} onChange={(e) => set("observaciones", e.target.value)} className={`${inp} resize-none`} />
-              </div>
-            </>
-          )}
+          {/* Observaciones */}
+          <div>
+            <label className={lbl}>Observaciones</label>
+            <textarea rows={2} value={form.observaciones} onChange={(e) => set("observaciones", e.target.value)}
+              className={`${inp} resize-none`} />
+          </div>
         </div>
 
         {/* Footer */}
@@ -496,11 +510,11 @@ function FormDrawer({
           </button>
           <button
             onClick={handleSave}
-            disabled={saving || !selectedUnidadId}
+            disabled={saving}
             className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-xl transition-colors disabled:opacity-60 shadow-lg shadow-[#CC2229]/20"
           >
             <Shield size={14} />
-            {saving ? "Guardando…" : "Guardar registro"}
+            {saving ? "Guardando…" : "Guardar"}
           </button>
         </div>
       </div>
@@ -588,13 +602,20 @@ export default function SegurosPage() {
   const porVencer = rows.filter((r) => r.status === "por_vencer").length;
   const sinCob = rows.filter((r) => r.status === "vencido" || r.status === "sin_registro").length;
 
-  const handleSave = async (s: Seguro) => {
-    const id = s.id!;
-    const { id: _id, ...data } = s;
-    await upsertDocument(COLLECTIONS.seguros, id, withPlantaTag(data));
+  const handleSave = async (s: Seguro, u: Unidad) => {
+    const { id: sId, ...sData } = s;
+    const { id: uId, ...uData } = u;
+    await Promise.all([
+      upsertDocument(COLLECTIONS.seguros, sId!, withPlantaTag(sData)),
+      upsertDocument(COLLECTIONS.unidades, uId, withPlantaTag(uData)),
+    ]);
     setSeguros((prev) => {
       const idx = prev.findIndex((x) => x.id === s.id);
       return idx >= 0 ? prev.map((x, i) => (i === idx ? s : x)) : [...prev, s];
+    });
+    setUnidades((prev) => {
+      const idx = prev.findIndex((x) => x.id === u.id);
+      return idx >= 0 ? prev.map((x, i) => (i === idx ? u : x)) : [...prev, u];
     });
   };
 
@@ -616,7 +637,7 @@ export default function SegurosPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">Catálogo maestro · Pólizas, tarjetas de circulación y valores</p>
+        <p className="text-sm text-gray-500">Registro unificado de flota · Pólizas, datos operativos y tarjetas de circulación</p>
         <div className="flex items-center gap-2">
           <button
             onClick={() => exportXLSX(seguros)}
@@ -676,7 +697,7 @@ export default function SegurosPage() {
             <thead className="sticky top-0 z-10 bg-[#1A1A1A]">
               <tr className="bg-[#1A1A1A]">
                 {[
-                  "Tipo","No. Eco.","Placa","Marca / Modelo","No. T.C.","Vence TC",
+                  "Tipo","No. Eco.","Estatus","Placa","Marca / Modelo","No. T.C.","Vence TC",
                   "Aseguradora / Agente","No. Póliza","Status póliza",
                   "Vence póliza","Días","Costo póliza","Valor mercado","Tenencia","",
                 ].map((h) => (
@@ -689,7 +710,7 @@ export default function SegurosPage() {
             <tbody className="divide-y divide-[#2A2A2A]">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={15} className="px-4 py-12 text-center text-sm text-gray-600">
+                  <td colSpan={16} className="px-4 py-12 text-center text-sm text-gray-600">
                     Sin registros.
                   </td>
                 </tr>
@@ -706,6 +727,15 @@ export default function SegurosPage() {
                     <tr key={unidad?.id ?? seguro?.id} className="hover:bg-[#1A1F2B] transition-colors">
                       <td className="px-3 py-3 text-gray-500 text-xs whitespace-nowrap">{tipo}</td>
                       <td className="px-3 py-3 text-[#CC2229] font-mono text-xs font-semibold whitespace-nowrap">{noEco}</td>
+                      <td className="px-3 py-3 whitespace-nowrap">
+                        {unidad?.estatus ? (
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                            unidad.estatus === "Activo" ? "bg-emerald-500/10 text-emerald-400"
+                            : unidad.estatus === "Mantenimiento" ? "bg-amber-500/10 text-amber-400"
+                            : "bg-red-500/10 text-red-400"
+                          }`}>{unidad.estatus}</span>
+                        ) : <span className="text-gray-700 text-[11px]">—</span>}
+                      </td>
                       <td className="px-3 py-3 text-gray-200 text-xs font-mono whitespace-nowrap">{placa}</td>
                       <td className="px-3 py-3 whitespace-nowrap">
                         <p className="text-gray-200 text-xs">{marca}</p>
@@ -812,7 +842,6 @@ export default function SegurosPage() {
         onSave={handleSave}
         unidad={drawerUnidad}
         existing={drawerExisting}
-        unidadesList={unidades}
       />
 
       {confirmDelete && (

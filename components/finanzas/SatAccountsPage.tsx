@@ -23,8 +23,9 @@ import KPICard from "@/components/KPICard";
 import StatusBadge from "@/components/StatusBadge";
 import ClienteCombobox from "@/components/ClienteCombobox";
 import CargaMasivaModal from "@/components/finanzas/CargaMasivaModal";
-import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
-import { filterByPlanta, withPlantaTag } from "@/lib/auth";
+import { upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
+import { withPlantaTag } from "@/lib/auth";
+import { useCollection, useCollectionRaw } from "@/lib/useCollection";
 import type { SatDownloadKind } from "@/lib/satDownloads";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -517,12 +518,16 @@ function AbonoDrawer({
 function CuentaRow({
   cuenta,
   kind,
+  selected,
+  onSelect,
   onAbono,
   onEdit,
   onDelete,
 }: {
   cuenta: Cuenta;
   kind: SatDownloadKind;
+  selected: boolean;
+  onSelect: (id: string, checked: boolean) => void;
   onAbono: (c: Cuenta) => void;
   onEdit: (c: Cuenta) => void;
   onDelete: (c: Cuenta) => void;
@@ -535,9 +540,17 @@ function CuentaRow({
   return (
     <>
       <tr
-        className={`cursor-pointer transition-colors ${expanded ? "bg-[#1A1A1A]" : "hover:bg-[#1A1A1A]"}`}
+        className={`cursor-pointer transition-colors ${selected ? "bg-[#CC2229]/8" : expanded ? "bg-[#1A1A1A]" : "hover:bg-[#1A1A1A]"}`}
         onClick={() => setExpanded((v) => !v)}
       >
+        <td className="pl-4 pr-2 py-3" onClick={(e) => e.stopPropagation()}>
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={(e) => onSelect(cuenta.id!, e.target.checked)}
+            className="h-4 w-4 rounded border-[#4A4A4A] bg-[#2A2A2A] accent-[#CC2229] cursor-pointer"
+          />
+        </td>
         <td className="px-4 py-3 whitespace-nowrap">
           <span className={`text-[10px] font-semibold ${cuenta.estadoSAT === "Vigente" ? "text-emerald-400" : cuenta.estadoSAT === "Cancelado" ? "text-red-400" : "text-amber-400"}`}>
             {cuenta.estadoSAT || "—"}
@@ -588,7 +601,7 @@ function CuentaRow({
       </tr>
       {expanded && (
         <tr className="bg-[#111318]">
-          <td colSpan={12} className="px-5 pb-4 pt-3">
+          <td colSpan={13} className="px-5 pb-4 pt-3">
             <div className="flex flex-wrap gap-6 items-start justify-between">
               <div className="flex flex-wrap gap-x-6 gap-y-3 text-sm">
                 {/* Fila 1: montos */}
@@ -718,7 +731,6 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
   const isCxc = kind === "cxc";
   const collection = isCxc ? COLLECTIONS.cuentasPorCobrar : COLLECTIONS.cuentasPorPagar;
 
-  const [cuentas, setCuentas] = useState<Cuenta[]>([]);
   const [clientesList, setClientesList] = useState<string[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Cuenta | null>(null);
@@ -727,17 +739,19 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
   const [query, setQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("todos");
   const [filterMes, setFilterMes] = useState("todos");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
+  const rawCuentas = useCollection<Cuenta>(collection);
+  const cuentas = useMemo(
+    () => rawCuentas.map((c) => ({ ...c, status: computeStatus(c) })),
+    [rawCuentas],
+  );
+
+  const rawProgramaciones = useCollectionRaw<{ cliente?: string }>(COLLECTIONS.programaciones);
   useEffect(() => {
-    getCollectionDocs<Cuenta>(collection).then((d) => {
-      const list = filterByPlanta(d).map((c) => ({ ...c, status: computeStatus(c) }));
-      setCuentas(list);
-    });
-    getCollectionDocs<{ cliente?: string }>(COLLECTIONS.programaciones).then((d) => {
-      const unicos = Array.from(new Set(d.map((p) => p.cliente).filter(Boolean))) as string[];
-      setClientesList(unicos.sort());
-    });
-  }, [collection]);
+    const unicos = Array.from(new Set(rawProgramaciones.map((p) => p.cliente).filter(Boolean))) as string[];
+    setClientesList(unicos.sort());
+  }, [rawProgramaciones]);
 
   function showToast(type: "success" | "error", title: string, msg: string) {
     window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type, title, message: msg } }));
@@ -774,6 +788,9 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
         (c.rfc ?? "").toLowerCase().includes(q) ||
         (c.banco ?? "").toLowerCase().includes(q)
       );
+    }).sort((a, b) => {
+      const toIso = (f: string) => f.includes("/") ? displayToISO(f) : f;
+      return toIso(b.fecha).localeCompare(toIso(a.fecha));
     });
   }, [cuentas, query, filterStatus, filterMes]);
 
@@ -786,15 +803,12 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
   async function handleSave(data: Omit<Cuenta, "id" | "abonos" | "planta">) {
     if (editing) {
       const updated: Cuenta = { ...editing, ...data };
-      setCuentas((p) => p.map((c) => (c.id === editing.id ? updated : c)));
       const { id: _id, ...rest } = updated;
       await upsertDocument(collection, editing.id!, withPlantaTag(rest));
       showToast("success", "Registro actualizado", `${data.contraparte} · ${data.folio || "Sin folio"}`);
       setEditing(null);
     } else {
       const id = Date.now().toString();
-      const item: Cuenta = { ...data, id, abonos: [] };
-      setCuentas((p) => [item, ...p]);
       await upsertDocument(collection, id, withPlantaTag({ ...data, abonos: [] }));
       showToast("success", isCxc ? "Cuenta por cobrar agregada" : "Cuenta por pagar agregada", `${data.contraparte} · ${data.folio || "Sin folio"}`);
     }
@@ -802,9 +816,33 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
 
   async function handleDelete(cuenta: Cuenta) {
     if (!confirm("¿Eliminar este registro?")) return;
-    setCuentas((p) => p.filter((c) => c.id !== cuenta.id));
+    setSelected((s) => { const n = new Set(s); n.delete(cuenta.id!); return n; });
     await deleteDocument(collection, cuenta.id!);
     showToast("success", "Registro eliminado", `${cuenta.contraparte} · ${cuenta.folio || "Sin folio"}`);
+  }
+
+  async function handleBulkDelete() {
+    if (!confirm(`¿Eliminar ${selected.size} registro${selected.size !== 1 ? "s" : ""}? Esta acción no se puede deshacer.`)) return;
+    const ids = Array.from(selected);
+    setSelected(new Set());
+    await Promise.all(ids.map((id) => deleteDocument(collection, id)));
+    showToast("success", "Registros eliminados", `${ids.length} documento${ids.length !== 1 ? "s" : ""} eliminado${ids.length !== 1 ? "s" : ""}`);
+  }
+
+  function toggleSelect(id: string, checked: boolean) {
+    setSelected((s) => { const n = new Set(s); checked ? n.add(id) : n.delete(id); return n; });
+  }
+
+  const filteredIds = filtered.map((c) => c.id!).filter(Boolean);
+  const allSelected = filteredIds.length > 0 && filteredIds.every((id) => selected.has(id));
+  const someSelected = filteredIds.some((id) => selected.has(id));
+
+  function toggleSelectAll(checked: boolean) {
+    setSelected((s) => {
+      const n = new Set(s);
+      filteredIds.forEach((id) => checked ? n.add(id) : n.delete(id));
+      return n;
+    });
   }
 
   async function handleAbono(cuenta: Cuenta, abono: Abono) {
@@ -816,7 +854,6 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
       abonos: nuevosAbonos,
       status: computeStatus({ ...cuenta, montoPagado: nuevoMontoPagado }),
     };
-    setCuentas((p) => p.map((c) => (c.id === cuenta.id ? updatedCuenta : c)));
     const id = cuenta.id!;
     const { id: _cid, ...cuentaData } = updatedCuenta;
     await upsertDocument(collection, id, withPlantaTag(cuentaData));
@@ -836,11 +873,6 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
         return upsertDocument(collection, id!, withPlantaTag({ ...data }));
       })
     );
-    setCuentas((p) => {
-      const existingIds = new Set(p.map((c) => c.id));
-      const newItems = items.filter((i) => !existingIds.has(i.id));
-      return [...newItems, ...p];
-    });
     showToast("success", "Carga masiva completada", `${items.length} registros importados`);
   }
 
@@ -943,12 +975,40 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
         </div>
       </div>
 
+      {/* Bulk action bar */}
+      {selected.size > 0 && (
+        <div className="flex items-center gap-3 bg-[#1A1A1A] border border-[#CC2229]/40 rounded-xl px-4 py-2.5">
+          <span className="text-sm text-gray-300 font-medium">{selected.size} seleccionado{selected.size !== 1 ? "s" : ""}</span>
+          <button
+            onClick={handleBulkDelete}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors cursor-pointer"
+          >
+            <Trash2 size={13} /> Eliminar seleccionados
+          </button>
+          <button
+            onClick={() => setSelected(new Set())}
+            className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-300 transition-colors cursor-pointer ml-auto"
+          >
+            <X size={12} /> Cancelar
+          </button>
+        </div>
+      )}
+
       {/* Table */}
       <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-[#1A1A1A] border-b border-[#3A3A3A]">
+                <th className="pl-4 pr-2 py-3">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    ref={(el) => { if (el) el.indeterminate = someSelected && !allSelected; }}
+                    onChange={(e) => toggleSelectAll(e.target.checked)}
+                    className="h-4 w-4 rounded border-[#4A4A4A] bg-[#2A2A2A] accent-[#CC2229] cursor-pointer"
+                  />
+                </th>
                 {["SAT", "Tipo", "Fecha", "Folio", contraparteLabel, "RFC Receptor", "COSEC. TC", "Concepto", "Total", "Progreso", "Status", ""].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                 ))}
@@ -957,7 +1017,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
             <tbody className="divide-y divide-[#3A3A3A]">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="px-4 py-14 text-center text-sm text-gray-600">
+                  <td colSpan={13} className="px-4 py-14 text-center text-sm text-gray-600">
                     {cuentas.length === 0
                       ? `Sin ${isCxc ? "cuentas por cobrar" : "cuentas por pagar"} registradas`
                       : "Sin resultados para el filtro actual"}
@@ -968,6 +1028,8 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
                   key={c.id ?? i}
                   cuenta={c}
                   kind={kind}
+                  selected={selected.has(c.id!)}
+                  onSelect={toggleSelect}
                   onAbono={setAbonoTarget}
                   onEdit={(c) => { setEditing(c); setShowForm(true); }}
                   onDelete={handleDelete}

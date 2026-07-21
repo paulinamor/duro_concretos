@@ -11,8 +11,9 @@ import {
   Pencil, Plus, Receipt, Search, Shield, Trash2, Truck, X,
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
-import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
-import { filterByPlanta, withPlantaTag } from "@/lib/auth";
+import { upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
+import { withPlantaTag } from "@/lib/auth";
+import { useCollection, useCollectionRaw } from "@/lib/useCollection";
 import type { Unidad } from "@/lib/unidades";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -537,7 +538,6 @@ function UnitCard({ row, maxLitros }: {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function DieselPage() {
-  const [cargas, setCargas] = useState<CargaDiesel[]>([]);
   const [unidadesList, setUnidadesList] = useState<string[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingCarga, setEditingCarga] = useState<CargaDiesel | null>(null);
@@ -548,12 +548,11 @@ export default function DieselPage() {
   const [fechaHasta, setFechaHasta] = useState("");
   const [query, setQuery] = useState("");
 
+  const cargas = useCollection<CargaDiesel>(COLLECTIONS.diesel);
+  const unidades = useCollectionRaw<Unidad>(COLLECTIONS.unidades);
   useEffect(() => {
-    getCollectionDocs<CargaDiesel>(COLLECTIONS.diesel).then((data) => setCargas(filterByPlanta(data)));
-    getCollectionDocs<Unidad>(COLLECTIONS.unidades).then((list) =>
-      setUnidadesList(list.map((u) => u.noEconomico).filter(Boolean)),
-    );
-  }, []);
+    setUnidadesList(unidades.map((u) => u.noEconomico).filter(Boolean));
+  }, [unidades]);
 
   const allUnidades = useMemo(() => {
     const fromCargas = cargas.map((c) => c.unidad);
@@ -645,15 +644,11 @@ export default function DieselPage() {
 
   async function handleSave(carga: CargaDiesel) {
     const id = carga.id ?? Date.now().toString();
-    const withId = { ...carga, id };
-    if (carga.id) { setCargas((prev) => prev.map((c) => c.id === id ? withId : c)); }
-    else { setCargas((prev) => [withId, ...prev]); }
-    const { id: _id, planta: _p, ...data } = withId;
+    const { id: _id, planta: _p, ...data } = { ...carga, id };
     await upsertDocument(COLLECTIONS.diesel, id, withPlantaTag(data));
   }
 
   async function handleDelete(carga: CargaDiesel) {
-    setCargas((prev) => prev.filter((c) => c.id !== carga.id));
     await deleteDocument(COLLECTIONS.diesel, carga.id!);
     setConfirmDelete(null);
     window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `Carga de ${carga.unidad} eliminada.` } }));

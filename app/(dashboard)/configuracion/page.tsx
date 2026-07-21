@@ -312,24 +312,24 @@ export default function ConfiguracionPage() {
                     : `${(user.modules as string[]).length} módulo${(user.modules as string[]).length === 1 ? "" : "s"}`;
 
                   return (
-                    <tr key={user.id} className="transition-colors">
+                    <tr key={user.id} className="transition-colors hover:bg-gray-50 dark:hover:bg-white/[0.03]">
                       <td className="px-5 py-4 text-white font-medium">{user.nombre}</td>
                       <td className="px-5 py-4 text-gray-400">{user.email}</td>
                       <td className="px-5 py-4">
-                        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${user.role === "admin" ? "bg-amber-100 text-amber-800 dark:bg-yellow-900/40 dark:text-yellow-300" : "bg-slate-600 text-white dark:bg-slate-700 dark:text-slate-100"}`}>
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${user.role === "admin" ? "bg-amber-100 text-amber-800 dark:bg-yellow-900/40 dark:text-yellow-300" : "bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-100"}`}>
                           {user.role === "admin" ? "Administrador" : "Operador"}
                         </span>
                       </td>
                       <td className="px-5 py-4">
                         <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                          user.planta === "Allende" ? "bg-blue-900/40 text-blue-300" :
-                          user.planta === "Pesquería" ? "bg-emerald-900/40 text-emerald-300" :
-                          "bg-slate-800 text-slate-400"
+                          user.planta === "Allende" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" :
+                          user.planta === "Pesquería" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" :
+                          "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300"
                         }`}>
                           {user.planta ?? "—"}
                         </span>
                       </td>
-                      <td className="px-5 py-4 text-gray-300">{moduleCount}</td>
+                      <td className="px-5 py-4 text-gray-400">{moduleCount}</td>
                       <td className="px-5 py-4"><StatusBadge status={user.status} /></td>
                       <td className="px-5 py-4">
                         {isSuperAdmin ? (

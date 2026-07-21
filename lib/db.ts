@@ -8,6 +8,7 @@ import {
   query,
   where,
   orderBy,
+  onSnapshot,
   QueryConstraint,
   DocumentData,
   WithFieldValue,
@@ -135,6 +136,18 @@ export const COLLECTIONS = {
 } as const;
 
 export { where, orderBy };
+
+export function subscribeToCollection<T>(
+  collectionName: string,
+  onData: (docs: T[]) => void,
+  constraints: QueryConstraint[] = [],
+): () => void {
+  const ref = collection(getDb(), collectionName);
+  const q = constraints.length ? query(ref, ...constraints) : ref;
+  return onSnapshot(q, (snap) => {
+    onData(snap.docs.map((d) => ({ id: d.id, ...d.data() } as T)));
+  });
+}
 
 // ---------- multi-tenant server-side helpers ----------
 
