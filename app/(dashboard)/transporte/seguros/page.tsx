@@ -3,12 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle, CheckCircle2, Clock, Download, Plus, Search,
-  Shield, ShieldOff, Trash2, X,
+  Shield, ShieldOff, Trash2, X, XCircle,
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
 import HScrollTable from "@/components/HScrollTable";
-import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
-import { filterByPlanta, withPlantaTag } from "@/lib/auth";
+import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS, where } from "@/lib/db";
+import { withPlantaTag } from "@/lib/auth";
+import { useCollection } from "@/lib/useCollection";
 import type { Unidad, EstatusUnidad } from "@/lib/unidades";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -122,27 +123,30 @@ function diasRestantes(fechaFin: string) {
   return Math.ceil((fin.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
 }
 
-function emptyForm(): FormState {
+function emptyForm(u?: Unidad): FormState {
   return {
-    estatus: "Activo",
-    capacidadM3: "",
-    kmActual: "",
-    choferAsignado: "",
-    ultimoMantenimiento: "",
-    proximoMantenimiento: "",
-    verificacion: "",
+    // Unit operational fields — from Unidad if editing existing unit
+    estatus: u?.estatus ?? "Activo",
+    capacidadM3: u?.capacidadM3 != null ? String(u.capacidadM3) : "",
+    kmActual: u?.kmActual != null ? String(u.kmActual) : "",
+    choferAsignado: u?.choferAsignado ?? "",
+    ultimoMantenimiento: u?.ultimoMantenimiento ?? "",
+    proximoMantenimiento: u?.proximoMantenimiento === "—" ? "" : (u?.proximoMantenimiento ?? ""),
+    verificacion: u?.verificacion ?? "",
+    // Unit identification — from Unidad
     tipoUnidad: "Revolvedora",
-    noEconomico: "",
-    placa: "",
+    noEconomico: u?.noEconomico ?? "",
+    placa: u?.placa ?? "",
     estadoPlaca: "Nuevo León",
-    marca: "",
-    modelo: "",
+    marca: u?.marca ?? "",
+    modelo: u?.modelo ?? "",
     noSerie: "",
-    anio: "",
+    anio: u?.anio != null ? String(u.anio) : "",
     color: "",
     motor: "",
-    noTarjetaCirculacion: "",
+    noTarjetaCirculacion: u?.tarjetaCirculacion ?? "",
     vigenciaTarjetaCirculacion: "",
+    // Seguro fields — always blank for new registration
     aseguradora: "",
     noPoliza: "",
     statusPoliza: "Condicionada",
@@ -151,7 +155,7 @@ function emptyForm(): FormState {
     valorMercado: "",
     tenencia: "",
     agente: "",
-    observaciones: "",
+    observaciones: u?.observaciones ?? "",
   };
 }
 
@@ -258,7 +262,7 @@ function FormDrawer({
 
   useEffect(() => {
     if (!open) return;
-    setForm(existing ? formFromRecord(existing, unidad ?? undefined) : emptyForm());
+    setForm(existing ? formFromRecord(existing, unidad ?? undefined) : emptyForm(unidad ?? undefined));
   }, [open, existing, unidad]);
 
   const set = (k: keyof FormState, v: string) => setForm((p) => ({ ...p, [k]: v }));
@@ -272,8 +276,9 @@ function FormDrawer({
     }
     setSaving(true);
     try {
-      const unidadId = existing?.unidadId ?? `UN-${Date.now()}`;
+      const unidadId = unidad?.id ?? existing?.unidadId ?? `UN-${Date.now()}`;
       const seguroId = existing?.id ?? `SEG-${unidadId}-${Date.now()}`;
+
 
       const unidadDoc: Unidad = {
         id: unidadId,
@@ -322,6 +327,17 @@ function FormDrawer({
 
       await onSave(seguroDoc, unidadDoc);
       onClose();
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code;
+      if (code !== "PLANTA_REQUERIDA") {
+        window.dispatchEvent(new CustomEvent("duro:toast", {
+          detail: {
+            type: "error",
+            title: "Error al guardar",
+            message: err instanceof Error ? err.message : "No se pudo guardar. Intenta de nuevo.",
+          },
+        }));
+      }
     } finally {
       setSaving(false);
     }
@@ -525,8 +541,8 @@ function FormDrawer({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SegurosPage() {
-  const [unidades, setUnidades] = useState<Unidad[]>([]);
-  const [seguros, setSeguros] = useState<Seguro[]>([]);
+  const unidades = useCollection<Unidad>(COLLECTIONS.unidades);
+  const seguros = useCollection<Seguro>(COLLECTIONS.seguros);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<VigenciaStatus | "todos">("todos");
   const [filterTipo, setFilterTipo] = useState("Todos");
@@ -534,11 +550,8 @@ export default function SegurosPage() {
   const [drawerExisting, setDrawerExisting] = useState<Seguro | undefined>();
   const [showDrawer, setShowDrawer] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Seguro | null>(null);
-
-  useEffect(() => {
-    getCollectionDocs<Unidad>(COLLECTIONS.unidades).then((data) => setUnidades(filterByPlanta(data)));
-    getCollectionDocs<Seguro>(COLLECTIONS.seguros).then((data) => setSeguros(filterByPlanta(data)));
-  }, []);
+  const [confirmDeleteUnit, setConfirmDeleteUnit] = useState<{ unidad: Unidad; seguro?: Seguro } | null>(null);
+  const [unitDeps, setUnitDeps] = useState<{ checking: boolean; mantenimientos: number; diesel: number; reparaciones: number; fallas: number } | null>(null);
 
   // Map unidadId → latest seguro (by vigenciaFin desc)
   const seguroByUnidad = useMemo(() => {
@@ -609,22 +622,44 @@ export default function SegurosPage() {
       upsertDocument(COLLECTIONS.seguros, sId!, withPlantaTag(sData)),
       upsertDocument(COLLECTIONS.unidades, uId, withPlantaTag(uData)),
     ]);
-    setSeguros((prev) => {
-      const idx = prev.findIndex((x) => x.id === s.id);
-      return idx >= 0 ? prev.map((x, i) => (i === idx ? s : x)) : [...prev, s];
-    });
-    setUnidades((prev) => {
-      const idx = prev.findIndex((x) => x.id === u.id);
-      return idx >= 0 ? prev.map((x, i) => (i === idx ? u : x)) : [...prev, u];
-    });
+    // Real-time listener (useCollection) automatically reflects Firestore changes
+    window.dispatchEvent(new CustomEvent("duro:toast", {
+      detail: { type: "success", message: `Unidad ${s.noEconomico} guardada.` },
+    }));
   };
 
   async function handleDelete(s: Seguro) {
-    setSeguros((prev) => prev.filter((x) => x.id !== s.id));
     await deleteDocument(COLLECTIONS.seguros, s.id!);
     setConfirmDelete(null);
     window.dispatchEvent(new CustomEvent("duro:toast", {
       detail: { type: "success", message: `Seguro de ${s.noEconomico} eliminado.` },
+    }));
+  }
+
+  async function openDeleteUnit(unidad: Unidad, seguro?: Seguro) {
+    setConfirmDeleteUnit({ unidad, seguro });
+    setUnitDeps({ checking: true, mantenimientos: 0, diesel: 0, reparaciones: 0, fallas: 0 });
+    const noEco = unidad.noEconomico;
+    const [mantos, diesels, reps, falls] = await Promise.all([
+      getCollectionDocs<{ id?: string }>(COLLECTIONS.mantenimientos, [where("unidad", "==", noEco)]),
+      getCollectionDocs<{ id?: string }>(COLLECTIONS.diesel, [where("unidad", "==", noEco)]),
+      getCollectionDocs<{ id?: string }>(COLLECTIONS.reparaciones, [where("unidad", "==", noEco)]),
+      getCollectionDocs<{ id?: string }>(COLLECTIONS.fallas, [where("unidad", "==", noEco)]),
+    ]);
+    setUnitDeps({ checking: false, mantenimientos: mantos.length, diesel: diesels.length, reparaciones: reps.length, fallas: falls.length });
+  }
+
+  async function handleDeleteUnit() {
+    if (!confirmDeleteUnit) return;
+    const { unidad, seguro } = confirmDeleteUnit;
+    await Promise.all([
+      deleteDocument(COLLECTIONS.unidades, unidad.id),
+      ...(seguro?.id ? [deleteDocument(COLLECTIONS.seguros, seguro.id)] : []),
+    ]);
+    setConfirmDeleteUnit(null);
+    setUnitDeps(null);
+    window.dispatchEvent(new CustomEvent("duro:toast", {
+      detail: { type: "success", message: `Unidad ${unidad.noEconomico} eliminada del sistema.` },
     }));
   }
 
@@ -692,16 +727,16 @@ export default function SegurosPage() {
           <span className="text-xs text-gray-600 ml-auto">{filtered.length} unidades</span>
         </div>
 
-        <HScrollTable>
+        <HScrollTable maxHeight="calc(100vh - 320px)">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 z-10 bg-[#1A1A1A]">
+            <thead className="sticky top-0 z-10">
               <tr className="bg-[#1A1A1A]">
                 {[
                   "Tipo","No. Eco.","Estatus","Placa","Marca / Modelo","No. T.C.","Vence TC",
                   "Aseguradora / Agente","No. Póliza","Status póliza",
                   "Vence póliza","Días","Costo póliza","Valor mercado","Tenencia","",
                 ].map((h) => (
-                  <th key={h} className="px-3 py-3 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                  <th key={h} className="px-3 py-3 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap bg-[#1A1A1A]">
                     {h}
                   </th>
                 ))}
@@ -809,9 +844,20 @@ export default function SegurosPage() {
                             <button
                               onClick={() => setConfirmDelete(seguro)}
                               className="flex items-center justify-center p-1.5 text-gray-600 hover:text-red-400 bg-[#1A1A1A] hover:bg-red-500/10 border border-[#3A3A3A] hover:border-red-500/30 rounded-lg transition-colors"
-                              aria-label="Eliminar"
+                              aria-label="Eliminar seguro"
+                              title="Eliminar póliza de seguro"
                             >
                               <Trash2 size={11} />
+                            </button>
+                          )}
+                          {unidad && (
+                            <button
+                              onClick={() => openDeleteUnit(unidad, seguro)}
+                              className="flex items-center justify-center p-1.5 text-gray-700 hover:text-orange-400 bg-[#1A1A1A] hover:bg-orange-500/10 border border-[#3A3A3A] hover:border-orange-500/30 rounded-lg transition-colors"
+                              aria-label="Eliminar unidad del sistema"
+                              title="Eliminar unidad del sistema"
+                            >
+                              <XCircle size={11} />
                             </button>
                           )}
                         </div>
@@ -867,6 +913,83 @@ export default function SegurosPage() {
                 className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors"
               >
                 Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDeleteUnit && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center">
+          <button className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => { setConfirmDeleteUnit(null); setUnitDeps(null); }} />
+          <div className="relative bg-[#1A1A1A] border border-[#3A3A3A] rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-orange-500/10 mb-4">
+              <XCircle size={20} className="text-orange-400" />
+            </div>
+            <h3 className="text-sm font-semibold text-white mb-1">Eliminar unidad del sistema</h3>
+            <p className="text-xs text-gray-400 mb-4 font-mono">
+              {confirmDeleteUnit.unidad.noEconomico}
+              {confirmDeleteUnit.unidad.placa ? <span className="text-gray-600"> · {confirmDeleteUnit.unidad.placa}</span> : ""}
+            </p>
+
+            {unitDeps?.checking ? (
+              <div className="flex items-center gap-2 text-xs text-gray-500 mb-5">
+                <div className="w-3 h-3 border border-gray-500 border-t-transparent rounded-full animate-spin" />
+                Verificando dependencias en otros módulos…
+              </div>
+            ) : unitDeps && (unitDeps.mantenimientos + unitDeps.diesel + unitDeps.reparaciones + unitDeps.fallas) > 0 ? (
+              <div className="mb-5">
+                <p className="text-xs text-amber-400 font-medium mb-3">Tiene registros ligados en otros módulos:</p>
+                <div className="space-y-2 bg-[#242424] rounded-xl p-3 border border-[#3A3A3A]">
+                  {unitDeps.mantenimientos > 0 && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-500">Mantenimientos</span>
+                      <span className="font-mono text-gray-300">{unitDeps.mantenimientos}</span>
+                    </div>
+                  )}
+                  {unitDeps.diesel > 0 && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-500">Cargas de diésel</span>
+                      <span className="font-mono text-gray-300">{unitDeps.diesel}</span>
+                    </div>
+                  )}
+                  {unitDeps.reparaciones > 0 && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-500">Reparaciones</span>
+                      <span className="font-mono text-gray-300">{unitDeps.reparaciones}</span>
+                    </div>
+                  )}
+                  {unitDeps.fallas > 0 && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-500">Fallas</span>
+                      <span className="font-mono text-gray-300">{unitDeps.fallas}</span>
+                    </div>
+                  )}
+                </div>
+                <p className="text-[11px] text-gray-600 mt-3">Elimina o reasigna esos registros antes de borrar la unidad.</p>
+              </div>
+            ) : (
+              <p className="text-xs text-gray-500 mb-5">
+                Sin registros ligados en otros módulos.{confirmDeleteUnit.seguro ? " Se eliminarán la unidad y su póliza de seguro." : " Se eliminará la unidad permanentemente."}
+              </p>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setConfirmDeleteUnit(null); setUnitDeps(null); }}
+                className="flex-1 px-4 py-2.5 text-sm text-gray-400 border border-[#3A3A3A] rounded-xl hover:border-gray-500 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleDeleteUnit}
+                disabled={
+                  unitDeps?.checking ||
+                  ((unitDeps?.mantenimientos ?? 0) + (unitDeps?.diesel ?? 0) + (unitDeps?.reparaciones ?? 0) + (unitDeps?.fallas ?? 0)) > 0
+                }
+                className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-orange-600 hover:bg-orange-700 rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Eliminar unidad
               </button>
             </div>
           </div>

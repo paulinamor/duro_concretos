@@ -2,14 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  CalendarDays, ChevronLeft, ChevronRight, Clock, Package, Phone,
-  Plus, Truck, X,
+  ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, Clock, Package, Phone,
+  Plus, Truck, Users, X,
 } from "lucide-react";
 import ClienteCombobox from "@/components/ClienteCombobox";
 import { upsertDocument, COLLECTIONS } from "@/lib/db";
 import { withPlantaTag, getStoredSession } from "@/lib/auth";
 import { useCollection, useCollectionRaw } from "@/lib/useCollection";
-import type { Cliente } from "@/lib/crmClientes";
+import { tiposCliente, type Cliente, type TipoCliente } from "@/lib/crmClientes";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -54,6 +54,15 @@ interface Programacion {
   choferes: unknown[];
   notas?: string;
   planta?: string;
+}
+
+interface NuevoClienteForm {
+  razonSocial: string;
+  rfc: string;
+  contacto: string;
+  telefono: string;
+  tipoCliente: TipoCliente;
+  vendedorAsignado: string;
 }
 
 type VForm = {
@@ -103,7 +112,7 @@ function fmtHoraPedido(dt: string) {
 // ─── Drawer ───────────────────────────────────────────────────────────────────
 
 function PedidoDrawer({
-  open, prog, clientesList, vendedorNombre, onClose, onSave,
+  open, prog, clientesList, vendedorNombre, onClose, onSave, onSaveCliente,
 }: {
   open: boolean;
   prog: Programacion | null;
@@ -111,12 +120,22 @@ function PedidoDrawer({
   vendedorNombre: string;
   onClose: () => void;
   onSave: (data: VForm, id?: string) => Promise<void>;
+  onSaveCliente?: (f: NuevoClienteForm) => Promise<string>;
 }) {
   const [form, setForm] = useState<VForm>(emptyForm(todayISO()));
   const [saving, setSaving] = useState(false);
+  const [nuevoOpen, setNuevoOpen] = useState(false);
+  const [nuevoForm, setNuevoForm] = useState<NuevoClienteForm>({
+    razonSocial: "", rfc: "", contacto: "", telefono: "", tipoCliente: "Constructora", vendedorAsignado: "",
+  });
+  const [nuevoSaving, setNuevoSaving] = useState(false);
+  const [nuevoError, setNuevoError] = useState("");
 
   useEffect(() => {
-    if (open) setForm(prog ? formFromProg(prog) : emptyForm(todayISO()));
+    if (open) {
+      setForm(prog ? formFromProg(prog) : emptyForm(todayISO()));
+      setNuevoOpen(false);
+    }
   }, [open, prog]);
 
   function set(k: keyof VForm, v: string) { setForm((f) => ({ ...f, [k]: v })); }
@@ -133,6 +152,29 @@ function PedidoDrawer({
     } catch {
       window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", title: "Error", message: "No se pudo guardar." } }));
     } finally { setSaving(false); }
+  }
+
+  function setNuevo<K extends keyof NuevoClienteForm>(k: K, v: NuevoClienteForm[K]) {
+    setNuevoForm((f) => ({ ...f, [k]: v }));
+  }
+
+  async function handleSaveNuevo() {
+    if (!nuevoForm.razonSocial.trim() || !nuevoForm.rfc.trim() || !nuevoForm.contacto.trim()) {
+      setNuevoError("Razón social, RFC y contacto son obligatorios.");
+      return;
+    }
+    if (!onSaveCliente) return;
+    setNuevoSaving(true);
+    setNuevoError("");
+    try {
+      const razonSocial = await onSaveCliente(nuevoForm);
+      setForm((f) => ({ ...f, cliente: razonSocial, telefono: nuevoForm.telefono }));
+      setNuevoOpen(false);
+    } catch {
+      setNuevoError("No se pudo guardar el cliente.");
+    } finally {
+      setNuevoSaving(false);
+    }
   }
 
   if (!open) return null;
@@ -181,8 +223,15 @@ function PedidoDrawer({
           </div>
 
           {/* Cliente */}
-          <ClienteCombobox label="Cliente" required value={form.cliente} onChange={(v) => set("cliente", v)}
-            options={clientesList} placeholder="Buscar o escribir cliente…" />
+          <ClienteCombobox
+            label="Cliente" required value={form.cliente} onChange={(v) => set("cliente", v)}
+            options={clientesList} placeholder="Buscar o escribir cliente…"
+            onNuevo={onSaveCliente ? (nombre) => {
+              setNuevoForm({ razonSocial: nombre, rfc: "", contacto: "", telefono: "", tipoCliente: "Constructora", vendedorAsignado: vendedorNombre });
+              setNuevoError("");
+              setNuevoOpen(true);
+            } : undefined}
+          />
 
           {/* Teléfono */}
           <div>
@@ -233,6 +282,76 @@ function PedidoDrawer({
             {saving ? "Guardando…" : prog ? "Actualizar" : "Crear pedido"}
           </button>
         </div>
+
+        {/* Overlay: registrar nuevo cliente */}
+        {nuevoOpen && (
+          <div className="absolute inset-0 z-[200] flex flex-col bg-white overflow-hidden">
+            <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-4 shrink-0">
+              <button onClick={() => setNuevoOpen(false)} className="rounded-xl p-2 text-gray-400 hover:bg-gray-100 transition-colors cursor-pointer">
+                <ArrowLeft size={16} />
+              </button>
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#CC2229]/10 text-[#CC2229]">
+                <Users size={18} />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">Registrar nuevo cliente</h2>
+                <p className="text-xs text-gray-400">Razón social, RFC y contacto son obligatorios</p>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+              {nuevoError && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600">
+                  {nuevoError}
+                </div>
+              )}
+              <div>
+                <label className={lbl}>Razón social <span className="text-[#CC2229]">*</span></label>
+                <input type="text" value={nuevoForm.razonSocial} onChange={(e) => setNuevo("razonSocial", e.target.value)} placeholder="Nombre fiscal completo" className={inp} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={lbl}>RFC <span className="text-[#CC2229]">*</span></label>
+                  <input type="text" value={nuevoForm.rfc} onChange={(e) => setNuevo("rfc", e.target.value.toUpperCase())} placeholder="RFC" className={`${inp} uppercase`} />
+                </div>
+                <div>
+                  <label className={lbl}>Tipo</label>
+                  <select value={nuevoForm.tipoCliente} onChange={(e) => setNuevo("tipoCliente", e.target.value as TipoCliente)} className={inp}>
+                    {tiposCliente.map((t) => <option key={t}>{t}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className={lbl}>Contacto principal <span className="text-[#CC2229]">*</span></label>
+                <input type="text" value={nuevoForm.contacto} onChange={(e) => setNuevo("contacto", e.target.value)} placeholder="Nombre del contacto" className={inp} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={lbl}>Teléfono</label>
+                  <input type="tel" value={nuevoForm.telefono} onChange={(e) => setNuevo("telefono", e.target.value)} placeholder="81 0000 0000" className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Vendedor asignado</label>
+                  <input type="text" value={nuevoForm.vendedorAsignado} onChange={(e) => setNuevo("vendedorAsignado", e.target.value)} placeholder="Vendedor" className={inp} />
+                </div>
+              </div>
+            </div>
+
+            <div className="shrink-0 border-t border-gray-100 px-6 py-4 flex items-center gap-3">
+              <button onClick={() => setNuevoOpen(false)} className="px-4 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors cursor-pointer">
+                Cancelar
+              </button>
+              <button
+                onClick={handleSaveNuevo}
+                disabled={nuevoSaving || !nuevoForm.razonSocial.trim() || !nuevoForm.rfc.trim() || !nuevoForm.contacto.trim()}
+                className="flex-1 flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-semibold bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-xl transition-colors disabled:opacity-60 shadow-lg shadow-[#CC2229]/20 cursor-pointer"
+              >
+                <Users size={14} />
+                {nuevoSaving ? "Registrando…" : "Registrar cliente"}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -272,6 +391,38 @@ export default function VentasProgramacionPage() {
   const misPedidosDia = useMemo(() =>
     misPedidos.filter((p) => p.dia === diaActivo),
     [misPedidos, diaActivo]);
+
+  async function handleSaveCliente(f: NuevoClienteForm): Promise<string> {
+    const id = `CL-${Date.now()}`;
+    const razonSocial = f.razonSocial.trim();
+    const doc = {
+      razonSocial,
+      nombreComercial: razonSocial,
+      rfc: f.rfc.trim().toUpperCase(),
+      domicilio: "", colonia: "", municipio: "", estado: "Nuevo León", cp: "",
+      contacto: f.contacto.trim(),
+      cargo: "",
+      telefono: f.telefono.trim(),
+      email: "",
+      tipoCliente: f.tipoCliente,
+      vendedorAsignado: f.vendedorAsignado.trim(),
+      limiteCredito: 0,
+      saldoPendiente: 0,
+      diasCredito: 0,
+      ultimaCompra: "—",
+      totalComprasAnio: 0,
+      m3Acumulados: 0,
+      estatus: "Activo" as const,
+      calificacion: "B" as const,
+      fechaAlta: new Date().toISOString().split("T")[0],
+      notas: "",
+    };
+    await upsertDocument(COLLECTIONS.clientes, id, withPlantaTag(doc));
+    window.dispatchEvent(new CustomEvent("duro:toast", {
+      detail: { type: "success", message: `Cliente ${razonSocial} registrado.` },
+    }));
+    return razonSocial;
+  }
 
   async function handleSave(form: VForm, existingId?: string) {
     const m3 = parseFloat(form.m3Totales) || null;
@@ -455,6 +606,7 @@ export default function VentasProgramacionPage() {
         vendedorNombre={vendedorNombre}
         onClose={() => { setShowDrawer(false); setEditing(null); }}
         onSave={handleSave}
+        onSaveCliente={handleSaveCliente}
       />
     </div>
   );

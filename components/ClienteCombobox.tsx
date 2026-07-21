@@ -10,6 +10,7 @@ interface ClienteComboboxProps {
   placeholder?: string;
   label?: string;
   required?: boolean;
+  onNuevo?: (nombre: string) => void;
 }
 
 export default function ClienteCombobox({
@@ -19,6 +20,7 @@ export default function ClienteCombobox({
   placeholder = "Buscar o escribir…",
   label,
   required,
+  onNuevo,
 }: ClienteComboboxProps) {
   const [open, setOpen] = useState(false);
   const [inputVal, setInputVal] = useState(value);
@@ -82,7 +84,15 @@ export default function ClienteCombobox({
       if (cursor >= 0 && filtered[cursor]) {
         select(filtered[cursor]);
       } else if (inputVal.trim()) {
-        select(inputVal.trim());
+        const exactMatch = options.find((o) => o.toLowerCase() === inputVal.trim().toLowerCase());
+        if (exactMatch) {
+          select(exactMatch);
+        } else if (onNuevo) {
+          setOpen(false);
+          onNuevo(inputVal.trim());
+        } else {
+          select(inputVal.trim());
+        }
       }
     } else if (e.key === "Escape") {
       setInputVal(value);
@@ -152,13 +162,23 @@ export default function ClienteCombobox({
             <li className="px-4 py-4 text-center">
               <p className="text-sm text-gray-400 mb-1.5">Sin resultados</p>
               {inputVal.trim() && (
-                <button
-                  type="button"
-                  onMouseDown={() => select(inputVal.trim())}
-                  className="text-xs font-semibold text-[#CC2229] hover:underline"
-                >
-                  + Usar "{inputVal.trim()}"
-                </button>
+                onNuevo ? (
+                  <button
+                    type="button"
+                    onMouseDown={() => { setOpen(false); onNuevo(inputVal.trim()); }}
+                    className="text-xs font-semibold text-[#CC2229] hover:underline cursor-pointer"
+                  >
+                    + Registrar "{inputVal.trim()}" como nuevo cliente
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onMouseDown={() => select(inputVal.trim())}
+                    className="text-xs font-semibold text-[#CC2229] hover:underline cursor-pointer"
+                  >
+                    + Usar "{inputVal.trim()}"
+                  </button>
+                )
               )}
             </li>
           ) : (
@@ -188,14 +208,25 @@ export default function ClienteCombobox({
           {/* New entry footer */}
           {inputVal.trim() && filtered.length > 0 && !filtered.some((o) => o.toLowerCase() === inputVal.toLowerCase()) && (
             <li className="border-t border-gray-100 px-3.5 py-2">
-              <button
-                type="button"
-                tabIndex={-1}
-                onMouseDown={() => select(inputVal.trim())}
-                className="text-xs font-semibold text-[#CC2229] hover:underline cursor-pointer"
-              >
-                + Usar "{inputVal.trim()}" como nuevo cliente
-              </button>
+              {onNuevo ? (
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onMouseDown={() => { setOpen(false); onNuevo(inputVal.trim()); }}
+                  className="text-xs font-semibold text-[#CC2229] hover:underline cursor-pointer"
+                >
+                  + Registrar "{inputVal.trim()}" como nuevo cliente
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onMouseDown={() => select(inputVal.trim())}
+                  className="text-xs font-semibold text-[#CC2229] hover:underline cursor-pointer"
+                >
+                  + Usar "{inputVal.trim()}" como nuevo cliente
+                </button>
+              )}
             </li>
           )}
         </ul>

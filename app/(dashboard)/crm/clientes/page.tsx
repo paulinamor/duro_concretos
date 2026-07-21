@@ -6,6 +6,7 @@ import {
   Building2,
   ChevronDown,
   FileSpreadsheet,
+  GitMerge,
   Mail,
   MapPin,
   Pencil,
@@ -24,7 +25,6 @@ import StatusBadge from "@/components/StatusBadge";
 import {
   estatusCliente,
   tiposCliente,
-  vendedores,
   type CalificacionCliente,
   type Cliente,
   type EstatusCliente,
@@ -79,7 +79,7 @@ function emptyForm(): ClienteForm {
     razonSocial: "", nombreComercial: "", rfc: "", domicilio: "", colonia: "",
     municipio: "", estado: "Nuevo León", cp: "", contacto: "", cargo: "",
     telefono: "", email: "", tipoCliente: "Constructora",
-    vendedorAsignado: "Ventas MTY", calificacion: "B", diasCredito: "30",
+    vendedorAsignado: "", calificacion: "B", diasCredito: "30",
     limiteCredito: "0", saldoPendiente: "0", estatus: "Activo", notas: "",
   };
 }
@@ -99,7 +99,7 @@ function fromCliente(c: Cliente): ClienteForm {
     telefono: c.telefono ?? "",
     email: c.email ?? "",
     tipoCliente: c.tipoCliente ?? "Constructora",
-    vendedorAsignado: c.vendedorAsignado ?? "Ventas MTY",
+    vendedorAsignado: c.vendedorAsignado ?? "",
     calificacion: c.calificacion ?? "B",
     diasCredito: c.diasCredito ? String(c.diasCredito) : "30",
     limiteCredito: c.limiteCredito ? String(c.limiteCredito) : "0",
@@ -123,12 +123,13 @@ function SectionDivider({ label }: { label: string }) {
   );
 }
 
-function ClienteDrawer({ open, editing, onClose, onSave, errorMsg }: {
+function ClienteDrawer({ open, editing, onClose, onSave, errorMsg, vendedoresList = [] }: {
   open: boolean;
   editing: Cliente | null;
   onClose: () => void;
   onSave: (f: ClienteForm) => Promise<string | false | void>;
   errorMsg: string;
+  vendedoresList?: string[];
 }) {
   const [form, setForm] = useState<ClienteForm>(emptyForm);
   const [saving, setSaving] = useState(false);
@@ -275,9 +276,18 @@ function ClienteDrawer({ open, editing, onClose, onSave, errorMsg }: {
               </div>
               <div>
                 <label className={lbl}>Vendedor asignado</label>
-                <select value={form.vendedorAsignado} onChange={(e) => set("vendedorAsignado", e.target.value)} className={inp}>
-                  {vendedores.map((v) => <option key={v}>{v}</option>)}
-                </select>
+                <input
+                  list="vendedores-list"
+                  type="text"
+                  value={form.vendedorAsignado}
+                  onChange={(e) => set("vendedorAsignado", e.target.value)}
+                  placeholder="Nombre del vendedor"
+                  className={inp}
+                  autoComplete="off"
+                />
+                <datalist id="vendedores-list">
+                  {vendedoresList.map((v) => <option key={v} value={v} />)}
+                </datalist>
               </div>
               <div>
                 <label className={lbl}>Calificación</label>
@@ -355,6 +365,9 @@ export default function CrmClientesPage() {
   const [editing, setEditing] = useState<Cliente | null>(null);
   const [detail, setDetail] = useState<Cliente | null>(null);
   const [saveError, setSaveError] = useState("");
+  const [showDedupModal, setShowDedupModal] = useState(false);
+  // For each duplicate group: key = normalized name, value = id of the record to KEEP
+  const [dedupKeep, setDedupKeep] = useState<Record<string, string>>({});
 
   useEffect(() => {
     getCollectionDocs<Cliente>(COLLECTIONS.clientes)
@@ -386,30 +399,48 @@ export default function CrmClientesPage() {
       .replace(/[^a-z0-9]/g, "");
   }
 
-  // Detect duplicates by normalized razonSocial
-  const duplicados = useMemo(() => {
+  const vendedoresActivos = useMemo(
+    () => Array.from(new Set(clientes.map((c) => c.vendedorAsignado).filter(Boolean))).sort(),
+    [clientes],
+  );
+
+  // Groups of duplicates: only groups with >1 member
+  const duplicadoGroups = useMemo(() => {
     const groups = new Map<string, Cliente[]>();
     clientes.forEach((c) => {
       const key = normalizeNombre(c.razonSocial);
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(c);
     });
-    const extras: Cliente[] = [];
-    groups.forEach((group) => {
-      if (group.length > 1) {
-        const sorted = [...group].sort((a, b) => a.fechaAlta.localeCompare(b.fechaAlta));
-        extras.push(...sorted.slice(1));
+    const result: { key: string; members: Cliente[] }[] = [];
+    groups.forEach((members, key) => {
+      if (members.length > 1) {
+        result.push({ key, members: [...members].sort((a, b) => a.fechaAlta.localeCompare(b.fechaAlta)) });
       }
     });
-    return extras;
+    return result;
   }, [clientes]);
 
-  async function deduplicar() {
-    if (duplicados.length === 0) return;
-    await Promise.all(duplicados.map((c) => deleteDocument(COLLECTIONS.clientes, c.id!)));
-    const idsEliminar = new Set(duplicados.map((c) => c.id));
-    setClientes((curr) => curr.filter((c) => !idsEliminar.has(c.id)));
-    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `${duplicados.length} cliente${duplicados.length !== 1 ? "s" : ""} duplicado${duplicados.length !== 1 ? "s" : ""} eliminado${duplicados.length !== 1 ? "s" : ""}.` } }));
+  function openDedupModal() {
+    // Default: keep the oldest record in each group
+    const defaults: Record<string, string> = {};
+    duplicadoGroups.forEach(({ key, members }) => { defaults[key] = members[0].id; });
+    setDedupKeep(defaults);
+    setShowDedupModal(true);
+  }
+
+  async function confirmDedup() {
+    const toDelete: string[] = [];
+    duplicadoGroups.forEach(({ key, members }) => {
+      const keepId = dedupKeep[key] ?? members[0].id;
+      members.forEach((c) => { if (c.id !== keepId) toDelete.push(c.id); });
+    });
+    await Promise.all(toDelete.map((id) => deleteDocument(COLLECTIONS.clientes, id)));
+    setClientes((curr) => curr.filter((c) => !toDelete.includes(c.id)));
+    setShowDedupModal(false);
+    window.dispatchEvent(new CustomEvent("duro:toast", {
+      detail: { type: "success", message: `${toDelete.length} registro${toDelete.length !== 1 ? "s" : ""} duplicado${toDelete.length !== 1 ? "s" : ""} eliminado${toDelete.length !== 1 ? "s" : ""}.` },
+    }));
   }
 
   const totalActivos = clientes.filter((c) => c.estatus === "Activo").length;
@@ -573,7 +604,7 @@ export default function CrmClientesPage() {
         {[
           { value: filtroEstatus, onChange: (v: string) => setFiltroEstatus(v as EstatusCliente | "Todos"), options: ["Todos los estatus", ...estatusCliente] },
           { value: filtroTipo, onChange: (v: string) => setFiltroTipo(v as TipoCliente | "Todos"), options: ["Todos los tipos", ...tiposCliente] },
-          { value: filtroVendedor, onChange: (v: string) => setFiltroVendedor(v), options: ["Todos los vendedores", ...vendedores] },
+          { value: filtroVendedor, onChange: (v: string) => setFiltroVendedor(v), options: ["Todos los vendedores", ...vendedoresActivos] },
         ].map(({ value, onChange, options }, idx) => (
           <div key={idx} className="relative">
             <select
@@ -587,14 +618,14 @@ export default function CrmClientesPage() {
           </div>
         ))}
         <span className="text-xs text-gray-500 ml-auto">{filtered.length} clientes</span>
-        {duplicados.length > 0 && (
+        {duplicadoGroups.length > 0 && (
           <button
             type="button"
-            onClick={deduplicar}
+            onClick={openDedupModal}
             className="flex items-center gap-2 rounded-lg border border-amber-500/40 px-3 py-2 text-sm text-amber-300 hover:bg-amber-500/10 transition-colors"
           >
-            <Trash2 size={14} />
-            {duplicados.length} duplicado{duplicados.length !== 1 ? "s" : ""}
+            <GitMerge size={14} />
+            {duplicadoGroups.length} grupo{duplicadoGroups.length !== 1 ? "s" : ""} duplicado{duplicadoGroups.length !== 1 ? "s" : ""}
           </button>
         )}
         <button
@@ -853,7 +884,90 @@ export default function CrmClientesPage() {
         onClose={() => { setShowForm(false); setEditing(null); setSaveError(""); }}
         onSave={handleSave}
         errorMsg={saveError}
+        vendedoresList={vendedoresActivos}
       />
+
+      {/* Dedup review modal */}
+      {showDedupModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center">
+          <button className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowDedupModal(false)} />
+          <div className="relative bg-[#1A1A1A] border border-[#3A3A3A] rounded-2xl w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl">
+            {/* Header */}
+            <div className="flex items-center gap-3 px-6 py-4 border-b border-[#3A3A3A] shrink-0">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/10">
+                <GitMerge size={18} className="text-amber-400" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-white">Revisar duplicados</h3>
+                <p className="text-xs text-gray-500">Selecciona cuál registro conservar en cada grupo. Los demás se eliminarán.</p>
+              </div>
+              <button onClick={() => setShowDedupModal(false)} className="ml-auto p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-white/5 transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Groups */}
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
+              {duplicadoGroups.map(({ key, members }) => (
+                <div key={key} className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
+                  <div className="px-4 py-2.5 border-b border-[#3A3A3A] flex items-center gap-2">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-400">
+                      {members.length} registros · mismo nombre normalizado
+                    </span>
+                  </div>
+                  <div className="divide-y divide-[#3A3A3A]">
+                    {members.map((c) => {
+                      const isKeep = dedupKeep[key] === c.id;
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => setDedupKeep((prev) => ({ ...prev, [key]: c.id }))}
+                          className={`w-full flex items-start gap-3 px-4 py-3 text-left transition-colors cursor-pointer ${isKeep ? "bg-emerald-500/5" : "hover:bg-white/[0.02]"}`}
+                        >
+                          <div className={`mt-0.5 shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center ${isKeep ? "border-emerald-500 bg-emerald-500" : "border-gray-600"}`}>
+                            {isKeep && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm font-medium truncate ${isKeep ? "text-emerald-300" : "text-gray-300"}`}>
+                              {c.razonSocial}
+                              {isKeep && <span className="ml-2 text-[10px] font-semibold text-emerald-500 uppercase tracking-wider">Conservar</span>}
+                            </p>
+                            <div className="flex items-center gap-3 mt-0.5 text-[11px] text-gray-600">
+                              {c.rfc && <span className="font-mono">{c.rfc}</span>}
+                              {c.contacto && <span>{c.contacto}</span>}
+                              {c.fechaAlta && <span>Alta: {c.fechaAlta}</span>}
+                            </div>
+                          </div>
+                          {!isKeep && <Trash2 size={13} className="text-gray-700 mt-0.5 shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Footer */}
+            <div className="shrink-0 px-6 py-4 border-t border-[#3A3A3A] flex items-center justify-between gap-3">
+              <p className="text-xs text-gray-500">
+                Se eliminarán{" "}
+                <span className="text-red-400 font-semibold">
+                  {duplicadoGroups.reduce((n, { key, members }) => n + members.filter((c) => c.id !== (dedupKeep[key] ?? members[0].id)).length, 0)} registros
+                </span>
+              </p>
+              <div className="flex gap-3">
+                <button onClick={() => setShowDedupModal(false)} className="px-4 py-2 text-sm text-gray-400 border border-[#3A3A3A] rounded-xl hover:border-gray-500 transition-colors">
+                  Cancelar
+                </button>
+                <button onClick={confirmDedup} className="px-5 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors">
+                  Confirmar y limpiar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
