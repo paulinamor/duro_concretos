@@ -513,6 +513,106 @@ function AbonoDrawer({
   );
 }
 
+// ─── Edit Abono Drawer ────────────────────────────────────────────────────────
+
+function EditAbonoDrawer({
+  target,
+  kind,
+  onClose,
+  onSave,
+}: {
+  target: { cuenta: Cuenta; index: number } | null;
+  kind: SatDownloadKind;
+  onClose: () => void;
+  onSave: (cuenta: Cuenta, index: number, abono: Abono) => Promise<void>;
+}) {
+  const abono = target?.cuenta.abonos?.[target.index];
+  const [form, setForm] = useState({ fecha: todayISO(), monto: "", referencia: "" });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!abono) return;
+    setForm({
+      fecha: abono.fecha.includes("/") ? displayToISO(abono.fecha) : abono.fecha,
+      monto: String(abono.monto),
+      referencia: abono.referencia ?? "",
+    });
+  }, [target, abono]);
+
+  if (!target || !abono) return null;
+  const { cuenta, index } = target;
+
+  // Saldo disponible = lo que queda + lo que tenía este abono
+  const saldoDisponible = cuenta.total - (cuenta.montoPagado - abono.monto);
+  const montoNum = parseFloat(form.monto) || 0;
+
+  async function handleSave() {
+    if (montoNum <= 0) return;
+    setSaving(true);
+    try {
+      await onSave(cuenta, index, {
+        fecha: isoToDisplay(form.fecha),
+        monto: montoNum,
+        referencia: form.referencia,
+      });
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const inp = "w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-900 text-sm placeholder-gray-400 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors";
+  const lbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5";
+  const actionLabel = kind === "cxc" ? "Editar cobro" : "Editar pago";
+
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative ml-auto flex h-full w-full max-w-sm flex-col bg-white border-l border-gray-200 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">{actionLabel}</h2>
+            <p className="text-xs text-gray-500 mt-0.5">{cuenta.contraparte} · {cuenta.folio || "Sin folio"}</p>
+          </div>
+          <button onClick={onClose} className="rounded-xl p-2 text-gray-400 hover:bg-gray-100 transition-colors cursor-pointer"><X size={16} /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+          <div className="rounded-xl bg-gray-50 border border-gray-200 p-4 space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-500">Total factura</span>
+              <span className="font-semibold text-gray-900">{currency(cuenta.total)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-500">Máximo permitido</span>
+              <span className="text-amber-600 font-semibold">{currency(saldoDisponible)}</span>
+            </div>
+          </div>
+          <div>
+            <label className={lbl}>Fecha del {kind === "cxc" ? "cobro" : "pago"}</label>
+            <input type="date" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} className={inp} />
+          </div>
+          <div>
+            <label className={lbl}>Monto ($)</label>
+            <input type="number" min="0" step="0.01" max={saldoDisponible} value={form.monto} onChange={(e) => setForm({ ...form, monto: e.target.value })} placeholder="0.00" className={inp} onWheel={(e) => e.currentTarget.blur()} />
+            <p className="text-[10px] text-gray-400 mt-1">Máximo: {currency(saldoDisponible)}</p>
+          </div>
+          <div>
+            <label className={lbl}>Referencia / No. transferencia</label>
+            <input type="text" value={form.referencia} onChange={(e) => setForm({ ...form, referencia: e.target.value })} placeholder="Opcional" className={inp} />
+          </div>
+        </div>
+        <div className="border-t border-gray-100 px-6 py-4 flex gap-3 justify-end">
+          <button onClick={onClose} className="px-4 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:text-gray-900 transition-colors cursor-pointer">Cancelar</button>
+          <button onClick={handleSave} disabled={saving || montoNum <= 0 || montoNum > saldoDisponible} className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors disabled:opacity-60 cursor-pointer">
+            {saving ? <span className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" /> : <Pencil size={15} />}
+            {saving ? "Guardando..." : actionLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Row ──────────────────────────────────────────────────────────────────────
 
 function CuentaRow({
@@ -523,6 +623,7 @@ function CuentaRow({
   onAbono,
   onEdit,
   onDelete,
+  onEditAbono,
 }: {
   cuenta: Cuenta;
   kind: SatDownloadKind;
@@ -531,6 +632,7 @@ function CuentaRow({
   onAbono: (c: Cuenta) => void;
   onEdit: (c: Cuenta) => void;
   onDelete: (c: Cuenta) => void;
+  onEditAbono: (c: Cuenta, index: number) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const saldo = cuenta.total - cuenta.montoPagado;
@@ -675,13 +777,22 @@ function CuentaRow({
               </div>
               <div className="flex flex-col gap-2 items-end shrink-0">
                 {cuenta.abonos && cuenta.abonos.length > 0 && (
-                  <div className="text-xs text-gray-500 space-y-1 text-right">
+                  <div className="text-xs text-gray-500 space-y-1.5 text-right">
                     <p className="text-[10px] uppercase tracking-wider text-gray-600 mb-1">Abonos</p>
                     {cuenta.abonos.map((a, i) => (
-                      <p key={i} className="text-gray-400">
-                        {a.fecha} · <span className="text-emerald-400 font-semibold">{currency(a.monto)}</span>
-                        {a.referencia && <span className="text-gray-600"> · {a.referencia}</span>}
-                      </p>
+                      <div key={i} className="flex items-center justify-end gap-2">
+                        <p className="text-gray-400">
+                          {a.fecha} · <span className="text-emerald-400 font-semibold">{currency(a.monto)}</span>
+                          {a.referencia && <span className="text-gray-600"> · {a.referencia}</span>}
+                        </p>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onEditAbono(cuenta, i); }}
+                          title="Editar este abono"
+                          className="shrink-0 text-gray-600 hover:text-blue-400 transition-colors cursor-pointer"
+                        >
+                          <Pencil size={11} />
+                        </button>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -735,6 +846,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Cuenta | null>(null);
   const [abonoTarget, setAbonoTarget] = useState<Cuenta | null>(null);
+  const [editAbonoTarget, setEditAbonoTarget] = useState<{ cuenta: Cuenta; index: number } | null>(null);
   const [showCargaMasiva, setShowCargaMasiva] = useState(false);
   const [query, setQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("todos");
@@ -858,6 +970,21 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
     const { id: _cid, ...cuentaData } = updatedCuenta;
     await upsertDocument(collection, id, withPlantaTag(cuentaData));
     showToast("success", isCxc ? "Cobro registrado" : "Pago registrado", `${currency(abono.monto)} a ${cuenta.contraparte}`);
+  }
+
+  async function handleEditAbono(cuenta: Cuenta, index: number, updatedAbono: Abono) {
+    const nuevosAbonos = [...(cuenta.abonos ?? [])];
+    nuevosAbonos[index] = updatedAbono;
+    const nuevoMontoPagado = nuevosAbonos.reduce((sum, a) => sum + a.monto, 0);
+    const updatedCuenta: Cuenta = {
+      ...cuenta,
+      abonos: nuevosAbonos,
+      montoPagado: nuevoMontoPagado,
+      status: computeStatus({ ...cuenta, montoPagado: nuevoMontoPagado }),
+    };
+    const { id, ...data } = updatedCuenta;
+    await upsertDocument(collection, id!, withPlantaTag(data));
+    showToast("success", isCxc ? "Cobro actualizado" : "Pago actualizado", `${currency(updatedAbono.monto)} · ${cuenta.contraparte}`);
   }
 
   async function handleCargaMasiva(records: Omit<Cuenta, "id" | "planta">[]) {
@@ -1033,6 +1160,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
                   onAbono={setAbonoTarget}
                   onEdit={(c) => { setEditing(c); setShowForm(true); }}
                   onDelete={handleDelete}
+                  onEditAbono={(c, i) => setEditAbonoTarget({ cuenta: c, index: i })}
                 />
               ))}
             </tbody>
@@ -1042,6 +1170,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
 
       <FormDrawer open={showForm} kind={kind} clientesList={clientesList} initial={editing ?? undefined} onClose={() => { setShowForm(false); setEditing(null); }} onSave={handleSave} />
       <AbonoDrawer cuenta={abonoTarget} kind={kind} onClose={() => setAbonoTarget(null)} onSave={handleAbono} />
+      <EditAbonoDrawer target={editAbonoTarget} kind={kind} onClose={() => setEditAbonoTarget(null)} onSave={handleEditAbono} />
       <CargaMasivaModal open={showCargaMasiva} kind={kind} existingUuids={existingUuids} onClose={() => setShowCargaMasiva(false)} onConfirm={handleCargaMasiva} />
     </div>
   );
