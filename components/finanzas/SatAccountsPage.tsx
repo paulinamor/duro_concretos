@@ -624,6 +624,7 @@ function CuentaRow({
   onEdit,
   onDelete,
   onEditAbono,
+  onDeleteAbono,
 }: {
   cuenta: Cuenta;
   kind: SatDownloadKind;
@@ -633,6 +634,7 @@ function CuentaRow({
   onEdit: (c: Cuenta) => void;
   onDelete: (c: Cuenta) => void;
   onEditAbono: (c: Cuenta, index: number) => void;
+  onDeleteAbono: (c: Cuenta, index: number) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const saldo = cuenta.total - cuenta.montoPagado;
@@ -791,6 +793,13 @@ function CuentaRow({
                           className="shrink-0 text-gray-600 hover:text-blue-400 transition-colors cursor-pointer"
                         >
                           <Pencil size={11} />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onDeleteAbono(cuenta, i); }}
+                          title="Revertir este abono"
+                          className="shrink-0 text-gray-600 hover:text-red-400 transition-colors cursor-pointer"
+                        >
+                          <Trash2 size={11} />
                         </button>
                       </div>
                     ))}
@@ -970,6 +979,23 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
     const { id: _cid, ...cuentaData } = updatedCuenta;
     await upsertDocument(collection, id, withPlantaTag(cuentaData));
     showToast("success", isCxc ? "Cobro registrado" : "Pago registrado", `${currency(abono.monto)} a ${cuenta.contraparte}`);
+  }
+
+  async function handleDeleteAbono(cuenta: Cuenta, index: number) {
+    const abono = cuenta.abonos?.[index];
+    if (!abono) return;
+    if (!confirm(`¿Revertir el ${isCxc ? "cobro" : "pago"} de ${currency(abono.monto)} del ${abono.fecha}?`)) return;
+    const nuevosAbonos = (cuenta.abonos ?? []).filter((_, i) => i !== index);
+    const nuevoMontoPagado = nuevosAbonos.reduce((sum, a) => sum + a.monto, 0);
+    const updatedCuenta: Cuenta = {
+      ...cuenta,
+      abonos: nuevosAbonos,
+      montoPagado: nuevoMontoPagado,
+      status: computeStatus({ ...cuenta, montoPagado: nuevoMontoPagado }),
+    };
+    const { id, ...data } = updatedCuenta;
+    await upsertDocument(collection, id!, withPlantaTag(data));
+    showToast("success", isCxc ? "Cobro revertido" : "Pago revertido", `${currency(abono.monto)} · ${cuenta.contraparte}`);
   }
 
   async function handleEditAbono(cuenta: Cuenta, index: number, updatedAbono: Abono) {
@@ -1161,6 +1187,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
                   onEdit={(c) => { setEditing(c); setShowForm(true); }}
                   onDelete={handleDelete}
                   onEditAbono={(c, i) => setEditAbonoTarget({ cuenta: c, index: i })}
+                  onDeleteAbono={handleDeleteAbono}
                 />
               ))}
             </tbody>
