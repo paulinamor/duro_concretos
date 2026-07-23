@@ -8,6 +8,7 @@ import {
   ChevronUp,
   Clock,
   DollarSign,
+  FileDown,
   FileText,
   Link2,
   Pencil,
@@ -1029,6 +1030,47 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
     showToast("success", "Carga masiva completada", `${items.length} registros importados`);
   }
 
+  function exportXLSX() {
+    const XLSX = require("xlsx");
+    const contraparteTitulo = isCxc ? "Receptor" : "Emisor";
+    const rows = filtered.map((c) => {
+      const saldo = c.total - c.montoPagado;
+      const base: Record<string, string | number> = {
+        "Estado SAT": c.estadoSAT ?? "",
+        Tipo: c.tipo ?? "",
+        Fecha: c.fecha,
+        Folio: c.folio ?? "",
+        [contraparteTitulo]: c.contraparte,
+        RFC: c.rfc ?? "",
+        "COSEC. TC": c.banco ?? "",
+        Concepto: c.concepto ?? "",
+        Subtotal: c.subtotal,
+        IVA: c.iva,
+        ...(kind === "cxp" && {
+          "Retenido IVA": c.retenidoIVA ?? 0,
+          "Retenido ISR": c.retenidoISR ?? 0,
+          ISH: c.ish ?? 0,
+          BANCO: c.bancoPago ?? "",
+        }),
+        Total: c.total,
+        [isCxc ? "Cobrado" : "Pagado"]: c.montoPagado,
+        Saldo: saldo,
+        Status: c.status,
+        Vencimiento: c.vencimiento,
+        "Forma de pago": c.formaPago ?? "",
+        Notas: c.notas ?? "",
+        Abonos: (c.abonos ?? [])
+          .map((a) => `${a.fecha} $${a.monto.toLocaleString("es-MX")}${a.referencia ? ` (${a.referencia})` : ""}`)
+          .join(" | "),
+      };
+      return base;
+    });
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, isCxc ? "CxC" : "CxP");
+    XLSX.writeFile(wb, `${isCxc ? "cxc" : "cxp"}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }
+
   const contraparteLabel = isCxc ? "Nombre Receptor" : "Nombre Emisor";
 
   return (
@@ -1037,6 +1079,14 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-gray-500">{filtered.length} documentos</p>
         <div className="flex items-center gap-2">
+          <button
+            onClick={exportXLSX}
+            disabled={filtered.length === 0}
+            className="flex items-center gap-2 border border-[#3A3A3A] bg-[#1A1A1A] hover:border-emerald-500/50 hover:text-emerald-300 text-gray-300 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <FileDown size={15} />
+            Exportar Excel
+          </button>
           <button
             onClick={() => setShowCargaMasiva(true)}
             className="flex items-center gap-2 border border-[#3A3A3A] bg-[#1A1A1A] hover:border-purple-500/50 hover:text-purple-300 text-gray-300 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer"
