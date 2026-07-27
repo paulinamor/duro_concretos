@@ -19,16 +19,17 @@ interface Props {
 const COL_CXC: Record<string, keyof Omit<Cuenta, "id" | "planta" | "abonos">> = {
   "ESTADO SAT": "estadoSAT", "ESTADO_SAT": "estadoSAT", "ESTADOSAT": "estadoSAT",
   "TIPO": "tipo",
+  "FECHA": "fecha", "FECHA EMISION": "fecha", "FECHA_EMISION": "fecha", "FECHA DE EMISION": "fecha",
   "SERIE": "serie",
+  "FOLIO": "folio",
   "UUID": "uuid",
   "UUID RELACION": "uuidRelacion", "UUID_RELACION": "uuidRelacion", "UUID RELACIÓN": "uuidRelacion",
-  "RFC RECEPTOR": "rfc", "RFC_RECEPTOR": "rfc",
+  "RFC RECEPTOR": "rfc", "RFC_RECEPTOR": "rfc", "RFC EMISOR": "rfc", "RFC_EMISOR": "rfc",
   "NOMBRE RECEPTOR": "contraparte", "NOMBRE_RECEPTOR": "contraparte",
-  "FECHA": "fecha",
-  "FOLIO": "folio",
+  "NOMBRE DEL EMISOR": "contraparte", "NOMBRE EMISOR": "contraparte", "NOMBRE_EMISOR": "contraparte",
   "CONCEPTO": "concepto",
   "SUBTOTAL": "subtotal", "SUB TOTAL": "subtotal", "SUB_TOTAL": "subtotal",
-  "IVA": "iva",
+  "IVA": "iva", "IVA 16%": "iva", "IVA16%": "iva",
   "TOTAL": "total",
   "FORMA DE PAGO": "formaPago", "FORMA_DE_PAGO": "formaPago", "FORMADEPAGO": "formaPago",
   "COSEC. TC": "banco", "COSEC TC": "banco", "COSEC_TC": "banco", "COSEC.TC": "banco",
@@ -46,8 +47,8 @@ const COL_CXP: Record<string, keyof Omit<Cuenta, "id" | "planta" | "abonos">> = 
   "BANCO": "bancoPago",
 };
 
-const COLS_CXC = ["ESTADO SAT", "TIPO", "SERIE", "UUID", "UUID RELACION", "RFC RECEPTOR", "NOMBRE RECEPTOR", "FECHA", "FOLIO", "CONCEPTO", "SUBTOTAL", "IVA", "TOTAL", "FORMA DE PAGO", "COSEC. TC"];
-const COLS_CXP = ["ESTADO SAT", "TIPO", "SERIE", "UUID", "UUID RELACION", "RFC EMISOR", "NOMBRE EMISOR", "FECHA", "FOLIO", "CONCEPTO", "SUBTOTAL", "IVA", "RETENIDO IVA", "RETENIDO ISR", "ISH", "TOTAL", "FORMA DE PAGO", "COSEC. TC", "BANCO"];
+const COLS_CXC = ["Estado SAT", "Tipo", "Fecha Emision", "Serie", "Folio", "UUID", "UUID Relacion", "RFC Emisor", "NOMBRE DEL EMISOR", "SubTotal", "IVA 16%", "Total", "FormaDePago", "COSEC. TC"];
+const COLS_CXP = ["Estado SAT", "Tipo", "Fecha Emision", "Serie", "UUID", "UUID Relacion", "RFC Emisor", "NOMBRE DEL EMISOR", "SubTotal", "IVA 16%", "Retenido IVA", "ISH", "Total", "FormaDePago", "COSEC. TC", "BANCO"];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -161,8 +162,8 @@ async function parseExcel(file: File, kind: SatDownloadKind): Promise<Omit<Cuent
 function downloadTemplate(kind: SatDownloadKind) {
   const headers = kind === "cxc" ? COLS_CXC : COLS_CXP;
   const example = kind === "cxc"
-    ? ["Vigente", "Factura", "A", "UUID-0001-EJEMPLO", "", "RFC123456789", "Nombre del cliente", "2026-06-01", "F-001", "Servicios de concreto", "10000", "1600", "11600", "03", "BBVA-001"]
-    : ["Vigente", "Factura", "A", "UUID-0001-EJEMPLO", "", "RFC123456789", "Nombre del proveedor", "2026-06-01", "F-001", "Materiales", "10000", "1600", "0", "0", "0", "11600", "03", "BBVA-001", "BANAMEX"];
+    ? ["Vigente", "Factura", "2026-06-01", "A", "F-001", "UUID-0001-EJEMPLO", "", "RFC123456789", "Nombre del cliente", "10000", "1600", "11600", "03 - Transferencia electronica", "BBVA-001"]
+    : ["Vigente", "Factura", "2026-06-01", "A", "UUID-0001-EJEMPLO", "", "RFC123456789", "Nombre del proveedor", "10000", "1600", "0", "0", "11600", "03 - Transferencia electronica", "BBVA-001", "BANAMEX"];
   const ws = XLSX.utils.aoa_to_sheet([headers, example]);
   ws["!cols"] = headers.map(() => ({ wch: 20 }));
   const wb = XLSX.utils.book_new();
