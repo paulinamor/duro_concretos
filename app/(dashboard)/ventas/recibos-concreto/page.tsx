@@ -56,7 +56,11 @@ function createReceipt(receipts: ConcreteReceipt[]): ConcreteReceipt {
 }
 
 export default function RecibosConcretoPage() {
-  const savedReceipts = useCollection<ConcreteReceipt>(COLLECTIONS.remisiones);
+  const allRemisiones = useCollection<ConcreteReceipt>(COLLECTIONS.remisiones);
+  const savedReceipts = useMemo(
+    () => allRemisiones.filter((r) => r.receiptNumber != null),
+    [allRemisiones],
+  );
   const [receipt, setReceipt] = useState<ConcreteReceipt>(() => createReceipt([]));
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -65,8 +69,6 @@ export default function RecibosConcretoPage() {
   const receiptDate = formatReceiptDate(receipt.fecha);
   const realTotal = totals.total * 10;
   const realResta = totals.resta * 10;
-  const ticketTotal = totals.total;
-  const ticketResta = totals.resta;
 
   function updateReceipt(partial: Partial<ConcreteReceipt>) {
     setReceipt((current) => ({
@@ -158,7 +160,7 @@ export default function RecibosConcretoPage() {
       }
     }
     const amounts = messageReceipt.id === receipt.id
-      ? { ticketTotal, ticketResta }
+      ? { realTotal, realResta }
       : getTicketAmounts(messageReceipt);
     const message = [
       `Recibo concreto premezclado No. ${messageReceipt.receiptNumber}`,
@@ -168,8 +170,8 @@ export default function RecibosConcretoPage() {
       `Resistencia: ${messageReceipt.resistencia}`,
       `Suministro: ${messageReceipt.supplyType}`,
       `Precio/m3: ${money(messageReceipt.precioPorM3)}`,
-      `Total: ${money(amounts.ticketTotal)}`,
-      `Resta: ${money(amounts.ticketResta)}`,
+      `Total: ${money(amounts.realTotal)}`,
+      `Resta: ${money(amounts.realResta)}`,
       `Nota: ${messageReceipt.nota || "Sin nota"}`,
     ].join("\n");
     window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
@@ -450,20 +452,12 @@ export default function RecibosConcretoPage() {
 
           <div className="mt-5 grid grid-cols-2 gap-3 rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] p-4">
             <div>
-              <p className="text-xs text-gray-500">Total real interno</p>
+              <p className="text-xs text-gray-500">Total</p>
               <p className="text-2xl font-bold text-white">{money(realTotal)}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-500">Total para imprimir / WhatsApp</p>
-              <p className="text-2xl font-bold text-[#CC2229]">{money(ticketTotal)}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Resta real interna</p>
-              <p className="text-lg font-bold text-gray-300">{money(realResta)}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Resta para imprimir / WhatsApp</p>
-              <p className="text-lg font-bold text-gray-300">{money(ticketResta)}</p>
+              <p className="text-xs text-gray-500">Resta</p>
+              <p className="text-2xl font-bold text-gray-300">{money(realResta)}</p>
             </div>
           </div>
         </section>
@@ -527,13 +521,13 @@ export default function RecibosConcretoPage() {
                     Precio por m³:
                     <span className="medium-line handwritten">{money(receipt.precioPorM3)}</span>
                     Total:
-                    <span className="medium-line handwritten">{money(ticketTotal)}</span>
+                    <span className="medium-line handwritten">{money(realTotal)}</span>
                   </p>
                   <p>
                     Anticipo 1:
                     <span className="medium-line handwritten">{receipt.anticipo ? money(receipt.anticipo) : ""}</span>
                     Resta:
-                    <span className="medium-line handwritten">{money(ticketResta)}</span>
+                    <span className="medium-line handwritten">{money(realResta)}</span>
                   </p>
                   <p>Nota: <span className="receipt-line handwritten">{receipt.nota}</span></p>
                   <div className="pt-6 text-center">
@@ -567,7 +561,7 @@ export default function RecibosConcretoPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[#3A3A3A] bg-[#1A1A1A]">
-                {["No.", "Fecha", "Cliente", "Obra", "M3", "Total real", "Total ticket", "Resta ticket", "Acciones"].map((header) => (
+                {["No.", "Fecha", "Cliente", "Obra", "M3", "Total", "Resta", "Acciones"].map((header) => (
                   <th key={header} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">
                     {header}
                   </th>
@@ -585,8 +579,7 @@ export default function RecibosConcretoPage() {
                     <td className="px-4 py-3 text-gray-300">{savedReceipt.direccionObra}</td>
                     <td className="px-4 py-3 text-gray-300">{savedReceipt.m3} m³</td>
                     <td className="px-4 py-3 font-semibold text-white">{money(amounts.realTotal)}</td>
-                    <td className="px-4 py-3 font-semibold text-[#CC2229]">{money(amounts.ticketTotal)}</td>
-                    <td className="px-4 py-3 text-gray-300">{money(amounts.ticketResta)}</td>
+                    <td className="px-4 py-3 text-gray-300">{money(amounts.realResta)}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-2">
                         <button

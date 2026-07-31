@@ -17,8 +17,6 @@ import {
   Search,
   Sparkles,
   Trash2,
-  TrendingDown,
-  TrendingUp,
   X,
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
@@ -100,6 +98,14 @@ function diasVencimiento(vencimiento: string): number {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   return Math.ceil((due.getTime() - today.getTime()) / 86_400_000);
+}
+
+function abonosEnMes(abonos: Abono[] | undefined, mes: string): Abono[] {
+  if (!abonos || mes === "todos") return abonos ?? [];
+  return abonos.filter((a) => {
+    const f = a.fecha?.includes("/") ? displayToISO(a.fecha) : (a.fecha ?? "");
+    return f.startsWith(mes);
+  });
 }
 
 function computeStatus(cuenta: Cuenta): Cuenta["status"] {
@@ -683,6 +689,12 @@ function CuentaRow({
         <td className="px-4 py-3 text-gray-300 text-xs whitespace-nowrap">{cuenta.banco || "—"}</td>
         <td className="px-4 py-3 text-gray-400 text-sm max-w-[160px] truncate">{cuenta.concepto || "—"}</td>
         <td className="px-4 py-3 text-white font-semibold tabular-nums">{currency(cuenta.total)}</td>
+        <td className="px-4 py-3 text-sm tabular-nums text-gray-400">
+          {(cuenta.total - cuenta.montoPagado) > 0
+            ? <span className="font-semibold text-amber-400">{currency(cuenta.total - cuenta.montoPagado)}</span>
+            : <span className="text-emerald-500 text-xs font-semibold">✓ Liquidada</span>
+          }
+        </td>
         <td className="px-4 py-3">
           <div className="flex flex-col gap-1 min-w-[100px]">
             <div className="flex justify-between text-[10px]">
@@ -723,7 +735,7 @@ function CuentaRow({
       </tr>
       {expanded && (
         <tr className="bg-[#111318]">
-          <td colSpan={13} className="px-5 pb-4 pt-3">
+          <td colSpan={14} className="px-5 pb-4 pt-3">
             <div className="flex flex-wrap gap-6 items-start justify-between">
               <div className="flex flex-wrap gap-x-6 gap-y-3 text-sm">
                 {/* Fila 1: montos */}
@@ -914,11 +926,16 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
   const filtered = useMemo(() => {
     const q = query.toLowerCase();
     return cuentas.filter((c) => {
+      // Filtro por status
       if (filterStatus !== "todos" && c.status.toLowerCase() !== filterStatus) return false;
+
+      // Filtro por mes — siempre por fecha de EMISIÓN (devengado)
       if (filterMes !== "todos") {
         const iso = c.fecha.includes("/") ? displayToISO(c.fecha) : c.fecha;
         if (!iso.startsWith(filterMes)) return false;
       }
+
+      // Búsqueda de texto
       if (!q) return true;
       return (
         c.contraparte.toLowerCase().includes(q) ||
@@ -942,6 +959,16 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
   const totalFacturadoNeto = activas.reduce((s, c) => s + c.total, 0);
   const totalPendiente = activas.filter((c) => c.status !== "Pagado").reduce((s, c) => s + (c.total - c.montoPagado), 0);
   const totalCobrado = activas.reduce((s, c) => s + c.montoPagado, 0);
+
+  // Cobrado en el período — suma de abonos cuya fecha cae en el mes filtrado (de TODAS las cuentas activas)
+  const cuentasActivas = cuentas.filter((c) => c.estadoSAT !== "Cancelado");
+  const cobradoEnMes = filterMes !== "todos"
+    ? cuentasActivas.reduce((s, c) => s + abonosEnMes(c.abonos, filterMes).reduce((ss, a) => ss + Number(a.monto), 0), 0)
+    : totalCobrado;
+
+  // Pendiente del período — saldo sin cobrar de facturas emitidas en el mes filtrado (activas, no pagadas)
+  const pendienteDelMes = totalPendiente;
+
   const vencidos = activas.filter((c) => c.status === "Vencido").length;
   const proximos = activas.filter((c) => c.status === "Pendiente" && diasVencimiento(c.vencimiento) <= 7 && diasVencimiento(c.vencimiento) >= 0).length;
 
@@ -1200,35 +1227,103 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
         );
       })()}
 
-      {/* KPI Row 2 — cobro y alertas */}
+      {/* KPI Row 2 — período */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        <KPICard
-          title={isCxc ? "Por cobrar" : "Por pagar"}
-          value={currency(totalPendiente)}
-          icon={isCxc ? TrendingUp : TrendingDown}
-          iconColor={isCxc ? "text-emerald-400" : "text-[#CC2229]"}
-          subtitle="Saldo pendiente"
-        />
-        <KPICard
-          title={isCxc ? "Cobrado" : "Pagado"}
-          value={currency(totalCobrado)}
-          icon={DollarSign}
-          iconColor="text-blue-400"
-          subtitle="En periodo filtrado"
-        />
+        {/* A — Emitido en el período */}
+        <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#181b20] p-5 shadow-[0_1px_8px_rgba(15,23,42,0.05)] dark:shadow-none">
+          <div className="flex items-start justify-between gap-2 mb-3">
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-xl bg-violet-500/10">
+                <FileText size={15} className="text-violet-400" strokeWidth={2} />
+              </div>
+              <p className="text-[0.7rem] font-extrabold uppercase tracking-wider text-slate-400 dark:text-gray-500">
+                {isCxc ? "Emitido en el período" : "Registrado en el período"}
+              </p>
+            </div>
+            <div className="relative group">
+              <button className="h-5 w-5 rounded-full border border-slate-200 dark:border-white/15 text-[10px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-white flex items-center justify-center cursor-help transition-colors">?</button>
+              <div className="absolute right-0 top-6 z-50 hidden group-hover:block w-56 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1E1E24] p-3 shadow-xl text-xs text-slate-600 dark:text-gray-300 leading-relaxed">
+                {isCxc
+                  ? "Suma del total de todas las facturas con fecha de emisión en este período. No incluye canceladas."
+                  : "Suma del total de todas las facturas recibidas registradas en este período. No incluye canceladas."}
+              </div>
+            </div>
+          </div>
+          <p className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums leading-none">{currency(totalFacturadoNeto)}</p>
+          <p className="text-xs text-slate-400 dark:text-gray-500 mt-1.5">{activas.length} {activas.length === 1 ? "factura vigente" : "facturas vigentes"}</p>
+        </div>
+
+        {/* B — Cobrado / Pagado en el período */}
+        <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#181b20] p-5 shadow-[0_1px_8px_rgba(15,23,42,0.05)] dark:shadow-none">
+          <div className="flex items-start justify-between gap-2 mb-3">
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-xl bg-blue-500/10">
+                <DollarSign size={15} className="text-blue-400" strokeWidth={2} />
+              </div>
+              <p className="text-[0.7rem] font-extrabold uppercase tracking-wider text-slate-400 dark:text-gray-500">
+                {isCxc ? "Cobrado en el período" : "Pagado en el período"}
+              </p>
+            </div>
+            <div className="relative group">
+              <button className="h-5 w-5 rounded-full border border-slate-200 dark:border-white/15 text-[10px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-white flex items-center justify-center cursor-help transition-colors">?</button>
+              <div className="absolute right-0 top-6 z-50 hidden group-hover:block w-56 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1E1E24] p-3 shadow-xl text-xs text-slate-600 dark:text-gray-300 leading-relaxed">
+                {filterMes !== "todos"
+                  ? (isCxc
+                      ? "Dinero que entró en este mes. Incluye pagos de facturas emitidas en otros meses."
+                      : "Dinero que salió en este mes. Incluye pagos de facturas recibidas en otros meses.")
+                  : (isCxc
+                      ? "Suma de todos los pagos recibidos hasta hoy."
+                      : "Suma de todos los pagos realizados hasta hoy.")}
+              </div>
+            </div>
+          </div>
+          <p className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums leading-none">{currency(cobradoEnMes)}</p>
+          <p className="text-xs text-slate-400 dark:text-gray-500 mt-1.5">
+            {filterMes !== "todos"
+              ? (isCxc ? "Pagos recibidos en este mes (de cualquier factura)" : "Pagos realizados en este mes (de cualquier factura)")
+              : (isCxc ? "Total cobrado acumulado" : "Total pagado acumulado")}
+          </p>
+        </div>
+
+        {/* C — Pendiente de cobrar / pagar */}
+        <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#181b20] p-5 shadow-[0_1px_8px_rgba(15,23,42,0.05)] dark:shadow-none">
+          <div className="flex items-start justify-between gap-2 mb-3">
+            <div className="flex items-center gap-2">
+              <div className={`p-2 rounded-xl ${pendienteDelMes > 0 ? "bg-amber-500/10" : "bg-slate-100 dark:bg-white/5"}`}>
+                <Clock size={15} className={pendienteDelMes > 0 ? "text-amber-400" : "text-slate-400"} strokeWidth={2} />
+              </div>
+              <p className="text-[0.7rem] font-extrabold uppercase tracking-wider text-slate-400 dark:text-gray-500">
+                {isCxc ? "Pendiente de cobrar" : "Pendiente de pagar"}
+              </p>
+            </div>
+            <div className="relative group">
+              <button className="h-5 w-5 rounded-full border border-slate-200 dark:border-white/15 text-[10px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-white flex items-center justify-center cursor-help transition-colors">?</button>
+              <div className="absolute right-0 top-6 z-50 hidden group-hover:block w-56 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1E1E24] p-3 shadow-xl text-xs text-slate-600 dark:text-gray-300 leading-relaxed">
+                {filterMes !== "todos"
+                  ? (isCxc
+                      ? "Lo que aún no se ha cobrado de facturas emitidas en este período."
+                      : "Lo que aún no se ha pagado de facturas recibidas en este período.")
+                  : (isCxc
+                      ? "Saldo pendiente de todas las facturas activas."
+                      : "Saldo por pagar de todas las facturas activas.")}
+              </div>
+            </div>
+          </div>
+          <p className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums leading-none">{currency(pendienteDelMes)}</p>
+          <p className="text-xs text-slate-400 dark:text-gray-500 mt-1.5">
+            {filterMes !== "todos"
+              ? (isCxc ? "Saldo sin cobrar de facturas emitidas en este mes" : "Saldo sin pagar de facturas recibidas en este mes")
+              : (isCxc ? "Saldo total por cobrar" : "Saldo total por pagar")}
+          </p>
+        </div>
+
+        {/* D — Vencidos */}
         <KPICard
           title="Vencidos"
           value={String(vencidos)}
           icon={AlertTriangle}
           iconColor={vencidos > 0 ? "text-red-400" : "text-gray-500"}
           subtitle="Documentos sin pagar"
-        />
-        <KPICard
-          title="Vencen pronto"
-          value={String(proximos)}
-          icon={Clock}
-          iconColor={proximos > 0 ? "text-orange-400" : "text-gray-500"}
-          subtitle="En los próximos 7 días"
         />
       </div>
 
@@ -1308,7 +1403,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
                     className="h-4 w-4 rounded border-[#4A4A4A] bg-[#2A2A2A] accent-[#CC2229] cursor-pointer"
                   />
                 </th>
-                {["SAT", "Tipo", "Fecha", "Folio", contraparteLabel, "RFC Receptor", "COSEC. TC", "Concepto", "Total", "Progreso", "Status", ""].map((h) => (
+                {["SAT", "Tipo", "Fecha", "Folio", contraparteLabel, "RFC Receptor", "COSEC. TC", "Concepto", "Total", "Saldo", "Progreso", "Status", ""].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -1316,7 +1411,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
             <tbody className="divide-y divide-[#3A3A3A]">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={13} className="px-4 py-14 text-center text-sm text-gray-600">
+                  <td colSpan={14} className="px-4 py-14 text-center text-sm text-gray-600">
                     {cuentas.length === 0
                       ? `Sin ${isCxc ? "cuentas por cobrar" : "cuentas por pagar"} registradas`
                       : "Sin resultados para el filtro actual"}
