@@ -18,8 +18,8 @@ import { upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
 import { withPlantaTag } from "@/lib/auth";
 import { useCollection } from "@/lib/useCollection";
 
-function money(value: number) {
-  return `$${value.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+function money(value: number | undefined | null) {
+  return `$${(value ?? 0).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function getNextReceiptNumber(receipts: ConcreteReceipt[]) {
@@ -136,11 +136,13 @@ export default function RecibosConcretoPage() {
   }
 
   function getTicketAmounts(targetReceipt: ConcreteReceipt) {
+    const total = targetReceipt.total ?? 0;
+    const resta = targetReceipt.resta ?? 0;
     return {
-      realTotal: targetReceipt.total,
-      realResta: targetReceipt.resta,
-      ticketTotal: targetReceipt.total / 10,
-      ticketResta: targetReceipt.resta / 10,
+      realTotal: total,
+      realResta: resta,
+      ticketTotal: total / 10,
+      ticketResta: resta / 10,
     };
   }
 
