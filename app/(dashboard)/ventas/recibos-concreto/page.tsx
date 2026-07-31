@@ -1,22 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Calculator, MessageCircle, Printer, ReceiptText, Save, Trash2 } from "lucide-react";
 import {
   calculateConcreteReceiptTotal,
   ConcreteExtra,
   ConcreteReceipt,
   ConcreteSupplyType,
-  concreteReceiptsBase,
   concreteReceiptClientes,
   concreteReceiptObras,
   concreteReceiptResistencias,
   defaultConcreteExtras,
   formatReceiptDate,
-  loadConcreteReceipts,
-  saveConcreteReceipts,
   syncReceiptWithTrip,
 } from "@/lib/concreteReceipts";
+import { upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
+import { withPlantaTag } from "@/lib/auth";
+import { useCollection } from "@/lib/useCollection";
 
 function money(value: number) {
   return `$${value.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -56,9 +56,10 @@ function createReceipt(receipts: ConcreteReceipt[]): ConcreteReceipt {
 }
 
 export default function RecibosConcretoPage() {
-  const [receipts, setReceipts] = useState<ConcreteReceipt[]>([]);
+  const savedReceipts = useCollection<ConcreteReceipt>(COLLECTIONS.remisiones);
   const [receipt, setReceipt] = useState<ConcreteReceipt>(() => createReceipt([]));
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const totals = useMemo(() => calculateConcreteReceiptTotal(receipt), [receipt]);
   const receiptDate = formatReceiptDate(receipt.fecha);
@@ -66,16 +67,6 @@ export default function RecibosConcretoPage() {
   const realResta = totals.resta * 10;
   const ticketTotal = totals.total;
   const ticketResta = totals.resta;
-
-  useEffect(() => {
-    const frameId = window.requestAnimationFrame(() => {
-      const storedReceipts = loadConcreteReceipts();
-      setReceipts(storedReceipts);
-      setReceipt(createReceipt(storedReceipts));
-    });
-
-    return () => window.cancelAnimationFrame(frameId);
-  }, []);
 
   function updateReceipt(partial: Partial<ConcreteReceipt>) {
     setReceipt((current) => ({
@@ -98,58 +89,72 @@ export default function RecibosConcretoPage() {
     });
   }
 
-  function persistReceipt(showToast = true) {
-    const nextReceipt = {
-      ...receipt,
+  function resetToNew(savedNum: number) {
+    setReceipt(createReceipt([{ receiptNumber: savedNum } as ConcreteReceipt]));
+  }
+
+  async function persistReceipt(showToast = true) {
+    const { id, planta: _p, ...data } = receipt as ConcreteReceipt & { planta?: string };
+    const nextReceipt: ConcreteReceipt = {
+      ...data,
+      id,
       total: realTotal,
       resta: realResta,
-      viajeFolio: receipt.viajeFolio ?? `VJ-2026-${receipt.receiptNumber}`,
+      viajeFolio: data.viajeFolio ?? `VJ-2026-${data.receiptNumber}`,
     };
-    const nextReceipts = [nextReceipt, ...receipts.filter((item) => item.id !== nextReceipt.id)];
-    setReceipts(nextReceipts);
-    saveConcreteReceipts(nextReceipts);
+    const { id: docId, ...saveData } = nextReceipt;
+    await upsertDocument(COLLECTIONS.remisiones, docId, withPlantaTag(saveData));
     syncReceiptWithTrip(nextReceipt);
 
     if (showToast) {
       window.dispatchEvent(new CustomEvent("duro:toast", {
-        detail: {
-          type: "success",
-          message: "Recibo guardado y viaje pendiente creado.",
-        },
+        detail: { type: "success", message: "Recibo guardado y viaje pendiente creado." },
       }));
     }
-
-    return { nextReceipt, nextReceipts };
+    return nextReceipt;
   }
 
-  function saveReceipt() {
-    const { nextReceipts } = persistReceipt();
-    setReceipt(createReceipt(nextReceipts));
+  async function saveReceipt() {
+    setSaving(true);
+    try {
+      const saved = await persistReceipt();
+      resetToNew(saved.receiptNumber);
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function printReceipt() {
-    const { nextReceipts } = persistReceipt();
-    window.print();
-    window.setTimeout(() => setReceipt(createReceipt(nextReceipts)), 0);
+  async function printReceipt() {
+    setSaving(true);
+    try {
+      const saved = await persistReceipt(false);
+      window.print();
+      window.setTimeout(() => resetToNew(saved.receiptNumber), 0);
+    } finally {
+      setSaving(false);
+    }
   }
 
   function getTicketAmounts(targetReceipt: ConcreteReceipt) {
-    const realAmounts = {
-      total: targetReceipt.total,
-      resta: targetReceipt.resta,
-    };
-
     return {
-      realTotal: realAmounts.total,
-      realResta: realAmounts.resta,
-      ticketTotal: realAmounts.total / 10,
-      ticketResta: realAmounts.resta / 10,
+      realTotal: targetReceipt.total,
+      realResta: targetReceipt.resta,
+      ticketTotal: targetReceipt.total / 10,
+      ticketResta: targetReceipt.resta / 10,
     };
   }
 
-  function sendWhatsApp(targetReceipt = receipt, shouldSave = true) {
-    const saved = shouldSave ? persistReceipt() : null;
-    const messageReceipt = saved?.nextReceipt ?? targetReceipt;
+  async function sendWhatsApp(targetReceipt = receipt, shouldSave = true) {
+    let messageReceipt = targetReceipt;
+    if (shouldSave) {
+      setSaving(true);
+      try {
+        messageReceipt = await persistReceipt(false);
+        resetToNew(messageReceipt.receiptNumber);
+      } finally {
+        setSaving(false);
+      }
+    }
     const amounts = messageReceipt.id === receipt.id
       ? { ticketTotal, ticketResta }
       : getTicketAmounts(messageReceipt);
@@ -165,15 +170,11 @@ export default function RecibosConcretoPage() {
       `Resta: ${money(amounts.ticketResta)}`,
       `Nota: ${messageReceipt.nota || "Sin nota"}`,
     ].join("\n");
-
     window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
-    if (saved) setReceipt(createReceipt(saved.nextReceipts));
   }
 
-  function deleteReceipt(id: string) {
-    const next = receipts.filter((r) => r.id !== id);
-    setReceipts(next);
-    saveConcreteReceipts(next);
+  async function deleteReceipt(id: string) {
+    await deleteDocument(COLLECTIONS.remisiones, id);
     window.dispatchEvent(new CustomEvent("duro:toast", {
       detail: { type: "success", message: "Recibo eliminado." },
     }));
@@ -230,15 +231,17 @@ export default function RecibosConcretoPage() {
           <button
             type="button"
             onClick={saveReceipt}
-            className="flex items-center gap-2 rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-4 py-2 text-sm text-gray-300 transition-colors hover:border-[#CC2229] hover:text-white"
+            disabled={saving}
+            className="flex items-center gap-2 rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-4 py-2 text-sm text-gray-300 transition-colors hover:border-[#CC2229] hover:text-white disabled:opacity-50"
           >
             <Save size={16} />
-            Guardar
+            {saving ? "Guardando…" : "Guardar"}
           </button>
           <button
             type="button"
             onClick={() => sendWhatsApp()}
-            className="flex items-center gap-2 rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-4 py-2 text-sm text-gray-300 transition-colors hover:border-green-500/60 hover:text-green-300"
+            disabled={saving}
+            className="flex items-center gap-2 rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-4 py-2 text-sm text-gray-300 transition-colors hover:border-green-500/60 hover:text-green-300 disabled:opacity-50"
           >
             <MessageCircle size={16} />
             WhatsApp
@@ -570,7 +573,7 @@ export default function RecibosConcretoPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#3A3A3A]">
-              {receipts.map((savedReceipt) => {
+              {savedReceipts.map((savedReceipt: ConcreteReceipt) => {
                 const amounts = getTicketAmounts(savedReceipt);
                 return (
                   <tr key={savedReceipt.id} className="transition-colors">

@@ -133,6 +133,7 @@ export const COLLECTIONS = {
   programaciones: "programaciones",
   cuentasPorCobrar: "cuentasPorCobrar",
   cuentasPorPagar: "cuentasPorPagar",
+  configuracion: "configuracion",
 } as const;
 
 export { where, orderBy };

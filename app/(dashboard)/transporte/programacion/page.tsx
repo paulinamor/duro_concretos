@@ -2,15 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  CalendarDays, ChevronLeft, ChevronRight,
-  Clock, Download, Expand, Plus, Shrink, UserRound, X,
+  AlertTriangle, CalendarDays, ChevronLeft, ChevronRight,
+  Clock, Download, Expand, ExternalLink, MapPin, Navigation, Plus, Search, Shrink, UserRound, X,
 } from "lucide-react";
 import ExcelView from "./ExcelView";
 import type { ExcelProg } from "./ExcelView";
 import KPICard from "@/components/KPICard";
 import ClienteCombobox from "@/components/ClienteCombobox";
 import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
-import { filterByPlanta, withPlantaTag } from "@/lib/auth";
+import { filterByPlanta, getStoredSession, withPlantaTag } from "@/lib/auth";
 import type { Operador } from "@/lib/operadores";
 import type { Cliente } from "@/lib/crmClientes";
 
@@ -29,6 +29,13 @@ interface ChoferEntry {
   horaSalidaObra: string;
   tiempoDescarga: string;
   m3: number | null;
+}
+
+interface FaseEntry {
+  fase: string;
+  fecha: string;
+  nota?: string;
+  usuario?: string;
 }
 
 interface Programacion {
@@ -73,6 +80,11 @@ interface Programacion {
   notas?: string;
   cxcId?: string;
   planta?: string;
+  folio?: string;
+  fase?: string;
+  historial?: { fase: string; fecha: string; nota?: string; usuario?: string }[];
+  notasAcceso?: string;
+  vehiculoSamsaraId?: string;
 }
 
 interface ChoferFormEntry {
@@ -107,7 +119,7 @@ interface FormState {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-type ViewMode = "dia" | "semana" | "mes" | "rango";
+type ViewMode = "dia" | "semana" | "mes" | "rango" | "rastreo";
 
 function todayISO() { return new Date().toISOString().slice(0, 10); }
 
@@ -306,6 +318,24 @@ function exportXLSX(rows: Programacion[]) {
   XLSX.utils.book_append_sheet(wb, ws, "Programación");
   XLSX.writeFile(wb, `programacion-${rows[0]?.dia ?? "export"}.xlsx`);
 }
+
+function isUrl(v: string) { return v.startsWith("http://") || v.startsWith("https://"); }
+
+function extractCoordsFromUrl(url: string): { lat: number; lng: number } | null {
+  const atMatch = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if (atMatch) return { lat: parseFloat(atMatch[1]), lng: parseFloat(atMatch[2]) };
+  const qMatch = url.match(/[?&]q=(-?\d+\.\d+),\+?(-?\d+\.\d+)/);
+  if (qMatch) return { lat: parseFloat(qMatch[1]), lng: parseFloat(qMatch[2]) };
+  const searchMatch = url.match(/\/maps\/search\/(-?\d+\.\d+),\+?(-?\d+\.\d+)/);
+  if (searchMatch) return { lat: parseFloat(searchMatch[1]), lng: parseFloat(searchMatch[2]) };
+  return null;
+}
+
+// Coordenadas de plantas — configurables en Configuración > Ubicaciones
+const PLANT_COORDS: Record<string, { lat: number; lng: number; label: string }> = {
+  Allende: { lat: 25.4437, lng: -100.0233, label: "Planta Allende" },
+  Pesquería: { lat: 25.7544, lng: -99.9904, label: "Planta Pesquería" },
+};
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
@@ -872,6 +902,510 @@ function FormDrawer({
   );
 }
 
+// ─── TrackingModal ────────────────────────────────────────────────────────────
+
+function TrackingModal({
+  prog,
+  plantaActiva,
+  onClose,
+}: {
+  prog: Programacion;
+  plantaActiva: string;
+  onClose: () => void;
+}) {
+  const [destCoords, setDestCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [resolvingDest, setResolvingDest] = useState(false);
+  const [showCierre, setShowCierre] = useState(false);
+  const [cierreNotas, setCierreNotas] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [isLight, setIsLight] = useState(() =>
+    typeof document !== "undefined" ? document.body.classList.contains("duro-theme-light") : false
+  );
+  useEffect(() => {
+    const sync = () => setIsLight(document.body.classList.contains("duro-theme-light"));
+    sync();
+    window.addEventListener("duro:theme-change", sync);
+    return () => window.removeEventListener("duro:theme-change", sync);
+  }, []);
+
+  useEffect(() => {
+    const url = prog.direccion;
+    if (!url || !isUrl(url)) { setDestCoords(null); return; }
+    const direct = extractCoordsFromUrl(url);
+    if (direct) { setDestCoords(direct); return; }
+    setResolvingDest(true);
+    let cancelled = false;
+    fetch(`/api/maps/resolve?url=${encodeURIComponent(url)}`)
+      .then((r) => r.json())
+      .then((d) => { if (!cancelled && d.coords) setDestCoords(d.coords); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setResolvingDest(false); });
+    return () => { cancelled = true; };
+  }, [prog.direccion]);
+
+  const choferes = (prog.choferes ?? []) as ChoferEntry[];
+  const plantaCoords = PLANT_COORDS[plantaActiva] ?? null;
+
+  async function handleEntregado() {
+    if (!prog.id) return;
+    setSaving(true);
+    try {
+      const entrada: FaseEntry = { fase: "Entregado", fecha: new Date().toISOString(), nota: cierreNotas.trim() || undefined };
+      const { id: _id, ...rest } = prog;
+      await upsertDocument(COLLECTIONS.programaciones, prog.id, {
+        ...rest,
+        fase: "Entregado",
+        notasAcceso: cierreNotas.trim() || prog.notasAcceso,
+        historial: [...(prog.historial ?? []), entrada],
+      });
+      setShowCierre(false);
+      setCierreNotas("");
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const parseMins = (t: string | null): number | null => {
+    if (!t || !t.includes(":")) return null;
+    const [h, m] = t.split(":").map(Number);
+    return h * 60 + m;
+  };
+  const diffLabel = (from: string | null, to: string | null): string | null => {
+    const a = parseMins(from), b = parseMins(to);
+    if (a == null || b == null || b <= a) return null;
+    const d = b - a;
+    return d < 60 ? `${d}m` : `${Math.floor(d / 60)}h ${d % 60 > 0 ? `${d % 60}m` : ""}`.trim();
+  };
+  const minHora = (field: keyof ChoferEntry): string | null => {
+    const vals = choferes.map((c) => c[field] as string).filter(Boolean);
+    return vals.length > 0 ? vals.sort()[0] : null;
+  };
+
+  const phases: { label: string; sub: string | null; done: boolean }[] = [
+    {
+      label: "Pedido creado",
+      sub: prog.diaHoraPedido
+        ? new Date(prog.diaHoraPedido).toLocaleString("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+        : prog.historial?.[0]?.fecha
+        ? new Date(prog.historial[0].fecha).toLocaleString("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+        : null,
+      done: true,
+    },
+    {
+      label: "Asignado",
+      sub: choferes.length > 0 ? `${choferes.length} viaje${choferes.length > 1 ? "s" : ""}` : null,
+      done: choferes.length > 0,
+    },
+    {
+      label: "En camino",
+      sub: minHora("horaSalida"),
+      done: !!minHora("horaSalida"),
+    },
+    {
+      label: "En obra",
+      sub: minHora("horaLlegadaObra"),
+      done: !!minHora("horaLlegadaObra"),
+    },
+    {
+      label: "Descargando",
+      sub: minHora("horaInicioDescarga")
+        ? `${minHora("horaInicioDescarga")} – ${minHora("horaFinalDescarga") ?? "…"}`
+        : null,
+      done: !!minHora("horaInicioDescarga"),
+    },
+    {
+      label: "Completado",
+      sub: prog.historial?.find((h) => h.fase === "Entregado")?.fecha
+        ? new Date(prog.historial!.find((h) => h.fase === "Entregado")!.fecha).toLocaleString("es-MX", { hour: "2-digit", minute: "2-digit" })
+        : null,
+      done: prog.fase === "Entregado",
+    },
+  ];
+  const lastDoneIdx = phases.reduce((last, p, i) => (p.done ? i : last), -1);
+
+  const routeUrl = plantaCoords && destCoords
+    ? `https://www.google.com/maps/dir/${plantaCoords.lat},${plantaCoords.lng}/${destCoords.lat},${destCoords.lng}`
+    : destCoords
+    ? `https://www.google.com/maps/search/?api=1&query=${destCoords.lat},${destCoords.lng}`
+    : isUrl(prog.direccion)
+    ? prog.direccion
+    : null;
+
+  const mapEmbedUrl = destCoords
+    ? (() => {
+        const { lat, lng } = destCoords;
+        const delta = 0.006;
+        return `https://www.openstreetmap.org/export/embed.html?bbox=${lng - delta},${lat - delta},${lng + delta},${lat + delta}&layer=mapnik&marker=${lat},${lng}`;
+      })()
+    : null;
+
+  // Theme-aware inline styles — bypasses global CSS overrides and respects duro-theme-light
+  const S = isLight ? {
+    modal:       { backgroundColor: "#FFFFFF", boxShadow: "0 25px 50px rgba(0,0,0,0.15)" },
+    divider:     "1px solid #E5E7EB",
+    card:        { backgroundColor: "#F8F9FB", border: "1px solid #E5E7EB" },
+    cardHeader:  { backgroundColor: "#F1F3F7" },
+    connDone:    { backgroundColor: "#9CA3AF" },
+    connEmpty:   { backgroundColor: "#E5E7EB" },
+    dotDone:     { backgroundColor: "#9CA3AF" },
+    dotFuture:   { backgroundColor: "transparent", border: "1px solid #D1D5DB" },
+    timelineBg:  { backgroundColor: "#F8F9FB" },
+    textPrimary: "#111827",
+    textSecond:  "#6B7280",
+    textMuted:   "#9CA3AF",
+    textFaint:   "#D1D5DB",
+    labelBg:     "rgba(17,24,39,0.85)",
+  } : {
+    modal:       { backgroundColor: "#111115" },
+    divider:     "1px solid rgba(255,255,255,0.08)",
+    card:        { backgroundColor: "#1E1E24", border: "1px solid rgba(255,255,255,0.08)" },
+    cardHeader:  { backgroundColor: "#26262E" },
+    connDone:    { backgroundColor: "#52525B" },
+    connEmpty:   { backgroundColor: "#27272A" },
+    dotDone:     { backgroundColor: "#52525B" },
+    dotFuture:   { backgroundColor: "transparent", border: "1px solid #3F3F46" },
+    timelineBg:  { backgroundColor: "#111115" },
+    textPrimary: "#FFFFFF",
+    textSecond:  "#A1A1AA",
+    textMuted:   "#71717A",
+    textFaint:   "#3F3F46",
+    labelBg:     "rgba(17,17,21,0.95)",
+  };
+
+  const t = S.textPrimary;
+  const ts = S.textSecond;
+  const tm = S.textMuted;
+  const tf = S.textFaint;
+  const divB = S.divider;
+  const emptyDotBorder = isLight ? "1px solid #D1D5DB" : "1px solid #3F3F46";
+  const emptyTimeBorder = isLight ? "1px solid #D1D5DB" : "1px solid #3F3F46";
+  const emptyTimeColor = isLight ? "#D1D5DB" : "#3F3F46";
+  const connFull = isLight ? "#CC2229" : "#CC2229";
+  const connEmpty = isLight ? "#E5E7EB" : "rgba(255,255,255,0.08)";
+  const numberBg = isLight ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.05)";
+  const numberBorder = isLight ? "1px solid rgba(0,0,0,0.1)" : "1px solid rgba(255,255,255,0.15)";
+  const closeBtnStyle = { color: tm };
+  const faseBadge = prog.fase === "Entregado"
+    ? { border: "1px solid #059669", backgroundColor: "#ECFDF5", color: "#047857" }
+    : { border: "1px solid #D97706", backgroundColor: "#FFFBEB", color: "#B45309" };
+  const scrollbarStyle = isLight
+    ? { scrollbarWidth: "thin" as const, scrollbarColor: "#D1D5DB transparent" }
+    : { scrollbarWidth: "thin" as const, scrollbarColor: "#3F3F46 transparent" };
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+      <button className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div
+        className="relative w-full max-w-2xl rounded-2xl max-h-[92vh] overflow-y-auto"
+        style={{ ...S.modal, ...scrollbarStyle }}
+      >
+        {/* ── Header ── */}
+        <div className="flex items-start justify-between gap-4 px-6 pt-6 pb-5" style={{ borderBottom: divB }}>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1.5">
+              <span style={{ color: "#E32636", fontFamily: "monospace", fontSize: 11, fontWeight: 700, letterSpacing: "0.15em" }}>
+                {prog.folio ?? "SIN FOLIO"}
+              </span>
+              {prog.fase && (
+                <span style={{ ...faseBadge, borderRadius: 9999, padding: "1px 8px", fontSize: 10, fontWeight: 600 }}>
+                  {prog.fase}
+                </span>
+              )}
+            </div>
+            <h2 style={{ color: t, fontSize: 20, fontWeight: 700, lineHeight: 1.2 }}>{prog.cliente}</h2>
+            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1" style={{ color: ts, fontSize: 13 }}>
+              {prog.dia && <span>{new Date(prog.dia + "T12:00:00").toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" })}</span>}
+              {prog.hora && <><span style={{ color: tf }}>·</span><span>Llegada <strong style={{ color: t }}>{prog.hora}</strong></span></>}
+              {prog.m3Totales != null && <><span style={{ color: tf }}>·</span><strong style={{ color: t }}>{prog.m3Totales} m³</strong></>}
+              {prog.tdBom && <><span style={{ color: tf }}>·</span><span>{prog.tdBom}</span></>}
+              {prog.resistencia && <><span style={{ color: tf }}>·</span><span>{prog.resistencia}</span></>}
+            </div>
+          </div>
+          <button onClick={onClose} className="mt-1 shrink-0 cursor-pointer rounded-xl p-2 transition-colors hover:bg-black/5"
+            style={closeBtnStyle}>
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* ── Stepper ── */}
+        <div className="px-6 py-6" style={{ borderBottom: divB }}>
+          <p style={{ color: tm, fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 20 }}>
+            Estado del viaje
+          </p>
+          <div className="flex items-start">
+            {phases.map((phase, i) => {
+              const isActive = i === lastDoneIdx;
+              const isDone = phase.done && i < lastDoneIdx;
+              const circleStyle = isDone
+                ? S.dotDone
+                : isActive
+                ? { backgroundColor: "#CC2229" }
+                : S.dotFuture;
+              const labelColor = isActive ? t : isDone ? ts : tm;
+              const subColor = isActive ? ts : tm;
+              return (
+                <div key={i} className="flex flex-1 items-start" style={{ minWidth: 76 }}>
+                  <div className="flex flex-1 flex-col items-center">
+                    <div className="flex w-full items-center">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold"
+                        style={circleStyle}>
+                        <span style={{ color: isDone ? (isLight ? "#374151" : "#D1D5DB") : isActive ? "#FFFFFF" : tm }}>
+                          {isDone ? "✓" : i + 1}
+                        </span>
+                      </div>
+                      {i < phases.length - 1 && (
+                        <div className="mx-1 flex-1 rounded-full" style={{ height: 2, ...(isDone ? S.connDone : S.connEmpty) }} />
+                      )}
+                    </div>
+                    <div className="mt-2 w-full pr-1">
+                      <p style={{ color: labelColor, fontSize: 10, fontWeight: 600, lineHeight: 1.3 }}>{phase.label}</p>
+                      {phase.sub && <p style={{ color: subColor, fontSize: 9, marginTop: 2, lineHeight: 1.3 }}>{phase.sub}</p>}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ── Dirección ── */}
+        {(prog.direccion || resolvingDest) && (
+          <div className="px-6 py-5" style={{ borderBottom: divB }}>
+            <div className="mb-3 flex items-center justify-between">
+              <p className="flex items-center gap-1.5" style={{ color: tm, fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.12em" }}>
+                <MapPin size={10} /> Ubicación de la obra
+              </p>
+              {routeUrl && (
+                <a href={routeUrl} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 transition-colors"
+                  style={{ fontSize: 10, fontWeight: 600, color: ts, border: divB }}>
+                  <Navigation size={10} />
+                  {plantaCoords ? `Ruta desde ${plantaCoords.label}` : "Ver en Maps"}
+                  <ExternalLink size={9} />
+                </a>
+              )}
+            </div>
+
+            {resolvingDest && !mapEmbedUrl && (
+              <div className="flex h-32 items-center justify-center gap-2 rounded-xl" style={S.card}>
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-t-red-500" style={{ borderColor: tm, borderTopColor: "#E32636" }} />
+                <span style={{ color: tm, fontSize: 12 }}>Obteniendo ubicación…</span>
+              </div>
+            )}
+
+            {mapEmbedUrl && (
+              <div className="relative overflow-hidden rounded-xl" style={{ height: 180, border: divB }}>
+                <iframe src={mapEmbedUrl} width="100%" height="100%" className="h-full w-full border-0 grayscale" title="Ubicación" loading="lazy" />
+                {plantaCoords && (
+                  <div className="absolute bottom-2 left-2 rounded-lg px-2.5 py-1.5" style={{ backgroundColor: S.labelBg, border: divB, fontSize: 9, color: ts }}>
+                    <span style={{ color: "#E32636", fontWeight: 600 }}>{plantaCoords.label}</span> → Obra
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!resolvingDest && !mapEmbedUrl && isUrl(prog.direccion) && (
+              <div className="flex h-24 flex-col items-center justify-center gap-2 rounded-xl" style={S.card}>
+                <MapPin size={16} style={{ color: tm }} />
+                <p style={{ color: ts, fontSize: 12 }}>No se pudieron obtener coordenadas.</p>
+                <a href={prog.direccion} target="_blank" rel="noopener noreferrer" style={{ color: tm, fontSize: 11, textDecoration: "underline" }}>Abrir en Maps</a>
+              </div>
+            )}
+
+            {!isUrl(prog.direccion) && prog.direccion && (
+              <div className="flex items-center gap-3 rounded-xl px-4 py-3" style={S.card}>
+                <MapPin size={14} style={{ color: "#E32636", flexShrink: 0 }} />
+                <span style={{ color: ts, fontSize: 14 }}>{prog.direccion}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Viajes ── */}
+        {choferes.length > 0 && (
+          <div className="px-6 py-5 space-y-3" style={{ borderBottom: divB }}>
+            <p style={{ color: tm, fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.12em" }}>
+              Viajes · {choferes.reduce((s, c) => s + (c.m3 ?? 0), 0)} m³ entregados
+            </p>
+            {choferes.map((c, i) => {
+              const steps: { label: string; time: string | null }[] = [
+                { label: "Salida planta", time: c.horaSalida || null },
+                { label: "Llegada obra",  time: c.horaLlegadaObra || null },
+                { label: "Inicio desc.",  time: c.horaInicioDescarga || null },
+                { label: "Fin desc.",     time: c.horaFinalDescarga || null },
+                { label: "Salida obra",   time: c.horaSalidaObra || null },
+              ];
+              const hasTime = steps.some((s) => s.time);
+              return (
+                <div key={i} className="overflow-hidden rounded-xl" style={S.card}>
+                  {/* chofer header */}
+                  <div className="flex items-center justify-between px-4 py-3" style={S.cardHeader}>
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
+                        style={{ border: numberBorder, backgroundColor: numberBg, color: tm }}>
+                        {i + 1}
+                      </span>
+                      <div>
+                        <p style={{ color: t, fontSize: 14, fontWeight: 600 }}>{c.chofer || `Chofer ${i + 1}`}</p>
+                        {(c.cr || c.remision || c.numSello) && (
+                          <p style={{ color: tm, fontSize: 10, marginTop: 2 }}>
+                            {[c.cr && `CR: ${c.cr}`, c.remision && `Rem: ${c.remision}`, c.numSello && `Sello: ${c.numSello}`].filter(Boolean).join("  ·  ")}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    {c.m3 != null && <span style={{ color: ts, fontSize: 14, fontWeight: 700 }}>{c.m3} m³</span>}
+                  </div>
+                  {/* timeline */}
+                  {hasTime ? (
+                    <div className="overflow-x-auto px-5 py-5" style={S.timelineBg}>
+                      <div className="flex items-center" style={{ minWidth: "max-content" }}>
+                        {steps.map((step, si) => (
+                          <div key={si} className="flex items-center">
+                            <div className="flex flex-col items-center" style={{ width: 88 }}>
+                              <div className="h-4 w-4 rounded-full" style={{
+                                backgroundColor: step.time ? "#CC2229" : "transparent",
+                                border: step.time ? "none" : emptyTimeBorder,
+                              }} />
+                              <p className="mt-2 tabular-nums" style={{
+                                color: step.time ? t : emptyTimeColor,
+                                fontFamily: "monospace", fontSize: 13, fontWeight: 700,
+                              }}>{step.time ?? "—"}</p>
+                              <p className="mt-1 text-center leading-tight" style={{ color: tm, fontSize: 9 }}>{step.label}</p>
+                              {si > 0 && step.time && steps[si - 1].time && (
+                                <p className="mt-1 font-semibold" style={{ color: "#E32636", fontSize: 9 }}>+{diffLabel(steps[si - 1].time, step.time)}</p>
+                              )}
+                            </div>
+                            {si < steps.length - 1 && (
+                              <div className="shrink-0" style={{
+                                width: 20, height: 2, borderRadius: 9999,
+                                backgroundColor: step.time && steps[si + 1]?.time ? connFull : connEmpty,
+                              }} />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      {c.tiempoDescarga && (
+                        <p style={{ color: tm, fontSize: 10, marginTop: 12 }}>
+                          Tiempo descarga: <span style={{ color: ts, fontWeight: 500 }}>{c.tiempoDescarga}</span>
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="px-4 py-3" style={{ ...S.timelineBg, color: tm, fontSize: 12 }}>Sin horas registradas aún.</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ── Resumen ── */}
+        <div className="px-6 py-5 space-y-4">
+          {(prog.total != null || prog.recibo || prog.fact || prog.pagado) && (
+            <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+              {prog.total != null && <span style={{ color: t, fontSize: 24, fontWeight: 700 }}>${prog.total.toLocaleString("es-MX")}</span>}
+              {prog.pagado === "Sí" && <span style={{ color: "#059669", fontSize: 13, fontWeight: 600 }}>Pagado</span>}
+              {prog.credito && <span style={{ color: ts, fontSize: 13 }}>{prog.credito}</span>}
+              {prog.recibo && <span style={{ color: ts, fontSize: 13 }}>Recibo {prog.recibo}</span>}
+              {prog.fact && <span style={{ color: ts, fontSize: 13 }}>Fact. {prog.fact}</span>}
+            </div>
+          )}
+
+          {prog.notasAcceso && (
+            <div className="rounded-xl p-4" style={{
+              border: isLight ? "1px solid #FDE68A" : "1px solid rgba(217,119,6,0.4)",
+              backgroundColor: isLight ? "#FFFBEB" : "rgba(120,53,15,0.2)",
+            }}>
+              <p className="mb-1.5 flex items-center gap-1.5" style={{ color: isLight ? "#B45309" : "#F59E0B", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em" }}>
+                <AlertTriangle size={10} /> Acceso especial
+              </p>
+              <p style={{ color: isLight ? "#78350F" : "#FDE68A", fontSize: 13, lineHeight: 1.5 }}>{prog.notasAcceso}</p>
+            </div>
+          )}
+
+          {prog.notas && <p style={{ color: ts, fontSize: 13, lineHeight: 1.6 }}>{prog.notas}</p>}
+
+          {/* Samsara */}
+          <div className="rounded-xl p-4" style={S.card}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="h-2 w-2 rounded-full" style={{ backgroundColor: prog.vehiculoSamsaraId ? "#10B981" : (isLight ? "#D1D5DB" : "#3F3F46") }} />
+                <div>
+                  <p style={{ color: tm, fontSize: 12, fontWeight: 600 }}>GPS en tiempo real · Samsara</p>
+                  {prog.vehiculoSamsaraId
+                    ? <p style={{ color: t, fontFamily: "monospace", fontSize: 12, marginTop: 2 }}>{prog.vehiculoSamsaraId}</p>
+                    : <p style={{ color: tf, fontSize: 10, marginTop: 2 }}>Sin ID — agrégalo en el drawer de programación</p>
+                  }
+                </div>
+              </div>
+              <span style={{ color: prog.vehiculoSamsaraId ? "#059669" : tm, fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em" }}>
+                {prog.vehiculoSamsaraId ? "Activo" : "Pendiente"}
+              </span>
+            </div>
+          </div>
+
+          {/* Marcar como entregado */}
+          {prog.fase !== "Entregado" && (
+            <div className="rounded-xl overflow-hidden" style={{ border: isLight ? "1px solid #E5E7EB" : "1px solid rgba(255,255,255,0.08)" }}>
+              {!showCierre ? (
+                <button
+                  onClick={() => setShowCierre(true)}
+                  className="w-full cursor-pointer px-4 py-3 text-left transition-colors hover:opacity-80"
+                  style={{ backgroundColor: isLight ? "#F0FDF4" : "rgba(16,185,129,0.08)" }}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p style={{ color: "#059669", fontSize: 13, fontWeight: 600 }}>Marcar como entregado</p>
+                      <p style={{ color: tm, fontSize: 11, marginTop: 2 }}>Cierra el viaje y registra la entrega</p>
+                    </div>
+                    <span style={{ color: "#059669", fontSize: 18 }}>✓</span>
+                  </div>
+                </button>
+              ) : (
+                <div className="p-4" style={{ backgroundColor: isLight ? "#F0FDF4" : "rgba(16,185,129,0.08)" }}>
+                  <p style={{ color: "#059669", fontSize: 12, fontWeight: 600, marginBottom: 10 }}>Confirmar entrega</p>
+                  <textarea
+                    value={cierreNotas}
+                    onChange={(e) => setCierreNotas(e.target.value)}
+                    placeholder="Notas de acceso o incidencias (opcional)"
+                    rows={2}
+                    className="w-full resize-none rounded-lg px-3 py-2 text-sm outline-none"
+                    style={{
+                      backgroundColor: isLight ? "#FFFFFF" : "rgba(0,0,0,0.3)",
+                      border: isLight ? "1px solid #D1FAE5" : "1px solid rgba(16,185,129,0.3)",
+                      color: t,
+                    }}
+                  />
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      onClick={() => { setShowCierre(false); setCierreNotas(""); }}
+                      className="flex-1 cursor-pointer rounded-lg px-3 py-2 text-sm transition-opacity hover:opacity-70"
+                      style={{ border: isLight ? "1px solid #E5E7EB" : "1px solid rgba(255,255,255,0.1)", color: ts, backgroundColor: "transparent" }}
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={handleEntregado}
+                      disabled={saving}
+                      className="flex-1 cursor-pointer rounded-lg px-3 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                      style={{ backgroundColor: "#059669" }}
+                    >
+                      {saving ? "Guardando…" : "Confirmar entrega"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ProgramacionPage() {
@@ -887,6 +1421,13 @@ export default function ProgramacionPage() {
   const [editing, setEditing] = useState<Programacion | undefined>();
   const [loading, setLoading] = useState(true);
   const [excelFullscreen, setExcelFullscreen] = useState(false);
+  const [rastreoSearch, setRastreoSearch] = useState("");
+  const [timelineProg, setTimelineProg] = useState<Programacion | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [markingId, setMarkingId] = useState<string | null>(null);
+  const [markingNotas, setMarkingNotas] = useState("");
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const plantaActiva = useMemo(() => getStoredSession()?.planta ?? "", []);
 
   useEffect(() => {
     Promise.all([
@@ -951,7 +1492,17 @@ export default function ProgramacionPage() {
 
   const filtered = useMemo(() => {
     let list: Programacion[];
-    if (viewMode === "dia") {
+    if (viewMode === "rastreo") {
+      const q = rastreoSearch.toLowerCase().trim();
+      list = q
+        ? programaciones.filter((p) =>
+            p.folio?.toLowerCase().includes(q) ||
+            p.cliente?.toLowerCase().includes(q) ||
+            p.vendedor?.toLowerCase().includes(q) ||
+            p.direccion?.toLowerCase().includes(q),
+          )
+        : [...programaciones];
+    } else if (viewMode === "dia") {
       list = programaciones.filter((p) => p.dia === diaActivo);
     } else if (viewMode === "semana") {
       const [s, e] = weekRange(diaActivo);
@@ -963,10 +1514,10 @@ export default function ProgramacionPage() {
       list = programaciones.filter((p) => (p.dia ?? "") >= rangoInicio && (p.dia ?? "") <= rangoFin);
     }
     return list.sort((a, b) => {
-      const dc = (a.dia ?? "").localeCompare(b.dia ?? "");
+      const dc = (b.dia ?? "").localeCompare(a.dia ?? "");
       return dc !== 0 ? dc : (a.hora ?? "").localeCompare(b.hora ?? "");
     });
-  }, [programaciones, diaActivo, viewMode, rangoInicio, rangoFin]);
+  }, [programaciones, diaActivo, viewMode, rangoInicio, rangoFin, rastreoSearch]);
 
   const totalM3 = filtered.reduce((s, p) => s + (p.m3Totales ?? 0), 0);
   const totalFacturado = filtered.reduce((s, p) => s + (p.total ?? 0), 0);
@@ -1026,6 +1577,27 @@ export default function ProgramacionPage() {
     window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: "Programación eliminada." } }));
   }
 
+  async function handleEntregarDirecto(prog: Programacion, notas: string) {
+    if (!prog.id) return;
+    setSavingId(prog.id);
+    try {
+      const entrada: FaseEntry = { fase: "Entregado", fecha: new Date().toISOString(), nota: notas.trim() || undefined };
+      const { id: _id, ...rest } = prog;
+      await upsertDocument(COLLECTIONS.programaciones, prog.id, {
+        ...rest,
+        fase: "Entregado",
+        notasAcceso: notas.trim() || prog.notasAcceso,
+        historial: [...(prog.historial ?? []), entrada],
+      });
+      setMarkingId(null);
+      setMarkingNotas("");
+      const progs = await getCollectionDocs<Programacion>(COLLECTIONS.programaciones);
+      setProgramaciones(filterByPlanta(progs));
+    } finally {
+      setSavingId(null);
+    }
+  }
+
   async function handleCreateCxC(p: Programacion) {
     if (!p.id || !p.total) return;
     const isoToDisplay = (iso: string) => {
@@ -1082,19 +1654,32 @@ export default function ProgramacionPage() {
       <div className="space-y-3">
         {/* Fila 1: tabs de modo + botones acción */}
         <div className="flex flex-wrap items-center justify-between gap-3">
-          {/* Tabs de modo */}
+          {/* Tabs de modo fecha */}
           <div className="flex items-center gap-1 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg p-1">
             {(["dia", "semana", "mes", "rango"] as ViewMode[]).map((m) => (
               <button
                 key={m}
                 onClick={() => setViewMode(m)}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer capitalize ${viewMode === m ? "bg-[#CC2229] text-white" : "text-gray-400 hover:text-white"}`}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer ${viewMode === m ? "bg-[#CC2229] text-white" : "text-gray-400 hover:text-white"}`}
               >
                 {m === "dia" ? "Día" : m === "semana" ? "Semana" : m === "mes" ? "Mes" : "Rango"}
               </button>
             ))}
           </div>
           <div className="flex items-center gap-2">
+            {/* Rastreo — separado visualmente de las vistas de fecha */}
+            <button
+              onClick={() => setViewMode(viewMode === "rastreo" ? "dia" : "rastreo")}
+              className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border transition-colors cursor-pointer ${
+                viewMode === "rastreo"
+                  ? "bg-[#CC2229] border-[#CC2229] text-white"
+                  : "bg-[#1A1A1A] border-[#3A3A3A] text-gray-400 hover:text-white hover:border-[#CC2229]/60"
+              }`}
+            >
+              <Search size={13} />
+              Rastreo de viajes
+            </button>
+            <div className="w-px h-5 bg-[#3A3A3A]" />
             <button
               onClick={() => setExcelFullscreen(true)}
               title="Pantalla completa"
@@ -1121,9 +1706,20 @@ export default function ProgramacionPage() {
           </div>
         </div>
 
-        {/* Fila 2: controles de fecha según modo */}
+        {/* Fila 2: controles de fecha / búsqueda según modo */}
         <div className="flex flex-wrap items-center gap-2">
-          {viewMode !== "rango" && (
+          {viewMode === "rastreo" && (
+            <div className="relative">
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+              <input
+                value={rastreoSearch}
+                onChange={(e) => setRastreoSearch(e.target.value)}
+                placeholder="Buscar folio, cliente, vendedor…"
+                className="w-80 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg pl-9 pr-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
+              />
+            </div>
+          )}
+          {viewMode !== "rango" && viewMode !== "rastreo" && (
             <>
               <button
                 onClick={() => {
@@ -1224,14 +1820,257 @@ export default function ProgramacionPage() {
         />
       </div>
 
+      {/* Vista Rastreo */}
+      {viewMode === "rastreo" && (
+        <div className="space-y-3 p-4 bg-gray-50 rounded-xl border border-gray-200">
+          {filtered.length === 0 && (
+            <div className="py-16 text-center text-sm text-gray-500">
+              {rastreoSearch ? "Sin resultados para esa búsqueda." : "Sin programaciones registradas."}
+            </div>
+          )}
+          {(filtered as Programacion[]).map((prog) => {
+            const isExpanded = expandedId === prog.id;
+            const isMarking = markingId === prog.id;
+            const isSaving = savingId === prog.id;
+            const choferes = (prog.choferes ?? []) as ChoferEntry[];
+            const isEntregado = prog.fase === "Entregado";
+
+            const tieneChofer = choferes.length > 0;
+            const tieneSalida = choferes.some((c) => c.horaSalida);
+            const tieneLlegada = choferes.some((c) => c.horaLlegadaObra);
+            const tieneDescarga = choferes.some((c) => c.horaInicioDescarga);
+            const faseActual = isEntregado ? "Entregado"
+              : tieneDescarga ? "Descargando"
+              : tieneLlegada ? "En obra"
+              : tieneSalida ? "En camino"
+              : tieneChofer ? "Asignado"
+              : "Pendiente";
+
+            const faseBadgeStyle = ({
+              "Entregado":   { bg: "#ECFDF5", text: "#059669", border: "#6EE7B7" },
+              "Descargando": { bg: "#FFF7ED", text: "#EA580C", border: "#FED7AA" },
+              "En obra":     { bg: "#EFF6FF", text: "#2563EB", border: "#BFDBFE" },
+              "En camino":   { bg: "#F0FDF4", text: "#16A34A", border: "#BBF7D0" },
+              "Asignado":    { bg: "#F5F3FF", text: "#7C3AED", border: "#DDD6FE" },
+              "Pendiente":   { bg: "#F9FAFB", text: "#6B7280", border: "#E5E7EB" },
+            } as Record<string, { bg: string; text: string; border: string }>)[faseActual] ?? { bg: "#F9FAFB", text: "#6B7280", border: "#E5E7EB" };
+
+            const stepsDone = ["Pendiente","Asignado","En camino","En obra","Descargando","Entregado"].indexOf(faseActual);
+
+            const parseMins = (t: string | null) => {
+              if (!t || !t.includes(":")) return null;
+              const [h, m] = t.split(":").map(Number); return h * 60 + m;
+            };
+            const dur = (a: string | null, b: string | null) => {
+              const ma = parseMins(a), mb = parseMins(b);
+              if (ma == null || mb == null || mb <= ma) return null;
+              const d = mb - ma;
+              return d < 60 ? `${d}m` : `${Math.floor(d / 60)}h${d % 60 > 0 ? ` ${d % 60}m` : ""}`;
+            };
+
+            return (
+              <div key={prog.id} className="rounded-xl overflow-hidden border border-gray-200 bg-white shadow-sm">
+                {/* ── Card header — always visible ── */}
+                <div className="px-4 pt-4 pb-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-xs font-bold text-red-600 tracking-wider">{prog.folio ?? "—"}</span>
+                        <span
+                          className="px-2 py-0.5 rounded-full text-[10px] font-semibold border"
+                          style={{ backgroundColor: faseBadgeStyle.bg, color: faseBadgeStyle.text, borderColor: faseBadgeStyle.border }}
+                        >
+                          {faseActual}
+                        </span>
+                        {prog.notasAcceso && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-medium border border-amber-200 bg-amber-50 text-amber-700">
+                            Acceso especial
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-1 text-sm font-semibold text-gray-900 truncate">{prog.cliente}</p>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-gray-500">
+                        {prog.dia && <span>{new Date(prog.dia + "T12:00:00").toLocaleDateString("es-MX", { weekday: "short", day: "numeric", month: "short" })}</span>}
+                        {prog.hora && <><span>·</span><span>Llegada <span className="font-medium text-gray-700">{prog.hora}</span></span></>}
+                        {prog.m3Totales != null && <><span>·</span><span className="font-semibold text-gray-700">{prog.m3Totales} m³</span></>}
+                        {prog.tdBom && <><span>·</span><span>{prog.tdBom}</span></>}
+                        {prog.resistencia && <><span>·</span><span>{prog.resistencia}</span></>}
+                        {prog.vendedor && <><span>·</span><span>{prog.vendedor}</span></>}
+                      </div>
+                    </div>
+                    {prog.total != null && (
+                      <p className="text-base font-bold text-gray-900 shrink-0">${prog.total.toLocaleString("es-MX")}</p>
+                    )}
+                  </div>
+
+                  {/* Mini phase stepper */}
+                  <div className="mt-3 flex items-center gap-0">
+                    {["Creado","Asignado","En camino","En obra","Desc.","✓"].map((label, i) => {
+                      return (
+                        <div key={i} className="flex items-center flex-1">
+                          <div className="flex flex-col items-center" style={{ minWidth: 28 }}>
+                            <div
+                              className="h-2 w-2 rounded-full"
+                              style={{ backgroundColor: i < stepsDone ? "#CC2229" : "#E5E7EB" }}
+                            />
+                            <span className="text-[8px] text-gray-400 mt-0.5 text-center leading-tight">{label}</span>
+                          </div>
+                          {i < 5 && (
+                            <div
+                              className="flex-1 h-0.5 mx-0.5 rounded-full"
+                              style={{ backgroundColor: i < stepsDone - 1 ? "#CC2229" : "#E5E7EB" }}
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* ── Inline expand: driver timelines ── */}
+                {isExpanded && choferes.length > 0 && (
+                  <div className="border-t border-gray-100 bg-gray-50 px-4 py-4 space-y-4">
+                    {choferes.map((c, ci) => {
+                      const steps: { label: string; time: string | null }[] = [
+                        { label: "Salida planta", time: c.horaSalida || null },
+                        { label: "Llegada obra",  time: c.horaLlegadaObra || null },
+                        { label: "Inicio desc.",  time: c.horaInicioDescarga || null },
+                        { label: "Fin desc.",     time: c.horaFinalDescarga || null },
+                        { label: "Salida obra",   time: c.horaSalidaObra || null },
+                      ];
+                      return (
+                        <div key={ci}>
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="h-5 w-5 rounded-full bg-gray-200 flex items-center justify-center text-[9px] font-bold text-gray-600">{ci + 1}</span>
+                            <p className="text-xs font-semibold text-gray-800">{c.chofer || `Chofer ${ci + 1}`}</p>
+                            {c.m3 != null && <span className="text-xs text-gray-500">· {c.m3} m³</span>}
+                            {(c.cr || c.remision) && (
+                              <span className="text-[10px] text-gray-400">
+                                · {[c.cr && `CR:${c.cr}`, c.remision && `Rem:${c.remision}`].filter(Boolean).join(" ")}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-start overflow-x-auto">
+                            {steps.map((step, si) => (
+                              <div key={si} className="flex items-start">
+                                <div className="flex flex-col items-center w-20">
+                                  <div className="h-3 w-3 rounded-full" style={{ backgroundColor: step.time ? "#CC2229" : "#E5E7EB" }} />
+                                  <p className="mt-1 font-mono text-xs font-bold" style={{ color: step.time ? "#111827" : "#D1D5DB" }}>{step.time ?? "—"}</p>
+                                  <p className="text-[8px] text-gray-400 text-center leading-tight mt-0.5">{step.label}</p>
+                                  {si > 0 && step.time && steps[si - 1].time && (
+                                    <p className="text-[8px] font-semibold text-red-500 mt-0.5">+{dur(steps[si - 1].time, step.time)}</p>
+                                  )}
+                                </div>
+                                {si < steps.length - 1 && (
+                                  <div
+                                    className="mt-1.5 w-4 h-0.5 rounded-full shrink-0"
+                                    style={{ backgroundColor: step.time && steps[si + 1]?.time ? "#CC2229" : "#E5E7EB" }}
+                                  />
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {prog.notasAcceso && (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                        <p className="text-[10px] font-semibold text-amber-700 uppercase tracking-wider mb-0.5">Acceso especial</p>
+                        <p className="text-xs text-amber-800">{prog.notasAcceso}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ── Footer actions ── */}
+                <div className="border-t border-gray-100 px-4 py-2.5 flex items-center justify-between gap-3 bg-gray-50">
+                  <button
+                    onClick={() => setExpandedId(isExpanded ? null : (prog.id ?? null))}
+                    className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-800 transition-colors cursor-pointer"
+                  >
+                    <span>{isExpanded ? "▲ Ocultar viajes" : "▼ Ver viajes"}</span>
+                    {choferes.length > 0 && (
+                      <span className="px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-600 text-[10px]">{choferes.length}</span>
+                    )}
+                  </button>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setTimelineProg(prog)}
+                      className="text-xs text-gray-400 hover:text-gray-700 transition-colors cursor-pointer px-2 py-1 rounded hover:bg-gray-200"
+                    >
+                      Ver detalle →
+                    </button>
+
+                    {!isEntregado && !isMarking && (
+                      <button
+                        onClick={() => { setMarkingId(prog.id ?? null); setMarkingNotas(""); }}
+                        className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition-opacity hover:opacity-90 cursor-pointer"
+                        style={{ backgroundColor: "#059669" }}
+                      >
+                        ✓ Marcar entregado
+                      </button>
+                    )}
+                    {isEntregado && (
+                      <span className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold border border-emerald-200 bg-emerald-50 text-emerald-700">
+                        ✓ Entregado
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* ── Inline "marcar entregado" form ── */}
+                {isMarking && !isEntregado && (
+                  <div className="border-t border-emerald-200 bg-emerald-50 px-4 py-3">
+                    <p className="text-xs font-semibold text-emerald-800 mb-2">Confirmar entrega de {prog.folio}</p>
+                    <textarea
+                      value={markingNotas}
+                      onChange={(e) => setMarkingNotas(e.target.value)}
+                      placeholder="Notas (opcional — acceso especial, incidencias…)"
+                      rows={2}
+                      className="w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs text-gray-800 resize-none outline-none focus:ring-1 focus:ring-emerald-400"
+                    />
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        onClick={() => { setMarkingId(null); setMarkingNotas(""); }}
+                        className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 cursor-pointer"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        onClick={() => handleEntregarDirecto(prog, markingNotas)}
+                        disabled={isSaving}
+                        className="flex-1 rounded-lg px-3 py-1.5 text-xs font-semibold text-white cursor-pointer disabled:opacity-60"
+                        style={{ backgroundColor: "#059669" }}
+                      >
+                        {isSaving ? "Guardando…" : "Confirmar entrega"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* Excel view */}
-      {!excelFullscreen && (
+      {viewMode !== "rastreo" && !excelFullscreen && (
         <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
           <ExcelView
             rows={filtered as unknown as ExcelProg[]}
             onEdit={(p) => { setEditing(p as unknown as Programacion); setShowDrawer(true); }}
           />
         </div>
+      )}
+
+      {/* Timeline modal */}
+      {timelineProg && (
+        <TrackingModal
+          prog={timelineProg}
+          plantaActiva={plantaActiva}
+          onClose={() => setTimelineProg(null)}
+        />
       )}
 
       {/* Excel fullscreen overlay */}

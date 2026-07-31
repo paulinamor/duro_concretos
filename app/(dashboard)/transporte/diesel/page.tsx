@@ -6,7 +6,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
 import {
-  AlertTriangle, ChevronDown, ChevronUp,
+  AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
   DollarSign, Download, Fuel, Gauge, MapPin, MessageSquare,
   Pencil, Plus, Receipt, Search, Shield, Trash2, Truck, X,
 } from "lucide-react";
@@ -79,6 +79,23 @@ const COMBUSTIBLE_BADGE: Record<TipoCombustible, string> = {
 const COMBUSTIBLE_LABEL: Record<TipoCombustible, string> = {
   DIESEL: "Diésel", GASOLINA: "Gasolina", GAS: "Gas",
 };
+
+function currentMonth() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+function adjMonth(ym: string, delta: number) {
+  const [y, m] = ym.split("-").map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+function monthLabel(ym: string) {
+  const [y, m] = ym.split("-").map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString("es-MX", { month: "long", year: "numeric" });
+}
+function tabCls(active: boolean) {
+  return `px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${active ? "bg-[#CC2229] text-white" : "text-gray-400 hover:text-white hover:bg-[#3A3A3A]"}`;
+}
 
 const TOOLTIP_STYLE = {
   backgroundColor: "#1e293b",
@@ -544,8 +561,8 @@ export default function DieselPage() {
   const [confirmDelete, setConfirmDelete] = useState<CargaDiesel | null>(null);
   const [filterUnidad, setFilterUnidad] = useState("Todas");
   const [filterCombustible, setFilterCombustible] = useState("Todos");
-  const [fechaDesde, setFechaDesde] = useState("");
-  const [fechaHasta, setFechaHasta] = useState("");
+  const [filtroPeriodo, setFiltroPeriodo] = useState<"todo" | "mes">("mes");
+  const [mes, setMes] = useState(() => currentMonth());
   const [query, setQuery] = useState("");
 
   const cargas = useCollection<CargaDiesel>(COLLECTIONS.diesel);
@@ -565,21 +582,22 @@ export default function DieselPage() {
       if (p.length !== 3) return 0;
       return new Date(`${p[2]}-${p[1]}-${p[0]}T00:00:00`).getTime();
     };
-    const desdeMs = fechaDesde ? new Date(fechaDesde + "T00:00:00").getTime() : null;
-    const hastaMs = fechaHasta ? new Date(fechaHasta + "T23:59:59").getTime() : null;
+    const inMes = (fecha: string) => {
+      const p = fecha.split("/");
+      if (p.length !== 3) return false;
+      return `${p[2]}-${p[1]}` === mes;
+    };
     return cargas
       .filter((c) => {
         const matchUnidad = filterUnidad === "Todas" || c.unidad === filterUnidad;
         const matchComb = filterCombustible === "Todos" || c.combustible === filterCombustible;
-        const cMs = toMs(c.fecha);
-        const matchDesde = desdeMs == null || cMs >= desdeMs;
-        const matchHasta = hastaMs == null || cMs <= hastaMs;
+        const matchFecha = filtroPeriodo === "todo" || inMes(c.fecha);
         const q = query.toLowerCase();
         const matchQ = !q || c.unidad.toLowerCase().includes(q) || c.recibo.toLowerCase().includes(q) || (c.lugar || "").toLowerCase().includes(q);
-        return matchUnidad && matchComb && matchDesde && matchHasta && matchQ;
+        return matchUnidad && matchComb && matchFecha && matchQ;
       })
       .sort((a, b) => toMs(b.fecha) - toMs(a.fecha));
-  }, [cargas, filterUnidad, filterCombustible, fechaDesde, fechaHasta, query]);
+  }, [cargas, filterUnidad, filterCombustible, filtroPeriodo, mes, query]);
 
   const totalLitros = filtered.reduce((s, c) => s + (c.litros ?? 0), 0);
   const totalCosto = filtered.reduce((s, c) => s + (c.total ?? 0), 0);
@@ -654,7 +672,7 @@ export default function DieselPage() {
     window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `Carga de ${carga.unidad} eliminada.` } }));
   }
 
-  const hasFilters = !!(fechaDesde || fechaHasta || filterUnidad !== "Todas" || filterCombustible !== "Todos" || query);
+  const hasFilters = !!(filterUnidad !== "Todas" || filterCombustible !== "Todos" || query);
 
   return (
     <div className="space-y-5">
@@ -662,8 +680,8 @@ export default function DieselPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-gray-500">
           {filtered.length} de {cargas.length} registros
-          {(fechaDesde || fechaHasta) && (
-            <span className="ml-1.5 text-[#CC2229]">· {fechaDesde || "…"} — {fechaHasta || "hoy"}</span>
+          {filtroPeriodo === "mes" && (
+            <span className="ml-1.5 text-[#CC2229] capitalize">· {monthLabel(mes)}</span>
           )}
         </p>
         <div className="flex items-center gap-2">
@@ -687,48 +705,55 @@ export default function DieselPage() {
       </div>
 
       {/* Filters */}
-      <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl px-4 py-3 flex flex-wrap items-center gap-3 shadow-sm">
+      <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl p-4 flex flex-wrap items-center gap-3">
         {/* Search */}
-        <div className="relative">
-          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar unidad, recibo..."
-            className="bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 text-xs rounded-lg pl-7 pr-3 py-1.5 w-44 focus:outline-none focus:border-[#CC2229]/60 placeholder-gray-500" />
+        <div className="relative flex-1 min-w-[180px]">
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar unidad, recibo, lugar…"
+            className="w-full bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 text-xs rounded-lg pl-7 pr-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#CC2229] placeholder-gray-600" />
         </div>
 
-        <div className="w-px h-5 bg-[#3A3A3A]" />
-
-        {/* Rango de fechas */}
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Del</span>
-          <input type="date" value={fechaDesde} onChange={(e) => setFechaDesde(e.target.value)}
-            className="bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[#CC2229]/60 cursor-pointer" />
-          <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">al</span>
-          <input type="date" value={fechaHasta} onChange={(e) => setFechaHasta(e.target.value)}
-            className="bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[#CC2229]/60 cursor-pointer" />
+        {/* Período toggle */}
+        <div className="flex items-center gap-1 bg-[#2A2A2A] rounded-xl p-1">
+          <button onClick={() => setFiltroPeriodo("todo")} className={tabCls(filtroPeriodo === "todo")}>Todo</button>
+          <button onClick={() => setFiltroPeriodo("mes")} className={tabCls(filtroPeriodo === "mes")}>Por mes</button>
         </div>
 
-        <div className="w-px h-5 bg-[#3A3A3A]" />
+        {/* Month navigator */}
+        {filtroPeriodo === "mes" && (
+          <div className="flex items-center gap-1 border border-[#3A3A3A] rounded-xl overflow-hidden">
+            <button onClick={() => setMes((m) => adjMonth(m, -1))}
+              className="px-2.5 py-2 text-gray-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer">
+              <ChevronLeft size={14} />
+            </button>
+            <span className="px-3 py-2 text-xs font-semibold text-gray-200 capitalize whitespace-nowrap min-w-[130px] text-center">
+              {monthLabel(mes)}
+            </span>
+            <button onClick={() => setMes((m) => adjMonth(m, 1))}
+              disabled={mes >= currentMonth()}
+              className="px-2.5 py-2 text-gray-400 hover:text-white hover:bg-white/5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer">
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        )}
 
         {/* Combustible pills */}
         <div className="flex gap-1">
           {([["Todos", "Todos"], ["DIESEL", "Diésel"], ["GASOLINA", "Gasolina"], ["GAS", "Gas"]] as [string, string][]).map(([val, label]) => (
-            <button key={val} onClick={() => setFilterCombustible(val)}
-              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors cursor-pointer ${filterCombustible === val ? "bg-[#CC2229] text-white" : "text-gray-400 hover:text-gray-200 hover:bg-[#3A3A3A]"}`}>
+            <button key={val} onClick={() => setFilterCombustible(val)} className={tabCls(filterCombustible === val)}>
               {label}
             </button>
           ))}
         </div>
 
-        <div className="w-px h-5 bg-[#3A3A3A]" />
-
         {/* Unidad */}
         <select value={filterUnidad} onChange={(e) => setFilterUnidad(e.target.value)}
-          className="bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[#CC2229]/60 cursor-pointer">
+          className="bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 text-xs rounded-lg px-2.5 py-2 focus:outline-none focus:border-[#CC2229]/60 cursor-pointer">
           {allUnidades.map((u) => <option key={u}>{u}</option>)}
         </select>
 
         {hasFilters && (
-          <button onClick={() => { setFechaDesde(""); setFechaHasta(""); setFilterUnidad("Todas"); setFilterCombustible("Todos"); setQuery(""); }}
+          <button onClick={() => { setFilterUnidad("Todas"); setFilterCombustible("Todos"); setQuery(""); }}
             className="flex items-center gap-1 text-xs text-gray-400 hover:text-white transition-colors cursor-pointer ml-auto">
             <X size={12} /> Limpiar
           </button>

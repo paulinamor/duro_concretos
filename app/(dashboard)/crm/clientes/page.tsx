@@ -5,6 +5,7 @@ import {
   BadgeDollarSign,
   Building2,
   ChevronDown,
+  ChevronRight,
   FileSpreadsheet,
   GitMerge,
   Mail,
@@ -46,8 +47,53 @@ const tipoBadge: Record<TipoCliente, string> = {
   Gobierno: "bg-violet-500/10 text-violet-300",
   Particular: "bg-slate-500/10 text-gray-300",
   Inmobiliaria: "bg-orange-500/10 text-orange-300",
-  Industrial: "bg-amber-500/10 text-amber-300",
+  Industrial: "bg-amber-500/10 text-amber-400",
 };
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function normalizeNombre(s: string) {
+  return s.trim().toLowerCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]/g, "");
+}
+
+async function cascadeRename(oldName: string, newName: string) {
+  if (!oldName || oldName === newName) return;
+  const normOld = normalizeNombre(oldName);
+
+  const updateField = async (coll: string, field: "cliente" | "contraparte") => {
+    const docs = await getCollectionDocs<{ id: string; cliente?: string; contraparte?: string }>(coll);
+    const matches = docs.filter((d) => normalizeNombre(d[field] ?? "") === normOld);
+    await Promise.all(matches.map((d) => {
+      const { id, ...rest } = d;
+      return upsertDocument(coll, id, { ...rest, [field]: newName });
+    }));
+  };
+
+  await Promise.all([
+    updateField(COLLECTIONS.programaciones, "cliente"),
+    updateField(COLLECTIONS.efectivo, "cliente"),
+    updateField(COLLECTIONS.remisiones, "cliente"),
+    updateField(COLLECTIONS.cuentasPorCobrar, "contraparte"),
+    updateField(COLLECTIONS.cuentasPorPagar, "contraparte"),
+  ]);
+}
+
+function mergeData(winner: Cliente, ...losers: Cliente[]): Partial<Cliente> {
+  const all = [winner, ...losers];
+  const notas = all.map((c) => c.notas).filter(Boolean).join(" | ");
+  const ultimaCompra =
+    all.map((c) => c.ultimaCompra ?? "").filter((v) => v && v !== "—").sort().at(-1) ?? winner.ultimaCompra;
+  return {
+    m3Acumulados: all.reduce((s, c) => s + (c.m3Acumulados ?? 0), 0),
+    totalComprasAnio: all.reduce((s, c) => s + (c.totalComprasAnio ?? 0), 0),
+    saldoPendiente: all.reduce((s, c) => s + (c.saldoPendiente ?? 0), 0),
+    limiteCredito: Math.max(...all.map((c) => c.limiteCredito ?? 0)),
+    notas,
+    ultimaCompra,
+  };
+}
 
 // ─── Form state ───────────────────────────────────────────────────────────────
 
@@ -153,11 +199,8 @@ function ClienteDrawer({ open, editing, onClose, onSave, errorMsg, vendedoresLis
     setLocalError("");
     try {
       const result = await onSave(form);
-      if (typeof result === "string") {
-        setLocalError(result);
-      } else {
-        onClose();
-      }
+      if (typeof result === "string") setLocalError(result);
+      else onClose();
     } finally {
       setSaving(false);
     }
@@ -171,7 +214,6 @@ function ClienteDrawer({ open, editing, onClose, onSave, errorMsg, vendedoresLis
     <div className="fixed inset-0 z-[100] flex">
       <button className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} aria-label="Cerrar" />
       <div className="relative ml-auto flex h-full w-full max-w-xl flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden">
-        {/* Header */}
         <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-4 shrink-0">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#CC2229]/10 text-[#CC2229]">
             <Users size={18} />
@@ -187,7 +229,6 @@ function ClienteDrawer({ open, editing, onClose, onSave, errorMsg, vendedoresLis
           </button>
         </div>
 
-        {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
           {displayError && (
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600">
@@ -195,13 +236,18 @@ function ClienteDrawer({ open, editing, onClose, onSave, errorMsg, vendedoresLis
             </div>
           )}
 
-          {/* Datos fiscales */}
           <div>
             <SectionDivider label="Datos fiscales" />
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2">
                 <label className={lbl}>Razón social <span className="text-[#CC2229]">*</span></label>
-                <input type="text" value={form.razonSocial} onChange={(e) => set("razonSocial", e.target.value)} placeholder="Nombre fiscal completo" className={inp} />
+                <input
+                  type="text"
+                  value={form.razonSocial}
+                  onChange={(e) => set("razonSocial", e.target.value.toUpperCase())}
+                  placeholder="NOMBRE FISCAL COMPLETO"
+                  className={`${inp} uppercase`}
+                />
               </div>
               <div>
                 <label className={lbl}>Nombre comercial</label>
@@ -214,7 +260,6 @@ function ClienteDrawer({ open, editing, onClose, onSave, errorMsg, vendedoresLis
             </div>
           </div>
 
-          {/* Domicilio */}
           <div>
             <SectionDivider label="Domicilio" />
             <div className="grid grid-cols-2 gap-3">
@@ -241,7 +286,6 @@ function ClienteDrawer({ open, editing, onClose, onSave, errorMsg, vendedoresLis
             </div>
           </div>
 
-          {/* Contacto */}
           <div>
             <SectionDivider label="Contacto" />
             <div className="grid grid-cols-2 gap-3">
@@ -264,7 +308,6 @@ function ClienteDrawer({ open, editing, onClose, onSave, errorMsg, vendedoresLis
             </div>
           </div>
 
-          {/* Clasificación y crédito */}
           <div>
             <SectionDivider label="Clasificación y crédito" />
             <div className="grid grid-cols-2 gap-3">
@@ -318,7 +361,6 @@ function ClienteDrawer({ open, editing, onClose, onSave, errorMsg, vendedoresLis
             </div>
           </div>
 
-          {/* Notas */}
           <div>
             <SectionDivider label="Notas" />
             <textarea
@@ -331,7 +373,6 @@ function ClienteDrawer({ open, editing, onClose, onSave, errorMsg, vendedoresLis
           </div>
         </div>
 
-        {/* Footer */}
         <div className="shrink-0 border-t border-gray-100 px-6 py-4 flex items-center justify-end gap-3">
           <button
             onClick={onClose}
@@ -366,8 +407,13 @@ export default function CrmClientesPage() {
   const [detail, setDetail] = useState<Cliente | null>(null);
   const [saveError, setSaveError] = useState("");
   const [showDedupModal, setShowDedupModal] = useState(false);
-  // For each duplicate group: key = normalized name, value = id of the record to KEEP
   const [dedupKeep, setDedupKeep] = useState<Record<string, string>>({});
+  const [normalizingAll, setNormalizingAll] = useState(false);
+  const [showMergeModal, setShowMergeModal] = useState(false);
+  const [mergeQuery, setMergeQuery] = useState("");
+  const [mergePartner, setMergePartner] = useState<Cliente | null>(null);
+  const [mergeWinnerId, setMergeWinnerId] = useState<string | null>(null);
+  const [mergingClients, setMergingClients] = useState(false);
 
   useEffect(() => {
     getCollectionDocs<Cliente>(COLLECTIONS.clientes)
@@ -375,13 +421,14 @@ export default function CrmClientesPage() {
       .finally(() => setLoading(false));
   }, []);
 
+
   const filtered = useMemo(() => {
     const term = query.toLowerCase();
     return clientes.filter((c) => {
       const matchQuery =
         !term ||
         c.razonSocial.toLowerCase().includes(term) ||
-        c.nombreComercial.toLowerCase().includes(term) ||
+        (c.nombreComercial ?? "").toLowerCase().includes(term) ||
         c.rfc.toLowerCase().includes(term) ||
         c.contacto.toLowerCase().includes(term) ||
         c.municipio.toLowerCase().includes(term);
@@ -392,19 +439,11 @@ export default function CrmClientesPage() {
     }).sort((a, b) => a.razonSocial.localeCompare(b.razonSocial, "es", { sensitivity: "base" }));
   }, [clientes, query, filtroEstatus, filtroTipo, filtroVendedor]);
 
-  // Strips spaces, punctuation and accents for fuzzy name comparison
-  function normalizeNombre(s: string) {
-    return s.trim().toLowerCase()
-      .normalize("NFD").replace(/[̀-ͯ]/g, "")
-      .replace(/[^a-z0-9]/g, "");
-  }
-
   const vendedoresActivos = useMemo(
     () => Array.from(new Set(clientes.map((c) => c.vendedorAsignado).filter(Boolean))).sort(),
     [clientes],
   );
 
-  // Groups of duplicates: only groups with >1 member
   const duplicadoGroups = useMemo(() => {
     const groups = new Map<string, Cliente[]>();
     clientes.forEach((c) => {
@@ -421,8 +460,19 @@ export default function CrmClientesPage() {
     return result;
   }, [clientes]);
 
+  const mergeSearchResults = useMemo(() => {
+    if (!detail) return [];
+    const term = mergeQuery.toLowerCase();
+    return clientes
+      .filter((c) => c.id !== detail.id && (
+        !term ||
+        c.razonSocial.toLowerCase().includes(term) ||
+        (c.nombreComercial ?? "").toLowerCase().includes(term)
+      ))
+      .slice(0, 10);
+  }, [clientes, detail, mergeQuery]);
+
   function openDedupModal() {
-    // Default: keep the oldest record in each group
     const defaults: Record<string, string> = {};
     duplicadoGroups.forEach(({ key, members }) => { defaults[key] = members[0].id; });
     setDedupKeep(defaults);
@@ -431,16 +481,86 @@ export default function CrmClientesPage() {
 
   async function confirmDedup() {
     const toDelete: string[] = [];
-    duplicadoGroups.forEach(({ key, members }) => {
+    for (const { key, members } of duplicadoGroups) {
       const keepId = dedupKeep[key] ?? members[0].id;
-      members.forEach((c) => { if (c.id !== keepId) toDelete.push(c.id); });
-    });
+      const winner = members.find((c) => c.id === keepId)!;
+      const losers = members.filter((c) => c.id !== keepId);
+      const merged = mergeData(winner, ...losers);
+      const { id: wId, ...wData } = winner;
+      await upsertDocument(COLLECTIONS.clientes, wId, { ...wData, ...merged });
+      for (const loser of losers) {
+        await cascadeRename(loser.razonSocial, winner.razonSocial);
+        if (loser.nombreComercial && normalizeNombre(loser.nombreComercial) !== normalizeNombre(winner.razonSocial)) {
+          await cascadeRename(loser.nombreComercial, winner.razonSocial);
+        }
+        toDelete.push(loser.id);
+      }
+    }
     await Promise.all(toDelete.map((id) => deleteDocument(COLLECTIONS.clientes, id)));
-    setClientes((curr) => curr.filter((c) => !toDelete.includes(c.id)));
+    const toDeleteSet = new Set(toDelete);
+    setClientes((curr) =>
+      curr.filter((c) => !toDeleteSet.has(c.id)).map((c) => {
+        const group = duplicadoGroups.find((g) => g.members.some((m) => m.id === c.id));
+        if (!group) return c;
+        const keepId = dedupKeep[group.key] ?? group.members[0].id;
+        if (c.id !== keepId) return c;
+        return { ...c, ...mergeData(c, ...group.members.filter((m) => m.id !== keepId)) };
+      }),
+    );
     setShowDedupModal(false);
     window.dispatchEvent(new CustomEvent("duro:toast", {
-      detail: { type: "success", message: `${toDelete.length} registro${toDelete.length !== 1 ? "s" : ""} duplicado${toDelete.length !== 1 ? "s" : ""} eliminado${toDelete.length !== 1 ? "s" : ""}.` },
+      detail: { type: "success", message: `${toDelete.length} duplicado${toDelete.length !== 1 ? "s" : ""} fusionado${toDelete.length !== 1 ? "s" : ""} y referencias actualizadas.` },
     }));
+  }
+
+  async function normalizeAll() {
+    const toUpdate = clientes.filter((c) => c.razonSocial !== c.razonSocial.toUpperCase());
+    if (toUpdate.length === 0) {
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "info", message: "Todos los nombres ya están en mayúsculas." } }));
+      return;
+    }
+    setNormalizingAll(true);
+    try {
+      await Promise.all(toUpdate.map((c) => {
+        const { id, ...data } = c;
+        return upsertDocument(COLLECTIONS.clientes, id, { ...data, razonSocial: c.razonSocial.toUpperCase() });
+      }));
+      setClientes((curr) => curr.map((c) => ({ ...c, razonSocial: c.razonSocial.toUpperCase() })));
+      window.dispatchEvent(new CustomEvent("duro:toast", {
+        detail: { type: "success", message: `${toUpdate.length} nombre${toUpdate.length !== 1 ? "s" : ""} normalizado${toUpdate.length !== 1 ? "s" : ""}.` },
+      }));
+    } finally {
+      setNormalizingAll(false);
+    }
+  }
+
+  async function executeMerge() {
+    if (!detail || !mergePartner || !mergeWinnerId) return;
+    setMergingClients(true);
+    try {
+      const isDetailWinner = mergeWinnerId === detail.id;
+      const winner = isDetailWinner ? detail : mergePartner;
+      const loser = isDetailWinner ? mergePartner : detail;
+      const merged = { ...winner, ...mergeData(winner, loser) };
+      const { id: wId, ...wData } = merged;
+      await upsertDocument(COLLECTIONS.clientes, wId, wData);
+      await cascadeRename(loser.razonSocial, winner.razonSocial);
+      if (loser.nombreComercial && normalizeNombre(loser.nombreComercial) !== normalizeNombre(winner.razonSocial)) {
+        await cascadeRename(loser.nombreComercial, winner.razonSocial);
+      }
+      await deleteDocument(COLLECTIONS.clientes, loser.id);
+      setClientes((curr) => curr.filter((c) => c.id !== loser.id).map((c) => c.id === winner.id ? merged : c));
+      setDetail(isDetailWinner ? merged : null);
+      setShowMergeModal(false);
+      setMergePartner(null);
+      setMergeQuery("");
+      setMergeWinnerId(null);
+      window.dispatchEvent(new CustomEvent("duro:toast", {
+        detail: { type: "success", message: `"${loser.razonSocial}" fusionado en "${winner.razonSocial}". Referencias actualizadas.` },
+      }));
+    } finally {
+      setMergingClients(false);
+    }
   }
 
   const totalActivos = clientes.filter((c) => c.estatus === "Activo").length;
@@ -448,18 +568,9 @@ export default function CrmClientesPage() {
   const totalSaldoPendiente = clientes.reduce((sum, c) => sum + c.saldoPendiente, 0);
   const nuevosEsteAnio = clientes.filter((c) => c.fechaAlta.startsWith("2026")).length;
 
-  function openCreate() {
-    setSaveError("");
-    setEditing(null);
-    setShowForm(true);
-  }
+  function openCreate() { setSaveError(""); setEditing(null); setShowForm(true); }
 
-  function openEdit(c: Cliente) {
-    setSaveError("");
-    setDetail(null);
-    setEditing(c);
-    setShowForm(true);
-  }
+  function openEdit(c: Cliente) { setSaveError(""); setDetail(null); setEditing(c); setShowForm(true); }
 
   async function handleDelete(id: string) {
     setClientes((current) => current.filter((c) => c.id !== id));
@@ -468,21 +579,20 @@ export default function CrmClientesPage() {
   }
 
   async function handleSave(f: ClienteForm): Promise<string | false | void> {
-    const razonSocial = f.razonSocial.trim();
-    const rfc = f.rfc.trim();
+    const razonSocial = f.razonSocial.trim().toUpperCase();
+    const rfc = f.rfc.trim().toUpperCase();
     const contacto = f.contacto.trim();
-
     if (!razonSocial || !rfc || !contacto) return false;
 
     const isDuplicateRFC = rfc.length > 3 && clientes.some(
-      (c) => c.rfc.toLowerCase() === rfc.toLowerCase() && c.id !== editing?.id,
+      (c) => c.rfc.toUpperCase() === rfc && c.id !== editing?.id,
     );
     if (isDuplicateRFC) return "Ya existe un cliente con ese RFC.";
 
     const isDuplicateName = clientes.some(
       (c) => normalizeNombre(c.razonSocial) === normalizeNombre(razonSocial) && c.id !== editing?.id,
     );
-    if (isDuplicateName) return "Ya existe un cliente con ese nombre.";
+    if (isDuplicateName) return "Ya existe un cliente con esa razón social.";
 
     const id = editing?.id ?? `CL-${Date.now()}`;
     const next: Cliente = {
@@ -514,9 +624,7 @@ export default function CrmClientesPage() {
     };
 
     setClientes((current) =>
-      editing
-        ? current.map((c) => (c.id === editing.id ? next : c))
-        : [next, ...current],
+      editing ? current.map((c) => (c.id === editing.id ? next : c)) : [next, ...current],
     );
     const { id: _id, ...data } = next;
     await upsertDocument(COLLECTIONS.clientes, _id, data);
@@ -524,19 +632,15 @@ export default function CrmClientesPage() {
   }
 
   function exportExcel() {
-    const rows = clientes
-      .map(
-        (c) => `<tr>
-          <td>${c.id}</td><td>${c.razonSocial}</td><td>${c.rfc}</td>
-          <td>${c.municipio}, ${c.estado}</td><td>${c.tipoCliente}</td>
-          <td>${c.contacto}</td><td>${c.telefono}</td><td>${c.email}</td>
-          <td>${c.vendedorAsignado}</td><td>${c.limiteCredito}</td>
-          <td>${c.saldoPendiente}</td><td>${c.diasCredito}</td>
-          <td>${c.ultimaCompra}</td><td>${c.totalComprasAnio}</td>
-          <td>${c.m3Acumulados}</td><td>${c.estatus}</td><td>${c.calificacion}</td>
-        </tr>`,
-      )
-      .join("");
+    const rows = clientes.map((c) => `<tr>
+      <td>${c.id}</td><td>${c.razonSocial}</td><td>${c.rfc}</td>
+      <td>${c.municipio}, ${c.estado}</td><td>${c.tipoCliente}</td>
+      <td>${c.contacto}</td><td>${c.telefono}</td><td>${c.email}</td>
+      <td>${c.vendedorAsignado}</td><td>${c.limiteCredito}</td>
+      <td>${c.saldoPendiente}</td><td>${c.diasCredito}</td>
+      <td>${c.ultimaCompra}</td><td>${c.totalComprasAnio}</td>
+      <td>${c.m3Acumulados}</td><td>${c.estatus}</td><td>${c.calificacion}</td>
+    </tr>`).join("");
     const html = `<html><head><meta charset="UTF-8"/></head><body><table>
       <thead><tr>
         <th>ID</th><th>Razón Social</th><th>RFC</th><th>Ubicación</th><th>Tipo</th>
@@ -544,16 +648,12 @@ export default function CrmClientesPage() {
         <th>Límite Crédito</th><th>Saldo</th><th>Días Crédito</th>
         <th>Última Compra</th><th>Compras Año</th><th>m3 Acumulados</th>
         <th>Estatus</th><th>Calificación</th>
-      </tr></thead>
-      <tbody>${rows}</tbody></table></body></html>`;
+      </tr></thead><tbody>${rows}</tbody></table></body></html>`;
     const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url;
-    a.download = "clientes-duro-concretos.xls";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    a.href = url; a.download = "clientes-duro-concretos.xls";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }
 
@@ -562,18 +662,16 @@ export default function CrmClientesPage() {
     return Math.round((c.saldoPendiente / c.limiteCredito) * 100);
   };
 
+  function closeMergeModal() {
+    setShowMergeModal(false); setMergePartner(null); setMergeQuery(""); setMergeWinnerId(null);
+  }
+
   return (
     <div className="space-y-6">
       {/* KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <KPICard title="Total clientes" value={String(clientes.length)} icon={Users} />
-        <KPICard
-          title="Clientes activos"
-          value={String(totalActivos)}
-          icon={UserCheck}
-          iconColor="text-green-400"
-          iconBg="bg-green-500/10"
-        />
+        <KPICard title="Clientes activos" value={String(totalActivos)} icon={UserCheck} iconColor="text-green-400" iconBg="bg-green-500/10" />
         <KPICard
           title="Cartera anual"
           value={`$${(totalCarteraAnio / 1000000).toFixed(1)}M`}
@@ -581,14 +679,9 @@ export default function CrmClientesPage() {
           iconColor="text-[#CC2229]"
           subtitle={`$${Math.round(totalSaldoPendiente).toLocaleString()} pendiente`}
         />
-        <KPICard
-          title="Nuevos en 2026"
-          value={String(nuevosEsteAnio)}
-          icon={BadgeDollarSign}
-          iconColor="text-blue-400"
-          iconBg="bg-blue-500/10"
-        />
+        <KPICard title="Nuevos en 2026" value={String(nuevosEsteAnio)} icon={BadgeDollarSign} iconColor="text-blue-400" iconBg="bg-blue-500/10" />
       </div>
+
 
       {/* Toolbar */}
       <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl p-4 flex flex-wrap items-center gap-3">
@@ -597,7 +690,7 @@ export default function CrmClientesPage() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar razón social, RFC, contacto, municipio..."
+            placeholder="Buscar razón social, nombre comercial, RFC, municipio..."
             className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg pl-9 pr-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
           />
         </div>
@@ -625,9 +718,18 @@ export default function CrmClientesPage() {
             className="flex items-center gap-2 rounded-lg border border-amber-500/40 px-3 py-2 text-sm text-amber-300 hover:bg-amber-500/10 transition-colors"
           >
             <GitMerge size={14} />
-            {duplicadoGroups.length} grupo{duplicadoGroups.length !== 1 ? "s" : ""} duplicado{duplicadoGroups.length !== 1 ? "s" : ""}
+            {duplicadoGroups.length} duplicado{duplicadoGroups.length !== 1 ? "s" : ""}
           </button>
         )}
+        <button
+          type="button"
+          onClick={normalizeAll}
+          disabled={normalizingAll}
+          title="Convertir todas las razones sociales a mayúsculas"
+          className="flex items-center gap-2 rounded-lg border border-[#3A3A3A] px-3 py-2 text-sm text-gray-400 hover:border-blue-500/40 hover:text-blue-300 transition-colors disabled:opacity-50"
+        >
+          {normalizingAll ? "Normalizando…" : "Normalizar todo"}
+        </button>
         <button
           type="button"
           onClick={exportExcel}
@@ -651,51 +753,33 @@ export default function CrmClientesPage() {
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-10 bg-[#1A1A1A]">
               <tr className="border-b border-[#3A3A3A]">
-                {["Razón Social / RFC", "Municipio", "Tipo", "Contacto", "Vendedor", "Crédito", "Saldo", "Estatus", "Acciones"].map(
-                  (h) => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-400 whitespace-nowrap">
-                      {h}
-                    </th>
-                  ),
-                )}
+                {["Razón Social / RFC", "Municipio", "Tipo", "Contacto", "Vendedor", "Crédito", "Saldo", "Estatus", "Acciones"].map((h) => (
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-400 whitespace-nowrap">{h}</th>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-[#3A3A3A]">
               {loading ? (
-                <tr>
-                  <td colSpan={9} className="px-5 py-10 text-center text-gray-500">
-                    Cargando clientes...
-                  </td>
-                </tr>
+                <tr><td colSpan={9} className="px-5 py-10 text-center text-gray-500">Cargando clientes...</td></tr>
               ) : filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="px-5 py-10 text-center text-gray-500">
-                    No se encontraron clientes con ese filtro.
-                  </td>
-                </tr>
+                <tr><td colSpan={9} className="px-5 py-10 text-center text-gray-500">No se encontraron clientes con ese filtro.</td></tr>
               ) : (
                 filtered.map((c) => {
                   const pct = creditoUtilizado(c);
                   return (
-                    <tr
-                      key={c.id}
-                      className="transition-colors cursor-pointer hover:bg-[#2A2A2A]"
-                      onClick={() => setDetail(c)}
-                    >
+                    <tr key={c.id} className="transition-colors cursor-pointer hover:bg-[#2A2A2A]" onClick={() => setDetail(c)}>
                       <td className="px-4 py-3 max-w-[240px]">
                         <p className="text-white font-medium">{c.razonSocial}</p>
+                        {c.nombreComercial && c.nombreComercial !== c.razonSocial && (
+                          <p className="text-gray-400 text-xs italic mt-0.5">{c.nombreComercial}</p>
+                        )}
                         <p className="text-gray-500 text-xs font-mono mt-0.5 whitespace-nowrap">{c.rfc}</p>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5 text-gray-400 text-xs">
-                          <MapPin size={11} className="shrink-0" />
-                          {c.municipio}
-                        </div>
+                        <div className="flex items-center gap-1.5 text-gray-400 text-xs"><MapPin size={11} className="shrink-0" />{c.municipio}</div>
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${tipoBadge[c.tipoCliente]}`}>
-                          {c.tipoCliente}
-                        </span>
+                        <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${tipoBadge[c.tipoCliente]}`}>{c.tipoCliente}</span>
                       </td>
                       <td className="px-4 py-3">
                         <p className="text-gray-300 whitespace-nowrap">{c.contacto}</p>
@@ -707,10 +791,7 @@ export default function CrmClientesPage() {
                           <div>
                             <p className="text-gray-300 text-sm whitespace-nowrap">${c.limiteCredito.toLocaleString()}</p>
                             <div className="mt-1 h-1 w-20 rounded-full bg-[#1A1A1A] overflow-hidden">
-                              <div
-                                className={`h-full rounded-full ${pct > 90 ? "bg-red-500" : pct > 70 ? "bg-amber-500" : "bg-emerald-500"}`}
-                                style={{ width: `${Math.min(pct, 100)}%` }}
-                              />
+                              <div className={`h-full rounded-full ${pct > 90 ? "bg-red-500" : pct > 70 ? "bg-amber-500" : "bg-emerald-500"}`} style={{ width: `${Math.min(pct, 100)}%` }} />
                             </div>
                           </div>
                         ) : (
@@ -718,27 +799,15 @@ export default function CrmClientesPage() {
                         )}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
-                        <span className={`text-sm font-semibold ${c.saldoPendiente > 0 ? "text-amber-300" : "text-green-400"}`}>
-                          ${c.saldoPendiente.toLocaleString()}
-                        </span>
+                        <span className={`text-sm font-semibold ${c.saldoPendiente > 0 ? "text-amber-300" : "text-green-400"}`}>${c.saldoPendiente.toLocaleString()}</span>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <StatusBadge status={c.estatus.toLowerCase()} />
-                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap"><StatusBadge status={c.estatus.toLowerCase()} /></td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            onClick={() => openEdit(c)}
-                            className="rounded-lg p-2 text-gray-400 hover:bg-[#1A1A1A] hover:text-white transition-colors"
-                            aria-label={`Editar ${c.razonSocial}`}
-                          >
+                          <button onClick={() => openEdit(c)} className="rounded-lg p-2 text-gray-400 hover:bg-[#1A1A1A] hover:text-white transition-colors" aria-label={`Editar ${c.razonSocial}`}>
                             <Pencil size={14} />
                           </button>
-                          <button
-                            onClick={() => handleDelete(c.id)}
-                            className="rounded-lg p-2 text-gray-400 hover:bg-[#1A1A1A] hover:text-[#CC2229] transition-colors"
-                            aria-label={`Eliminar ${c.razonSocial}`}
-                          >
+                          <button onClick={() => handleDelete(c.id)} className="rounded-lg p-2 text-gray-400 hover:bg-[#1A1A1A] hover:text-[#CC2229] transition-colors" aria-label={`Eliminar ${c.razonSocial}`}>
                             <Trash2 size={14} />
                           </button>
                         </div>
@@ -755,37 +824,25 @@ export default function CrmClientesPage() {
       {/* Detail panel */}
       {detail && (
         <div className="fixed inset-0 z-[100] flex justify-end bg-black/50 backdrop-blur-sm" onClick={() => setDetail(null)}>
-          <div
-            className="relative h-full w-full max-w-xl overflow-y-auto bg-[#181b20] border-l border-[#3A3A3A] shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
+          <div className="relative h-full w-full max-w-xl overflow-y-auto bg-[#181b20] border-l border-[#3A3A3A] shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-[#3A3A3A] bg-[#181b20]/95 px-6 py-4 backdrop-blur">
               <div className="flex items-center gap-3">
-                <span className={`inline-flex h-9 w-9 items-center justify-center rounded-xl text-sm font-bold shrink-0 ${calificacionBadge[detail.calificacion]}`}>
-                  {detail.calificacion}
-                </span>
+                <span className={`inline-flex h-9 w-9 items-center justify-center rounded-xl text-sm font-bold shrink-0 ${calificacionBadge[detail.calificacion]}`}>{detail.calificacion}</span>
                 <div className="min-w-0">
                   <h3 className="text-white font-semibold text-sm leading-tight truncate">{detail.razonSocial}</h3>
                   <p className="text-gray-500 text-xs mt-0.5 font-mono">{detail.rfc}</p>
                 </div>
               </div>
-              <button onClick={() => setDetail(null)} className="shrink-0 rounded-lg p-1.5 text-gray-400 hover:bg-white/8 hover:text-white transition-colors">
-                <X size={18} />
-              </button>
+              <button onClick={() => setDetail(null)} className="shrink-0 rounded-lg p-1.5 text-gray-400 hover:bg-white/8 hover:text-white transition-colors"><X size={18} /></button>
             </div>
 
             <div className="p-6 space-y-6">
-              {/* Status row */}
               <div className="flex flex-wrap items-center gap-2">
                 <StatusBadge status={detail.estatus.toLowerCase()} />
-                <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${tipoBadge[detail.tipoCliente]}`}>
-                  {detail.tipoCliente}
-                </span>
+                <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${tipoBadge[detail.tipoCliente]}`}>{detail.tipoCliente}</span>
                 <span className="text-gray-500 text-xs ml-auto">Alta: {detail.fechaAlta}</span>
               </div>
 
-              {/* Ubicación */}
               <div>
                 <p className="text-xs font-extrabold uppercase tracking-wider text-gray-500 mb-3">Datos fiscales y domicilio</p>
                 <div className="rounded-xl border border-[#3A3A3A] bg-[#111318] p-4 space-y-2.5">
@@ -795,7 +852,6 @@ export default function CrmClientesPage() {
                 </div>
               </div>
 
-              {/* Contacto */}
               <div>
                 <p className="text-xs font-extrabold uppercase tracking-wider text-gray-500 mb-3">Contacto</p>
                 <div className="rounded-xl border border-[#3A3A3A] bg-[#111318] p-4 space-y-2.5">
@@ -805,7 +861,6 @@ export default function CrmClientesPage() {
                 </div>
               </div>
 
-              {/* Comercial */}
               <div>
                 <p className="text-xs font-extrabold uppercase tracking-wider text-gray-500 mb-3">Información comercial</p>
                 <div className="rounded-xl border border-[#3A3A3A] bg-[#111318] p-4 space-y-3">
@@ -818,7 +873,6 @@ export default function CrmClientesPage() {
                 </div>
               </div>
 
-              {/* Crédito */}
               {detail.limiteCredito > 0 && (
                 <div>
                   <p className="text-xs font-extrabold uppercase tracking-wider text-gray-500 mb-3">Crédito</p>
@@ -845,7 +899,6 @@ export default function CrmClientesPage() {
                 </div>
               )}
 
-              {/* Notas */}
               {detail.notas && (
                 <div>
                   <p className="text-xs font-extrabold uppercase tracking-wider text-gray-500 mb-3">Notas</p>
@@ -855,21 +908,18 @@ export default function CrmClientesPage() {
                 </div>
               )}
 
-              {/* Actions */}
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={() => openEdit(detail)}
-                  className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-[#3A3A3A] px-4 py-2.5 text-sm text-gray-300 hover:border-[#CC2229]/60 hover:text-white transition-colors"
-                >
-                  <Pencil size={15} />
-                  Editar
+              <div className="flex gap-3 pt-2 flex-wrap">
+                <button onClick={() => openEdit(detail)} className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-[#3A3A3A] px-4 py-2.5 text-sm text-gray-300 hover:border-[#CC2229]/60 hover:text-white transition-colors">
+                  <Pencil size={15} /> Editar
                 </button>
                 <button
-                  onClick={() => handleDelete(detail.id)}
-                  className="flex items-center justify-center gap-2 rounded-xl border border-[#3A3A3A] px-4 py-2.5 text-sm text-gray-400 hover:border-red-500/40 hover:text-red-400 transition-colors"
+                  onClick={() => { setMergePartner(null); setMergeQuery(""); setMergeWinnerId(null); setShowMergeModal(true); }}
+                  className="flex items-center justify-center gap-2 rounded-xl border border-[#3A3A3A] px-4 py-2.5 text-sm text-gray-400 hover:border-violet-500/40 hover:text-violet-300 transition-colors"
                 >
-                  <Trash2 size={15} />
-                  Eliminar
+                  <GitMerge size={15} /> Fusionar
+                </button>
+                <button onClick={() => handleDelete(detail.id)} className="flex items-center justify-center gap-2 rounded-xl border border-[#3A3A3A] px-4 py-2.5 text-sm text-gray-400 hover:border-red-500/40 hover:text-red-400 transition-colors">
+                  <Trash2 size={15} /> Eliminar
                 </button>
               </div>
             </div>
@@ -887,44 +937,31 @@ export default function CrmClientesPage() {
         vendedoresList={vendedoresActivos}
       />
 
-      {/* Dedup review modal */}
+      {/* Dedup modal */}
       {showDedupModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center">
           <button className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowDedupModal(false)} />
           <div className="relative bg-[#1A1A1A] border border-[#3A3A3A] rounded-2xl w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl">
-            {/* Header */}
             <div className="flex items-center gap-3 px-6 py-4 border-b border-[#3A3A3A] shrink-0">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/10">
-                <GitMerge size={18} className="text-amber-400" />
-              </div>
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/10"><GitMerge size={18} className="text-amber-400" /></div>
               <div>
                 <h3 className="text-sm font-semibold text-white">Revisar duplicados</h3>
-                <p className="text-xs text-gray-500">Selecciona cuál registro conservar en cada grupo. Los demás se eliminarán.</p>
+                <p className="text-xs text-gray-500">Elige cuál conservar. Los datos numéricos se suman; el otro se elimina y sus referencias se actualizan.</p>
               </div>
-              <button onClick={() => setShowDedupModal(false)} className="ml-auto p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-white/5 transition-colors">
-                <X size={16} />
-              </button>
+              <button onClick={() => setShowDedupModal(false)} className="ml-auto p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-white/5 transition-colors"><X size={16} /></button>
             </div>
-
-            {/* Groups */}
             <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
               {duplicadoGroups.map(({ key, members }) => (
                 <div key={key} className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
-                  <div className="px-4 py-2.5 border-b border-[#3A3A3A] flex items-center gap-2">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-400">
-                      {members.length} registros · mismo nombre normalizado
-                    </span>
+                  <div className="px-4 py-2.5 border-b border-[#3A3A3A]">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-400">{members.length} registros · mismo nombre normalizado</span>
                   </div>
                   <div className="divide-y divide-[#3A3A3A]">
                     {members.map((c) => {
                       const isKeep = dedupKeep[key] === c.id;
                       return (
-                        <button
-                          key={c.id}
-                          type="button"
-                          onClick={() => setDedupKeep((prev) => ({ ...prev, [key]: c.id }))}
-                          className={`w-full flex items-start gap-3 px-4 py-3 text-left transition-colors cursor-pointer ${isKeep ? "bg-emerald-500/5" : "hover:bg-white/[0.02]"}`}
-                        >
+                        <button key={c.id} type="button" onClick={() => setDedupKeep((prev) => ({ ...prev, [key]: c.id }))}
+                          className={`w-full flex items-start gap-3 px-4 py-3 text-left transition-colors cursor-pointer ${isKeep ? "bg-emerald-500/5" : "hover:bg-white/[0.02]"}`}>
                           <div className={`mt-0.5 shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center ${isKeep ? "border-emerald-500 bg-emerald-500" : "border-gray-600"}`}>
                             {isKeep && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                           </div>
@@ -937,6 +974,7 @@ export default function CrmClientesPage() {
                               {c.rfc && <span className="font-mono">{c.rfc}</span>}
                               {c.contacto && <span>{c.contacto}</span>}
                               {c.fechaAlta && <span>Alta: {c.fechaAlta}</span>}
+                              <span className="text-blue-500/70">{c.m3Acumulados ?? 0} m3 · ${(c.totalComprasAnio ?? 0).toLocaleString()}</span>
                             </div>
                           </div>
                           {!isKeep && <Trash2 size={13} className="text-gray-700 mt-0.5 shrink-0" />}
@@ -947,24 +985,105 @@ export default function CrmClientesPage() {
                 </div>
               ))}
             </div>
-
-            {/* Footer */}
             <div className="shrink-0 px-6 py-4 border-t border-[#3A3A3A] flex items-center justify-between gap-3">
               <p className="text-xs text-gray-500">
-                Se eliminarán{" "}
-                <span className="text-red-400 font-semibold">
-                  {duplicadoGroups.reduce((n, { key, members }) => n + members.filter((c) => c.id !== (dedupKeep[key] ?? members[0].id)).length, 0)} registros
-                </span>
+                Se eliminarán <span className="text-red-400 font-semibold">{duplicadoGroups.reduce((n, { key, members }) => n + members.filter((c) => c.id !== (dedupKeep[key] ?? members[0].id)).length, 0)} registros</span> · datos numéricos se suman al conservado
               </p>
               <div className="flex gap-3">
-                <button onClick={() => setShowDedupModal(false)} className="px-4 py-2 text-sm text-gray-400 border border-[#3A3A3A] rounded-xl hover:border-gray-500 transition-colors">
-                  Cancelar
-                </button>
-                <button onClick={confirmDedup} className="px-5 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors">
-                  Confirmar y limpiar
-                </button>
+                <button onClick={() => setShowDedupModal(false)} className="px-4 py-2 text-sm text-gray-400 border border-[#3A3A3A] rounded-xl hover:border-gray-500 transition-colors">Cancelar</button>
+                <button onClick={confirmDedup} className="px-5 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors">Confirmar y fusionar</button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Manual merge modal */}
+      {showMergeModal && detail && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center">
+          <button className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={closeMergeModal} />
+          <div className="relative bg-[#1A1A1A] border border-[#3A3A3A] rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl">
+            <div className="flex items-center gap-3 px-6 py-4 border-b border-[#3A3A3A] shrink-0">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-500/10"><GitMerge size={18} className="text-violet-400" /></div>
+              <div>
+                <h3 className="text-sm font-semibold text-white">Fusionar cliente</h3>
+                <p className="text-xs text-gray-500">Busca el cliente a fusionar con <span className="text-white">{detail.razonSocial}</span></p>
+              </div>
+              <button onClick={closeMergeModal} className="ml-auto p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-white/5 transition-colors"><X size={16} /></button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+              {!mergePartner ? (
+                <>
+                  <div className="relative">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+                    <input
+                      autoFocus
+                      value={mergeQuery}
+                      onChange={(e) => setMergeQuery(e.target.value)}
+                      placeholder="Buscar cliente..."
+                      className="w-full bg-[#242424] border border-[#3A3A3A] rounded-lg pl-9 pr-3 py-2.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    {mergeSearchResults.length === 0 && mergeQuery && (
+                      <p className="text-center text-sm text-gray-500 py-4">Sin resultados</p>
+                    )}
+                    {mergeSearchResults.map((c) => (
+                      <button key={c.id} type="button" onClick={() => { setMergePartner(c); setMergeWinnerId(detail.id); }}
+                        className="w-full flex items-start gap-3 px-4 py-3 rounded-xl text-left hover:bg-[#242424] transition-colors cursor-pointer border border-transparent hover:border-[#3A3A3A]">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-white font-medium">{c.razonSocial}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">{c.rfc} · {c.municipio} · {c.m3Acumulados ?? 0} m3</p>
+                        </div>
+                        <ChevronRight size={14} className="text-gray-600 mt-0.5 shrink-0" />
+                      </button>
+                    ))}
+                    {!mergeQuery && <p className="text-center text-xs text-gray-600 py-3">Escribe para buscar clientes</p>}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-gray-500">¿Cuál registro conservar? Los datos numéricos de ambos se sumarán en el ganador.</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {[detail, mergePartner].map((c) => {
+                      const isWinner = mergeWinnerId === c.id;
+                      return (
+                        <button key={c.id} type="button" onClick={() => setMergeWinnerId(c.id)}
+                          className={`text-left rounded-xl border p-4 transition-colors cursor-pointer ${isWinner ? "border-emerald-500/50 bg-emerald-500/5" : "border-[#3A3A3A] hover:border-gray-500"}`}>
+                          <div className={`text-[10px] font-semibold uppercase tracking-wider mb-2 ${isWinner ? "text-emerald-400" : "text-gray-600"}`}>
+                            {isWinner ? "✓ Conservar" : "Eliminar"}
+                          </div>
+                          <p className={`text-sm font-semibold leading-tight ${isWinner ? "text-emerald-300" : "text-gray-400"}`}>{c.razonSocial}</p>
+                          <p className="text-xs text-gray-600 font-mono mt-1">{c.rfc}</p>
+                          <div className="mt-2 space-y-0.5 text-xs text-gray-500">
+                            <p>{c.m3Acumulados ?? 0} m3 · ${(c.totalComprasAnio ?? 0).toLocaleString()}</p>
+                            <p>Saldo: ${(c.saldoPendiente ?? 0).toLocaleString()}</p>
+                            {c.notas && <p className="italic truncate">{c.notas}</p>}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="rounded-xl bg-[#242424] border border-[#3A3A3A] px-4 py-3 text-xs text-gray-500 space-y-1">
+                    <p className="font-semibold text-gray-400">Resultado fusionado</p>
+                    <p>m3: {((detail.m3Acumulados ?? 0) + (mergePartner.m3Acumulados ?? 0)).toLocaleString()}</p>
+                    <p>Compras año: ${((detail.totalComprasAnio ?? 0) + (mergePartner.totalComprasAnio ?? 0)).toLocaleString()}</p>
+                    <p>Saldo: ${((detail.saldoPendiente ?? 0) + (mergePartner.saldoPendiente ?? 0)).toLocaleString()}</p>
+                  </div>
+                  <button type="button" onClick={() => { setMergePartner(null); setMergeQuery(""); setMergeWinnerId(null); }} className="text-xs text-gray-500 hover:text-gray-300 transition-colors">← Cambiar cliente</button>
+                </>
+              )}
+            </div>
+
+            {mergePartner && (
+              <div className="shrink-0 px-6 py-4 border-t border-[#3A3A3A] flex items-center justify-end gap-3">
+                <button onClick={closeMergeModal} className="px-4 py-2 text-sm text-gray-400 border border-[#3A3A3A] rounded-xl hover:border-gray-500 transition-colors">Cancelar</button>
+                <button onClick={executeMerge} disabled={mergingClients || !mergeWinnerId} className="px-5 py-2 text-sm font-semibold text-white bg-violet-600 hover:bg-violet-700 rounded-xl transition-colors disabled:opacity-50">
+                  {mergingClients ? "Fusionando…" : "Confirmar fusión"}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

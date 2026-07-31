@@ -1,5 +1,5 @@
 import { crmOpportunities } from "@/lib/crmPipeline";
-import { getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
+import { upsertDocument, COLLECTIONS } from "@/lib/db";
 import type { Viaje } from "@/lib/viajes";
 
 export type ConcreteSupplyType = "Tiro directo" | "Bombeado";
@@ -33,9 +33,8 @@ export interface ConcreteReceipt {
   total: number;
   resta: number;
   viajeFolio?: string;
+  planta?: string;
 }
-
-export const concreteReceiptStorageKey = "duro_concretos_concrete_receipts";
 
 export const concreteReceiptClientes = Array.from(new Set([
   ...crmOpportunities.map((item) => item.cliente),
@@ -68,8 +67,6 @@ export const defaultConcreteExtras: ConcreteExtra[] = [
   { name: "Maniobra", checked: false, price: 0, quantity: "", unit: "" },
   { name: "Tiempo extra", checked: false, price: 0, quantity: "", unit: "HR." },
 ];
-
-export const concreteReceiptsBase: ConcreteReceipt[] = [];
 
 export function calculateConcreteReceiptTotal({
   m3,
@@ -114,27 +111,6 @@ export function formatReceiptDate(date: string) {
     month: monthNames[month] ?? month,
     year,
   };
-}
-
-export function loadConcreteReceipts() {
-  if (typeof window === "undefined") return [];
-
-  const raw = localStorage.getItem(concreteReceiptStorageKey);
-  if (!raw) return [];
-
-  try {
-    const receipts = JSON.parse(raw) as ConcreteReceipt[];
-    return Array.isArray(receipts) ? receipts : [];
-  } catch {
-    localStorage.removeItem(concreteReceiptStorageKey);
-    return [];
-  }
-}
-
-export function saveConcreteReceipts(receipts: ConcreteReceipt[]) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(concreteReceiptStorageKey, JSON.stringify(receipts));
-  window.dispatchEvent(new CustomEvent("duro:concrete-receipts-updated"));
 }
 
 export async function syncReceiptWithTrip(receipt: ConcreteReceipt) {

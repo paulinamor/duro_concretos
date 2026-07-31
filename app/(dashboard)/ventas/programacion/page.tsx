@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, Clock, Package, Phone,
-  Plus, Truck, Users, X,
+  AlertTriangle, ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, Clock, Copy, ExternalLink,
+  MapPin, Package, Phone, Plus, Search, Truck, Users, X,
 } from "lucide-react";
 import ClienteCombobox from "@/components/ClienteCombobox";
 import { upsertDocument, COLLECTIONS } from "@/lib/db";
@@ -12,6 +12,13 @@ import { useCollection, useCollectionRaw } from "@/lib/useCollection";
 import { tiposCliente, type Cliente, type TipoCliente } from "@/lib/crmClientes";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+interface FaseEntry {
+  fase: string;
+  fecha: string;
+  nota?: string;
+  usuario?: string;
+}
 
 interface Programacion {
   id?: string;
@@ -54,6 +61,11 @@ interface Programacion {
   choferes: unknown[];
   notas?: string;
   planta?: string;
+  folio?: string;
+  notasAcceso?: string;
+  historial?: FaseEntry[];
+  fase?: string;
+  vehiculoSamsaraId?: string;
 }
 
 interface NuevoClienteForm {
@@ -96,6 +108,28 @@ function formFromProg(p: Programacion): VForm {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function todayISO() { return new Date().toISOString().slice(0, 10); }
+function isUrl(v: string) { return v.startsWith("http://") || v.startsWith("https://"); }
+
+function extractCoordsFromUrl(url: string): { lat: number; lng: number } | null {
+  const atMatch = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if (atMatch) return { lat: parseFloat(atMatch[1]), lng: parseFloat(atMatch[2]) };
+  const qMatch = url.match(/[?&]q=(-?\d+\.\d+),\+?(-?\d+\.\d+)/);
+  if (qMatch) return { lat: parseFloat(qMatch[1]), lng: parseFloat(qMatch[2]) };
+  const searchMatch = url.match(/\/maps\/search\/(-?\d+\.\d+),\+?(-?\d+\.\d+)/);
+  if (searchMatch) return { lat: parseFloat(searchMatch[1]), lng: parseFloat(searchMatch[2]) };
+  return null;
+}
+
+function generarFolio(progs: Programacion[]): string {
+  const year = new Date().getFullYear();
+  const nums = progs
+    .map((p) => p.folio?.match(/PROG-\d{4}-(\d+)/)?.[1])
+    .filter(Boolean)
+    .map((n) => parseInt(n!));
+  const next = nums.length > 0 ? Math.max(...nums) + 1 : 1;
+  return `PROG-${year}-${String(next).padStart(4, "0")}`;
+}
+
 function addDays(iso: string, d: number) {
   const dt = new Date(iso + "T12:00:00"); dt.setDate(dt.getDate() + d); return dt.toISOString().slice(0, 10);
 }
@@ -124,19 +158,42 @@ function PedidoDrawer({
 }) {
   const [form, setForm] = useState<VForm>(emptyForm(todayISO()));
   const [saving, setSaving] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [nuevoOpen, setNuevoOpen] = useState(false);
   const [nuevoForm, setNuevoForm] = useState<NuevoClienteForm>({
     razonSocial: "", rfc: "", contacto: "", telefono: "", tipoCliente: "Constructora", vendedorAsignado: "",
   });
   const [nuevoSaving, setNuevoSaving] = useState(false);
   const [nuevoError, setNuevoError] = useState("");
+  const [resolvedCoords, setResolvedCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [resolvingUrl, setResolvingUrl] = useState(false);
 
   useEffect(() => {
     if (open) {
       setForm(prog ? formFromProg(prog) : emptyForm(todayISO()));
       setNuevoOpen(false);
+      setResolvedCoords(null);
     }
   }, [open, prog]);
+
+  useEffect(() => {
+    const url = form.direccion;
+    if (!isUrl(url) || extractCoordsFromUrl(url)) {
+      setResolvedCoords(null);
+      setResolvingUrl(false);
+      return;
+    }
+    setResolvingUrl(true);
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      fetch(`/api/maps/resolve?url=${encodeURIComponent(url)}`)
+        .then((r) => r.json())
+        .then((data) => { if (!cancelled) setResolvedCoords(data.coords ?? null); })
+        .catch(() => { if (!cancelled) setResolvedCoords(null); })
+        .finally(() => { if (!cancelled) setResolvingUrl(false); });
+    }, 600);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [form.direccion]);
 
   function set(k: keyof VForm, v: string) { setForm((f) => ({ ...f, [k]: v })); }
 
@@ -225,12 +282,7 @@ function PedidoDrawer({
           {/* Cliente */}
           <ClienteCombobox
             label="Cliente" required value={form.cliente} onChange={(v) => set("cliente", v)}
-            options={clientesList} placeholder="Buscar o escribir cliente…"
-            onNuevo={onSaveCliente ? (nombre) => {
-              setNuevoForm({ razonSocial: nombre, rfc: "", contacto: "", telefono: "", tipoCliente: "Constructora", vendedorAsignado: vendedorNombre });
-              setNuevoError("");
-              setNuevoOpen(true);
-            } : undefined}
+            options={clientesList} placeholder="Buscar cliente registrado…"
           />
 
           {/* Teléfono */}
@@ -241,8 +293,96 @@ function PedidoDrawer({
 
           {/* Obra */}
           <div>
-            <label className={lbl}>Obra (dirección)</label>
-            <input value={form.direccion} onChange={(e) => set("direccion", e.target.value)} placeholder="Dirección de la obra" className={inp} />
+            <label className={lbl}>Obra (dirección o link de Maps)</label>
+            <input
+              value={form.direccion}
+              onChange={(e) => { set("direccion", e.target.value); setCopied(false); }}
+              placeholder="Dirección o link de Google Maps"
+              className={inp}
+            />
+            {isUrl(form.direccion) && (
+              <>
+                <div className="flex items-center gap-3 mt-1.5">
+                  <a
+                    href={form.direccion}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 font-medium"
+                  >
+                    <ExternalLink size={12} /> Ver en Maps
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (navigator.share) {
+                        navigator.share({ url: form.direccion, title: "Ubicación de obra" }).catch(() => {});
+                      } else {
+                        navigator.clipboard.writeText(form.direccion);
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 2000);
+                      }
+                    }}
+                    className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-200 font-medium cursor-pointer transition-colors"
+                  >
+                    <Copy size={12} />
+                    {copied ? "¡Copiado!" : "Compartir"}
+                  </button>
+                </div>
+
+                {/* Mini mapa preview */}
+                {(() => {
+                  const directCoords = extractCoordsFromUrl(form.direccion);
+                  const coords = directCoords ?? resolvedCoords;
+                  if (resolvingUrl) {
+                    return (
+                      <div className="mt-2 rounded-xl border border-gray-200 bg-gray-50 flex flex-col items-center justify-center gap-2 py-5" style={{ height: 160 }}>
+                        <div className="w-5 h-5 rounded-full border-2 border-gray-300 border-t-[#CC2229] animate-spin" />
+                        <p className="text-xs text-gray-400">Verificando ubicación…</p>
+                      </div>
+                    );
+                  }
+                  if (coords) {
+                    const { lat, lng } = coords;
+                    const delta = 0.004;
+                    const embedUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${lng - delta},${lat - delta},${lng + delta},${lat + delta}&layer=mapnik&marker=${lat},${lng}`;
+                    return (
+                      <div className="mt-2 rounded-xl overflow-hidden border border-gray-200 relative" style={{ height: 160 }}>
+                        <iframe
+                          src={embedUrl}
+                          width="100%"
+                          height="100%"
+                          className="w-full h-full border-0"
+                          title="Vista previa de ubicación"
+                          loading="lazy"
+                        />
+                        <a
+                          href={form.direccion}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="absolute bottom-2 right-2 bg-white/95 text-blue-600 text-[10px] font-semibold px-2 py-1 rounded-lg shadow-sm hover:bg-white transition-colors"
+                        >
+                          Abrir en Maps →
+                        </a>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="mt-2 rounded-xl border border-gray-200 bg-gray-50 flex flex-col items-center justify-center gap-2 py-5">
+                      <MapPin size={22} className="text-gray-300" />
+                      <p className="text-xs text-gray-400 text-center">No se pudo obtener la ubicación</p>
+                      <a
+                        href={form.direccion}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-blue-500 hover:text-blue-600 font-medium flex items-center gap-1"
+                      >
+                        <ExternalLink size={11} /> Verificar en Google Maps
+                      </a>
+                    </div>
+                  );
+                })()}
+              </>
+            )}
           </div>
 
           {/* M3 */}
@@ -370,11 +510,50 @@ export default function VentasProgramacionPage() {
   const [showDrawer, setShowDrawer] = useState(false);
   const [editing, setEditing] = useState<Programacion | null>(null);
 
+  // Feature 2: búsqueda por folio/cliente/dirección
+  const [folioSearch, setFolioSearch] = useState("");
+
+  // Feature 3: modal de cierre
+  const [showCierre, setShowCierre] = useState(false);
+  const [cierreProg, setCierreProg] = useState<Programacion | null>(null);
+  const [cierreNotas, setCierreNotas] = useState("");
+  const [cierreSaving, setCierreSaving] = useState(false);
+
+  // Feature 4: modal de timeline
+  const [showTimeline, setShowTimeline] = useState(false);
+  const [timelineProg, setTimelineProg] = useState<Programacion | null>(null);
+
+
+  // Asignar folios retroactivos a programaciones que no los tienen
+  const retroactivoRan = useRef(false);
+  useEffect(() => {
+    if (retroactivoRan.current || allProgs.length === 0) return;
+    retroactivoRan.current = true;
+    const sinFolio = allProgs.filter((p) => !p.folio && p.id);
+    if (sinFolio.length === 0) return;
+    let maxNum = allProgs.reduce((max, p) => {
+      const m = p.folio?.match(/PROG-\d{4}-(\d+)/);
+      return m ? Math.max(max, parseInt(m[1])) : max;
+    }, 0);
+    const sorted = [...sinFolio].sort((a, b) => a.dia.localeCompare(b.dia));
+    Promise.all(sorted.map((prog) => {
+      maxNum++;
+      const year = prog.dia?.slice(0, 4) ?? new Date().getFullYear().toString();
+      const folio = `PROG-${year}-${String(maxNum).padStart(4, "0")}`;
+      const { id, ...rest } = prog;
+      // El doc ya tiene planta; no llamamos withPlantaTag para no requerir sesión con planta activa
+      return upsertDocument(COLLECTIONS.programaciones, id!, { ...rest, folio });
+    }));
+  }, [allProgs]);
+
   const clientesList = useMemo(() => {
     const fromClientes = rawClientes.flatMap((c) => [c.razonSocial, c.nombreComercial].filter(Boolean)) as string[];
-    const fromProgs = allProgs.map((p) => p.cliente).filter(Boolean);
-    return Array.from(new Set([...fromClientes, ...fromProgs])).sort();
-  }, [rawClientes, allProgs]);
+    return Array.from(new Set(fromClientes)).sort();
+  }, [rawClientes]);
+
+  const catalogoNombres = useMemo(() => new Set(
+    rawClientes.flatMap((c) => [c.razonSocial, c.nombreComercial ?? ""].filter(Boolean).map((n) => n.trim().toLowerCase())),
+  ), [rawClientes]);
 
   // Solo los pedidos del vendedor activo
   const misPedidos = useMemo(() =>
@@ -382,6 +561,17 @@ export default function VentasProgramacionPage() {
       .filter((p) => p.vendedor === vendedorNombre)
       .sort((a, b) => b.dia.localeCompare(a.dia) || (a.diaHoraPedido ?? "").localeCompare(b.diaHoraPedido ?? "")),
     [allProgs, vendedorNombre]);
+
+  // Feature 2: filtrado por folio/cliente/dirección
+  const pedidosFiltrados = useMemo(() => {
+    if (!folioSearch.trim()) return misPedidos;
+    const q = folioSearch.toLowerCase();
+    return misPedidos.filter((p) =>
+      p.folio?.toLowerCase().includes(q) ||
+      p.cliente?.toLowerCase().includes(q) ||
+      p.direccion?.toLowerCase().includes(q),
+    );
+  }, [misPedidos, folioSearch]);
 
   // Disponibilidad del día activo (todos los pedidos de ese día, sin revelar datos de otros)
   const pedidosDia = useMemo(() =>
@@ -445,6 +635,7 @@ export default function VentasProgramacionPage() {
       window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", title: "Guardado", message: "Pedido actualizado." } }));
     } else {
       const id = `prog-v-${Date.now()}`;
+      const folio = generarFolio(allProgs);
       const newProg: Omit<Programacion, "id"> = {
         dia: form.dia,
         vendedor: vendedorNombre,
@@ -462,9 +653,42 @@ export default function VentasProgramacionPage() {
         factorBomba: null, aplicarFactorBomba: false, ltoAcelr: null,
         kiloFibra: null, m3Imper: null, tuberiaExtra: null, permisosOC: null,
         totalXM3: null, total: null, montoPagado: null,
+        folio,
+        fase: "Creado",
+        historial: [{ fase: "Creado", fecha: new Date().toISOString(), usuario: vendedorNombre }],
       };
       await upsertDocument(COLLECTIONS.programaciones, id, withPlantaTag(newProg));
       window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", title: "Pedido creado", message: `${form.cliente} — en espera de asignación.` } }));
+    }
+  }
+
+  // Feature 3: función de cierre
+  async function handleCierre() {
+    if (!cierreProg?.id) return;
+    setCierreSaving(true);
+    try {
+      const { id, ...rest } = cierreProg;
+      const nuevaFase: FaseEntry = {
+        fase: "Entregado",
+        fecha: new Date().toISOString(),
+        nota: cierreNotas.trim() || undefined,
+        usuario: vendedorNombre,
+      };
+      const updated = {
+        ...rest,
+        fase: "Entregado",
+        notasAcceso: cierreNotas.trim() || rest.notasAcceso,
+        historial: [...(rest.historial ?? []), nuevaFase],
+      };
+      await upsertDocument(COLLECTIONS.programaciones, id!, withPlantaTag(updated));
+      setShowCierre(false);
+      setCierreProg(null);
+      setCierreNotas("");
+      window.dispatchEvent(new CustomEvent("duro:toast", {
+        detail: { type: "success", message: `${cierreProg.folio ?? "Pedido"} cerrado como Entregado.` },
+      }));
+    } finally {
+      setCierreSaving(false);
     }
   }
 
@@ -472,8 +696,8 @@ export default function VentasProgramacionPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-gray-500 text-sm">
-          Tus pedidos · <span className="text-white font-medium">{vendedorNombre}</span>
+        <p className="text-gray-500 text-sm" suppressHydrationWarning>
+          Tus pedidos · <span className="text-white font-medium" suppressHydrationWarning>{vendedorNombre}</span>
         </p>
         <button
           onClick={() => { setEditing(null); setShowDrawer(true); }}
@@ -532,14 +756,28 @@ export default function VentasProgramacionPage() {
 
       {/* Mis pedidos */}
       <div>
-        <h3 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-3">Todos mis pedidos</h3>
-        {misPedidos.length === 0 ? (
+        <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+          <h3 className="text-xs font-semibold uppercase tracking-widest text-gray-500">Todos mis pedidos</h3>
+          <div className="relative">
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+            <input
+              value={folioSearch}
+              onChange={(e) => setFolioSearch(e.target.value)}
+              placeholder="Buscar folio, cliente o dirección..."
+              className="w-72 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg pl-9 pr-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
+            />
+          </div>
+        </div>
+
+        {pedidosFiltrados.length === 0 ? (
           <div className="text-center py-16 text-gray-600 text-sm bg-[#242424] border border-[#3A3A3A] rounded-xl">
-            Sin pedidos registrados. Crea el primero con el botón de arriba.
+            {folioSearch.trim()
+              ? "Sin resultados para esa búsqueda."
+              : "Sin pedidos registrados. Crea el primero con el botón de arriba."}
           </div>
         ) : (
           <div className="space-y-2">
-            {misPedidos.map((p) => {
+            {pedidosFiltrados.map((p) => {
               const asignado = !!(p.hora && p.choferes && (p.choferes as unknown[]).length > 0);
               return (
                 <div key={p.id}
@@ -552,15 +790,53 @@ export default function VentasProgramacionPage() {
                   </div>
 
                   <div className="flex-1 min-w-0">
+                    {/* Feature 2: folio clickeable que abre timeline */}
+                    {p.folio && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setTimelineProg(p); setShowTimeline(true); }}
+                        className="text-[10px] font-mono font-semibold text-[#CC2229] hover:text-[#FF3A42] transition-colors mb-0.5"
+                      >
+                        #{p.folio}
+                      </button>
+                    )}
+
                     <div className="flex items-start justify-between gap-2">
-                      <p className="text-sm font-semibold text-white truncate">{p.cliente}</p>
-                      <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${asignado ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20" : "bg-amber-500/15 text-amber-400 border border-amber-500/20"}`}>
-                        {asignado ? "Asignado" : "Pendiente"}
-                      </span>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <p className="text-sm font-semibold text-white truncate">{p.cliente}</p>
+                        {p.cliente && catalogoNombres.size > 0 && !catalogoNombres.has(p.cliente.trim().toLowerCase()) && (
+                          <span className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/20">
+                            Sin vínculo
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {/* Feature 3: badge Entregado */}
+                        {p.fase === "Entregado" && (
+                          <span className="shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
+                            Entregado
+                          </span>
+                        )}
+                        <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${asignado ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20" : "bg-amber-500/15 text-amber-400 border border-amber-500/20"}`}>
+                          {asignado ? "Asignado" : "Pendiente"}
+                        </span>
+                      </div>
                     </div>
                     <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1.5">
                       {p.direccion && (
-                        <span className="text-xs text-gray-400 truncate max-w-[200px]">{p.direccion}</span>
+                        isUrl(p.direccion) ? (
+                          <a
+                            href={p.direccion}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                          >
+                            <MapPin size={10} /> Ver ubicación
+                          </a>
+                        ) : (
+                          <span className="text-xs text-gray-400 truncate max-w-[200px]">{p.direccion}</span>
+                        )
                       )}
                       {p.m3Totales != null && (
                         <span className="text-xs text-blue-400 font-semibold">{p.m3Totales} m³</span>
@@ -583,21 +859,247 @@ export default function VentasProgramacionPage() {
                           <Clock size={10} /> Pedido: {fmtHoraPedido(p.diaHoraPedido)}
                         </span>
                       )}
+                      {/* Feature 2: badge de acceso especial */}
+                      {p.notasAcceso && (
+                        <span className="text-[10px] text-orange-400 flex items-center gap-1">
+                          <AlertTriangle size={9} /> Acceso especial
+                        </span>
+                      )}
                     </div>
                   </div>
 
-                  <button
-                    onClick={() => { setEditing(p); setShowDrawer(true); }}
-                    className="shrink-0 text-xs text-gray-500 hover:text-white border border-[#3A3A3A] rounded-lg px-3 py-1.5 transition-colors cursor-pointer hover:border-[#4A4A4A]"
-                  >
-                    Editar
-                  </button>
+                  <div className="flex flex-col gap-2 shrink-0">
+                    {/* Feature 3: botón Cerrar */}
+                    {p.fase !== "Entregado" && (
+                      <button
+                        onClick={() => { setCierreProg(p); setCierreNotas(p.notasAcceso ?? ""); setShowCierre(true); }}
+                        className="shrink-0 text-xs text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 rounded-lg px-3 py-1.5 transition-colors cursor-pointer hover:border-emerald-500/50"
+                      >
+                        Cerrar
+                      </button>
+                    )}
+                    <button
+                      onClick={() => { setEditing(p); setShowDrawer(true); }}
+                      className="shrink-0 text-xs text-gray-500 hover:text-white border border-[#3A3A3A] rounded-lg px-3 py-1.5 transition-colors cursor-pointer hover:border-[#4A4A4A]"
+                    >
+                      Editar
+                    </button>
+                  </div>
                 </div>
               );
             })}
           </div>
         )}
       </div>
+
+      {/* Feature 3: Modal de cierre */}
+      {showCierre && cierreProg && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center">
+          <button className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowCierre(false)} />
+          <div className="relative bg-[#1A1A1A] border border-[#3A3A3A] rounded-2xl w-full max-w-md flex flex-col shadow-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-white">Cerrar pedido</h3>
+                <p className="text-xs text-gray-500 mt-0.5">{cierreProg.folio} · {cierreProg.cliente}</p>
+              </div>
+              <button onClick={() => setShowCierre(false)} className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-white/5"><X size={16} /></button>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">
+                Notas de acceso a la ubicación
+              </label>
+              <textarea
+                value={cierreNotas}
+                onChange={(e) => setCierreNotas(e.target.value)}
+                rows={4}
+                placeholder="Ej: Acceso difícil por rampa en terreno. Llegar 15 min antes. Portón derecho."
+                className="w-full bg-[#242424] border border-[#3A3A3A] rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-[#CC2229] resize-none"
+              />
+              <p className="text-xs text-gray-600 mt-1">Se guardan para pedidos futuros a esta ubicación.</p>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button onClick={() => setShowCierre(false)} className="flex-1 py-2.5 text-sm text-gray-400 border border-[#3A3A3A] rounded-xl hover:border-gray-500 transition-colors">
+                Cancelar
+              </button>
+              <button onClick={handleCierre} disabled={cierreSaving}
+                className="flex-1 py-2.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors disabled:opacity-50">
+                {cierreSaving ? "Guardando…" : "Marcar como Entregado"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Feature 4: Modal de timeline */}
+      {showTimeline && timelineProg && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center">
+          <button className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowTimeline(false)} />
+          <div className="relative bg-[#1A1A1A] border border-[#3A3A3A] rounded-2xl w-full max-w-md flex flex-col shadow-2xl p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between shrink-0">
+              <div>
+                <h3 className="text-sm font-semibold text-white">Rastreo del pedido</h3>
+                <p className="text-xs text-gray-500 mt-0.5">{timelineProg.folio} · {timelineProg.cliente}</p>
+              </div>
+              <button onClick={() => setShowTimeline(false)} className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-white/5"><X size={16} /></button>
+            </div>
+
+            {/* Datos del pedido */}
+            <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl p-4 text-xs text-gray-400 space-y-3">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
+                <div>
+                  <p className="text-gray-600 mb-0.5">Folio</p>
+                  <p className="text-white font-mono font-semibold">{timelineProg.folio ?? "—"}</p>
+                </div>
+                <div>
+                  <p className="text-gray-600 mb-0.5">Fase actual</p>
+                  <p className={timelineProg.fase === "Entregado" ? "text-emerald-400 font-semibold" : "text-amber-400 font-semibold"}>{timelineProg.fase ?? "Creado"}</p>
+                </div>
+                <div>
+                  <p className="text-gray-600 mb-0.5">Cliente</p>
+                  <p className="text-white">{timelineProg.cliente || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-gray-600 mb-0.5">Vendedor</p>
+                  <p className="text-white">{timelineProg.vendedor || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-gray-600 mb-0.5">Día de entrega</p>
+                  <p className="text-white">{timelineProg.dia || "—"}</p>
+                </div>
+                {timelineProg.hora && (
+                  <div>
+                    <p className="text-gray-600 mb-0.5">Hora de llegada</p>
+                    <p className="text-white font-semibold">{timelineProg.hora}</p>
+                  </div>
+                )}
+                {timelineProg.m3Totales != null && (
+                  <div>
+                    <p className="text-gray-600 mb-0.5">m³ pedidos</p>
+                    <p className="text-blue-400 font-semibold">{timelineProg.m3Totales} m³</p>
+                  </div>
+                )}
+                {timelineProg.tdBom && (
+                  <div>
+                    <p className="text-gray-600 mb-0.5">Tipo</p>
+                    <p className="text-white">{timelineProg.tdBom}</p>
+                  </div>
+                )}
+                {timelineProg.resistencia && (
+                  <div>
+                    <p className="text-gray-600 mb-0.5">Resistencia</p>
+                    <p className="text-white">{timelineProg.resistencia}</p>
+                  </div>
+                )}
+                {timelineProg.precioM3 != null && (
+                  <div>
+                    <p className="text-gray-600 mb-0.5">Precio / m³</p>
+                    <p className="text-white">${timelineProg.precioM3.toLocaleString("es-MX")}</p>
+                  </div>
+                )}
+                {timelineProg.total != null && (
+                  <div>
+                    <p className="text-gray-600 mb-0.5">Total</p>
+                    <p className="text-white font-semibold">${timelineProg.total.toLocaleString("es-MX")}</p>
+                  </div>
+                )}
+                {timelineProg.pagado && (
+                  <div>
+                    <p className="text-gray-600 mb-0.5">Pagado</p>
+                    <p className={timelineProg.pagado === "Sí" ? "text-emerald-400 font-semibold" : "text-amber-400"}>{timelineProg.pagado}</p>
+                  </div>
+                )}
+                {timelineProg.credito && (
+                  <div>
+                    <p className="text-gray-600 mb-0.5">Crédito</p>
+                    <p className="text-white">{timelineProg.credito}</p>
+                  </div>
+                )}
+              </div>
+              {timelineProg.extras && (
+                <div className="border-t border-[#3A3A3A] pt-2.5">
+                  <p className="text-gray-600 mb-0.5">Extras</p>
+                  <p className="text-gray-300">{timelineProg.extras}</p>
+                </div>
+              )}
+              {Array.isArray(timelineProg.choferes) && (timelineProg.choferes as unknown[]).length > 0 && (
+                <div className="border-t border-[#3A3A3A] pt-2.5">
+                  <p className="text-gray-600 mb-1">Choferes / Unidades asignadas</p>
+                  <div className="space-y-1">
+                    {(timelineProg.choferes as { nombre?: string; unidad?: string; m3?: number }[]).map((c, i) => (
+                      <p key={i} className="text-gray-300">
+                        {c.nombre || `Chofer ${i + 1}`}{c.unidad ? ` · ${c.unidad}` : ""}{c.m3 ? ` · ${c.m3} m³` : ""}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {timelineProg.notas && (
+                <div className="border-t border-[#3A3A3A] pt-2.5">
+                  <p className="text-gray-600 mb-0.5">Notas generales</p>
+                  <p className="text-gray-300">{timelineProg.notas}</p>
+                </div>
+              )}
+              {timelineProg.vehiculoSamsaraId && (
+                <div className="border-t border-[#3A3A3A] pt-2.5">
+                  <p className="text-gray-600 mb-0.5">Unidad Samsara</p>
+                  <p className="text-white font-mono">{timelineProg.vehiculoSamsaraId}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Timeline de fases */}
+            <div className="space-y-0">
+              {(timelineProg.historial ?? [{ fase: "Creado", fecha: "", usuario: timelineProg.vendedor }]).map((entry, i) => {
+                const isLast = i === (timelineProg.historial?.length ?? 1) - 1;
+                const color = entry.fase === "Entregado" ? "text-emerald-400 border-emerald-500" :
+                  entry.fase === "Cancelado" ? "text-red-400 border-red-500" :
+                  entry.fase === "En camino" ? "text-blue-400 border-blue-500" : "text-amber-400 border-amber-500";
+                return (
+                  <div key={i} className="flex gap-4">
+                    <div className="flex flex-col items-center">
+                      <div className={`w-7 h-7 rounded-full border-2 flex items-center justify-center shrink-0 bg-[#1A1A1A] ${color}`}>
+                        <div className="w-2 h-2 rounded-full bg-current" />
+                      </div>
+                      {!isLast && <div className="w-0.5 flex-1 bg-[#3A3A3A] my-1" />}
+                    </div>
+                    <div className={`pb-4 ${isLast ? "" : ""}`}>
+                      <p className={`text-sm font-semibold ${color.split(" ")[0]}`}>{entry.fase}</p>
+                      {entry.fecha && <p className="text-xs text-gray-600 mt-0.5">{new Date(entry.fecha).toLocaleString("es-MX", { dateStyle: "short", timeStyle: "short" })}</p>}
+                      {entry.usuario && <p className="text-xs text-gray-600">{entry.usuario}</p>}
+                      {entry.nota && (
+                        <div className="mt-1.5 bg-[#242424] border border-[#3A3A3A] rounded-lg px-3 py-2">
+                          <p className="text-xs text-gray-300">{entry.nota}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              {/* Fase futura Samsara */}
+              <div className="flex gap-4 opacity-30">
+                <div className="flex flex-col items-center">
+                  <div className="w-7 h-7 rounded-full border-2 border-dashed border-gray-600 flex items-center justify-center shrink-0">
+                    <div className="w-2 h-2 rounded-full bg-gray-600" />
+                  </div>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-500">GPS en tiempo real</p>
+                  <p className="text-xs text-gray-600">Proximamente · Integracion Samsara</p>
+                </div>
+              </div>
+            </div>
+
+            {timelineProg.notasAcceso && (
+              <div className="bg-orange-500/5 border border-orange-500/20 rounded-xl p-3">
+                <p className="text-xs font-semibold text-orange-400 mb-1 flex items-center gap-1.5">
+                  <AlertTriangle size={11} /> Notas de acceso
+                </p>
+                <p className="text-xs text-gray-300">{timelineProg.notasAcceso}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <PedidoDrawer
         open={showDrawer}

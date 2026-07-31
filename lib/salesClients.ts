@@ -28,8 +28,6 @@ export interface SellerClientSummary {
   saldoPendiente: number;
 }
 
-const SALES_CLIENTS_KEY = "duro_concretos_sales_clients";
-
 export const vendedoresBase = ["Ventas MTY", "Ana López", "Carlos Ortiz"];
 
 export const salesClientsBase: SalesClient[] = [
@@ -130,31 +128,6 @@ export const salesClientsBase: SalesClient[] = [
     status: "Prospecto",
   },
 ];
-
-export function loadSalesClients() {
-  if (typeof window === "undefined") return salesClientsBase;
-
-  const raw = localStorage.getItem(SALES_CLIENTS_KEY);
-  if (!raw) {
-    saveSalesClients(salesClientsBase);
-    return salesClientsBase;
-  }
-
-  try {
-    const clients = JSON.parse(raw) as SalesClient[];
-    return clients.length > 0 ? clients : salesClientsBase;
-  } catch {
-    localStorage.removeItem(SALES_CLIENTS_KEY);
-    saveSalesClients(salesClientsBase);
-    return salesClientsBase;
-  }
-}
-
-export function saveSalesClients(clients: SalesClient[]) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(SALES_CLIENTS_KEY, JSON.stringify(clients));
-  window.dispatchEvent(new CustomEvent("duro:sales-clients-updated"));
-}
 
 export function getSalesClientSummaries(clients: SalesClient[]): SellerClientSummary[] {
   const summaries = new Map<string, SellerClientSummary>();

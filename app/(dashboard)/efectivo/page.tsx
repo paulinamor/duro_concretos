@@ -289,6 +289,7 @@ function FormDrawer({ open, onClose, onSave, initial, nextFolio, clientesList }:
 export default function EfectivoPage() {
   const [recibos, setRecibos] = useState<Recibo[]>([]);
   const [clientesList, setClientesList] = useState<string[]>([]);
+  const [catalogoClientes, setCatalogoClientes] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filterEntregado, setFilterEntregado] = useState<"todos" | "entregado" | "pendiente">("todos");
@@ -308,6 +309,7 @@ export default function EfectivoPage() {
       const fromClientes = clientes.flatMap((c) => [c.razonSocial, c.nombreComercial].filter(Boolean));
       const fromProgs = progs.map((p) => p.cliente).filter(Boolean) as string[];
       setClientesList(Array.from(new Set([...fromClientes, ...fromProgs])).sort());
+      setCatalogoClientes(new Set(fromClientes.map((n) => n.trim().toLowerCase())));
     }).finally(() => setLoading(false));
   }, []);
 
@@ -503,7 +505,14 @@ export default function EfectivoPage() {
                   <td className="px-4 py-3 text-gray-400 whitespace-nowrap text-xs">
                     {r.fecha ? new Date(r.fecha + "T12:00:00").toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
                   </td>
-                  <td className="px-4 py-3 font-semibold text-white max-w-[160px] truncate">{r.cliente || "—"}</td>
+                  <td className="px-4 py-3 max-w-[180px]">
+                    <p className="font-semibold text-white truncate">{r.cliente || "—"}</p>
+                    {r.cliente && catalogoClientes.size > 0 && !catalogoClientes.has(r.cliente.trim().toLowerCase()) && (
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/20">
+                        Sin vínculo
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 font-semibold text-white whitespace-nowrap">{currency(r.importe)}</td>
                   <td className="px-4 py-3 text-gray-300">{r.metros != null ? `${r.metros} m³` : "—"}</td>
                   <td className="px-4 py-3 text-gray-300">{r.precio != null ? currency(r.precio) : "—"}</td>

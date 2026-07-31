@@ -8,6 +8,9 @@ import {
   getAllUserProfiles,
   upsertUserProfile,
   withoutUserProfileId,
+  upsertDocument,
+  getCollectionDocs,
+  COLLECTIONS,
   type UserProfile,
 } from "@/lib/db";
 import StatusBadge from "@/components/StatusBadge";
@@ -32,7 +35,9 @@ type UserDraft = {
   planta: Planta;
 };
 
-type Tab = "usuarios" | "apariencia";
+type Tab = "usuarios" | "apariencia" | "ubicaciones";
+
+type PlantaCoord = { lat: string; lng: string; label: string };
 
 // cualquier admin puede gestionar usuarios
 
@@ -47,7 +52,44 @@ export default function ConfiguracionPage() {
   const [userSearch, setUserSearch] = useState("");
   const [userDraft, setUserDraft] = useState<UserDraft | null>(null);
   const [currentTheme, setCurrentTheme] = useState<AppTheme>("dark");
+  const [plantaCoords, setPlantaCoords] = useState<Record<string, PlantaCoord>>({
+    Allende:  { lat: "25.4437", lng: "-100.0233", label: "Planta Allende" },
+    Pesquería: { lat: "25.7544", lng: "-99.9904", label: "Planta Pesquería" },
+  });
+  const [savingCoords, setSavingCoords] = useState(false);
 
+
+  useEffect(() => {
+    getCollectionDocs<{ id: string; key: string; value: PlantaCoord }>(COLLECTIONS.configuracion)
+      .then((docs) => {
+        const coordsDocs = docs.filter((d) => d.key?.startsWith("planta_coords_"));
+        if (coordsDocs.length > 0) {
+          const loaded: Record<string, PlantaCoord> = {};
+          coordsDocs.forEach((d) => {
+            const name = d.key.replace("planta_coords_", "");
+            loaded[name] = d.value;
+          });
+          setPlantaCoords((prev) => ({ ...prev, ...loaded }));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  async function saveCoords() {
+    setSavingCoords(true);
+    try {
+      await Promise.all(
+        Object.entries(plantaCoords).map(([name, coord]) =>
+          upsertDocument(COLLECTIONS.configuracion, `planta_coords_${name}`, { key: `planta_coords_${name}`, value: coord })
+        )
+      );
+      showToast("success", "Guardado", "Coordenadas de plantas actualizadas.");
+    } catch {
+      showToast("error", "Error", "No se pudieron guardar las coordenadas.");
+    } finally {
+      setSavingCoords(false);
+    }
+  }
 
   useEffect(() => {
     setSession(getStoredSession());
@@ -243,7 +285,7 @@ export default function ConfiguracionPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 rounded-xl border border-[#3A3A3A] bg-[#1A1A1A] p-1 w-fit">
-        {(["usuarios", "apariencia"] as Tab[]).map((tab) => (
+        {(["usuarios", "apariencia", "ubicaciones"] as Tab[]).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -253,7 +295,7 @@ export default function ConfiguracionPage() {
                 : "text-gray-400 hover:text-white"
             }`}
           >
-            {tab === "usuarios" ? "Usuarios y roles" : "Apariencia"}
+            {tab === "usuarios" ? "Usuarios y roles" : tab === "apariencia" ? "Apariencia" : "Ubicaciones"}
           </button>
         ))}
       </div>
@@ -461,6 +503,72 @@ export default function ConfiguracionPage() {
               El sidebar permanece oscuro en ambos modos.
             </p>
           </div>
+        </div>
+      )}
+
+      {/* Tab: Ubicaciones */}
+      {activeTab === "ubicaciones" && (
+        <div className="space-y-4 max-w-lg">
+          <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-[#3A3A3A]">
+              <p className="text-sm font-semibold text-white">Coordenadas de plantas</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Se usan para mostrar rutas en el modal de rastreo de programaciones.
+              </p>
+            </div>
+            <div className="p-5 space-y-6">
+              {Object.entries(plantaCoords).map(([name, coord]) => (
+                <div key={name}>
+                  <p className="text-xs font-semibold text-gray-400 mb-3">{coord.label}</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] text-gray-600 mb-1 uppercase tracking-wider">Latitud</label>
+                      <input
+                        type="text"
+                        value={coord.lat}
+                        onChange={(e) => setPlantaCoords((prev) => ({ ...prev, [name]: { ...prev[name], lat: e.target.value } }))}
+                        className="w-full rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-[#CC2229] font-mono"
+                        placeholder="25.0000"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-gray-600 mb-1 uppercase tracking-wider">Longitud</label>
+                      <input
+                        type="text"
+                        value={coord.lng}
+                        onChange={(e) => setPlantaCoords((prev) => ({ ...prev, [name]: { ...prev[name], lng: e.target.value } }))}
+                        className="w-full rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-[#CC2229] font-mono"
+                        placeholder="-100.0000"
+                      />
+                    </div>
+                  </div>
+                  {coord.lat && coord.lng && (
+                    <a
+                      href={`https://www.google.com/maps/search/?api=1&query=${coord.lat},${coord.lng}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 mt-2 text-[10px] text-gray-600 hover:text-gray-400 transition-colors"
+                    >
+                      Ver en Maps ↗
+                    </a>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="px-5 py-4 border-t border-[#3A3A3A] flex justify-end">
+              <button
+                onClick={saveCoords}
+                disabled={savingCoords}
+                className="inline-flex items-center gap-2 rounded-lg bg-[#CC2229] px-4 py-2 text-sm font-medium text-white hover:bg-[#991A1E] disabled:opacity-60 cursor-pointer transition-colors"
+              >
+                {savingCoords && <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />}
+                {savingCoords ? "Guardando..." : "Guardar coordenadas"}
+              </button>
+            </div>
+          </div>
+          <p className="text-xs text-gray-700">
+            Puedes obtener las coordenadas abriendo Google Maps, haciendo clic derecho en la planta y copiando lat/lng.
+          </p>
         </div>
       )}
 
