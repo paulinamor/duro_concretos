@@ -102,9 +102,22 @@ function diasVencimiento(vencimiento: string): number {
 }
 
 function computeStatus(cuenta: Cuenta): Cuenta["status"] {
-  const saldo = cuenta.total - cuenta.montoPagado;
+  // Derive the real amount paid: prefer montoPagado but fall back to sum of abonos
+  // so that records imported via bulk-load (where montoPagado may be 0 but abonos
+  // already contain the full payment) are not misclassified.
+  //
+  // Use Number() coercion to handle Firestore values that may arrive as strings,
+  // and round to 2 decimal places to eliminate floating-point precision errors
+  // that accumulate when multiple abono additions make montoPagado slightly less
+  // than total (e.g. 121474.99999999999 instead of 121475), causing a non-zero
+  // saldo that would incorrectly classify a fully-paid record as "Parcial".
+  const total = Math.round(Number(cuenta.total) * 100) / 100;
+  const sumaAbonos = (cuenta.abonos ?? []).reduce((sum, a) => sum + (Math.round(Number(a.monto) * 100) / 100), 0);
+  const rawMontoPagado = Math.round(Number(cuenta.montoPagado ?? 0) * 100) / 100;
+  const montoPagado = Math.max(rawMontoPagado, sumaAbonos);
+  const saldo = Math.round((total - montoPagado) * 100) / 100;
   if (saldo <= 0) return "Pagado";
-  if (cuenta.montoPagado > 0) return "Parcial";
+  if (montoPagado > 0) return "Parcial";
   if (diasVencimiento(cuenta.vencimiento) < 0) return "Vencido";
   return "Pendiente";
 }
@@ -691,8 +704,11 @@ function CuentaRow({
               <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
               Vencido {Math.abs(dias)}d
             </span>
-          ) : cuenta.status === "Parcial" ? (
+          ) : cuenta.status === "Parcial" && dias < 0 ? (
+            // Partially paid AND already overdue → "En riesgo"
             <StatusBadge status="en riesgo" />
+          ) : cuenta.status === "Parcial" ? (
+            <StatusBadge status="revision" />
           ) : dias <= 3 ? (
             <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-orange-400">
               <span className="h-1.5 w-1.5 rounded-full bg-orange-500" />
@@ -916,11 +932,12 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
     });
   }, [cuentas, query, filterStatus, filterMes]);
 
-  // KPIs
-  const totalPendiente = filtered.filter((c) => c.status !== "Pagado").reduce((s, c) => s + (c.total - c.montoPagado), 0);
-  const totalCobrado = filtered.reduce((s, c) => s + c.montoPagado, 0);
-  const vencidos = filtered.filter((c) => c.status === "Vencido").length;
-  const proximos = filtered.filter((c) => c.status === "Pendiente" && diasVencimiento(c.vencimiento) <= 7 && diasVencimiento(c.vencimiento) >= 0).length;
+  // KPIs — facturas canceladas no cuentan en saldos ni conteos financieros
+  const activas = filtered.filter((c) => c.estadoSAT !== "Cancelado");
+  const totalPendiente = activas.filter((c) => c.status !== "Pagado").reduce((s, c) => s + (c.total - c.montoPagado), 0);
+  const totalCobrado = activas.reduce((s, c) => s + c.montoPagado, 0);
+  const vencidos = activas.filter((c) => c.status === "Vencido").length;
+  const proximos = activas.filter((c) => c.status === "Pendiente" && diasVencimiento(c.vencimiento) <= 7 && diasVencimiento(c.vencimiento) >= 0).length;
 
   async function handleSave(data: Omit<Cuenta, "id" | "abonos" | "planta">) {
     if (editing) {
@@ -968,7 +985,9 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
   }
 
   async function handleAbono(cuenta: Cuenta, abono: Abono) {
-    const nuevoMontoPagado = cuenta.montoPagado + abono.monto;
+    // Round to 2 decimal places to prevent floating-point accumulation errors
+    // that would make montoPagado slightly less than total and misclassify status.
+    const nuevoMontoPagado = Math.round((Number(cuenta.montoPagado) + Number(abono.monto)) * 100) / 100;
     const nuevosAbonos = [...(cuenta.abonos ?? []), abono];
     const updatedCuenta: Cuenta = {
       ...cuenta,
@@ -987,7 +1006,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
     if (!abono) return;
     if (!confirm(`¿Revertir el ${isCxc ? "cobro" : "pago"} de ${currency(abono.monto)} del ${abono.fecha}?`)) return;
     const nuevosAbonos = (cuenta.abonos ?? []).filter((_, i) => i !== index);
-    const nuevoMontoPagado = nuevosAbonos.reduce((sum, a) => sum + a.monto, 0);
+    const nuevoMontoPagado = Math.round(nuevosAbonos.reduce((sum, a) => sum + Number(a.monto), 0) * 100) / 100;
     const updatedCuenta: Cuenta = {
       ...cuenta,
       abonos: nuevosAbonos,
@@ -1002,7 +1021,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
   async function handleEditAbono(cuenta: Cuenta, index: number, updatedAbono: Abono) {
     const nuevosAbonos = [...(cuenta.abonos ?? [])];
     nuevosAbonos[index] = updatedAbono;
-    const nuevoMontoPagado = nuevosAbonos.reduce((sum, a) => sum + a.monto, 0);
+    const nuevoMontoPagado = Math.round(nuevosAbonos.reduce((sum, a) => sum + Number(a.monto), 0) * 100) / 100;
     const updatedCuenta: Cuenta = {
       ...cuenta,
       abonos: nuevosAbonos,
