@@ -9,6 +9,7 @@ import {
   Clock,
   DollarSign,
   FileDown,
+  FileSpreadsheet,
   FileText,
   Link2,
   Pencil,
@@ -885,11 +886,12 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
     [rawCuentas],
   );
 
-  const rawProgramaciones = useCollectionRaw<{ cliente?: string }>(COLLECTIONS.programaciones);
+  const rawClientes = useCollectionRaw<{ razonSocial?: string; nombreComercial?: string }>(COLLECTIONS.clientes);
   useEffect(() => {
-    const unicos = Array.from(new Set(rawProgramaciones.map((p) => p.cliente).filter(Boolean))) as string[];
-    setClientesList(unicos.sort());
-  }, [rawProgramaciones]);
+    const nombres = rawClientes
+      .flatMap((c) => [c.razonSocial, c.nombreComercial].filter(Boolean)) as string[];
+    setClientesList(Array.from(new Set(nombres)).sort());
+  }, [rawClientes]);
 
   function showToast(type: "success" | "error", title: string, msg: string) {
     window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type, title, message: msg } }));
@@ -933,7 +935,11 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
   }, [cuentas, query, filterStatus, filterMes]);
 
   // KPIs — facturas canceladas no cuentan en saldos ni conteos financieros
+  const canceladas = filtered.filter((c) => c.estadoSAT === "Cancelado");
   const activas = filtered.filter((c) => c.estadoSAT !== "Cancelado");
+  const totalFacturadoBruto = filtered.reduce((s, c) => s + c.total, 0);
+  const totalCanceladas = canceladas.reduce((s, c) => s + c.total, 0);
+  const totalFacturadoNeto = activas.reduce((s, c) => s + c.total, 0);
   const totalPendiente = activas.filter((c) => c.status !== "Pagado").reduce((s, c) => s + (c.total - c.montoPagado), 0);
   const totalCobrado = activas.reduce((s, c) => s + c.montoPagado, 0);
   const vencidos = activas.filter((c) => c.status === "Vencido").length;
@@ -1123,7 +1129,78 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
         </div>
       </div>
 
-      {/* KPIs */}
+      {/* KPI Row 1 — resumen de facturación */}
+      {(() => {
+        const pctNeto = totalFacturadoBruto > 0 ? (totalFacturadoNeto / totalFacturadoBruto) * 100 : 100;
+        const pctCancel = 100 - pctNeto;
+        return (
+          <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#181b20] px-6 py-5 shadow-[0_1px_8px_rgba(15,23,42,0.05)] dark:shadow-none">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-violet-500/10">
+                  <FileSpreadsheet size={15} className="text-violet-400" strokeWidth={2} />
+                </div>
+                <span className="text-[0.7rem] font-extrabold uppercase tracking-wider text-slate-400 dark:text-gray-500">
+                  Facturación{filterMes !== "todos" ? ` · ${filterMes.replace("-", " ")}` : ""}
+                </span>
+              </div>
+              <span className="text-[0.65rem] font-semibold text-slate-400 dark:text-gray-600">
+                {filtered.length} {filtered.length === 1 ? "documento" : "documentos"}
+              </span>
+            </div>
+
+            {/* 3 métricas */}
+            <div className="grid grid-cols-3 gap-6">
+              <div>
+                <p className="text-[0.65rem] font-bold uppercase tracking-wider text-slate-400 dark:text-gray-500 mb-2">Total emitido</p>
+                <p className="text-2xl font-bold text-slate-900 dark:text-white leading-none tabular-nums">{currency(totalFacturadoBruto)}</p>
+                <p className="text-xs text-slate-400 dark:text-gray-500 mt-1.5">{filtered.length} {filtered.length === 1 ? "factura" : "facturas"}</p>
+              </div>
+              <div className="border-l border-slate-100 dark:border-white/8 pl-6">
+                <p className="text-[0.65rem] font-bold uppercase tracking-wider text-red-400 mb-2">Canceladas</p>
+                <p className="text-2xl font-bold text-red-500 dark:text-red-400 leading-none tabular-nums">{currency(totalCanceladas)}</p>
+                <p className="text-xs text-slate-400 dark:text-gray-500 mt-1.5">
+                  {canceladas.length} {canceladas.length === 1 ? "factura" : "facturas"}
+                  {canceladas.length > 0 && (
+                    <span className="ml-1.5 font-semibold text-red-400">({pctCancel.toFixed(1)}%)</span>
+                  )}
+                </p>
+              </div>
+              <div className="border-l border-slate-100 dark:border-white/8 pl-6">
+                <p className="text-[0.65rem] font-bold uppercase tracking-wider text-emerald-500 mb-2">Neto vigente</p>
+                <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 leading-none tabular-nums">{currency(totalFacturadoNeto)}</p>
+                <p className="text-xs text-slate-400 dark:text-gray-500 mt-1.5">
+                  {activas.length} {activas.length === 1 ? "factura" : "facturas"}
+                  {totalFacturadoBruto > 0 && (
+                    <span className="ml-1.5 font-semibold text-emerald-500">({pctNeto.toFixed(1)}%)</span>
+                  )}
+                </p>
+              </div>
+            </div>
+
+            {/* Barra de progreso neto vs canceladas */}
+            {totalFacturadoBruto > 0 && (
+              <div className="mt-5">
+                <div className="flex h-1.5 w-full rounded-full overflow-hidden bg-slate-100 dark:bg-white/8">
+                  <div
+                    className="h-full rounded-l-full bg-emerald-500 transition-all duration-500"
+                    style={{ width: `${pctNeto}%` }}
+                  />
+                  {pctCancel > 0 && (
+                    <div
+                      className="h-full rounded-r-full bg-red-400"
+                      style={{ width: `${pctCancel}%` }}
+                    />
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* KPI Row 2 — cobro y alertas */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
         <KPICard
           title={isCxc ? "Por cobrar" : "Por pagar"}
