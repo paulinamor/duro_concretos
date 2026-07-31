@@ -682,7 +682,7 @@ function CuentaRow({
           </span>
         </td>
         <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{cuenta.tipo || "—"}</td>
-        <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{cuenta.fecha}</td>
+        <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{isoToDisplay(cuenta.fecha.includes("/") ? displayToISO(cuenta.fecha) : cuenta.fecha)}</td>
         <td className="px-4 py-3 text-[#CC2229] font-mono text-xs">{cuenta.folio || "—"}</td>
         <td className="px-4 py-3 text-white font-semibold text-sm">{cuenta.contraparte}</td>
         <td className="px-4 py-3 text-gray-400 text-xs font-mono">{cuenta.rfc || "—"}</td>
@@ -947,7 +947,9 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
       );
     }).sort((a, b) => {
       const toIso = (f: string) => f.includes("/") ? displayToISO(f) : f;
-      return toIso(b.fecha).localeCompare(toIso(a.fecha));
+      const byFecha = toIso(b.fecha).localeCompare(toIso(a.fecha));
+      if (byFecha !== 0) return byFecha;
+      return b.folio.localeCompare(a.folio, undefined, { numeric: true });
     });
   }, [cuentas, query, filterStatus, filterMes]);
 
