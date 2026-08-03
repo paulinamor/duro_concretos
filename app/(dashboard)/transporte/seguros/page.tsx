@@ -9,6 +9,7 @@ import KPICard from "@/components/KPICard";
 import HScrollTable from "@/components/HScrollTable";
 import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS, where } from "@/lib/db";
 import { withPlantaTag } from "@/lib/auth";
+import { todayCST } from "@/lib/dateUtils";
 import { useCollection } from "@/lib/useCollection";
 import type { Unidad, EstatusUnidad } from "@/lib/unidades";
 
@@ -105,7 +106,7 @@ const ESTADOS_MX = [
   "Sinaloa","Sonora","Tabasco","Tamaulipas","Tlaxcala","Veracruz","Yucatán","Zacatecas",
 ];
 
-function todayISO() { return new Date().toISOString().slice(0, 10); }
+const todayISO = todayCST;
 
 function vigenciaStatus(fechaFin: string | undefined): VigenciaStatus {
   if (!fechaFin) return "sin_registro";

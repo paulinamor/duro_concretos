@@ -32,6 +32,7 @@ import {
   type TipoCliente,
 } from "@/lib/crmClientes";
 import { COLLECTIONS, deleteDocument, getCollectionDocs, upsertDocument } from "@/lib/db";
+import { todayCST } from "@/lib/dateUtils";
 
 const DIAS_CREDITO_OPTIONS = ["0", "15", "30", "45", "60", "90"];
 const CALIFICACION_OPTIONS: CalificacionCliente[] = ["A", "B", "C"];
@@ -619,7 +620,7 @@ export default function CrmClientesPage() {
       m3Acumulados: editing?.m3Acumulados ?? 0,
       estatus: f.estatus,
       calificacion: f.calificacion,
-      fechaAlta: editing?.fechaAlta ?? new Date().toISOString().split("T")[0],
+      fechaAlta: editing?.fechaAlta ?? todayCST(),
       notas: f.notas,
     };
 

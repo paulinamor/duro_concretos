@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Check, ChevronLeft, ChevronRight, ClipboardList, DollarSign, Pencil, Plus, Search, Trash2, X, AlertTriangle, Package } from "lucide-react";
 import { deleteDocument, getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
 import { filterByPlanta, withPlantaTag } from "@/lib/auth";
+import { todayCST } from "@/lib/dateUtils";
 import ClienteCombobox from "@/components/ClienteCombobox";
 import KPICard from "@/components/KPICard";
 import type { Cliente } from "@/lib/crmClientes";
@@ -53,7 +54,7 @@ function currency(v: number | null) {
   return v.toLocaleString("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
-function todayISO() { return new Date().toISOString().slice(0, 10); }
+const todayISO = todayCST;
 
 function currentMonth() {
   const d = new Date();

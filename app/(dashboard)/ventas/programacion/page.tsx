@@ -8,6 +8,7 @@ import {
 import ClienteCombobox from "@/components/ClienteCombobox";
 import { upsertDocument, COLLECTIONS } from "@/lib/db";
 import { withPlantaTag, getStoredSession } from "@/lib/auth";
+import { todayCST, localISODate } from "@/lib/dateUtils";
 import { useCollection, useCollectionRaw } from "@/lib/useCollection";
 import { tiposCliente, type Cliente, type TipoCliente } from "@/lib/crmClientes";
 
@@ -66,6 +67,10 @@ interface Programacion {
   historial?: FaseEntry[];
   fase?: string;
   vehiculoSamsaraId?: string;
+  exhibiciones?: "1" | "2";
+  montoPago2?: number | null;
+  fechaPago2?: string;
+  metodoPago2?: string;
 }
 
 interface NuevoClienteForm {
@@ -86,10 +91,22 @@ type VForm = {
   m3Totales: string;
   extras: string;
   tdBom: string;
+  exhibiciones: "" | "1" | "2";
+  fechaPago: string;
+  metodoPago: string;
+  montoPago1: string;
+  montoPago2: string;
+  fechaPago2: string;
+  metodoPago2: string;
 };
 
 function emptyForm(dia: string): VForm {
-  return { dia, diaHoraPedido: "", cliente: "", telefono: "", direccion: "", m3Totales: "", extras: "", tdBom: "" };
+  return {
+    dia, diaHoraPedido: "", cliente: "", telefono: "", direccion: "",
+    m3Totales: "", extras: "", tdBom: "",
+    exhibiciones: "", fechaPago: "", metodoPago: "",
+    montoPago1: "", montoPago2: "", fechaPago2: "", metodoPago2: "",
+  };
 }
 
 function formFromProg(p: Programacion): VForm {
@@ -102,12 +119,19 @@ function formFromProg(p: Programacion): VForm {
     m3Totales: p.m3Totales != null ? String(p.m3Totales) : "",
     extras: p.extras ?? "",
     tdBom: p.tdBom ?? "",
+    exhibiciones: p.exhibiciones ?? "",
+    fechaPago: p.fechaPago ?? "",
+    metodoPago: p.metodoPago ?? "",
+    montoPago1: p.montoPagado != null ? String(p.montoPagado) : "",
+    montoPago2: p.montoPago2 != null ? String(p.montoPago2) : "",
+    fechaPago2: p.fechaPago2 ?? "",
+    metodoPago2: p.metodoPago2 ?? "",
   };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function todayISO() { return new Date().toISOString().slice(0, 10); }
+const todayISO = todayCST;
 function isUrl(v: string) { return v.startsWith("http://") || v.startsWith("https://"); }
 
 function extractCoordsFromUrl(url: string): { lat: number; lng: number } | null {
@@ -131,7 +155,7 @@ function generarFolio(progs: Programacion[]): string {
 }
 
 function addDays(iso: string, d: number) {
-  const dt = new Date(iso + "T12:00:00"); dt.setDate(dt.getDate() + d); return dt.toISOString().slice(0, 10);
+  const dt = new Date(iso + "T12:00:00"); dt.setDate(dt.getDate() + d); return localISODate(dt);
 }
 
 function fmtDia(iso: string) {
@@ -412,6 +436,111 @@ function PedidoDrawer({
             <input value={form.extras} onChange={(e) => set("extras", e.target.value)}
               placeholder="Fibra, impermeabilizante, acelerante…" className={inp} />
           </div>
+
+          {/* Pago */}
+          <div className="pt-1">
+            <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-3">Fecha de pago</p>
+
+            {/* Toggle exhibiciones */}
+            <div className="flex gap-2 mb-4">
+              {(["1", "2"] as const).map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => set("exhibiciones", form.exhibiciones === n ? "" : n)}
+                  className={`flex-1 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                    form.exhibiciones === n
+                      ? "bg-[#CC2229] border-[#CC2229] text-white"
+                      : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
+                  }`}
+                >
+                  {n === "1" ? "1 Exhibición" : "2 Exhibiciones"}
+                </button>
+              ))}
+            </div>
+
+            {form.exhibiciones === "1" && (
+              <div className="space-y-3 bg-gray-50 rounded-xl p-4 border border-gray-100">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={lbl}>Fecha</label>
+                    <input type="date" value={form.fechaPago} onChange={(e) => set("fechaPago", e.target.value)} className={inp} />
+                  </div>
+                  <div>
+                    <label className={lbl}>Método</label>
+                    <select value={form.metodoPago} onChange={(e) => set("metodoPago", e.target.value)} className={inp}>
+                      <option value="">Seleccionar…</option>
+                      {["Transferencia", "Efectivo", "Cheque", "Tarjeta", "Por definir"].map((m) => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {form.exhibiciones === "2" && (
+              <div className="space-y-3">
+                {/* Exhibición 1 */}
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                  <p className="text-xs font-semibold text-gray-500 mb-3">Exhibición 1</p>
+                  <div className="space-y-3">
+                    <div>
+                      <label className={lbl}>Monto</label>
+                      <input type="number" min="0" step="0.01" value={form.montoPago1}
+                        onChange={(e) => set("montoPago1", e.target.value)}
+                        placeholder="0.00" className={inp}
+                        onWheel={(e) => e.currentTarget.blur()} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className={lbl}>Fecha</label>
+                        <input type="date" value={form.fechaPago} onChange={(e) => set("fechaPago", e.target.value)} className={inp} />
+                      </div>
+                      <div>
+                        <label className={lbl}>Método</label>
+                        <select value={form.metodoPago} onChange={(e) => set("metodoPago", e.target.value)} className={inp}>
+                          <option value="">Seleccionar…</option>
+                          {["Transferencia", "Efectivo", "Cheque", "Tarjeta", "Por definir"].map((m) => (
+                            <option key={m} value={m}>{m}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Exhibición 2 */}
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                  <p className="text-xs font-semibold text-gray-500 mb-3">Exhibición 2</p>
+                  <div className="space-y-3">
+                    <div>
+                      <label className={lbl}>Monto</label>
+                      <input type="number" min="0" step="0.01" value={form.montoPago2}
+                        onChange={(e) => set("montoPago2", e.target.value)}
+                        placeholder="0.00" className={inp}
+                        onWheel={(e) => e.currentTarget.blur()} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className={lbl}>Fecha</label>
+                        <input type="date" value={form.fechaPago2} onChange={(e) => set("fechaPago2", e.target.value)} className={inp} />
+                      </div>
+                      <div>
+                        <label className={lbl}>Método</label>
+                        <select value={form.metodoPago2} onChange={(e) => set("metodoPago2", e.target.value)} className={inp}>
+                          <option value="">Seleccionar…</option>
+                          {["Transferencia", "Efectivo", "Cheque", "Tarjeta", "Por definir"].map((m) => (
+                            <option key={m} value={m}>{m}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="shrink-0 border-t border-gray-100 px-6 py-4 flex items-center justify-end gap-3">
@@ -604,7 +733,7 @@ export default function VentasProgramacionPage() {
       m3Acumulados: 0,
       estatus: "Activo" as const,
       calificacion: "B" as const,
-      fechaAlta: new Date().toISOString().split("T")[0],
+      fechaAlta: todayCST(),
       notas: "",
     };
     await upsertDocument(COLLECTIONS.clientes, id, withPlantaTag(doc));
@@ -630,6 +759,13 @@ export default function VentasProgramacionPage() {
         m3Totales: m3,
         extras: form.extras.trim(),
         tdBom: form.tdBom.trim(),
+        exhibiciones: (form.exhibiciones || undefined) as "1" | "2" | undefined,
+        fechaPago: form.fechaPago,
+        metodoPago: form.metodoPago,
+        montoPagado: form.montoPago1 ? parseFloat(form.montoPago1) : rest.montoPagado,
+        montoPago2: form.montoPago2 ? parseFloat(form.montoPago2) : null,
+        fechaPago2: form.fechaPago2 || undefined,
+        metodoPago2: form.metodoPago2 || undefined,
       };
       await upsertDocument(COLLECTIONS.programaciones, existingId, withPlantaTag(merged));
       window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", title: "Guardado", message: "Pedido actualizado." } }));
@@ -648,11 +784,17 @@ export default function VentasProgramacionPage() {
         tdBom: form.tdBom.trim(),
         hora: "", hsr: "", muestras: "", tiempoExtraDescarga: "",
         resistencia: "", color: "", paraUso: "", aditivo: "", credito: "",
-        recibo: "", fact: "", pagado: "", metodoPago: "", fechaPago: "",
+        recibo: "", fact: "", pagado: "",
+        metodoPago: form.metodoPago, fechaPago: form.fechaPago,
+        exhibiciones: (form.exhibiciones || undefined) as "1" | "2" | undefined,
+        montoPagado: form.montoPago1 ? parseFloat(form.montoPago1) : null,
+        montoPago2: form.montoPago2 ? parseFloat(form.montoPago2) : null,
+        fechaPago2: form.fechaPago2 || undefined,
+        metodoPago2: form.metodoPago2 || undefined,
         choferes: [], m3Vacios: null, precioM3: null, precioM3Bomba: null,
         factorBomba: null, aplicarFactorBomba: false, ltoAcelr: null,
         kiloFibra: null, m3Imper: null, tuberiaExtra: null, permisosOC: null,
-        totalXM3: null, total: null, montoPagado: null,
+        totalXM3: null, total: null,
         folio,
         fase: "Creado",
         historial: [{ fase: "Creado", fecha: new Date().toISOString(), usuario: vendedorNombre }],
@@ -1012,6 +1154,45 @@ export default function VentasProgramacionPage() {
                   <div>
                     <p className="text-gray-600 mb-0.5">Crédito</p>
                     <p className="text-white">{timelineProg.credito}</p>
+                  </div>
+                )}
+                {timelineProg.exhibiciones && (
+                  <div className="col-span-2 border-t border-[#3A3A3A] pt-2.5 mt-1">
+                    <p className="text-gray-600 mb-1.5 font-semibold">{timelineProg.exhibiciones === "2" ? "Pago en 2 exhibiciones" : "Fecha de pago"}</p>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                      <div>
+                        <p className="text-gray-600 mb-0.5">{timelineProg.exhibiciones === "2" ? "Exhibición 1 — Fecha" : "Fecha"}</p>
+                        <p className="text-white">{timelineProg.fechaPago || "—"}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-600 mb-0.5">{timelineProg.exhibiciones === "2" ? "Exhibición 1 — Método" : "Método"}</p>
+                        <p className="text-white">{timelineProg.metodoPago || "—"}</p>
+                      </div>
+                      {timelineProg.exhibiciones === "2" && (
+                        <>
+                          {timelineProg.montoPagado != null && (
+                            <div>
+                              <p className="text-gray-600 mb-0.5">Exhibición 1 — Monto</p>
+                              <p className="text-white">${timelineProg.montoPagado.toLocaleString("es-MX")}</p>
+                            </div>
+                          )}
+                          {timelineProg.montoPago2 != null && (
+                            <div>
+                              <p className="text-gray-600 mb-0.5">Exhibición 2 — Monto</p>
+                              <p className="text-white">${timelineProg.montoPago2.toLocaleString("es-MX")}</p>
+                            </div>
+                          )}
+                          <div>
+                            <p className="text-gray-600 mb-0.5">Exhibición 2 — Fecha</p>
+                            <p className="text-white">{timelineProg.fechaPago2 || "—"}</p>
+                          </div>
+                          <div>
+                            <p className="text-gray-600 mb-0.5">Exhibición 2 — Método</p>
+                            <p className="text-white">{timelineProg.metodoPago2 || "—"}</p>
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

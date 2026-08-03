@@ -16,6 +16,7 @@ import KPICard from "@/components/KPICard";
 import ClienteCombobox from "@/components/ClienteCombobox";
 import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
 import { filterByPlanta, getActivePlanta, getStoredSession, Planta, withPlantaTag } from "@/lib/auth";
+import { todayCST, currentMonthCST } from "@/lib/dateUtils";
 import type { Cliente } from "@/lib/crmClientes";
 import type { Operador } from "@/lib/operadores";
 
@@ -79,8 +80,8 @@ const INVENTARIO_MATERIALES: { key: MatKey; label: string; unidad: string; remKe
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function todayISO() { return new Date().toISOString().slice(0, 10); }
-function currentPeriod() { return new Date().toISOString().slice(0, 7); }
+const todayISO = todayCST;
+function currentPeriod() { return currentMonthCST(); }
 function isoToDisplay(iso: string) { const [y, m, d] = iso.split("-"); return `${d}/${m}/${y}`; }
 function displayToISO(display: string) { const [d, m, y] = display.split("/"); return `${y}-${m}-${d}`; }
 function inPeriod(fecha: string, periodo: string) {

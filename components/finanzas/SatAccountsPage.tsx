@@ -14,8 +14,10 @@ import {
   Link2,
   Pencil,
   Plus,
+  RotateCcw,
   Search,
   Sparkles,
+  Table2,
   Trash2,
   X,
 } from "lucide-react";
@@ -27,6 +29,7 @@ import { upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
 import { withPlantaTag } from "@/lib/auth";
 import { useCollection, useCollectionRaw } from "@/lib/useCollection";
 import type { SatDownloadKind } from "@/lib/satDownloads";
+import { todayCST } from "@/lib/dateUtils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -72,9 +75,7 @@ interface Abono {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
+const todayISO = todayCST;
 
 function isoToDisplay(iso: string) {
   if (!iso || !iso.includes("-")) return iso;
@@ -119,13 +120,12 @@ function computeStatus(cuenta: Cuenta): Cuenta["status"] {
   // than total (e.g. 121474.99999999999 instead of 121475), causing a non-zero
   // saldo that would incorrectly classify a fully-paid record as "Parcial".
   const total = Math.round(Number(cuenta.total) * 100) / 100;
-  const sumaAbonos = (cuenta.abonos ?? []).reduce((sum, a) => sum + (Math.round(Number(a.monto) * 100) / 100), 0);
+  const sumaAbonos = Math.round((cuenta.abonos ?? []).reduce((sum, a) => sum + (Math.round(Number(a.monto) * 100) / 100), 0) * 100) / 100;
   const rawMontoPagado = Math.round(Number(cuenta.montoPagado ?? 0) * 100) / 100;
   const montoPagado = Math.max(rawMontoPagado, sumaAbonos);
   const saldo = Math.round((total - montoPagado) * 100) / 100;
-  if (saldo <= 0) return "Pagado";
+  if (saldo <= 0.01) return "Pagado";
   if (montoPagado > 0) return "Parcial";
-  if (diasVencimiento(cuenta.vencimiento) < 0) return "Vencido";
   return "Pendiente";
 }
 
@@ -175,7 +175,6 @@ function FormDrawer({
     formaPago: "99 - Por definir",
     banco: "",
     bancoPago: "",
-    vencimiento: "",
     notas: "",
   });
 
@@ -204,9 +203,6 @@ function FormDrawer({
         formaPago: initial.formaPago ?? "99 - Por definir",
         banco: initial.banco ?? "",
         bancoPago: initial.bancoPago ?? "",
-        vencimiento: initial.vencimiento
-          ? (initial.vencimiento.includes("/") ? displayToISO(initial.vencimiento) : initial.vencimiento)
-          : "",
         notas: initial.notas ?? "",
       });
     } else {
@@ -243,7 +239,7 @@ function FormDrawer({
         formaPago: form.formaPago,
         banco: form.banco,
         montoPagado: initial?.montoPagado ?? 0,
-        vencimiento: isoToDisplay(form.vencimiento || form.fecha),
+        vencimiento: initial?.vencimiento || isoToDisplay(form.fecha),
         status: initial?.status ?? "Pendiente",
         notas: form.notas,
       });
@@ -415,10 +411,6 @@ function FormDrawer({
             )}
           </div>
           <div>
-            <label className={lbl}>Fecha de vencimiento</label>
-            <input type="date" value={form.vencimiento} onChange={(e) => setForm({ ...form, vencimiento: e.target.value })} className={inp} />
-          </div>
-          <div>
             <label className={lbl}>Notas</label>
             <input type="text" value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} placeholder="Opcional" className={inp} />
           </div>
@@ -457,7 +449,7 @@ function AbonoDrawer({
     if (cuenta) setForm({ fecha: todayISO(), monto: "", referencia: "" });
   }, [cuenta]);
 
-  if (!cuenta) return null;
+  if (!cuenta || cuenta.estadoSAT === "Cancelado") return null;
   const c = cuenta;
 
   const saldo = c.total - c.montoPagado;
@@ -659,7 +651,6 @@ function CuentaRow({
 }) {
   const [expanded, setExpanded] = useState(false);
   const saldo = cuenta.total - cuenta.montoPagado;
-  const dias = diasVencimiento(cuenta.vencimiento);
   const porcentaje = cuenta.total > 0 ? Math.min(100, (cuenta.montoPagado / cuenta.total) * 100) : 0;
 
   return (
@@ -668,7 +659,7 @@ function CuentaRow({
         className={`cursor-pointer transition-colors ${selected ? "bg-[#CC2229]/8" : expanded ? "bg-[#1A1A1A]" : "hover:bg-[#1A1A1A]"}`}
         onClick={() => setExpanded((v) => !v)}
       >
-        <td className="pl-4 pr-2 py-3" onClick={(e) => e.stopPropagation()}>
+        <td className="pl-3 pr-1 py-2.5" onClick={(e) => e.stopPropagation()}>
           <input
             type="checkbox"
             checked={selected}
@@ -676,66 +667,44 @@ function CuentaRow({
             className="h-4 w-4 rounded border-[#4A4A4A] bg-[#2A2A2A] accent-[#CC2229] cursor-pointer"
           />
         </td>
-        <td className="px-4 py-3 whitespace-nowrap">
-          <span className={`text-[10px] font-semibold ${cuenta.estadoSAT === "Vigente" ? "text-emerald-400" : cuenta.estadoSAT === "Cancelado" ? "text-red-400" : "text-amber-400"}`}>
-            {cuenta.estadoSAT || "—"}
-          </span>
+        <td className="px-2 py-2.5 text-gray-500 text-xs whitespace-nowrap">{isoToDisplay(cuenta.fecha.includes("/") ? displayToISO(cuenta.fecha) : cuenta.fecha)}</td>
+        <td className="px-2 py-2.5 text-[#CC2229] font-mono text-xs whitespace-nowrap">{cuenta.folio || "—"}</td>
+        <td className="px-2 py-2.5 max-w-[200px]">
+          <p className="text-white font-semibold text-sm truncate">{cuenta.contraparte}</p>
+          {cuenta.rfc && <p className="text-gray-500 text-[10px] font-mono truncate">{cuenta.rfc}</p>}
         </td>
-        <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{cuenta.tipo || "—"}</td>
-        <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{isoToDisplay(cuenta.fecha.includes("/") ? displayToISO(cuenta.fecha) : cuenta.fecha)}</td>
-        <td className="px-4 py-3 text-[#CC2229] font-mono text-xs">{cuenta.folio || "—"}</td>
-        <td className="px-4 py-3 text-white font-semibold text-sm">{cuenta.contraparte}</td>
-        <td className="px-4 py-3 text-gray-400 text-xs font-mono">{cuenta.rfc || "—"}</td>
-        <td className="px-4 py-3 text-gray-300 text-xs whitespace-nowrap">{cuenta.banco || "—"}</td>
-        <td className="px-4 py-3 text-gray-400 text-sm max-w-[160px] truncate">{cuenta.concepto || "—"}</td>
-        <td className="px-4 py-3 text-white font-semibold tabular-nums">{currency(cuenta.total)}</td>
-        <td className="px-4 py-3 text-sm tabular-nums text-gray-400">
+        <td className="px-2 py-2.5 text-white font-semibold tabular-nums text-sm whitespace-nowrap">{currency(cuenta.total)}</td>
+        <td className="px-2 py-2.5 text-sm tabular-nums whitespace-nowrap">
           {(cuenta.total - cuenta.montoPagado) > 0
             ? <span className="font-semibold text-amber-400">{currency(cuenta.total - cuenta.montoPagado)}</span>
             : <span className="text-emerald-500 text-xs font-semibold">✓ Liquidada</span>
           }
         </td>
-        <td className="px-4 py-3">
-          <div className="flex flex-col gap-1 min-w-[100px]">
-            <div className="flex justify-between text-[10px]">
-              <span className="text-gray-500">{currency(cuenta.montoPagado)}</span>
-              <span className="text-gray-500">{Math.round(porcentaje)}%</span>
-            </div>
-            <div className="h-1 rounded-full bg-[#3A3A3A] overflow-hidden">
+        <td className="px-2 py-2.5">
+          <div className="flex items-center gap-1.5 min-w-[72px]">
+            <div className="flex-1 h-1.5 rounded-full bg-[#3A3A3A] overflow-hidden">
               <div
                 className={`h-full rounded-full transition-all ${porcentaje >= 100 ? "bg-emerald-500" : porcentaje > 0 ? "bg-amber-500" : "bg-[#3A3A3A]"}`}
                 style={{ width: `${porcentaje}%` }}
               />
             </div>
+            <span className="text-[10px] text-gray-500 tabular-nums w-7 text-right">{Math.round(porcentaje)}%</span>
           </div>
         </td>
-        <td className="px-4 py-3">
+        <td className="px-2 py-2.5">
           {cuenta.status === "Pagado" ? (
             <StatusBadge status="completado" />
-          ) : cuenta.status === "Vencido" ? (
-            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-400">
-              <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-              Vencido {Math.abs(dias)}d
-            </span>
-          ) : cuenta.status === "Parcial" && dias < 0 ? (
-            // Partially paid AND already overdue → "En riesgo"
-            <StatusBadge status="en riesgo" />
           ) : cuenta.status === "Parcial" ? (
             <StatusBadge status="revision" />
-          ) : dias <= 3 ? (
-            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-orange-400">
-              <span className="h-1.5 w-1.5 rounded-full bg-orange-500" />
-              Vence en {dias}d
-            </span>
           ) : (
             <StatusBadge status="pendiente" />
           )}
         </td>
-        <td className="px-4 py-3 text-gray-500 text-xs">{expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</td>
+        <td className="px-2 py-2.5 text-gray-500 text-xs">{expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</td>
       </tr>
       {expanded && (
         <tr className="bg-[#111318]">
-          <td colSpan={14} className="px-5 pb-4 pt-3">
+          <td colSpan={9} className="px-5 pb-4 pt-3">
             <div className="flex flex-wrap gap-6 items-start justify-between">
               <div className="flex flex-wrap gap-x-6 gap-y-3 text-sm">
                 {/* Fila 1: montos */}
@@ -755,6 +724,12 @@ function CuentaRow({
                   <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-0.5">Vencimiento</p>
                   <p className="text-gray-200">{cuenta.vencimiento}</p>
                 </div>
+                {cuenta.concepto && (
+                  <div>
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-0.5">Concepto</p>
+                    <p className="text-gray-300 text-xs max-w-[280px]">{cuenta.concepto}</p>
+                  </div>
+                )}
                 {/* Fila 2: datos CFDI */}
                 <div>
                   <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-0.5">Estado SAT</p>
@@ -842,7 +817,7 @@ function CuentaRow({
                   </div>
                 )}
                 <div className="flex gap-2 mt-1">
-                  {cuenta.status !== "Pagado" && (
+                  {cuenta.status !== "Pagado" && cuenta.estadoSAT !== "Cancelado" && (
                     <button
                       onClick={(e) => { e.stopPropagation(); onAbono(cuenta); }}
                       className="flex items-center gap-1.5 rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-3 py-1.5 text-xs font-medium text-gray-200 transition-colors hover:border-emerald-500/50 hover:text-emerald-400 cursor-pointer"
@@ -875,6 +850,342 @@ function CuentaRow({
   );
 }
 
+// ─── Excel View ───────────────────────────────────────────────────────────────
+
+// Fixed palette — one distinct pastel per calendar month (index 0=Jan … 11=Dec).
+// Colors chosen to never be similar to each other or to the cancelled/neutral grays.
+const MONTH_COLORS: Record<number, { bg: string; hover: string; label: string }> = {
+  0:  { bg: "#CFE2F3", hover: "#BDD5EA", label: "Enero" },
+  1:  { bg: "#D9EAD3", hover: "#CAE0C2", label: "Febrero" },
+  2:  { bg: "#FFF2CC", hover: "#F5E4B0", label: "Marzo" },
+  3:  { bg: "#FCE5CD", hover: "#F0D4B8", label: "Abril" },
+  4:  { bg: "#EAD1DC", hover: "#DEC1CE", label: "Mayo" },
+  5:  { bg: "#D0E0E3", hover: "#BDD2D6", label: "Junio" },
+  6:  { bg: "#C9DAF8", hover: "#B5C9F0", label: "Julio" },
+  7:  { bg: "#D9D2E9", hover: "#C9C0DC", label: "Agosto" },
+  8:  { bg: "#FFE599", hover: "#F5D680", label: "Septiembre" },
+  9:  { bg: "#B6D7A8", hover: "#A3CB93", label: "Octubre" },
+  10: { bg: "#F9CB9C", hover: "#EFB985", label: "Noviembre" },
+  11: { bg: "#A2C4C9", hover: "#8FB4BA", label: "Diciembre" },
+};
+
+// Derive which calendar month (0-11) an account was paid in.
+// Uses the month of the LATEST abono with monto > 0.
+// Returns null if no real payments exist (= row gets neutral/no color).
+function paymentMonthIndex(cuenta: Cuenta): number | null {
+  // Only consider abonos that represent an actual payment
+  const realAbonos = (cuenta.abonos ?? []).filter((a) => Number(a.monto) > 0);
+  if (realAbonos.length === 0) return null;
+  const sorted = [...realAbonos].sort((a, b) => {
+    const fa = a.fecha?.includes("/") ? displayToISO(a.fecha) : (a.fecha ?? "");
+    const fb = b.fecha?.includes("/") ? displayToISO(b.fecha) : (b.fecha ?? "");
+    return fb.localeCompare(fa); // descending → first is latest
+  });
+  const iso = sorted[0].fecha?.includes("/") ? displayToISO(sorted[0].fecha) : (sorted[0].fecha ?? "");
+  const m = parseInt(iso.slice(5, 7), 10);
+  return isNaN(m) ? null : m - 1; // 0-indexed
+}
+
+function ExcelTable({
+  filtered,
+  kind,
+  onAbono,
+  onEdit,
+  onDelete,
+  onDeleteAbono,
+}: {
+  filtered: Cuenta[];
+  kind: SatDownloadKind;
+  onAbono: (c: Cuenta) => void;
+  onEdit: (c: Cuenta) => void;
+  onDelete: (c: Cuenta) => void;
+  onDeleteAbono: (c: Cuenta, index: number) => void;
+}) {
+  const isCxc = kind === "cxc";
+  const contraparteLabel = isCxc ? "Nombre Receptor" : "Nombre Emisor";
+
+  function rowStyle(cuenta: Cuenta): { backgroundColor: string } {
+    if (cuenta.estadoSAT === "Cancelado") return { backgroundColor: "#BB6262" };
+    const idx = paymentMonthIndex(cuenta);
+    if (idx !== null) return { backgroundColor: MONTH_COLORS[idx].bg };
+    return { backgroundColor: "#F5F5F5" }; // sin pago = neutro
+  }
+
+  // Build legend from payment months that actually appear in filtered data
+  const paymentMonthsInView = useMemo(() => {
+    const seen = new Map<number, string>(); // idx → label
+    filtered.forEach((c) => {
+      if (c.estadoSAT === "Cancelado") return;
+      const idx = paymentMonthIndex(c);
+      if (idx !== null && !seen.has(idx)) seen.set(idx, MONTH_COLORS[idx].label);
+    });
+    return Array.from(seen.entries()).sort((a, b) => a[0] - b[0]);
+  }, [filtered]);
+
+  const rfcLabel = isCxc ? "RFC Receptor" : "RFC Emisor";
+  const abonoLabel = isCxc ? "Abono" : "Pagado";
+  // Columns matching original XLSX order:
+  // Estado SAT | Tipo | Fecha Emision | Serie | Folio | RFC | Nombre | SubTotal | IVA 16% | Total | FormaDePago | COSEC. TC | Abono | Saldo | Actions
+  const numCols = 15;
+
+  return (
+    <div className="bg-white border border-gray-300 rounded-xl overflow-hidden shadow-sm">
+
+      {/* ── Legend bar ─────────────────────────────────────────────────────────
+          Shown ABOVE the table so it's always visible without scrolling.
+          Color = month payment was received (latest abono date).              */}
+      <div className="px-4 py-3 bg-[#EEF4FB] border-b-2 border-[#9FC5E8]">
+        <p className="text-[10px] font-extrabold uppercase tracking-widest text-[#1E5FA6] mb-2">
+          Color de fila = mes en que se cobró / pagó
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {/* Payment months present in current view */}
+          {paymentMonthsInView.map(([idx, label]) => (
+            <div
+              key={idx}
+              className="flex items-center gap-1.5 rounded border border-black/15 px-2.5 py-1"
+              style={{ backgroundColor: MONTH_COLORS[idx].bg }}
+            >
+              <span className="text-[11px] font-bold text-gray-800">{label}</span>
+              <span className="text-[10px] text-gray-600">— cobrado/pagado</span>
+            </div>
+          ))}
+          {paymentMonthsInView.length === 0 && (
+            <span className="text-[10px] text-gray-400 italic self-center">Sin pagos registrados en esta vista</span>
+          )}
+          {/* Fixed indicators */}
+          <div className="flex items-center gap-1.5 rounded border border-gray-300 px-2.5 py-1 bg-[#F5F5F5] ml-auto">
+            <span className="text-[11px] font-semibold text-gray-500">Sin pago</span>
+            <span className="text-[10px] text-gray-400">— pendiente de cobro</span>
+          </div>
+          <div className="flex items-center gap-1.5 rounded border border-[#8a4444] px-2.5 py-1 bg-[#BB6262]">
+            <span className="text-[11px] font-bold text-white">Cancelado SAT</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs border-collapse" style={{ minWidth: "1200px" }}>
+          <thead>
+            <tr className="bg-[#CFE2F3] border-b-2 border-[#9FC5E8]">
+              {[
+                { label: "Estado SAT", right: false },
+                { label: "Tipo", right: false },
+                { label: "Fecha Emision", right: false },
+                { label: "Serie", right: false },
+                { label: "Folio", right: false },
+                { label: rfcLabel, right: false },
+                { label: contraparteLabel, right: false },
+                { label: "SubTotal", right: true },
+                { label: "IVA 16%", right: true },
+                { label: "Total", right: true },
+                { label: "FormaDePago", right: false },
+                { label: "COSEC. TC", right: false },
+                { label: abonoLabel, right: true },
+                { label: "Saldo", right: true },
+                { label: "", right: false },
+              ].map(({ label, right }) => (
+                <th
+                  key={label}
+                  className={`px-2 py-2 font-bold text-gray-800 whitespace-nowrap border-r border-[#A8C8E8] last:border-r-0 ${right ? "text-right" : "text-left"}`}
+                >
+                  {label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 ? (
+              <tr>
+                <td colSpan={numCols} className="px-4 py-14 text-center text-gray-500">
+                  Sin resultados para el filtro actual
+                </td>
+              </tr>
+            ) : (() => {
+              // Group by emission month (same as XLSX organizes by ENERO, FEBRERO, etc.)
+              const groups: { month: string; items: Cuenta[] }[] = [];
+              filtered.forEach((c) => {
+                const iso = c.fecha.includes("/") ? displayToISO(c.fecha) : c.fecha;
+                const month = iso.slice(0, 7);
+                const last = groups[groups.length - 1];
+                if (!last || last.month !== month) groups.push({ month, items: [c] });
+                else last.items.push(c);
+              });
+
+              return groups.flatMap(({ month, items }) => {
+                const monthLbl = mesLabel(`${month}-01`).toUpperCase();
+                const grpTotal = items.reduce((s, c) => s + c.total, 0);
+                const grpPagado = items.reduce((s, c) => s + c.montoPagado, 0);
+                const grpSaldo = Math.round((grpTotal - grpPagado) * 100) / 100;
+
+                return [
+                  // Month group header — matches Excel's month grouping rows
+                  <tr key={`grp-${month}`} className="bg-[#CFE2F3] border-y-2 border-[#9FC5E8]">
+                    <td colSpan={numCols} className="px-3 py-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-extrabold text-gray-800 tracking-wide">{monthLbl}</span>
+                        <div className="flex items-center gap-5 text-[10px] text-gray-600 font-medium">
+                          <span>{items.length} {items.length === 1 ? "factura" : "facturas"}</span>
+                          <span>Total: <strong className="text-gray-800">{currency(grpTotal)}</strong></span>
+                          <span className="text-emerald-700">{isCxc ? "Cobrado" : "Pagado"}: <strong>{currency(grpPagado)}</strong></span>
+                          <span className="text-red-700">Saldo: <strong>{currency(grpSaldo)}</strong></span>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>,
+                  // Data rows
+                  ...items.map((c, i) => {
+                    // Use same rounding logic as computeStatus to avoid FP display bugs
+                    const total = Math.round(Number(c.total) * 100) / 100;
+                    const sumaAbonos = Math.round(
+                      (c.abonos ?? []).reduce((s, a) => s + Math.round(Number(a.monto) * 100) / 100, 0) * 100
+                    ) / 100;
+                    const rawPagado = Math.round(Number(c.montoPagado ?? 0) * 100) / 100;
+                    const realPagado = Math.max(rawPagado, sumaAbonos);
+                    const saldo = Math.round((total - realPagado) * 100) / 100;
+                    // currency() rounds to 0 decimals, so anything < $0.50 displays "$0".
+                    // Use the same threshold to avoid rows showing "$0 saldo" without "✓ Liquidada".
+                    const isLiquidada = saldo < 0.50;
+                    const esCancelada = c.estadoSAT === "Cancelado";
+                    // Last real-payment abono index (for revert button)
+                    const realAbonoIdx = (() => {
+                      const ab = c.abonos ?? [];
+                      for (let j = ab.length - 1; j >= 0; j--) {
+                        if (Number(ab[j].monto) > 0) return j;
+                      }
+                      return -1;
+                    })();
+                    const pmIdx = paymentMonthIndex(c);
+                    const rowTitle =
+                      esCancelada
+                        ? "Cancelado en el SAT"
+                        : pmIdx !== null
+                        ? `${isCxc ? "Cobrado" : "Pagado"} en ${MONTH_COLORS[pmIdx].label}`
+                        : `Sin ${isCxc ? "cobro" : "pago"} registrado`;
+                    return (
+                      <tr
+                        key={c.id ?? `${month}-${i}`}
+                        style={rowStyle(c)}
+                        title={rowTitle}
+                        className="border-b border-black/10 cursor-pointer transition-colors hover:brightness-95"
+                        onClick={() => onEdit(c)}
+                      >
+                        {/* Estado SAT */}
+                        <td className="px-2 py-1 whitespace-nowrap border-r border-black/10 font-medium">
+                          {c.estadoSAT}
+                        </td>
+                        {/* Tipo */}
+                        <td className="px-2 py-1 whitespace-nowrap border-r border-black/10">
+                          {c.tipo || "Factura"}
+                        </td>
+                        {/* Fecha Emision */}
+                        <td className="px-2 py-1 whitespace-nowrap border-r border-black/10">
+                          {isoToDisplay(c.fecha.includes("/") ? displayToISO(c.fecha) : c.fecha)}
+                        </td>
+                        {/* Serie */}
+                        <td className="px-2 py-1 whitespace-nowrap border-r border-black/10 text-center">
+                          {c.serie || "F"}
+                        </td>
+                        {/* Folio */}
+                        <td className="px-2 py-1 whitespace-nowrap border-r border-black/10 font-mono font-semibold">
+                          {c.folio || "—"}
+                        </td>
+                        {/* RFC */}
+                        <td className="px-2 py-1 whitespace-nowrap border-r border-black/10 font-mono">
+                          {c.rfc || "—"}
+                        </td>
+                        {/* Nombre */}
+                        <td className="px-2 py-1 border-r border-black/10 max-w-[180px]">
+                          <p className="font-semibold truncate">{c.contraparte}</p>
+                        </td>
+                        {/* SubTotal */}
+                        <td className="px-2 py-1 text-right tabular-nums whitespace-nowrap border-r border-black/10">
+                          {currency(c.subtotal)}
+                        </td>
+                        {/* IVA 16% */}
+                        <td className="px-2 py-1 text-right tabular-nums whitespace-nowrap border-r border-black/10">
+                          {currency(c.iva)}
+                        </td>
+                        {/* Total */}
+                        <td className="px-2 py-1 text-right tabular-nums whitespace-nowrap border-r border-black/10 font-semibold">
+                          {currency(c.total)}
+                        </td>
+                        {/* FormaDePago */}
+                        <td className="px-2 py-1 whitespace-nowrap border-r border-black/10">
+                          {c.formaPago || "—"}
+                        </td>
+                        {/* COSEC. TC */}
+                        <td className="px-2 py-1 whitespace-nowrap border-r border-black/10">
+                          {c.banco || "—"}
+                        </td>
+                        {/* Abono */}
+                        <td className="px-2 py-1 text-right tabular-nums whitespace-nowrap border-r border-black/10">
+                          {esCancelada ? "—" : realPagado > 0 ? currency(realPagado) : "—"}
+                        </td>
+                        {/* Saldo */}
+                        <td className="px-2 py-1 text-right tabular-nums whitespace-nowrap border-r border-black/10 font-semibold">
+                          {esCancelada
+                            ? <span className="inline-flex items-center bg-[#7a2a2a] text-white text-[10px] font-bold px-2 py-0.5 rounded">Cancelada</span>
+                            : isLiquidada
+                            ? "✓ Liquidada"
+                            : currency(saldo)}
+                        </td>
+                        {/* Actions */}
+                        <td className="px-2 py-1" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center gap-0.5">
+                            {/* Cobrar: only when not cancelled and not fully paid */}
+                            {!esCancelada && !isLiquidada && (
+                              <button
+                                onClick={() => onAbono(c)}
+                                title={isCxc ? "Registrar cobro" : "Registrar pago"}
+                                className="p-1 rounded text-gray-700 hover:bg-black/10 transition-colors cursor-pointer"
+                              >
+                                <CheckCircle2 size={13} />
+                              </button>
+                            )}
+                            {/* Revertir último cobro: for liquidadas with recorded abonos */}
+                            {!esCancelada && isLiquidada && realAbonoIdx >= 0 && (
+                              <button
+                                onClick={() => onDeleteAbono(c, realAbonoIdx)}
+                                title="Revertir último cobro"
+                                className="p-1 rounded text-amber-700 hover:bg-black/10 transition-colors cursor-pointer"
+                              >
+                                <RotateCcw size={12} />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => onEdit(c)}
+                              title="Editar"
+                              className="p-1 rounded text-gray-700 hover:bg-black/10 transition-colors cursor-pointer"
+                            >
+                              <Pencil size={12} />
+                            </button>
+                            <button
+                              onClick={() => onDelete(c)}
+                              title="Eliminar"
+                              className="p-1 rounded text-gray-700 hover:bg-black/10 transition-colors cursor-pointer"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }),
+                ];
+              });
+            })()}
+          </tbody>
+        </table>
+      </div>
+      {/* Footer count */}
+      <div className="px-4 py-2 bg-[#F0F0F0] border-t border-gray-200">
+        <span className="text-[10px] text-gray-500">{filtered.length} {filtered.length === 1 ? "registro" : "registros"} · pasa el cursor sobre una fila para ver el mes de pago</span>
+      </div>
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
@@ -891,6 +1202,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
   const [filterStatus, setFilterStatus] = useState("todos");
   const [filterMes, setFilterMes] = useState("todos");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<"dark" | "excel">("excel");
 
   const rawCuentas = useCollection<Cuenta>(collection);
   const cuentas = useMemo(
@@ -962,17 +1274,48 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
   const totalPendiente = activas.filter((c) => c.status !== "Pagado").reduce((s, c) => s + (c.total - c.montoPagado), 0);
   const totalCobrado = activas.reduce((s, c) => s + c.montoPagado, 0);
 
-  // Cobrado en el período — suma de abonos cuya fecha cae en el mes filtrado (de TODAS las cuentas activas)
+  // Cobrado en el período — suma de abonos de TODAS las cuentas activas (no canceladas).
+  // Cuando hay mes filtrado: solo abonos cuya fecha cae en ese mes (aunque la factura sea de otro mes).
+  // Cuando es "todos": suma de todos los abonos acumulados.
   const cuentasActivas = cuentas.filter((c) => c.estadoSAT !== "Cancelado");
   const cobradoEnMes = filterMes !== "todos"
     ? cuentasActivas.reduce((s, c) => s + abonosEnMes(c.abonos, filterMes).reduce((ss, a) => ss + Number(a.monto), 0), 0)
-    : totalCobrado;
+    : cuentasActivas.reduce((s, c) => s + (c.abonos ?? []).reduce((ss, a) => ss + Number(a.monto), 0), 0);
+
+  // Desglose del cobrado en el mes filtrado:
+  // cobradoMismoMes  = abonos con fecha en filterMes, de facturas EMITIDAS en filterMes
+  // cobradoOtrosMeses = abonos con fecha en filterMes, de facturas emitidas en OTRO mes
+  // Ambos usan cuentasActivas (todas las facturas) para no perder cobros de facturas de otros meses.
+  // cobradoMismoMes + cobradoOtrosMeses == cobradoEnMes siempre que filterMes !== "todos".
+  const cobradoMismoMes = filterMes !== "todos"
+    ? cuentasActivas.reduce((s, c) => {
+        const invIso = c.fecha.includes("/") ? displayToISO(c.fecha) : c.fecha;
+        if (!invIso.startsWith(filterMes)) return s; // solo facturas emitidas en este mes
+        return s + (c.abonos ?? [])
+          .filter(a => {
+            const iso = a.fecha?.includes("/") ? displayToISO(a.fecha) : (a.fecha ?? "");
+            return iso.startsWith(filterMes) && Number(a.monto) > 0;
+          })
+          .reduce((ss, a) => ss + Number(a.monto), 0);
+      }, 0)
+    : 0;
+  const cobradoOtrosMeses = filterMes !== "todos"
+    ? cuentasActivas.reduce((s, c) => {
+        const invIso = c.fecha.includes("/") ? displayToISO(c.fecha) : c.fecha;
+        if (invIso.startsWith(filterMes)) return s; // solo facturas de OTROS meses
+        return s + (c.abonos ?? [])
+          .filter(a => {
+            const iso = a.fecha?.includes("/") ? displayToISO(a.fecha) : (a.fecha ?? "");
+            return iso.startsWith(filterMes) && Number(a.monto) > 0;
+          })
+          .reduce((ss, a) => ss + Number(a.monto), 0);
+      }, 0)
+    : 0;
 
   // Pendiente del período — saldo sin cobrar de facturas emitidas en el mes filtrado (activas, no pagadas)
   const pendienteDelMes = totalPendiente;
 
-  const vencidos = activas.filter((c) => c.status === "Vencido").length;
-  const proximos = activas.filter((c) => c.status === "Pendiente" && diasVencimiento(c.vencimiento) <= 7 && diasVencimiento(c.vencimiento) >= 0).length;
+  const sinPagar = activas.filter((c) => c.status === "Pendiente").length;
 
   async function handleSave(data: Omit<Cuenta, "id" | "abonos" | "planta">) {
     if (editing) {
@@ -1122,7 +1465,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, isCxc ? "CxC" : "CxP");
-    XLSX.writeFile(wb, `${isCxc ? "cxc" : "cxp"}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.writeFile(wb, `${isCxc ? "cxc" : "cxp"}-${todayCST()}.xlsx`);
   }
 
   const contraparteLabel = isCxc ? "Nombre Receptor" : "Nombre Emisor";
@@ -1280,11 +1623,41 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
             </div>
           </div>
           <p className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums leading-none">{currency(cobradoEnMes)}</p>
-          <p className="text-xs text-slate-400 dark:text-gray-500 mt-1.5">
-            {filterMes !== "todos"
-              ? (isCxc ? "Pagos recibidos en este mes (de cualquier factura)" : "Pagos realizados en este mes (de cualquier factura)")
-              : (isCxc ? "Total cobrado acumulado" : "Total pagado acumulado")}
-          </p>
+          {filterMes !== "todos" ? (
+            <div className="mt-2.5 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-slate-500 dark:text-gray-500">
+                  {isCxc ? "Cobrado en" : "Pagado en"} {mesLabel(`${filterMes}-01`)}
+                </span>
+                <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                  {currency(cobradoMismoMes)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-slate-500 dark:text-gray-500">
+                  De facturas de otros meses
+                </span>
+                <span className="text-[11px] font-semibold text-blue-500 dark:text-blue-400 tabular-nums">
+                  {currency(cobradoOtrosMeses)}
+                </span>
+              </div>
+              {(cobradoMismoMes + cobradoOtrosMeses) > 0 && (
+                <div className="pt-1">
+                  <div className="flex h-1 w-full rounded-full overflow-hidden bg-slate-100 dark:bg-white/8">
+                    <div
+                      className="h-full bg-emerald-500 transition-all"
+                      style={{ width: `${(cobradoMismoMes / (cobradoMismoMes + cobradoOtrosMeses)) * 100}%` }}
+                    />
+                    <div className="h-full bg-blue-400 flex-1" />
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-xs text-slate-400 dark:text-gray-500 mt-1.5">
+              {isCxc ? "Total cobrado acumulado" : "Total pagado acumulado"}
+            </p>
+          )}
         </div>
 
         {/* C — Pendiente de cobrar / pagar */}
@@ -1319,13 +1692,13 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
           </p>
         </div>
 
-        {/* D — Vencidos */}
+        {/* D — Sin pagar */}
         <KPICard
-          title="Vencidos"
-          value={String(vencidos)}
+          title={isCxc ? "Sin cobrar" : "Sin pagar"}
+          value={String(sinPagar)}
           icon={AlertTriangle}
-          iconColor={vencidos > 0 ? "text-red-400" : "text-gray-500"}
-          subtitle="Documentos sin pagar"
+          iconColor={sinPagar > 0 ? "text-amber-400" : "text-gray-500"}
+          subtitle={isCxc ? "Facturas pendientes de cobro" : "Facturas pendientes de pago"}
         />
       </div>
 
@@ -1333,7 +1706,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
       <div className="flex flex-wrap items-center gap-3">
         {/* Status tabs */}
         <div className="flex gap-1 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg p-1 w-fit">
-          {[["todos", "Todos"], ["pendiente", "Pendiente"], ["parcial", "Parcial"], ["vencido", "Vencido"], ["pagado", "Pagado"]].map(([v, l]) => (
+          {[["todos", "Todos"], ["pendiente", "Pendiente"], ["parcial", "Parcial"], ["pagado", "Pagado"]].map(([v, l]) => (
             <button
               key={v}
               onClick={() => setFilterStatus(v)}
@@ -1369,6 +1742,23 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
             </button>
           )}
         </div>
+        {/* View mode toggle */}
+        <div className="flex gap-1 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg p-1">
+          <button
+            onClick={() => setViewMode("dark")}
+            title="Vista oscura"
+            className={`p-1.5 rounded transition-colors cursor-pointer ${viewMode === "dark" ? "bg-[#CC2229] text-white" : "text-gray-400 hover:text-white"}`}
+          >
+            <Table2 size={14} />
+          </button>
+          <button
+            onClick={() => setViewMode("excel")}
+            title="Vista Excel"
+            className={`p-1.5 rounded transition-colors cursor-pointer ${viewMode === "excel" ? "bg-emerald-600 text-white" : "text-gray-400 hover:text-white"}`}
+          >
+            <FileSpreadsheet size={14} />
+          </button>
+        </div>
       </div>
 
       {/* Bulk action bar */}
@@ -1391,52 +1781,63 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
       )}
 
       {/* Table */}
-      <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-[#1A1A1A] border-b border-[#3A3A3A]">
-                <th className="pl-4 pr-2 py-3">
-                  <input
-                    type="checkbox"
-                    checked={allSelected}
-                    ref={(el) => { if (el) el.indeterminate = someSelected && !allSelected; }}
-                    onChange={(e) => toggleSelectAll(e.target.checked)}
-                    className="h-4 w-4 rounded border-[#4A4A4A] bg-[#2A2A2A] accent-[#CC2229] cursor-pointer"
-                  />
-                </th>
-                {["SAT", "Tipo", "Fecha", "Folio", contraparteLabel, "RFC Receptor", "COSEC. TC", "Concepto", "Total", "Saldo", "Progreso", "Status", ""].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#3A3A3A]">
-              {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={14} className="px-4 py-14 text-center text-sm text-gray-600">
-                    {cuentas.length === 0
-                      ? `Sin ${isCxc ? "cuentas por cobrar" : "cuentas por pagar"} registradas`
-                      : "Sin resultados para el filtro actual"}
-                  </td>
+      {viewMode === "excel" ? (
+        <ExcelTable
+          filtered={filtered}
+          kind={kind}
+          onAbono={setAbonoTarget}
+          onEdit={(c) => { setEditing(c); setShowForm(true); }}
+          onDelete={handleDelete}
+          onDeleteAbono={handleDeleteAbono}
+        />
+      ) : (
+        <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-[#1A1A1A] border-b border-[#3A3A3A]">
+                  <th className="pl-4 pr-2 py-3">
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      ref={(el) => { if (el) el.indeterminate = someSelected && !allSelected; }}
+                      onChange={(e) => toggleSelectAll(e.target.checked)}
+                      className="h-4 w-4 rounded border-[#4A4A4A] bg-[#2A2A2A] accent-[#CC2229] cursor-pointer"
+                    />
+                  </th>
+                  {["Fecha", "Folio", contraparteLabel, "Total", "Saldo", "%", "Status", ""].map((h) => (
+                    <th key={h} className="px-2 py-3 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                  ))}
                 </tr>
-              ) : filtered.map((c, i) => (
-                <CuentaRow
-                  key={c.id ?? i}
-                  cuenta={c}
-                  kind={kind}
-                  selected={selected.has(c.id!)}
-                  onSelect={toggleSelect}
-                  onAbono={setAbonoTarget}
-                  onEdit={(c) => { setEditing(c); setShowForm(true); }}
-                  onDelete={handleDelete}
-                  onEditAbono={(c, i) => setEditAbonoTarget({ cuenta: c, index: i })}
-                  onDeleteAbono={handleDeleteAbono}
-                />
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-[#3A3A3A]">
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="px-4 py-14 text-center text-sm text-gray-600">
+                      {cuentas.length === 0
+                        ? `Sin ${isCxc ? "cuentas por cobrar" : "cuentas por pagar"} registradas`
+                        : "Sin resultados para el filtro actual"}
+                    </td>
+                  </tr>
+                ) : filtered.map((c, i) => (
+                  <CuentaRow
+                    key={c.id ?? i}
+                    cuenta={c}
+                    kind={kind}
+                    selected={selected.has(c.id!)}
+                    onSelect={toggleSelect}
+                    onAbono={setAbonoTarget}
+                    onEdit={(c) => { setEditing(c); setShowForm(true); }}
+                    onDelete={handleDelete}
+                    onEditAbono={(c, i) => setEditAbonoTarget({ cuenta: c, index: i })}
+                    onDeleteAbono={handleDeleteAbono}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
 
       <FormDrawer open={showForm} kind={kind} clientesList={clientesList} initial={editing ?? undefined} onClose={() => { setShowForm(false); setEditing(null); }} onSave={handleSave} />
       <AbonoDrawer cuenta={abonoTarget} kind={kind} onClose={() => setAbonoTarget(null)} onSave={handleAbono} />

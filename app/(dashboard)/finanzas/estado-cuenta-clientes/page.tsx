@@ -7,12 +7,10 @@ import StatusBadge from "@/components/StatusBadge";
 import { getCollectionDocs, COLLECTIONS } from "@/lib/db";
 import { filterByPlanta } from "@/lib/auth";
 import type { Cuenta } from "@/components/finanzas/SatAccountsPage";
+import { todayCST } from "@/lib/dateUtils";
 
-function todayISO() { return new Date().toISOString().slice(0, 10); }
-function firstOfMonth() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
-}
+const todayISO = todayCST;
+function firstOfMonth() { return todayCST().slice(0, 7) + "-01"; }
 
 interface Movimiento {
   id: string;

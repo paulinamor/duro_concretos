@@ -23,6 +23,7 @@ import {
   type CrmOpportunity,
 } from "@/lib/crmPipeline";
 import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
+import { todayCST } from "@/lib/dateUtils";
 
 type Opp = CrmOpportunity;
 
@@ -35,7 +36,7 @@ interface OppForm {
 const emptyOppForm = (): OppForm => ({
   cliente: "", obra: "", contacto: "", telefono: "",
   valorEstimado: "", m3Estimados: "",
-  fechaSeguimiento: new Date().toISOString().slice(0, 10),
+  fechaSeguimiento: todayCST(),
   responsable: "", etapa: "Prospecto", proximaAccion: "",
 });
 

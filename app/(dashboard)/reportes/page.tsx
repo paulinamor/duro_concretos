@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { getCollectionDocs, COLLECTIONS } from "@/lib/db";
 import { filterByPlanta } from "@/lib/auth";
+import { todayCST } from "@/lib/dateUtils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -201,12 +202,8 @@ export default function ReportesPage() {
   const [programaciones, setProgramaciones] = useState<Programacion[]>([]);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<Period>("mes");
-  const [customStart, setCustomStart] = useState(() => {
-    const d = new Date();
-    d.setDate(1);
-    return d.toISOString().slice(0, 10);
-  });
-  const [customEnd, setCustomEnd] = useState(() => new Date().toISOString().slice(0, 10));
+  const [customStart, setCustomStart] = useState(() => todayCST().slice(0, 7) + "-01");
+  const [customEnd, setCustomEnd] = useState(todayCST);
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState<"fecha" | "total" | "m3">("fecha");
 
@@ -354,7 +351,7 @@ export default function ReportesPage() {
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Reporte");
-    XLSX.writeFile(wb, `reporte-programacion-${period}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.writeFile(wb, `reporte-programacion-${period}-${todayCST()}.xlsx`);
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -405,7 +402,7 @@ export default function ReportesPage() {
               type="date"
               value={customEnd}
               min={customStart}
-              max={new Date().toISOString().slice(0, 10)}
+              max={todayCST()}
               onChange={(e) => setCustomEnd(e.target.value)}
               className="bg-[#242424] border border-[#3A3A3A] text-gray-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[#CC2229]/60 [color-scheme:dark]"
             />

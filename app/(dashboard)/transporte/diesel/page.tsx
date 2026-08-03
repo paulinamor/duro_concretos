@@ -13,6 +13,7 @@ import {
 import KPICard from "@/components/KPICard";
 import { upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
 import { withPlantaTag } from "@/lib/auth";
+import { todayCST } from "@/lib/dateUtils";
 import { useCollection, useCollectionRaw } from "@/lib/useCollection";
 import type { Unidad } from "@/lib/unidades";
 
@@ -49,7 +50,7 @@ interface FormState {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function todayISO() { return new Date().toISOString().slice(0, 10); }
+const todayISO = todayCST;
 
 function isoToDisplay(iso: string) {
   const [y, m, d] = iso.split("-");
@@ -657,7 +658,7 @@ export default function DieselPage() {
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Combustible");
-    XLSX.writeFile(wb, `cargas-combustible-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.writeFile(wb, `cargas-combustible-${todayCST()}.xlsx`);
   }
 
   async function handleSave(carga: CargaDiesel) {

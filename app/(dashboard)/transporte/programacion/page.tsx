@@ -11,6 +11,7 @@ import KPICard from "@/components/KPICard";
 import ClienteCombobox from "@/components/ClienteCombobox";
 import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
 import { filterByPlanta, getStoredSession, withPlantaTag } from "@/lib/auth";
+import { todayCST, localISODate } from "@/lib/dateUtils";
 import type { Operador } from "@/lib/operadores";
 import type { Cliente } from "@/lib/crmClientes";
 
@@ -77,6 +78,10 @@ interface Programacion {
   montoPagado: number | null;
   metodoPago: string;
   fechaPago: string;
+  exhibiciones?: "1" | "2";
+  montoPago2?: number | null;
+  fechaPago2?: string;
+  metodoPago2?: string;
   notas?: string;
   cxcId?: string;
   planta?: string;
@@ -114,6 +119,8 @@ interface FormState {
   recibo: string; credito: string; fact: string; pagado: string;
   montoPagado: string;
   metodoPago: string; fechaPago: string;
+  exhibiciones: "" | "1" | "2";
+  montoPago2: string; fechaPago2: string; metodoPago2: string;
   notas: string;
 }
 
@@ -121,18 +128,18 @@ interface FormState {
 
 type ViewMode = "dia" | "semana" | "mes" | "rango" | "rastreo";
 
-function todayISO() { return new Date().toISOString().slice(0, 10); }
+const todayISO = todayCST;
 
 function addDays(iso: string, d: number) {
   const dt = new Date(iso + "T12:00:00");
   dt.setDate(dt.getDate() + d);
-  return dt.toISOString().slice(0, 10);
+  return localISODate(dt);
 }
 
 function addMonths(iso: string, m: number) {
   const dt = new Date(iso + "T12:00:00");
   dt.setMonth(dt.getMonth() + m);
-  return dt.toISOString().slice(0, 10);
+  return localISODate(dt);
 }
 
 function weekRange(iso: string): [string, string] {
@@ -142,7 +149,7 @@ function weekRange(iso: string): [string, string] {
   start.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1)); // Monday
   const end = new Date(start);
   end.setDate(start.getDate() + 6);
-  return [start.toISOString().slice(0, 10), end.toISOString().slice(0, 10)];
+  return [localISODate(start), localISODate(end)];
 }
 
 function formatDateLabel(iso: string) {
@@ -228,6 +235,7 @@ function emptyForm(dia: string): FormState {
     ltoAcelr: "", kiloFibra: "", m3Imper: "",
     aditivo: "", tuberiaExtra: "", permisosOC: "",
     recibo: "", credito: "", fact: "", pagado: "", montoPagado: "", metodoPago: "", fechaPago: "",
+    exhibiciones: "", montoPago2: "", fechaPago2: "", metodoPago2: "",
     notas: "",
   };
 }
@@ -283,6 +291,10 @@ function formFromProg(p: Programacion): FormState {
     recibo: p.recibo, credito: p.credito, fact: p.fact, pagado: p.pagado,
     montoPagado: p.montoPagado != null ? String(p.montoPagado) : "",
     metodoPago: p.metodoPago, fechaPago: p.fechaPago,
+    exhibiciones: p.exhibiciones ?? "",
+    montoPago2: p.montoPago2 != null ? String(p.montoPago2) : "",
+    fechaPago2: p.fechaPago2 ?? "",
+    metodoPago2: p.metodoPago2 ?? "",
     notas: p.notas ?? "",
   };
 }
@@ -569,6 +581,10 @@ function FormDrawer({
         montoPagado: form.pagado === "Parcial" ? (n(form.montoPagado) ?? null) : null,
         metodoPago: form.metodoPago.trim(),
         fechaPago: form.fechaPago,
+        exhibiciones: (form.exhibiciones || undefined) as "1" | "2" | undefined,
+        montoPago2: form.exhibiciones === "2" ? (n(form.montoPago2) ?? null) : null,
+        fechaPago2: form.exhibiciones === "2" ? form.fechaPago2 : "",
+        metodoPago2: form.exhibiciones === "2" ? form.metodoPago2.trim() : "",
         notas: form.notas.trim(),
       });
       onClose();
@@ -849,20 +865,98 @@ function FormDrawer({
                 />
               </div>
             )}
-            <div>
-              <label className={lbl}>Método de pago</label>
-              <select value={form.metodoPago} onChange={(e) => set("metodoPago", e.target.value)} className={inp}>
-                <option value="">—</option>
-                <option value="Efectivo">Efectivo</option>
-                <option value="Transferencia">Transferencia</option>
-                <option value="Cheque">Cheque</option>
-                <option value="Crédito">Crédito</option>
-              </select>
+          </div>
+
+          {/* Exhibiciones */}
+          <div className="pt-1">
+            <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-3">Fecha de pago</p>
+            <div className="flex gap-2 mb-4">
+              {(["1", "2"] as const).map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => set("exhibiciones", form.exhibiciones === n ? "" : n)}
+                  className={`flex-1 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                    form.exhibiciones === n
+                      ? "bg-[#CC2229] border-[#CC2229] text-white"
+                      : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
+                  }`}
+                >
+                  {n === "1" ? "1 Exhibición" : "2 Exhibiciones"}
+                </button>
+              ))}
             </div>
-            <div>
-              <label className={lbl}>Fecha de pago</label>
-              <input type="date" value={form.fechaPago} onChange={(e) => set("fechaPago", e.target.value)} className={inp} />
-            </div>
+
+            {(form.exhibiciones === "1" || form.exhibiciones === "") && (
+              <div className="grid grid-cols-2 gap-3 bg-gray-50 rounded-xl p-4 border border-gray-100">
+                <div>
+                  <label className={lbl}>Fecha</label>
+                  <input type="date" value={form.fechaPago} onChange={(e) => set("fechaPago", e.target.value)} className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Método</label>
+                  <select value={form.metodoPago} onChange={(e) => set("metodoPago", e.target.value)} className={inp}>
+                    <option value="">—</option>
+                    {["Efectivo", "Transferencia", "Cheque", "Crédito", "Por definir"].map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {form.exhibiciones === "2" && (
+              <div className="space-y-3">
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                  <p className="text-xs font-semibold text-gray-500 mb-3">Exhibición 1</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className={lbl}>Fecha</label>
+                      <input type="date" value={form.fechaPago} onChange={(e) => set("fechaPago", e.target.value)} className={inp} />
+                    </div>
+                    <div>
+                      <label className={lbl}>Método</label>
+                      <select value={form.metodoPago} onChange={(e) => set("metodoPago", e.target.value)} className={inp}>
+                        <option value="">—</option>
+                        {["Efectivo", "Transferencia", "Cheque", "Crédito", "Por definir"].map((m) => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                  <p className="text-xs font-semibold text-gray-500 mb-3">Exhibición 2</p>
+                  <div className="space-y-3">
+                    <div>
+                      <label className={lbl}>Monto $</label>
+                      <input
+                        type="number" min="0" step="0.01"
+                        value={form.montoPago2}
+                        onChange={(e) => set("montoPago2", e.target.value)}
+                        placeholder="0.00" className={inp}
+                        onWheel={(e) => e.currentTarget.blur()}
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className={lbl}>Fecha</label>
+                        <input type="date" value={form.fechaPago2} onChange={(e) => set("fechaPago2", e.target.value)} className={inp} />
+                      </div>
+                      <div>
+                        <label className={lbl}>Método</label>
+                        <select value={form.metodoPago2} onChange={(e) => set("metodoPago2", e.target.value)} className={inp}>
+                          <option value="">—</option>
+                          {["Efectivo", "Transferencia", "Cheque", "Crédito", "Por definir"].map((m) => (
+                            <option key={m} value={m}>{m}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1465,7 +1559,7 @@ export default function ProgramacionPage() {
       setClientesSet(existingSet);
 
       // Migrate clients from programaciones that don't exist yet in clientes collection
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayCST();
       const nuevos = Array.from(new Set(fromProgs.map((n) => n.trim()).filter(Boolean)))
         .filter((nombre) => !existingSet.has(nombre.toLowerCase()));
       if (nuevos.length > 0) {
@@ -1538,7 +1632,7 @@ export default function ProgramacionPage() {
     const nombreCliente = p.cliente.trim();
     if (nombreCliente && !clientesSet.has(nombreCliente.toLowerCase())) {
       const clienteId = `CL-${Date.now()}`;
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayCST();
       const nuevoCliente: Omit<Cliente, "id"> = {
         razonSocial: nombreCliente,
         nombreComercial: nombreCliente,

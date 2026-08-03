@@ -16,6 +16,7 @@ import {
 } from "@/lib/concreteReceipts";
 import { upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
 import { withPlantaTag } from "@/lib/auth";
+import { todayCST } from "@/lib/dateUtils";
 import { useCollection } from "@/lib/useCollection";
 
 function money(value: number | undefined | null) {
@@ -29,7 +30,7 @@ function getNextReceiptNumber(receipts: ConcreteReceipt[]) {
 
 function createReceipt(receipts: ConcreteReceipt[]): ConcreteReceipt {
   const nextNumber = getNextReceiptNumber(receipts);
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayCST();
 
   return {
     id: `REC-${nextNumber}`,

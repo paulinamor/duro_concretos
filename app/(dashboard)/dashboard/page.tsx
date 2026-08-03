@@ -24,6 +24,7 @@ import {
 } from "recharts";
 import { getCollectionDocs, COLLECTIONS } from "@/lib/db";
 import { filterByPlanta, getAllowedModuleSet, moduleCatalog, getStoredSession } from "@/lib/auth";
+import { localISODate } from "@/lib/dateUtils";
 import type { Unidad } from "@/lib/unidades";
 import { TOOLTIP_STYLE } from "@/lib/chartStyles";
 
@@ -137,7 +138,7 @@ export default function DashboardPage() {
     for (let i = 14; i >= 0; i--) {
       const d = new Date(now);
       d.setDate(d.getDate() - i);
-      const iso = d.toISOString().slice(0, 10);
+      const iso = localISODate(d);
       const m3 = progs.filter((p) => p.dia === iso).reduce((s, p) => s + (p.m3Totales ?? 0), 0);
       days.push({ dia: `${d.getDate()}/${d.getMonth() + 1}`, m3 });
     }

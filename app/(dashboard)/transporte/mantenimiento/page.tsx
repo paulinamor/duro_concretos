@@ -19,6 +19,7 @@ import {
 import KPICard from "@/components/KPICard";
 import { filterByPlanta, withPlantaTag } from "@/lib/auth";
 import { COLLECTIONS, deleteDocument, getCollectionDocs, upsertDocument } from "@/lib/db";
+import { todayCST } from "@/lib/dateUtils";
 import type { Unidad } from "@/lib/unidades";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -59,9 +60,7 @@ interface UnitSummary {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
+const todayISO = todayCST;
 
 function fmtFecha(f: string) {
   if (!f) return "—";

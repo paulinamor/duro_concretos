@@ -5,6 +5,7 @@ import * as XLSX from "xlsx";
 import { CheckCircle2, FileCheck, FileDown, Sparkles, Upload, X } from "lucide-react";
 import type { Cuenta } from "./SatAccountsPage";
 import type { SatDownloadKind } from "@/lib/satDownloads";
+import { localISODate } from "@/lib/dateUtils";
 
 interface Props {
   open: boolean;
@@ -97,7 +98,7 @@ function vencimientoDefault(fecha: string): string {
   const d = new Date(fecha + "T12:00:00");
   if (isNaN(d.getTime())) return "";
   d.setDate(d.getDate() + 30);
-  return d.toISOString().slice(0, 10);
+  return localISODate(d);
 }
 
 function currency(n: number) {
