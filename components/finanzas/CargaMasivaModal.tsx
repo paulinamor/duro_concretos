@@ -66,15 +66,34 @@ function parseNum(v: unknown) {
 function parseDate(v: unknown): string {
   const s = String(v ?? "").trim();
   if (!s) return "";
+  // ISO YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  // Excel serial number (5 digits)
   if (/^\d{5}$/.test(s)) {
     const d = new Date((Number(s) - 25569) * 86400000);
     if (!isNaN(d.getTime())) {
       return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
     }
   }
+  // 4-digit year: DD/MM/YYYY or MM/DD/YYYY
   const mDMY = s.match(/^(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})$/);
-  if (mDMY) return `${mDMY[3]}-${mDMY[2].padStart(2, "0")}-${mDMY[1].padStart(2, "0")}`;
+  if (mDMY) {
+    const [, a, b, y] = mDMY;
+    // If first part > 12 it must be the day → DD/MM/YYYY
+    if (parseInt(a) > 12) return `${y}-${b.padStart(2, "0")}-${a.padStart(2, "0")}`;
+    // If second part > 12 it must be the day → MM/DD/YYYY (XLSX.js US output)
+    if (parseInt(b) > 12) return `${y}-${a.padStart(2, "0")}-${b.padStart(2, "0")}`;
+    // Ambiguous: default to DD/MM/YYYY (Mexican convention)
+    return `${y}-${b.padStart(2, "0")}-${a.padStart(2, "0")}`;
+  }
+  // 2-digit year: XLSX.js reformats Excel date cells to M/D/YY (US format).
+  // e.g. Excel DD/MM/YY "09/07/26" → XLSX outputs "7/9/26" → parse as M/D/YY.
+  const mMDY2 = s.match(/^(\d{1,2})[/\-](\d{1,2})[/\-](\d{2})$/);
+  if (mMDY2) {
+    const [, m, d, yy] = mMDY2;
+    const fullYear = parseInt(yy) < 50 ? 2000 + parseInt(yy) : 1900 + parseInt(yy);
+    return `${fullYear}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
   return s;
 }
 
