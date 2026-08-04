@@ -115,17 +115,20 @@ const emptyForm = (): FormState => ({
 
 // ─── Form Drawer ──────────────────────────────────────────────────────────────
 
-function FormDrawer({ open, onClose, onSave, unidadesList, editing }: {
+function FormDrawer({ open, onClose, onSave, unidadesList, editing, lastKmByUnidad }: {
   open: boolean; onClose: () => void;
   onSave: (carga: CargaDiesel) => Promise<void>;
   unidadesList: string[]; editing?: CargaDiesel | null;
+  lastKmByUnidad: Map<string, number>;
 }) {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
+  const [autoKm, setAutoKm] = useState<number | null>(null);
 
   useEffect(() => {
     if (!open) return;
+    setAutoKm(null);
     if (editing) {
       const toISO = (f: string) => f.includes("/") ? f.split("/").reverse().join("-") : f;
       setForm({
@@ -156,6 +159,22 @@ function FormDrawer({ open, onClose, onSave, unidadesList, editing }: {
   function set(field: keyof FormState, value: string) {
     setForm((f) => ({ ...f, [field]: value }));
     if (errors[field]) setErrors((e) => ({ ...e, [field]: undefined }));
+  }
+
+  function handleUnidadChange(value: string) {
+    if (!editing && value) {
+      const lastKm = lastKmByUnidad.get(value) ?? null;
+      setAutoKm(lastKm);
+      setForm((f) => ({
+        ...f,
+        unidad: value,
+        kmAnterior: lastKm != null ? String(lastKm) : f.kmAnterior,
+      }));
+    } else {
+      setAutoKm(null);
+      setForm((f) => ({ ...f, unidad: value }));
+    }
+    if (errors.unidad) setErrors((e) => ({ ...e, unidad: undefined }));
   }
 
   function validate() {
@@ -240,7 +259,7 @@ function FormDrawer({ open, onClose, onSave, unidadesList, editing }: {
             </div>
             <div className="mt-3">
               <label className={lbl}>Unidad {req}</label>
-              <select value={form.unidad} onChange={(e) => set("unidad", e.target.value)} className={inp("unidad")}>
+              <select value={form.unidad} onChange={(e) => handleUnidadChange(e.target.value)} className={inp("unidad")}>
                 <option value="">Seleccionar unidad…</option>
                 {unidadesList.map((u) => <option key={u} value={u}>{u}</option>)}
               </select>
@@ -282,7 +301,14 @@ function FormDrawer({ open, onClose, onSave, unidadesList, editing }: {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={lbl}>Km anterior</label>
-                <input type="number" step="0.1" min="0" value={form.kmAnterior} onChange={(e) => set("kmAnterior", e.target.value)} placeholder="0" className={inp()} onWheel={(e) => e.currentTarget.blur()} />
+                <input type="number" step="0.1" min="0" value={form.kmAnterior}
+                  onChange={(e) => { set("kmAnterior", e.target.value); setAutoKm(null); }}
+                  placeholder="0" className={inp()} onWheel={(e) => e.currentTarget.blur()} />
+                {autoKm != null && form.kmAnterior === String(autoKm) && (
+                  <p className="mt-1 flex items-center gap-1 text-xs text-sky-500">
+                    <Gauge size={10} /> Último registro de esta unidad
+                  </p>
+                )}
               </div>
               <div>
                 <label className={lbl}>Km nuevo</label>
@@ -636,6 +662,19 @@ export default function DieselPage() {
 
   const maxLitros = resumenPorUnidad.reduce((m, r) => Math.max(m, r.litros), 0);
 
+  const lastKmByUnidad = useMemo(() => {
+    const toMs = (f: string) => {
+      const p = f.split("/");
+      if (p.length !== 3) return 0;
+      return new Date(`${p[2]}-${p[1]}-${p[0]}T00:00:00`).getTime();
+    };
+    const map = new Map<string, number>();
+    [...cargas]
+      .sort((a, b) => toMs(a.fecha) - toMs(b.fecha))
+      .forEach((c) => { if (c.kmNuevo != null && c.kmNuevo > 0) map.set(c.unidad, c.kmNuevo); });
+    return map;
+  }, [cargas]);
+
   function exportXLSX() {
     const XLSX = require("xlsx");
     const rows = filtered.map((c) => ({
@@ -877,7 +916,8 @@ export default function DieselPage() {
       </div>{/* end 2-col grid */}
 
       <FormDrawer open={showForm} onClose={() => { setShowForm(false); setEditingCarga(null); }} onSave={handleSave} editing={editingCarga}
-        unidadesList={[...unidadesList, ...cargas.map((c) => c.unidad)].filter((v, i, a) => v && a.indexOf(v) === i).sort()} />
+        unidadesList={[...unidadesList, ...cargas.map((c) => c.unidad)].filter((v, i, a) => v && a.indexOf(v) === i).sort()}
+        lastKmByUnidad={lastKmByUnidad} />
 
       {confirmDelete && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center">

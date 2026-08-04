@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertTriangle, CheckCircle2, Clock, Download, Plus, Search,
-  Shield, ShieldOff, Trash2, X, XCircle,
+  AlertTriangle, CheckCircle2, Clock, Download, Eye, File, FileText,
+  FolderOpen, Image, Plus, Search, Shield, ShieldOff, Trash2, Upload,
+  X, XCircle,
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
 import HScrollTable from "@/components/HScrollTable";
@@ -12,8 +13,20 @@ import { withPlantaTag } from "@/lib/auth";
 import { todayCST } from "@/lib/dateUtils";
 import { useCollection } from "@/lib/useCollection";
 import type { Unidad, EstatusUnidad } from "@/lib/unidades";
+import { storage } from "@/lib/firebase";
+import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+export type DocItem = {
+  id: string;
+  nombre: string;
+  categoria: string;
+  url: string;
+  mimeType: string;
+  size: number;
+  subidoEn: string; // ISO date
+};
 
 type StatusPoliza =
   | "Condicionada" | "Indefinida" | "Renovada"
@@ -47,6 +60,7 @@ interface Seguro {
   tenencia: string;         // año o "—"
   agente: string;
   observaciones: string;
+  documentos?: DocItem[];
   planta?: string;
 }
 
@@ -235,6 +249,313 @@ const STATUS_VIG: Record<VigenciaStatus, { label: string; cls: string }> = {
 
 const lbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5";
 const inp = "w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-900 text-sm placeholder-gray-400 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors";
+
+// ─── DocumentosDrawer ─────────────────────────────────────────────────────────
+
+const DOC_CATS = [
+  "Foto", "Tarjeta Circulación", "Póliza Seguro", "Verificación",
+  "Permiso SCT", "Factura", "Otro",
+];
+const MAX_MB = 20;
+
+function isImage(mimeType: string) {
+  return mimeType.startsWith("image/");
+}
+
+function fmtSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function DocIcon({ mimeType, size = 16 }: { mimeType: string; size?: number }) {
+  if (isImage(mimeType)) return <Image size={size} />;
+  if (mimeType === "application/pdf") return <FileText size={size} />;
+  return <File size={size} />;
+}
+
+function DocumentosDrawer({
+  open, onClose, seguro, unidadId, noEconomico, onSaved,
+}: {
+  open: boolean;
+  onClose: () => void;
+  seguro: Seguro;
+  unidadId: string;
+  noEconomico: string;
+  onSaved: (docs: DocItem[]) => Promise<void>;
+}) {
+  const [docs, setDocs] = useState<DocItem[]>([]);
+  const [categoria, setCategoria] = useState("Foto");
+  const [dragging, setDragging] = useState(false);
+  const [uploads, setUploads] = useState<Record<string, number>>({}); // filename → progress 0-100
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<DocItem | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (open) setDocs(seguro.documentos ?? []);
+  }, [open, seguro]);
+
+  async function uploadFiles(files: File[]) {
+    if (!storage) return;
+    for (const file of files) {
+      if (file.size > MAX_MB * 1024 * 1024) {
+        window.dispatchEvent(new CustomEvent("duro:toast", {
+          detail: { type: "error", message: `${file.name} supera ${MAX_MB} MB.` },
+        }));
+        continue;
+      }
+      const filename = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+      const storageRef = ref(storage, `unidades/${unidadId}/docs/${filename}`);
+      const task = uploadBytesResumable(storageRef, file, { contentType: file.type });
+
+      await new Promise<void>((resolve, reject) => {
+        task.on(
+          "state_changed",
+          (snap) => {
+            const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
+            setUploads((u) => ({ ...u, [filename]: pct }));
+          },
+          (err) => { reject(err); },
+          async () => {
+            const url = await getDownloadURL(task.snapshot.ref);
+            const newDoc: DocItem = {
+              id: filename,
+              nombre: file.name,
+              categoria,
+              url,
+              mimeType: file.type || "application/octet-stream",
+              size: file.size,
+              subidoEn: new Date().toISOString().slice(0, 10),
+            };
+            setDocs((prev) => {
+              const updated = [...prev, newDoc];
+              onSaved(updated);
+              return updated;
+            });
+            setUploads((u) => { const n = { ...u }; delete n[filename]; return n; });
+            resolve();
+          }
+        );
+      });
+    }
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragging(false);
+    uploadFiles(Array.from(e.dataTransfer.files));
+  }
+
+  async function deleteDoc(doc: DocItem) {
+    setDeleting(doc.id);
+    try {
+      if (storage) {
+        const storageRef = ref(storage, `unidades/${unidadId}/docs/${doc.id}`);
+        await deleteObject(storageRef).catch(() => {});
+      }
+      const updated = docs.filter((d) => d.id !== doc.id);
+      setDocs(updated);
+      await onSaved(updated);
+    } finally {
+      setDeleting(null);
+    }
+  }
+
+  const fotos = docs.filter((d) => isImage(d.mimeType));
+  const archivos = docs.filter((d) => !isImage(d.mimeType));
+  const uploadingCount = Object.keys(uploads).length;
+
+  if (!open) return null;
+
+  return (
+    <>
+      <div className="fixed inset-0 z-[110] flex">
+        <button className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+        <div className="relative ml-auto flex h-full w-full max-w-xl flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-4 shrink-0">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+              <FolderOpen size={18} />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">Documentos y Fotos</h2>
+              <p className="text-xs text-gray-500">{noEconomico} · {docs.length} archivo{docs.length !== 1 ? "s" : ""}</p>
+            </div>
+            <button onClick={onClose} className="ml-auto rounded-xl p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors cursor-pointer">
+              <X size={16} />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+            {/* Upload zone */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <label className="block text-[10px] font-semibold uppercase tracking-widest text-gray-500">Categoría</label>
+                <select
+                  value={categoria}
+                  onChange={(e) => setCategoria(e.target.value)}
+                  className="text-xs bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-gray-700 focus:outline-none focus:border-blue-400"
+                >
+                  {DOC_CATS.map((c) => <option key={c}>{c}</option>)}
+                </select>
+              </div>
+              <div
+                onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+                onDragLeave={() => setDragging(false)}
+                onDrop={handleDrop}
+                onClick={() => inputRef.current?.click()}
+                className={`flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-xl p-6 cursor-pointer transition-colors ${
+                  dragging ? "border-blue-400 bg-blue-50" : "border-gray-200 hover:border-blue-300 hover:bg-gray-50"
+                }`}
+              >
+                <Upload size={22} className="text-gray-400" />
+                <p className="text-sm font-medium text-gray-600">Arrastra archivos o haz clic para subir</p>
+                <p className="text-xs text-gray-400">Fotos, PDFs, documentos · Máx {MAX_MB} MB c/u</p>
+              </div>
+              <input
+                ref={inputRef}
+                type="file"
+                multiple
+                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+                className="hidden"
+                onChange={(e) => { if (e.target.files) uploadFiles(Array.from(e.target.files)); e.target.value = ""; }}
+              />
+            </div>
+
+            {/* Upload progress */}
+            {uploadingCount > 0 && (
+              <div className="space-y-2">
+                {Object.entries(uploads).map(([name, pct]) => (
+                  <div key={name}>
+                    <div className="flex justify-between text-xs text-gray-500 mb-1">
+                      <span className="truncate max-w-[280px]">{name}</span>
+                      <span>{pct}%</span>
+                    </div>
+                    <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Fotos */}
+            {fotos.length > 0 && (
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-2">Fotos ({fotos.length})</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {fotos.map((doc) => (
+                    <div key={doc.id} className="relative group rounded-xl overflow-hidden bg-gray-100 aspect-square">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={doc.url} alt={doc.nombre} className="w-full h-full object-cover" />
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+                        <button
+                          onClick={() => setLightbox(doc)}
+                          className="p-1.5 bg-white/90 rounded-lg text-gray-700 hover:bg-white transition-colors cursor-pointer"
+                        >
+                          <Eye size={14} />
+                        </button>
+                        <button
+                          onClick={() => deleteDoc(doc)}
+                          disabled={deleting === doc.id}
+                          className="p-1.5 bg-white/90 rounded-lg text-red-500 hover:bg-white transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent px-2 py-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <p className="text-[10px] text-white truncate">{doc.categoria}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Documentos */}
+            {archivos.length > 0 && (
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-2">Documentos ({archivos.length})</p>
+                <div className="space-y-2">
+                  {archivos.map((doc) => (
+                    <div key={doc.id} className="flex items-center gap-3 p-3 bg-gray-50 border border-gray-100 rounded-xl hover:bg-gray-100 transition-colors">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white border border-gray-200 text-blue-500">
+                        <DocIcon mimeType={doc.mimeType} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800 truncate">{doc.nombre}</p>
+                        <p className="text-[11px] text-gray-400">{doc.categoria} · {fmtSize(doc.size)} · {doc.subidoEn}</p>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <a
+                          href={doc.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+                          title="Ver"
+                        >
+                          <Eye size={14} />
+                        </a>
+                        <a
+                          href={doc.url}
+                          download={doc.nombre}
+                          className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-200 rounded-lg transition-colors"
+                          title="Descargar"
+                        >
+                          <Download size={14} />
+                        </a>
+                        <button
+                          onClick={() => deleteDoc(doc)}
+                          disabled={deleting === doc.id}
+                          className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                          title="Eliminar"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {docs.length === 0 && uploadingCount === 0 && (
+              <div className="flex flex-col items-center gap-2 py-10 text-gray-400">
+                <FolderOpen size={32} className="text-gray-300" />
+                <p className="text-sm">Sin archivos aún</p>
+                <p className="text-xs">Sube fotos y documentos de esta unidad</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Lightbox */}
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90"
+          onClick={() => setLightbox(null)}
+        >
+          <button className="absolute top-4 right-4 p-2 text-white/60 hover:text-white transition-colors cursor-pointer">
+            <X size={24} />
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={lightbox.url}
+            alt={lightbox.nombre}
+            className="max-h-[90vh] max-w-[90vw] object-contain rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-center">
+            <p className="text-white text-sm">{lightbox.nombre}</p>
+            <p className="text-white/50 text-xs">{lightbox.categoria} · {fmtSize(lightbox.size)}</p>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
 
 // ─── Section divider helper ───────────────────────────────────────────────────
 
@@ -553,6 +874,7 @@ export default function SegurosPage() {
   const [confirmDelete, setConfirmDelete] = useState<Seguro | null>(null);
   const [confirmDeleteUnit, setConfirmDeleteUnit] = useState<{ unidad: Unidad; seguro?: Seguro } | null>(null);
   const [unitDeps, setUnitDeps] = useState<{ checking: boolean; mantenimientos: number; diesel: number; reparaciones: number; fallas: number } | null>(null);
+  const [docsTarget, setDocsTarget] = useState<{ seguro: Seguro; unidadId: string; noEconomico: string } | null>(null);
 
   // Map unidadId → latest seguro (by vigenciaFin desc)
   const seguroByUnidad = useMemo(() => {
@@ -628,6 +950,12 @@ export default function SegurosPage() {
       detail: { type: "success", message: `Unidad ${s.noEconomico} guardada.` },
     }));
   };
+
+  async function handleDocsUpdate(docs: DocItem[]) {
+    if (!docsTarget) return;
+    await upsertDocument(COLLECTIONS.seguros, docsTarget.seguro.id!, withPlantaTag({ documentos: docs }));
+    setDocsTarget((prev) => prev ? { ...prev, seguro: { ...prev.seguro, documentos: docs } } : null);
+  }
 
   async function handleDelete(s: Seguro) {
     await deleteDocument(COLLECTIONS.seguros, s.id!);
@@ -843,6 +1171,18 @@ export default function SegurosPage() {
                           </button>
                           {seguro && (
                             <button
+                              onClick={() => setDocsTarget({ seguro, unidadId: unidad?.id ?? seguro.unidadId, noEconomico: unidad?.noEconomico ?? seguro.noEconomico })}
+                              className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium text-gray-400 hover:text-blue-400 bg-[#1A1A1A] hover:bg-blue-500/10 border border-[#3A3A3A] hover:border-blue-500/30 rounded-lg transition-colors"
+                              title="Documentos y fotos"
+                            >
+                              <FolderOpen size={11} />
+                              {(seguro.documentos?.length ?? 0) > 0 && (
+                                <span className="text-blue-400">{seguro.documentos!.length}</span>
+                              )}
+                            </button>
+                          )}
+                          {seguro && (
+                            <button
                               onClick={() => setConfirmDelete(seguro)}
                               className="flex items-center justify-center p-1.5 text-gray-600 hover:text-red-400 bg-[#1A1A1A] hover:bg-red-500/10 border border-[#3A3A3A] hover:border-red-500/30 rounded-lg transition-colors"
                               aria-label="Eliminar seguro"
@@ -890,6 +1230,17 @@ export default function SegurosPage() {
         unidad={drawerUnidad}
         existing={drawerExisting}
       />
+
+      {docsTarget && (
+        <DocumentosDrawer
+          open={!!docsTarget}
+          onClose={() => setDocsTarget(null)}
+          seguro={docsTarget.seguro}
+          unidadId={docsTarget.unidadId}
+          noEconomico={docsTarget.noEconomico}
+          onSaved={handleDocsUpdate}
+        />
+      )}
 
       {confirmDelete && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center">

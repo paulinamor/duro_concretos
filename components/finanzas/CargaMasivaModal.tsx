@@ -5,7 +5,6 @@ import * as XLSX from "xlsx";
 import { CheckCircle2, FileCheck, FileDown, Sparkles, Upload, X } from "lucide-react";
 import type { Cuenta } from "./SatAccountsPage";
 import type { SatDownloadKind } from "@/lib/satDownloads";
-import { localISODate } from "@/lib/dateUtils";
 
 interface Props {
   open: boolean;
@@ -86,8 +85,8 @@ function parseDate(v: unknown): string {
     // Ambiguous: default to DD/MM/YYYY (Mexican convention)
     return `${y}-${b.padStart(2, "0")}-${a.padStart(2, "0")}`;
   }
-  // 2-digit year: XLSX.js reformats Excel date cells to M/D/YY (US format).
-  // e.g. Excel DD/MM/YY "09/07/26" → XLSX outputs "7/9/26" → parse as M/D/YY.
+  // 2-digit year: XLSX.js always outputs dates as M/D/YY (US, month first).
+  // Excel "31/07/26" (DD/MM/YY = Jul 31) → XLSX outputs "7/31/26" → month=7, day=31.
   const mMDY2 = s.match(/^(\d{1,2})[/\-](\d{1,2})[/\-](\d{2})$/);
   if (mMDY2) {
     const [, m, d, yy] = mMDY2;
@@ -109,16 +108,9 @@ function normalizeTipo(v: string): Cuenta["tipo"] {
   if (u === "I" || u.includes("FACTURA")) return "Factura";
   if (u === "E" || u.includes("CREDITO") || u.includes("CRÉDITO")) return "Nota de Crédito";
   if (u === "P" || u.includes("PAGO")) return "Complemento de Pago";
-  return "Factura";
+  return "Factura"; // fallback for unrecognized values
 }
 
-function vencimientoDefault(fecha: string): string {
-  if (!fecha) return "";
-  const d = new Date(fecha + "T12:00:00");
-  if (isNaN(d.getTime())) return "";
-  d.setDate(d.getDate() + 30);
-  return localISODate(d);
-}
 
 function currency(n: number) {
   return n?.toLocaleString("es-MX", { style: "currency", currency: "MXN" }) ?? "—";
@@ -170,7 +162,6 @@ async function parseExcel(file: File, kind: SatDownloadKind): Promise<Omit<Cuent
     });
 
     if (!rec.fecha) continue;
-    if (!rec.vencimiento) rec.vencimiento = vencimientoDefault(String(rec.fecha));
 
     records.push(rec as Omit<Cuenta, "id" | "planta">);
   }

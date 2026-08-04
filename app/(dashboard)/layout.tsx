@@ -126,7 +126,7 @@ export default function DashboardLayout({
     }
 
     const allowedModules = getAllowedModuleSet(session);
-    const isAllowed = pathname === "/perfil" || allowedModules.has(pathname);
+    const isAllowed = pathname === "/perfil" || pathname === "/finanzas/migrar-fechas" || allowedModules.has(pathname);
     if (isAllowed) return;
 
     window.dispatchEvent(

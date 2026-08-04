@@ -1,6 +1,7 @@
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore";
+import { getStorage, type FirebaseStorage } from "firebase/storage";
 
 // NEXT_PUBLIC_ vars are embedded at build time. If missing (e.g. Vercel env not set),
 // fall back to hardcoded values — these are client-side keys, not secrets.
@@ -38,6 +39,7 @@ if (isFirebaseConfigured) {
 
 export const auth: Auth | null = app ? getAuth(app) : null;
 export const db: Firestore | null = app ? getFirestore(app) : null;
+export const storage: FirebaseStorage | null = app ? getStorage(app) : null;
 
 // Secondary app instance — used to create users without signing out the current admin
 export const authSecondary: Auth | null = secondaryApp ? getAuth(secondaryApp) : null;
