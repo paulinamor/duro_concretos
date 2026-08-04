@@ -431,6 +431,8 @@ function FormDrawer({
 
 // ─── Abono Drawer ─────────────────────────────────────────────────────────────
 
+type ExhibicionForm = { fecha: string; monto: string; referencia: string };
+
 function AbonoDrawer({
   cuenta,
   kind,
@@ -440,30 +442,56 @@ function AbonoDrawer({
   cuenta: Cuenta | null;
   kind: SatDownloadKind;
   onClose: () => void;
-  onSave: (cuenta: Cuenta, abono: Abono) => Promise<void>;
+  onSave: (cuenta: Cuenta, abonos: Abono[]) => Promise<void>;
 }) {
-  const [form, setForm] = useState({ fecha: todayISO(), monto: "", referencia: "" });
+  const [exhibiciones, setExhibiciones] = useState<ExhibicionForm[]>([
+    { fecha: todayISO(), monto: "", referencia: "" },
+  ]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (cuenta) setForm({ fecha: todayISO(), monto: "", referencia: "" });
+    if (cuenta) setExhibiciones([{ fecha: todayISO(), monto: "", referencia: "" }]);
   }, [cuenta]);
 
   if (!cuenta || cuenta.estadoSAT === "Cancelado") return null;
   const c = cuenta;
 
-  const saldo = c.total - c.montoPagado;
-  const montoNum = parseFloat(form.monto) || 0;
+  const total = Math.round(Number(c.total) * 100) / 100;
+  const sumaAbonos = Math.round(
+    (c.abonos ?? []).reduce((s, a) => s + Math.round(Number(a.monto) * 100) / 100, 0) * 100
+  ) / 100;
+  const rawPagado = Math.round(Number(c.montoPagado ?? 0) * 100) / 100;
+  const realPagado = Math.max(rawPagado, sumaAbonos);
+  const saldo = Math.round((total - realPagado) * 100) / 100;
+
+  const totalNuevo = Math.round(
+    exhibiciones.reduce((s, ex) => s + (parseFloat(ex.monto) || 0), 0) * 100
+  ) / 100;
+
+  function updateEx(i: number, k: keyof ExhibicionForm, v: string) {
+    setExhibiciones((prev) => prev.map((ex, idx) => (idx === i ? { ...ex, [k]: v } : ex)));
+  }
+  function addExhibicion() {
+    setExhibiciones((prev) => [...prev, { fecha: todayISO(), monto: "", referencia: "" }]);
+  }
+  function removeExhibicion(i: number) {
+    if (exhibiciones.length <= 1) return;
+    setExhibiciones((prev) => prev.filter((_, idx) => idx !== i));
+  }
 
   async function handleSave() {
-    if (montoNum <= 0) return;
+    const valid = exhibiciones.filter((ex) => parseFloat(ex.monto) > 0);
+    if (valid.length === 0) return;
     setSaving(true);
     try {
-      await onSave(c, {
-        fecha: isoToDisplay(form.fecha),
-        monto: montoNum,
-        referencia: form.referencia,
-      });
+      await onSave(
+        c,
+        valid.map((ex) => ({
+          fecha: isoToDisplay(ex.fecha),
+          monto: parseFloat(ex.monto),
+          referencia: ex.referencia,
+        })),
+      );
       onClose();
     } finally {
       setSaving(false);
@@ -473,6 +501,7 @@ function AbonoDrawer({
   const inp = "w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-900 text-sm placeholder-gray-400 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors";
   const lbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5";
   const actionLabel = kind === "cxc" ? "Registrar cobro" : "Registrar pago";
+  const multi = exhibiciones.length > 1;
 
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -485,38 +514,94 @@ function AbonoDrawer({
           </div>
           <button onClick={onClose} className="rounded-xl p-2 text-gray-400 hover:bg-gray-100 transition-colors cursor-pointer"><X size={16} /></button>
         </div>
+
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+          {/* Resumen de saldo */}
           <div className="rounded-xl bg-gray-50 border border-gray-200 p-4 space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">Total factura</span>
-              <span className="font-semibold text-gray-900">{currency(cuenta.total)}</span>
+              <span className="font-semibold text-gray-900">{currency(total)}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">Ya {kind === "cxc" ? "cobrado" : "pagado"}</span>
-              <span className="text-emerald-600 font-semibold">{currency(cuenta.montoPagado)}</span>
+              <span className="text-emerald-600 font-semibold">{currency(realPagado)}</span>
             </div>
             <div className="border-t border-gray-200 pt-2 flex justify-between text-sm">
               <span className="font-semibold text-gray-700">Saldo pendiente</span>
               <span className="font-bold text-[#CC2229]">{currency(saldo)}</span>
             </div>
           </div>
-          <div>
-            <label className={lbl}>Fecha del {kind === "cxc" ? "cobro" : "pago"}</label>
-            <input type="date" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} className={inp} />
+
+          {/* Exhibiciones */}
+          <div className="space-y-3">
+            {exhibiciones.map((ex, i) => (
+              <div key={i} className="bg-gray-50 border border-gray-100 rounded-xl p-4 space-y-3">
+                {multi && (
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-bold uppercase tracking-widest text-gray-500">
+                      Exhibición {i + 1}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => removeExhibicion(i)}
+                      className="p-1 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer"
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+                )}
+                <div>
+                  <label className={lbl}>Monto ($)</label>
+                  <input
+                    type="number" min="0" step="0.01"
+                    value={ex.monto}
+                    onChange={(e) => updateEx(i, "monto", e.target.value)}
+                    placeholder="0.00" className={inp}
+                    onWheel={(e) => e.currentTarget.blur()}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={lbl}>Fecha</label>
+                    <input type="date" value={ex.fecha} onChange={(e) => updateEx(i, "fecha", e.target.value)} className={inp} />
+                  </div>
+                  <div>
+                    <label className={lbl}>Referencia</label>
+                    <input type="text" value={ex.referencia} onChange={(e) => updateEx(i, "referencia", e.target.value)} placeholder="Opcional" className={inp} />
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
-          <div>
-            <label className={lbl}>Monto ($)</label>
-            <input type="number" min="0" step="0.01" max={saldo} value={form.monto} onChange={(e) => setForm({ ...form, monto: e.target.value })} placeholder="0.00" className={inp} />
-            <p className="text-[10px] text-gray-400 mt-1">Saldo máximo: {currency(saldo)}</p>
-          </div>
-          <div>
-            <label className={lbl}>Referencia / No. transferencia</label>
-            <input type="text" value={form.referencia} onChange={(e) => setForm({ ...form, referencia: e.target.value })} placeholder="Opcional" className={inp} />
-          </div>
+
+          {/* Agregar exhibición */}
+          <button
+            type="button"
+            onClick={addExhibicion}
+            className="w-full flex items-center justify-center gap-2 py-2.5 text-sm font-medium text-gray-500 border border-dashed border-gray-300 rounded-xl hover:border-[#CC2229]/50 hover:text-[#CC2229] transition-colors cursor-pointer"
+          >
+            <Plus size={14} />
+            Agregar exhibición
+          </button>
+
+          {/* Total cuando hay más de 1 */}
+          {multi && totalNuevo > 0 && (
+            <div className="rounded-xl bg-emerald-50 border border-emerald-100 px-4 py-3 flex items-center justify-between">
+              <span className="text-sm font-medium text-emerald-800">
+                Total a registrar ({exhibiciones.length} exhibiciones)
+              </span>
+              <span className="text-sm font-bold text-emerald-700">{currency(totalNuevo)}</span>
+            </div>
+          )}
         </div>
+
         <div className="border-t border-gray-100 px-6 py-4 flex gap-3 justify-end">
           <button onClick={onClose} className="px-4 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:text-gray-900 transition-colors cursor-pointer">Cancelar</button>
-          <button onClick={handleSave} disabled={saving || montoNum <= 0 || montoNum > saldo} className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition-colors disabled:opacity-60 cursor-pointer">
+          <button
+            onClick={handleSave}
+            disabled={saving || totalNuevo <= 0}
+            className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition-colors disabled:opacity-60 cursor-pointer"
+          >
             {saving ? <span className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" /> : <CheckCircle2 size={15} />}
             {saving ? "Guardando..." : actionLabel}
           </button>
@@ -852,21 +937,33 @@ function CuentaRow({
 
 // ─── Excel View ───────────────────────────────────────────────────────────────
 
-// Fixed palette — one distinct pastel per calendar month (index 0=Jan … 11=Dec).
-// Colors chosen to never be similar to each other or to the cancelled/neutral grays.
+// Fixed palette — 12 completely distinct pastels, one per calendar month (index 0=Jan…11=Dec).
+// Each color sits in its own 30° hue sector so no two months ever look similar:
+//   0  Ene → rojo-coral   (H≈0°)
+//   1  Feb → naranja      (H≈30°)
+//   2  Mar → amarillo     (H≈60°)
+//   3  Abr → lima         (H≈90°)
+//   4  May → verde        (H≈120°)
+//   5  Jun → menta/teal   (H≈155°)
+//   6  Jul → azul cielo   (H≈205°)
+//   7  Ago → azul-violeta (H≈235°)
+//   8  Sep → lavanda      (H≈265°)
+//   9  Oct → violeta-rosa (H≈295°)
+//  10  Nov → magenta      (H≈325°)
+//  11  Dic → oro/ámbar    (neutro cálido — rompe el ciclo para evitar confusión con Enero)
 const MONTH_COLORS: Record<number, { bg: string; hover: string; label: string }> = {
-  0:  { bg: "#CFE2F3", hover: "#BDD5EA", label: "Enero" },
-  1:  { bg: "#D9EAD3", hover: "#CAE0C2", label: "Febrero" },
-  2:  { bg: "#FFF2CC", hover: "#F5E4B0", label: "Marzo" },
-  3:  { bg: "#FCE5CD", hover: "#F0D4B8", label: "Abril" },
-  4:  { bg: "#EAD1DC", hover: "#DEC1CE", label: "Mayo" },
-  5:  { bg: "#D0E0E3", hover: "#BDD2D6", label: "Junio" },
-  6:  { bg: "#C9DAF8", hover: "#B5C9F0", label: "Julio" },
-  7:  { bg: "#D9D2E9", hover: "#C9C0DC", label: "Agosto" },
-  8:  { bg: "#FFE599", hover: "#F5D680", label: "Septiembre" },
-  9:  { bg: "#B6D7A8", hover: "#A3CB93", label: "Octubre" },
-  10: { bg: "#F9CB9C", hover: "#EFB985", label: "Noviembre" },
-  11: { bg: "#A2C4C9", hover: "#8FB4BA", label: "Diciembre" },
+  0:  { bg: "#FFB3B3", hover: "#EE9E9E", label: "Enero" },
+  1:  { bg: "#FFBE80", hover: "#EEAE6A", label: "Febrero" },
+  2:  { bg: "#FFF4A0", hover: "#EEE388", label: "Marzo" },
+  3:  { bg: "#C8F0A0", hover: "#B4DF8A", label: "Abril" },
+  4:  { bg: "#A0E0A0", hover: "#8CCF8C", label: "Mayo" },
+  5:  { bg: "#A0E0D0", hover: "#8CCFBB", label: "Junio" },
+  6:  { bg: "#A0C8F0", hover: "#8CB4DF", label: "Julio" },
+  7:  { bg: "#A0A8F0", hover: "#8C94DF", label: "Agosto" },
+  8:  { bg: "#BCA0F0", hover: "#A88CDF", label: "Septiembre" },
+  9:  { bg: "#D8A0F0", hover: "#C48CDF", label: "Octubre" },
+  10: { bg: "#F0A0D8", hover: "#DF8CC4", label: "Noviembre" },
+  11: { bg: "#E0CC88", hover: "#CFBB72", label: "Diciembre" },
 };
 
 // Derive which calendar month (0-11) an account was paid in.
@@ -936,7 +1033,7 @@ function ExcelTable({
           Color = month payment was received (latest abono date).              */}
       <div className="px-4 py-3 bg-[#EEF4FB] border-b-2 border-[#9FC5E8]">
         <p className="text-[10px] font-extrabold uppercase tracking-widest text-[#1E5FA6] mb-2">
-          Color de fila = mes en que se cobró / pagó
+          Color de fila = mes del último cobro / pago
         </p>
         <div className="flex flex-wrap gap-2">
           {/* Payment months present in current view */}
@@ -1060,7 +1157,7 @@ function ExcelTable({
                       esCancelada
                         ? "Cancelado en el SAT"
                         : pmIdx !== null
-                        ? `${isCxc ? "Cobrado" : "Pagado"} en ${MONTH_COLORS[pmIdx].label}`
+                        ? `Último ${isCxc ? "cobro" : "pago"}: ${MONTH_COLORS[pmIdx].label}`
                         : `Sin ${isCxc ? "cobro" : "pago"} registrado`;
                     return (
                       <tr
@@ -1362,21 +1459,23 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
     });
   }
 
-  async function handleAbono(cuenta: Cuenta, abono: Abono) {
-    // Round to 2 decimal places to prevent floating-point accumulation errors
-    // that would make montoPagado slightly less than total and misclassify status.
-    const nuevoMontoPagado = Math.round((Number(cuenta.montoPagado) + Number(abono.monto)) * 100) / 100;
-    const nuevosAbonos = [...(cuenta.abonos ?? []), abono];
+  async function handleAbono(cuenta: Cuenta, abonos: Abono[]) {
+    const montoTotal = Math.round(abonos.reduce((s, a) => s + Number(a.monto), 0) * 100) / 100;
+    const nuevoMontoPagado = Math.round((Number(cuenta.montoPagado) + montoTotal) * 100) / 100;
+    const nuevosAbonos = [...(cuenta.abonos ?? []), ...abonos];
     const updatedCuenta: Cuenta = {
       ...cuenta,
       montoPagado: nuevoMontoPagado,
       abonos: nuevosAbonos,
-      status: computeStatus({ ...cuenta, montoPagado: nuevoMontoPagado }),
+      status: computeStatus({ ...cuenta, montoPagado: nuevoMontoPagado, abonos: nuevosAbonos }),
     };
     const id = cuenta.id!;
     const { id: _cid, ...cuentaData } = updatedCuenta;
     await upsertDocument(collection, id, withPlantaTag(cuentaData));
-    showToast("success", isCxc ? "Cobro registrado" : "Pago registrado", `${currency(abono.monto)} a ${cuenta.contraparte}`);
+    const label = abonos.length > 1
+      ? `${abonos.length} exhibiciones · ${currency(montoTotal)}`
+      : currency(abonos[0].monto);
+    showToast("success", isCxc ? "Cobro registrado" : "Pago registrado", `${label} · ${cuenta.contraparte}`);
   }
 
   async function handleDeleteAbono(cuenta: Cuenta, index: number) {

@@ -49,7 +49,7 @@ const COL_CXP: Record<string, keyof Omit<Cuenta, "id" | "planta" | "abonos">> = 
 };
 
 const COLS_CXC = ["Estado SAT", "Tipo", "Fecha Emision", "Serie", "Folio", "UUID", "UUID Relacion", "RFC Emisor", "NOMBRE DEL EMISOR", "SubTotal", "IVA 16%", "Total", "FormaDePago", "COSEC. TC"];
-const COLS_CXP = ["Estado SAT", "Tipo", "Fecha Emision", "Serie", "UUID", "UUID Relacion", "RFC Emisor", "NOMBRE DEL EMISOR", "SubTotal", "IVA 16%", "Retenido IVA", "ISH", "Total", "FormaDePago", "COSEC. TC", "BANCO"];
+const COLS_CXP = ["Estado SAT", "Tipo", "Fecha Emision", "Serie", "Folio", "UUID", "UUID Relacion", "RFC Emisor", "NOMBRE DEL EMISOR", "SubTotal", "IVA 16%", "Retenido IVA", "ISH", "Total", "FormaDePago", "COSEC. TC", "BANCO"];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -164,7 +164,7 @@ function downloadTemplate(kind: SatDownloadKind) {
   const headers = kind === "cxc" ? COLS_CXC : COLS_CXP;
   const example = kind === "cxc"
     ? ["Vigente", "Factura", "2026-06-01", "A", "F-001", "UUID-0001-EJEMPLO", "", "RFC123456789", "Nombre del cliente", "10000", "1600", "11600", "03 - Transferencia electronica", "BBVA-001"]
-    : ["Vigente", "Factura", "2026-06-01", "A", "UUID-0001-EJEMPLO", "", "RFC123456789", "Nombre del proveedor", "10000", "1600", "0", "0", "11600", "03 - Transferencia electronica", "BBVA-001", "BANAMEX"];
+    : ["Vigente", "Factura", "2026-06-01", "A", "F-001", "UUID-0001-EJEMPLO", "", "RFC123456789", "Nombre del proveedor", "10000", "1600", "0", "0", "11600", "03 - Transferencia electronica", "BBVA-001", "BANAMEX"];
   const ws = XLSX.utils.aoa_to_sheet([headers, example]);
   ws["!cols"] = headers.map(() => ({ wch: 20 }));
   const wb = XLSX.utils.book_new();
