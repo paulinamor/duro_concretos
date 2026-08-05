@@ -437,12 +437,14 @@ function AbonoRowEdit({
   cuenta,
   kind,
   onUpdate,
+  onDelete,
 }: {
   abono: Abono;
   index: number;
   cuenta: Cuenta;
   kind: SatDownloadKind;
   onUpdate: (cuenta: Cuenta, index: number, abono: Abono) => Promise<void>;
+  onDelete: (cuenta: Cuenta, index: number) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving]   = useState(false);
@@ -480,16 +482,24 @@ function AbonoRowEdit({
     }
   }
 
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
   const inp = "w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-900 text-sm placeholder-gray-400 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors";
   const lbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5";
   const label = kind === "cxc" ? "cobro" : "pago";
 
   if (!editing) {
     return (
-      <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-2.5">
+      <div className={`flex items-center gap-3 rounded-xl px-4 py-2.5 border transition-colors ${
+        confirmDelete
+          ? "bg-red-50 border-red-200"
+          : "bg-emerald-50 border-emerald-100"
+      }`}>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-semibold text-emerald-700">{currency(abono.monto)}</span>
+            <span className={`text-sm font-semibold ${confirmDelete ? "text-red-700" : "text-emerald-700"}`}>
+              {currency(abono.monto)}
+            </span>
             <span className="text-xs text-gray-400">·</span>
             <span className="text-xs text-gray-500">{abono.fecha}</span>
             {abono.referencia && (
@@ -499,14 +509,44 @@ function AbonoRowEdit({
               </>
             )}
           </div>
+          {confirmDelete && (
+            <p className="text-[11px] text-red-500 mt-1">¿Eliminar este {label}?</p>
+          )}
         </div>
-        <button
-          onClick={() => setEditing(true)}
-          className="shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
-          title={`Editar ${label}`}
-        >
-          <Pencil size={13} />
-        </button>
+
+        {confirmDelete ? (
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={() => { onDelete(cuenta, index); setConfirmDelete(false); }}
+              className="px-2.5 py-1 text-[11px] font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors cursor-pointer"
+            >
+              Sí, eliminar
+            </button>
+            <button
+              onClick={() => setConfirmDelete(false)}
+              className="px-2 py-1 text-[11px] text-gray-500 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+            >
+              No
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={() => setEditing(true)}
+              className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
+              title={`Editar ${label}`}
+            >
+              <Pencil size={13} />
+            </button>
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+              title={`Eliminar ${label}`}
+            >
+              <Trash2 size={13} />
+            </button>
+          </div>
+        )}
       </div>
     );
   }
@@ -580,12 +620,14 @@ function AbonoDrawer({
   onClose,
   onSave,
   onEditAbono,
+  onDeleteAbono,
 }: {
   cuenta: Cuenta | null;
   kind: SatDownloadKind;
   onClose: () => void;
   onSave: (cuenta: Cuenta, abonos: Abono[]) => Promise<void>;
   onEditAbono: (cuenta: Cuenta, index: number, abono: Abono) => Promise<void>;
+  onDeleteAbono: (cuenta: Cuenta, index: number) => void;
 }) {
   const [exhibiciones, setExhibiciones] = useState<ExhibicionForm[]>([
     { fecha: todayISO(), monto: "", referencia: "" },
@@ -689,6 +731,7 @@ function AbonoDrawer({
                   cuenta={c}
                   kind={kind}
                   onUpdate={onEditAbono}
+                  onDelete={onDeleteAbono}
                 />
               ))}
               <div className="border-t border-gray-100 pt-2">
@@ -1459,7 +1502,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
   const [clientesList, setClientesList] = useState<string[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Cuenta | null>(null);
-  const [abonoTarget, setAbonoTarget] = useState<Cuenta | null>(null);
+  const [abonoTargetId, setAbonoTargetId] = useState<string | null>(null);
   const [editAbonoTarget, setEditAbonoTarget] = useState<{ cuenta: Cuenta; index: number } | null>(null);
   const [showCargaMasiva, setShowCargaMasiva] = useState(false);
   const [query, setQuery] = useState("");
@@ -1473,6 +1516,9 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
     () => rawCuentas.map((c) => ({ ...c, status: computeStatus(c) })),
     [rawCuentas],
   );
+
+  // Deriva del array vivo para que los cambios de Firestore se reflejen sin reabrir el drawer
+  const abonoTarget = abonoTargetId ? (cuentas.find((c) => c.id === abonoTargetId) ?? null) : null;
 
   const rawClientes = useCollectionRaw<{ razonSocial?: string; nombreComercial?: string }>(COLLECTIONS.clientes);
   useEffect(() => {
@@ -2051,7 +2097,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
         <ExcelTable
           filtered={filtered}
           kind={kind}
-          onAbono={setAbonoTarget}
+          onAbono={(c) => setAbonoTargetId(c.id ?? null)}
           onEdit={(c) => { setEditing(c); setShowForm(true); }}
           onDelete={handleDelete}
           onDeleteAbono={handleDeleteAbono}
@@ -2092,7 +2138,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
                     kind={kind}
                     selected={selected.has(c.id!)}
                     onSelect={toggleSelect}
-                    onAbono={setAbonoTarget}
+                    onAbono={(c) => setAbonoTargetId(c.id ?? null)}
                     onEdit={(c) => { setEditing(c); setShowForm(true); }}
                     onDelete={handleDelete}
                     onEditAbono={(c, i) => setEditAbonoTarget({ cuenta: c, index: i })}
@@ -2106,7 +2152,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
       )}
 
       <FormDrawer open={showForm} kind={kind} clientesList={clientesList} initial={editing ?? undefined} onClose={() => { setShowForm(false); setEditing(null); }} onSave={handleSave} />
-      <AbonoDrawer cuenta={abonoTarget} kind={kind} onClose={() => setAbonoTarget(null)} onSave={handleAbono} onEditAbono={handleEditAbono} />
+      <AbonoDrawer cuenta={abonoTarget} kind={kind} onClose={() => setAbonoTargetId(null)} onSave={handleAbono} onEditAbono={handleEditAbono} onDeleteAbono={handleDeleteAbono} />
       <EditAbonoDrawer target={editAbonoTarget} kind={kind} onClose={() => setEditAbonoTarget(null)} onSave={handleEditAbono} />
       <CargaMasivaModal open={showCargaMasiva} kind={kind} existingUuids={existingUuids} onClose={() => setShowCargaMasiva(false)} onConfirm={handleCargaMasiva} />
     </div>
