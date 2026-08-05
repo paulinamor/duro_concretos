@@ -429,6 +429,147 @@ function FormDrawer({
   );
 }
 
+// ─── Abono Row (inline edit dentro del drawer) ───────────────────────────────
+
+function AbonoRowEdit({
+  abono,
+  index,
+  cuenta,
+  kind,
+  onUpdate,
+}: {
+  abono: Abono;
+  index: number;
+  cuenta: Cuenta;
+  kind: SatDownloadKind;
+  onUpdate: (cuenta: Cuenta, index: number, abono: Abono) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving]   = useState(false);
+  const [form, setForm]       = useState({
+    fecha:     abono.fecha.includes("/") ? displayToISO(abono.fecha) : abono.fecha,
+    monto:     String(abono.monto),
+    referencia: abono.referencia ?? "",
+  });
+
+  useEffect(() => {
+    setForm({
+      fecha:     abono.fecha.includes("/") ? displayToISO(abono.fecha) : abono.fecha,
+      monto:     String(abono.monto),
+      referencia: abono.referencia ?? "",
+    });
+    setEditing(false);
+  }, [abono]);
+
+  const otherSum  = (cuenta.abonos ?? []).filter((_, i) => i !== index).reduce((s, a) => s + Number(a.monto), 0);
+  const maxAllowed = Math.round((Number(cuenta.total) - otherSum) * 100) / 100;
+  const montoNum   = parseFloat(form.monto) || 0;
+
+  async function handleSave() {
+    if (montoNum <= 0 || montoNum > maxAllowed) return;
+    setSaving(true);
+    try {
+      await onUpdate(cuenta, index, {
+        fecha:     isoToDisplay(form.fecha),
+        monto:     montoNum,
+        referencia: form.referencia,
+      });
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const inp = "w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-900 text-sm placeholder-gray-400 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors";
+  const lbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5";
+  const label = kind === "cxc" ? "cobro" : "pago";
+
+  if (!editing) {
+    return (
+      <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-2.5">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-semibold text-emerald-700">{currency(abono.monto)}</span>
+            <span className="text-xs text-gray-400">·</span>
+            <span className="text-xs text-gray-500">{abono.fecha}</span>
+            {abono.referencia && (
+              <>
+                <span className="text-xs text-gray-400">·</span>
+                <span className="text-xs text-gray-400 truncate">{abono.referencia}</span>
+              </>
+            )}
+          </div>
+        </div>
+        <button
+          onClick={() => setEditing(true)}
+          className="shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
+          title={`Editar ${label}`}
+        >
+          <Pencil size={13} />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-blue-600">Editar {label} #{index + 1}</p>
+        <button
+          onClick={() => setEditing(false)}
+          className="p-1 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors cursor-pointer"
+        >
+          <X size={13} />
+        </button>
+      </div>
+
+      <div>
+        <label className={lbl}>Monto ($)</label>
+        <input
+          type="number" min="0" step="0.01" max={maxAllowed}
+          value={form.monto}
+          onChange={(e) => setForm({ ...form, monto: e.target.value })}
+          placeholder="0.00"
+          className={inp}
+          onWheel={(e) => e.currentTarget.blur()}
+        />
+        <p className="text-[10px] text-gray-400 mt-1">Máximo: {currency(maxAllowed)}</p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className={lbl}>Fecha</label>
+          <input type="date" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} className={inp} />
+        </div>
+        <div>
+          <label className={lbl}>Referencia</label>
+          <input type="text" value={form.referencia} onChange={(e) => setForm({ ...form, referencia: e.target.value })} placeholder="Opcional" className={inp} />
+        </div>
+      </div>
+
+      <div className="flex gap-2 pt-1">
+        <button
+          onClick={() => setEditing(false)}
+          className="flex-1 px-3 py-2 text-xs font-medium text-gray-600 border border-gray-200 rounded-xl hover:text-gray-900 transition-colors cursor-pointer"
+        >
+          Cancelar
+        </button>
+        <button
+          onClick={handleSave}
+          disabled={saving || montoNum <= 0 || montoNum > maxAllowed}
+          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors disabled:opacity-60 cursor-pointer"
+        >
+          {saving
+            ? <span className="h-3 w-3 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+            : <CheckCircle2 size={13} />
+          }
+          {saving ? "Guardando..." : "Guardar cambios"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Abono Drawer ─────────────────────────────────────────────────────────────
 
 type ExhibicionForm = { fecha: string; monto: string; referencia: string };
@@ -438,11 +579,13 @@ function AbonoDrawer({
   kind,
   onClose,
   onSave,
+  onEditAbono,
 }: {
   cuenta: Cuenta | null;
   kind: SatDownloadKind;
   onClose: () => void;
   onSave: (cuenta: Cuenta, abonos: Abono[]) => Promise<void>;
+  onEditAbono: (cuenta: Cuenta, index: number, abono: Abono) => Promise<void>;
 }) {
   const [exhibiciones, setExhibiciones] = useState<ExhibicionForm[]>([
     { fecha: todayISO(), monto: "", referencia: "" },
@@ -531,6 +674,30 @@ function AbonoDrawer({
               <span className="font-bold text-[#CC2229]">{currency(saldo)}</span>
             </div>
           </div>
+
+          {/* Cobros / pagos anteriores */}
+          {(c.abonos ?? []).length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">
+                {kind === "cxc" ? "Cobros registrados" : "Pagos registrados"} ({c.abonos!.length})
+              </p>
+              {c.abonos!.map((ab, i) => (
+                <AbonoRowEdit
+                  key={i}
+                  abono={ab}
+                  index={i}
+                  cuenta={c}
+                  kind={kind}
+                  onUpdate={onEditAbono}
+                />
+              ))}
+              <div className="border-t border-gray-100 pt-2">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-2">
+                  Agregar nuevo {kind === "cxc" ? "cobro" : "pago"}
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Exhibiciones */}
           <div className="space-y-3">
@@ -1939,7 +2106,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
       )}
 
       <FormDrawer open={showForm} kind={kind} clientesList={clientesList} initial={editing ?? undefined} onClose={() => { setShowForm(false); setEditing(null); }} onSave={handleSave} />
-      <AbonoDrawer cuenta={abonoTarget} kind={kind} onClose={() => setAbonoTarget(null)} onSave={handleAbono} />
+      <AbonoDrawer cuenta={abonoTarget} kind={kind} onClose={() => setAbonoTarget(null)} onSave={handleAbono} onEditAbono={handleEditAbono} />
       <EditAbonoDrawer target={editAbonoTarget} kind={kind} onClose={() => setEditAbonoTarget(null)} onSave={handleEditAbono} />
       <CargaMasivaModal open={showCargaMasiva} kind={kind} existingUuids={existingUuids} onClose={() => setShowCargaMasiva(false)} onConfirm={handleCargaMasiva} />
     </div>
