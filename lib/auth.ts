@@ -42,7 +42,67 @@ export const moduleCatalog = [
   { href: "/finanzas/cxp", label: "Cuentas por Pagar" },
   { href: "/finanzas/estado-cuenta-clientes", label: "Estados de Cuenta" },
   { href: "/configuracion", label: "Autenticación y roles" },
+  { href: "/facturacion", label: "Facturación CFDI" },
+  // Módulos en desarrollo — solo accesibles para DEV_EMAILS
+  { href: "/recursos-humanos/nomina", label: "Nómina" },
 ];
+
+// Rutas en desarrollo — solo visibles para role === "admin"
+// Cuando estén listas, mover al moduleCatalog normal y quitar de aquí
+export const DEV_ONLY_ROUTES = new Set(["/recursos-humanos/nomina"]);
+
+// Email con acceso completo a herramientas de desarrollo en el sidebar
+export const DEVELOPER_EMAIL = "leonardo@lpsoft.mx";
+
+// ─── Impersonación ────────────────────────────────────────────────────────────
+
+const IMPERSONATION_KEY = "duro_impersonation_original";
+
+export function startImpersonation(profile: {
+  email:    string;
+  name:     string;
+  role:     UserRole;
+  modules?: "all" | string[];
+  planta?:  Planta;
+}) {
+  if (typeof window === "undefined") return;
+  const current = localStorage.getItem(SESSION_KEY);
+  if (current) localStorage.setItem(IMPERSONATION_KEY, current);
+  localStorage.setItem(SESSION_KEY, JSON.stringify({
+    email:   profile.email,
+    name:    profile.name,
+    role:    profile.role,
+    modules: profile.modules ?? getDefaultModulesForRole(profile.role),
+    status:  "Activo",
+    planta:  profile.planta ?? "Todas",
+  }));
+  window.dispatchEvent(new CustomEvent("duro:session-updated"));
+}
+
+export function stopImpersonation() {
+  if (typeof window === "undefined") return;
+  const original = localStorage.getItem(IMPERSONATION_KEY);
+  if (!original) return;
+  localStorage.setItem(SESSION_KEY, original);
+  localStorage.removeItem(IMPERSONATION_KEY);
+  window.dispatchEvent(new CustomEvent("duro:session-updated"));
+}
+
+export function getImpersonationOriginal() {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem(IMPERSONATION_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as Pick<AppUser, "email" | "name" | "role">;
+  } catch {
+    return null;
+  }
+}
+
+export function isImpersonating() {
+  if (typeof window === "undefined") return false;
+  return !!localStorage.getItem(IMPERSONATION_KEY);
+}
 
 export const accessProfiles: Record<UserRole, Array<{ module: string; access: "Completo" | "Registro" | "Consulta" | "Bloqueado" }>> = {
   admin: [
@@ -185,6 +245,7 @@ export function getDefaultModulesForRole(role: UserRole) {
     "/finanzas/cxc",
     "/finanzas/cxp",
     "/finanzas/estado-cuenta-clientes",
+    "/facturacion",
     "/configuracion",
   ];
 }

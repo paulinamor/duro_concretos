@@ -134,6 +134,8 @@ export const COLLECTIONS = {
   cuentasPorCobrar: "cuentasPorCobrar",
   cuentasPorPagar: "cuentasPorPagar",
   configuracion: "configuracion",
+  cfdiEmitidos: "cfdiEmitidos",
+  descargasSAT: "descargasSAT",
 } as const;
 
 export { where, orderBy };
