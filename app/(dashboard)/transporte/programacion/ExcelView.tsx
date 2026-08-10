@@ -58,6 +58,7 @@ export interface ExcelProg {
   notas?: string;
   cxcId?: string;
   planta?: string;
+  rowColor?: string;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -270,8 +271,6 @@ export default function ExcelView({
 
                 const isPaid = prog.pagado === "Sí";
                 const isPartial = prog.pagado === "Parcial";
-                const rowBg = "";
-                const stickyBg = "bg-[#242424]";
                 const borderL = isPaid
                   ? "border-l-2 border-l-emerald-500"
                   : isPartial
@@ -303,181 +302,190 @@ export default function ExcelView({
                         ) || chofer.tiempoDescarga
                       : "";
 
+                  const rc = prog.rowColor || "";
+                  const rowStyle = rc ? { backgroundColor: rc } : {};
+                  const tx = rc ? "!text-[#F3F4F6]" : "";
+
                   return (
                     <tr
                       key={`${prog.id}-${rowIdx}`}
-                      className={`cursor-pointer transition-colors hover:bg-[#2A2A2A] ${borderL} ${isLast ? "border-b border-[#3A3A3A]" : ""}`}
+                      style={rowStyle}
+                      className={`cursor-pointer ${rc ? "" : "transition-colors hover:bg-[#2A2A2A]"} ${borderL} ${isLast ? "border-b border-[#3A3A3A]" : ""}`}
                       onClick={() => onEdit(prog)}
                     >
                       {/* DÍA — sticky */}
                       <td
-                        className={`${td} sticky left-0 z-10 ${stickyBg} border-r border-[#3A3A3A] text-[10px] text-gray-400 font-medium leading-tight`}
+                        className={`${td} sticky left-0 z-10 bg-[#242424] border-r border-[#3A3A3A] text-[10px] text-gray-400 font-medium leading-tight ${tx}`}
+                        style={rc ? { backgroundColor: rc } : undefined}
                       >
                         {isFirst ? formatDiaLong(prog.dia) : ""}
                       </td>
 
                       {/* VENDEDOR — sticky col 2 */}
-                      <td className={`${td} sticky left-[180px] z-10 bg-[#242424] text-amber-500 border-r border-[#3A3A3A]`}>
+                      <td
+                        className={`${td} sticky left-[180px] z-10 bg-[#242424] text-amber-500 border-r border-[#3A3A3A] ${tx}`}
+                        style={rc ? { backgroundColor: rc } : undefined}
+                      >
                         {isFirst ? prog.vendedor : ""}
                       </td>
                       {/* DÍA PEDIDO */}
-                      <td className={`${td} font-mono text-gray-400`}>
+                      <td className={`${td} font-mono text-gray-400 ${tx}`}>
                         {isFirst ? diaPedidoDisplay : ""}
                       </td>
                       {/* H.PEDIDO */}
-                      <td className={`${td} font-mono text-gray-400`}>
+                      <td className={`${td} font-mono text-gray-400 ${tx}`}>
                         {isFirst ? horaPedidoDisplay : ""}
                       </td>
                       {/* MUEST. */}
-                      <td className={`${td} text-gray-400`}>
+                      <td className={`${td} text-gray-400 ${tx}`}>
                         {isFirst ? prog.muestras : ""}
                       </td>
                       {/* H.OBRA */}
-                      <td className={`${td} font-mono text-gray-300`}>
+                      <td className={`${td} font-mono text-gray-300 ${tx}`}>
                         {isFirst ? prog.hora : ""}
                       </td>
 
                       {/* CHOFER */}
-                      <td className={`${td} text-white font-semibold`}>
+                      <td className={`${td} text-white font-semibold ${tx}`}>
                         {chofer?.chofer ?? ""}
                       </td>
                       {/* CR */}
-                      <td className={`${td} font-mono text-gray-300 text-center`}>
+                      <td className={`${td} font-mono text-gray-300 text-center ${tx}`}>
                         {chofer?.cr ?? ""}
                       </td>
                       {/* H/SAL */}
-                      <td className={`${td} font-mono text-gray-300`}>
+                      <td className={`${td} font-mono text-gray-300 ${tx}`}>
                         {chofer?.horaSalida ?? ""}
                       </td>
                       {/* REMISIÓN */}
-                      <td className={`${td} font-mono text-gray-300`}>
+                      <td className={`${td} font-mono text-gray-300 ${tx}`}>
                         {chofer?.remision ?? ""}
                       </td>
                       {/* #SELLO */}
-                      <td className={`${td} font-mono text-gray-400`}>
+                      <td className={`${td} font-mono text-gray-400 ${tx}`}>
                         {chofer?.numSello ?? ""}
                       </td>
                       {/* LLEGADA */}
-                      <td className={`${td} font-mono text-gray-300`}>
+                      <td className={`${td} font-mono text-gray-300 ${tx}`}>
                         {chofer?.horaLlegadaObra ?? ""}
                       </td>
                       {/* INICIO DSC */}
-                      <td className={`${td} font-mono text-gray-300`}>
+                      <td className={`${td} font-mono text-gray-300 ${tx}`}>
                         {chofer?.horaInicioDescarga ?? ""}
                       </td>
                       {/* FINAL DSC */}
-                      <td className={`${td} font-mono text-gray-300`}>
+                      <td className={`${td} font-mono text-gray-300 ${tx}`}>
                         {chofer?.horaFinalDescarga ?? ""}
                       </td>
                       {/* SAL.OBRA */}
-                      <td className={`${td} font-mono text-gray-300`}>
+                      <td className={`${td} font-mono text-gray-300 ${tx}`}>
                         {chofer?.horaSalidaObra ?? ""}
                       </td>
                       {/* T.DESC (calc) */}
-                      <td className={`${td} font-mono text-emerald-400/90 text-center font-semibold`}>
+                      <td className={`${td} font-mono text-emerald-400/90 text-center font-semibold ${tx}`}>
                         {tDesc}
                       </td>
                       {/* HSR */}
-                      <td className={`${td} font-mono text-gray-400`}>
+                      <td className={`${td} font-mono text-gray-400 ${tx}`}>
                         {isFirst ? prog.hsr : ""}
                       </td>
 
                       {/* RECIBO */}
-                      <td className={`${td} text-blue-400 font-semibold`}>
+                      <td className={`${td} text-blue-400 font-semibold ${tx}`}>
                         {isFirst ? prog.recibo : ""}
                       </td>
                       {/* FACT. */}
-                      <td className={`${td} text-gray-400`}>
+                      <td className={`${td} text-gray-400 ${tx}`}>
                         {isFirst ? prog.fact : ""}
                       </td>
                       {/* CLIENTE */}
                       <td
-                        className={`${td} text-white font-semibold`}
+                        className={`${td} text-white font-semibold ${tx}`}
                         style={{ maxWidth: "170px", overflow: "hidden", textOverflow: "ellipsis" }}
                       >
                         {isFirst ? prog.cliente : ""}
                       </td>
                       {/* TELÉFONO */}
-                      <td className={`${td} font-mono text-gray-400`}>
+                      <td className={`${td} font-mono text-gray-400 ${tx}`}>
                         {isFirst ? prog.telefono : ""}
                       </td>
                       {/* M3 TOT */}
-                      <td className={`${td} text-emerald-400 font-bold text-center tabular-nums`}>
+                      <td className={`${td} text-emerald-400 font-bold text-center tabular-nums ${tx}`}>
                         {isFirst && prog.m3Totales != null ? prog.m3Totales : ""}
                       </td>
                       {/* M3 (per chofer) */}
-                      <td className={`${td} text-emerald-300 font-semibold text-center tabular-nums`}>
+                      <td className={`${td} text-emerald-300 font-semibold text-center tabular-nums ${tx}`}>
                         {chofer?.m3 != null ? chofer.m3 : ""}
                       </td>
                       {/* EXTRAS */}
-                      <td className={`${td} text-gray-400`}>
+                      <td className={`${td} text-gray-400 ${tx}`}>
                         {isFirst ? prog.extras : ""}
                       </td>
                       {/* T/D BOM */}
-                      <td className={`${td} text-gray-300`}>
+                      <td className={`${td} text-gray-300 ${tx}`}>
                         {isFirst ? prog.tdBom : ""}
                       </td>
                       {/* RESIS */}
-                      <td className={`${td} text-[#CC2229] font-semibold`}>
+                      <td className={`${td} text-[#CC2229] font-semibold ${tx}`}>
                         {isFirst ? prog.resistencia : ""}
                       </td>
                       {/* PARA USO */}
-                      <td className={`${td} text-gray-400`}>
+                      <td className={`${td} text-gray-400 ${tx}`}>
                         {isFirst ? prog.paraUso : ""}
                       </td>
                       {/* DIRECCIÓN */}
                       <td
-                        className={`${td} text-gray-400`}
+                        className={`${td} text-gray-400 ${tx}`}
                         style={{ maxWidth: "170px", overflow: "hidden", textOverflow: "ellipsis" }}
                       >
                         {isFirst ? prog.direccion : ""}
                       </td>
                       {/* PRECIO M3 */}
-                      <td className={`${td} font-mono tabular-nums text-gray-300`}>
+                      <td className={`${td} font-mono tabular-nums text-gray-300 ${tx}`}>
                         {isFirst ? moneyFmt(prog.precioM3) : ""}
                       </td>
                       {/* $/M3 BOM */}
-                      <td className={`${td} font-mono tabular-nums text-gray-300`}>
+                      <td className={`${td} font-mono tabular-nums text-gray-300 ${tx}`}>
                         {isFirst ? moneyFmt(prog.precioM3Bomba) : ""}
                       </td>
                       {/* COLOR */}
-                      <td className={`${td} font-mono text-gray-400`}>
+                      <td className={`${td} font-mono text-gray-400 ${tx}`}>
                         {isFirst ? prog.color : ""}
                       </td>
                       {/* T.EXT.DESC */}
-                      <td className={`${td} text-gray-400`}>
+                      <td className={`${td} text-gray-400 ${tx}`}>
                         {isFirst ? prog.tiempoExtraDescarga : ""}
                       </td>
                       {/* M3 VAC */}
-                      <td className={`${td} text-center tabular-nums text-gray-400`}>
+                      <td className={`${td} text-center tabular-nums text-gray-400 ${tx}`}>
                         {isFirst && prog.m3Vacios != null ? prog.m3Vacios : ""}
                       </td>
                       {/* $/LTO ACEL */}
-                      <td className={`${td} font-mono tabular-nums text-gray-300`}>
+                      <td className={`${td} font-mono tabular-nums text-gray-300 ${tx}`}>
                         {isFirst ? moneyFmt(prog.ltoAcelr) : ""}
                       </td>
                       {/* $/KG FIBRA */}
-                      <td className={`${td} font-mono tabular-nums text-gray-300`}>
+                      <td className={`${td} font-mono tabular-nums text-gray-300 ${tx}`}>
                         {isFirst ? moneyFmt(prog.kiloFibra) : ""}
                       </td>
                       {/* $/M3 IMPER */}
-                      <td className={`${td} font-mono tabular-nums text-gray-300`}>
+                      <td className={`${td} font-mono tabular-nums text-gray-300 ${tx}`}>
                         {isFirst ? moneyFmt(prog.m3Imper) : ""}
                       </td>
                       {/* TUB.EXTRA */}
-                      <td className={`${td} font-mono tabular-nums text-gray-300`}>
+                      <td className={`${td} font-mono tabular-nums text-gray-300 ${tx}`}>
                         {isFirst ? moneyFmt(prog.tuberiaExtra) : ""}
                       </td>
                       {/* PERMISOS O/C */}
-                      <td className={`${td} font-mono tabular-nums text-gray-300`}>
+                      <td className={`${td} font-mono tabular-nums text-gray-300 ${tx}`}>
                         {isFirst ? moneyFmt(prog.permisosOC) : ""}
                       </td>
                       {/* TOT X M3 */}
-                      <td className={`${td} font-mono tabular-nums text-gray-200 font-semibold`}>
+                      <td className={`${td} font-mono tabular-nums text-gray-200 font-semibold ${tx}`}>
                         {isFirst ? moneyFmt(prog.totalXM3) : ""}
                       </td>
                       {/* TOTAL */}
-                      <td className={`${td} font-mono tabular-nums text-white font-bold text-[12px]`}>
+                      <td className={`${td} font-mono tabular-nums text-white font-bold text-[12px] ${tx}`}>
                         {isFirst ? moneyFmt(prog.total) : ""}
                       </td>
                       {/* PAGADO */}
@@ -501,11 +509,11 @@ export default function ExcelView({
                         )}
                       </td>
                       {/* MÉT.PAGO */}
-                      <td className={`${td} text-gray-400`}>
+                      <td className={`${td} text-gray-400 ${tx}`}>
                         {isFirst ? prog.metodoPago : ""}
                       </td>
                       {/* F.PAGO */}
-                      <td className={`${td} font-mono text-gray-400`}>
+                      <td className={`${td} font-mono text-gray-400 ${tx}`}>
                         {isFirst ? prog.fechaPago : ""}
                       </td>
                     </tr>

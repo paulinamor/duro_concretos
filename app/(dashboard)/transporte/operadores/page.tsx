@@ -18,8 +18,7 @@ import {
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
 import { diasDesdeIngreso, docsProximos, operadoresActivos, type Operador } from "@/lib/operadores";
-import { filterByPlanta, withPlantaTag } from "@/lib/auth";
-import { COLLECTIONS, deleteDocument, getCollectionDocs, upsertDocument } from "@/lib/db";
+import { COLLECTIONS, deleteDocument, subscribeToCollection, upsertDocument } from "@/lib/db";
 
 const TIPOS_LICENCIA = ["E", "D", "C", "A", "B"];
 
@@ -250,9 +249,11 @@ export default function EmpleadosPage() {
   const [confirmDelete, setConfirmDelete] = useState<Operador | null>(null);
 
   useEffect(() => {
-    getCollectionDocs<Operador>(COLLECTIONS.operadores)
-      .then((op) => setOperadores(filterByPlanta(op)))
-      .finally(() => setLoading(false));
+    const unsub = subscribeToCollection<Operador>(
+      COLLECTIONS.operadores,
+      (ops) => { setOperadores(ops); setLoading(false); },
+    );
+    return unsub;
   }, []);
 
   const filtered = useMemo(() => {
@@ -298,7 +299,7 @@ export default function EmpleadosPage() {
     };
     setOperadores((c) => editing ? c.map((op) => op.id === editing.id ? next : op) : [next, ...c]);
     const { id: _id, ...data } = next;
-    await upsertDocument(COLLECTIONS.operadores, _id, withPlantaTag(data));
+    await upsertDocument(COLLECTIONS.operadores, _id, data);
     window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: editing ? "Empleado actualizado." : "Empleado creado." } }));
   }
 

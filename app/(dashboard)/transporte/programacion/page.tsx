@@ -1,15 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle, CalendarDays, ChevronLeft, ChevronRight,
-  Clock, Download, Expand, ExternalLink, MapPin, Navigation, Plus, Search, Shrink, UserRound, X,
+  Clock, Download, Expand, ExternalLink, History, MapPin, MessageSquare, Navigation, Palette, Plus, Search, Shrink, UserRound, X,
 } from "lucide-react";
 import ExcelView from "./ExcelView";
 import type { ExcelProg } from "./ExcelView";
 import KPICard from "@/components/KPICard";
 import ClienteCombobox from "@/components/ClienteCombobox";
-import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
+import { getCollectionDocs, subscribeToCollection, upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
 import { filterByPlanta, getStoredSession, withPlantaTag } from "@/lib/auth";
 import { todayCST, localISODate } from "@/lib/dateUtils";
 import type { Operador } from "@/lib/operadores";
@@ -37,6 +37,8 @@ interface FaseEntry {
   fecha: string;
   nota?: string;
   usuario?: string;
+  tipo?: "creacion" | "edicion" | "estado";
+  cambios?: Array<{ campo: string; antes: string | number | null; despues: string | number | null }>;
 }
 
 interface Programacion {
@@ -83,13 +85,15 @@ interface Programacion {
   fechaPago2?: string;
   metodoPago2?: string;
   notas?: string;
+  notasVendedor?: string;
   cxcId?: string;
   planta?: string;
   folio?: string;
   fase?: string;
-  historial?: { fase: string; fecha: string; nota?: string; usuario?: string }[];
+  historial?: FaseEntry[];
   notasAcceso?: string;
   vehiculoSamsaraId?: string;
+  rowColor?: string;
 }
 
 interface ChoferFormEntry {
@@ -122,6 +126,8 @@ interface FormState {
   exhibiciones: "" | "1" | "2";
   montoPago2: string; fechaPago2: string; metodoPago2: string;
   notas: string;
+  notasVendedor: string;
+  rowColor: string;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -224,9 +230,14 @@ function emptyChofer(): ChoferFormEntry {
   };
 }
 
+function nowLocalISO(): string {
+  const now = new Date();
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+
 function emptyForm(dia: string): FormState {
   return {
-    dia, vendedor: "", diaHoraPedido: "", muestras: "",
+    dia, vendedor: "", diaHoraPedido: nowLocalISO(), muestras: "",
     cliente: "", telefono: "", direccion: "", paraUso: "",
     hora: "", hsr: "", choferes: [emptyChofer()],
     tiempoExtraDescarga: "",
@@ -236,7 +247,7 @@ function emptyForm(dia: string): FormState {
     aditivo: "", tuberiaExtra: "", permisosOC: "",
     recibo: "", credito: "", fact: "", pagado: "", montoPagado: "", metodoPago: "", fechaPago: "",
     exhibiciones: "", montoPago2: "", fechaPago2: "", metodoPago2: "",
-    notas: "",
+    notas: "", notasVendedor: "", rowColor: "",
   };
 }
 
@@ -296,6 +307,8 @@ function formFromProg(p: Programacion): FormState {
     fechaPago2: p.fechaPago2 ?? "",
     metodoPago2: p.metodoPago2 ?? "",
     notas: p.notas ?? "",
+    notasVendedor: p.notasVendedor ?? "",
+    rowColor: p.rowColor ?? "",
   };
 }
 
@@ -457,14 +470,141 @@ function ChoferCard({
   );
 }
 
+// ─── Row color palette ────────────────────────────────────────────────────────
+
+const ROW_COLORS = [
+  { label: "Sin color", value: "",        display: "#F9FAFB" },
+  { label: "Verde",     value: "#166534", display: "#166534" },
+  { label: "Ámbar",     value: "#92400e", display: "#92400e" },
+  { label: "Rojo",      value: "#991b1b", display: "#991b1b" },
+  { label: "Azul",      value: "#1e40af", display: "#1e40af" },
+  { label: "Morado",    value: "#6b21a8", display: "#6b21a8" },
+  { label: "Cian",      value: "#0e7490", display: "#0e7490" },
+];
+
+// ─── HistorialDrawer ──────────────────────────────────────────────────────────
+
+function HistorialDrawer({
+  open, onClose, historial, cliente,
+}: {
+  open: boolean;
+  onClose: () => void;
+  historial: FaseEntry[];
+  cliente: string;
+}) {
+  if (!open) return null;
+
+  const sorted = [...historial].sort(
+    (a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime(),
+  );
+
+  function fmtFecha(iso: string) {
+    try {
+      return new Date(iso).toLocaleString("es-MX", {
+        day: "numeric", month: "short", year: "numeric",
+        hour: "2-digit", minute: "2-digit",
+      });
+    } catch { return iso; }
+  }
+
+  const typeMeta = {
+    edicion:  { label: "Edición",   cls: "bg-blue-50 text-blue-600" },
+    creacion: { label: "Creación",  cls: "bg-emerald-50 text-emerald-600" },
+    estado:   { label: "Estado",    cls: "bg-gray-50 text-gray-500" },
+  };
+
+  return (
+    <div className="fixed inset-0 z-[200] flex">
+      <button className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} aria-label="Cerrar historial" />
+      <div className="relative ml-auto flex h-full w-full max-w-md flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden">
+
+        {/* Header */}
+        <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-4 shrink-0">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gray-100 text-gray-600">
+            <History size={18} />
+          </div>
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">Historial de cambios</h2>
+            <p className="text-xs text-gray-500 truncate max-w-[220px]">{cliente || "—"}</p>
+          </div>
+          <button onClick={onClose} className="ml-auto rounded-xl p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors">
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          {sorted.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-12">Sin historial registrado.</p>
+          ) : (
+            <div className="space-y-1">
+              {sorted.map((entry, i) => {
+                const meta = typeMeta[entry.tipo ?? "estado"] ?? typeMeta.estado;
+                return (
+                  <div key={i} className="relative pl-7 pb-5">
+                    {i < sorted.length - 1 && (
+                      <div className="absolute left-[10px] top-5 bottom-0 w-px bg-gray-200" />
+                    )}
+                    <div className={`absolute left-0 top-1 w-5 h-5 rounded-full flex items-center justify-center border-2 ${
+                      entry.tipo === "edicion"  ? "bg-blue-50 border-blue-300" :
+                      entry.tipo === "creacion" ? "bg-emerald-50 border-emerald-300" :
+                      "bg-gray-50 border-gray-300"
+                    }`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${
+                        entry.tipo === "edicion"  ? "bg-blue-400" :
+                        entry.tipo === "creacion" ? "bg-emerald-400" :
+                        "bg-gray-400"
+                      }`} />
+                    </div>
+
+                    <div className="ml-1">
+                      <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                        <span className={`text-[10px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded ${meta.cls}`}>
+                          {meta.label}
+                        </span>
+                        {entry.fase && (
+                          <span className="text-xs font-medium text-gray-600">→ {entry.fase}</span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-400">{fmtFecha(entry.fecha)}</p>
+                      {entry.usuario && (
+                        <p className="text-xs font-medium text-gray-600">{entry.usuario}</p>
+                      )}
+                      {entry.nota && (
+                        <p className="text-xs text-gray-500 italic mt-1">"{entry.nota}"</p>
+                      )}
+                      {entry.cambios && entry.cambios.length > 0 && (
+                        <div className="mt-2 rounded-lg border border-gray-100 bg-gray-50 divide-y divide-gray-100 overflow-hidden">
+                          {entry.cambios.map((c, j) => (
+                            <div key={j} className="px-3 py-1.5 text-xs grid grid-cols-[auto_1fr_1fr] gap-2 items-baseline">
+                              <span className="font-semibold text-gray-600 whitespace-nowrap">{c.campo}</span>
+                              <span className="text-red-500 truncate line-through">{String(c.antes ?? "—")}</span>
+                              <span className="text-emerald-600 truncate">{String(c.despues ?? "—")}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── FormDrawer ───────────────────────────────────────────────────────────────
 
 function FormDrawer({
-  open, onClose, onSave, initial, dia, operadoresList, clientesList,
+  open, onClose, onSave, onDelete, initial, dia, operadoresList, clientesList,
 }: {
   open: boolean;
   onClose: () => void;
   onSave: (p: Programacion) => Promise<void>;
+  onDelete?: (id: string) => void;
   initial?: Programacion;
   dia: string;
   operadoresList: Pick<Operador, "id" | "nombre">[];
@@ -472,10 +612,20 @@ function FormDrawer({
 }) {
   const [form, setForm] = useState<FormState>(() => emptyForm(dia));
   const [saving, setSaving] = useState(false);
+  const [showHistorial, setShowHistorial] = useState(false);
+
+  const sessionInForm   = getStoredSession();
+  const isAdminInForm   = sessionInForm?.role === "admin";
+  const userNameInForm  = sessionInForm?.name ?? sessionInForm?.email ?? "Sistema";
+  const vendedorDeRegistro = initial?.vendedor ?? "";
+  const isVendorOfRecord   = vendedorDeRegistro !== "" && userNameInForm === vendedorDeRegistro;
+  const canSeeProgNotas    = isAdminInForm || !isVendorOfRecord;
+  const canEditVendorNotas = isAdminInForm || isVendorOfRecord || vendedorDeRegistro === "";
 
   useEffect(() => {
     if (!open) return;
     setForm(initial ? formFromProg(initial) : emptyForm(dia));
+    setShowHistorial(false);
   }, [open, initial, dia]);
 
   const set = (k: keyof Omit<FormState, "choferes" | "aplicarFactorBomba">, v: string) =>
@@ -542,7 +692,8 @@ function FormDrawer({
         tiempoDescarga: calcTiempoDescarga(c.horaInicioDescarga, c.horaFinalDescarga),
         m3: n(c.m3),
       }));
-      await onSave({
+
+      const newProg: Programacion = {
         id,
         dia: form.dia,
         vendedor: form.vendedor.trim(),
@@ -586,11 +737,73 @@ function FormDrawer({
         fechaPago2: form.exhibiciones === "2" ? form.fechaPago2 : "",
         metodoPago2: form.exhibiciones === "2" ? form.metodoPago2.trim() : "",
         notas: form.notas.trim(),
-      });
+        notasVendedor: form.notasVendedor.trim(),
+        rowColor: form.rowColor,
+      };
+
+      // ── Registro de historial ──────────────────────────────────────────────
+      const hist: FaseEntry[] = [...(initial?.historial ?? [])];
+      const nowISO = new Date().toISOString();
+
+      if (!initial) {
+        hist.push({ fase: "", fecha: nowISO, tipo: "creacion", usuario: userNameInForm });
+      } else {
+        const CAMPOS: Array<[keyof Programacion, string]> = [
+          ["cliente",       "Cliente"],
+          ["dia",           "Fecha"],
+          ["hora",          "Hora"],
+          ["resistencia",   "Resistencia"],
+          ["tdBom",         "T/D BOM"],
+          ["m3Totales",     "M³ totales"],
+          ["extras",        "Extras"],
+          ["precioM3",      "Precio M³"],
+          ["precioM3Bomba", "Precio M³ Bomba"],
+          ["total",         "Total"],
+          ["pagado",        "Pagado"],
+          ["recibo",        "Recibo"],
+          ["fact",          "Fact."],
+          ["vendedor",      "Vendedor"],
+          ["direccion",     "Dirección"],
+          ["telefono",      "Teléfono"],
+          ["notas",         "Notas programación"],
+          ["notasVendedor", "Notas vendedor"],
+          ["rowColor",      "Color fila"],
+        ];
+        const cambios = CAMPOS.flatMap(([key, label]) => {
+          const oldV = (initial as unknown as Record<string, unknown>)[key] ?? null;
+          const newV = (newProg as unknown as Record<string, unknown>)[key] ?? null;
+          return String(oldV ?? "") !== String(newV ?? "")
+            ? [{ campo: label, antes: oldV as string | number | null, despues: newV as string | number | null }]
+            : [];
+        });
+        if (cambios.length > 0) {
+          hist.push({ fase: initial.fase ?? "", fecha: nowISO, tipo: "edicion", usuario: userNameInForm, cambios });
+        }
+      }
+      newProg.historial = hist;
+
+      await onSave(newProg);
       onClose();
     } catch (err) {
       console.error("Error al guardar programación:", err);
-      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al guardar. Verifica tu conexión e intenta de nuevo." } }));
+      const code = (err as { code?: string })?.code ?? "";
+      const raw = err instanceof Error ? err.message : String(err);
+      let msg: string;
+      if (code === "permission-denied" || raw.includes("permission-denied")) {
+        const sinPlanta = !getStoredSession()?.planta;
+        msg = sinPlanta
+          ? "Sin planta seleccionada. Ve al menú lateral y elige tu planta activa antes de guardar."
+          : "Sin permisos para guardar este registro. Contacta a un administrador.";
+      } else if (code === "unavailable" || raw.includes("unavailable") || raw.includes("network")) {
+        msg = "Sin conexión a internet. Verifica tu red e intenta de nuevo.";
+      } else if (code === "not-found" || raw.includes("not-found")) {
+        msg = "El documento ya no existe. Recarga la página.";
+      } else if (code === "unauthenticated" || raw.includes("unauthenticated")) {
+        msg = "Sesión expirada. Recarga la página e inicia sesión de nuevo.";
+      } else {
+        msg = raw || "Error desconocido al guardar. Intenta de nuevo.";
+      }
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: msg } }));
     } finally {
       setSaving(false);
     }
@@ -628,19 +841,14 @@ function FormDrawer({
             </div>
             <div>
               <label className={lbl}>Día y hora de pedido</label>
-              <div className="flex gap-2 items-center">
-                {form.diaHoraPedido === "N/A" ? (
-                  <div className={`${inp} flex-1 text-gray-400 bg-gray-50 cursor-default`}>N/A</div>
-                ) : (
-                  <input type="datetime-local" value={form.diaHoraPedido} onChange={(e) => set("diaHoraPedido", e.target.value)} className={`${inp} flex-1`} />
-                )}
-                <button
-                  type="button"
-                  onClick={() => set("diaHoraPedido", form.diaHoraPedido === "N/A" ? "" : "N/A")}
-                  className={`shrink-0 px-2.5 py-2.5 text-xs font-semibold rounded-xl border transition-colors ${form.diaHoraPedido === "N/A" ? "bg-gray-200 border-gray-300 text-gray-700" : "bg-white border-gray-200 text-gray-500 hover:border-gray-400"}`}
-                >
-                  N/A
-                </button>
+              <div className={`${inp} bg-gray-50 text-gray-500 cursor-default select-none`}>
+                {form.diaHoraPedido
+                  ? new Date(form.diaHoraPedido).toLocaleString("es-MX", {
+                      day: "2-digit", month: "short", year: "numeric",
+                      hour: "2-digit", minute: "2-digit",
+                    })
+                  : <span className="text-gray-400">—</span>
+                }
               </div>
             </div>
             <div>
@@ -867,7 +1075,8 @@ function FormDrawer({
             )}
           </div>
 
-          {/* Exhibiciones */}
+          {/* Exhibiciones — solo cuando hay algo que cobrar */}
+          {(form.pagado === "Sí" || form.pagado === "Parcial") && (
           <div className="pt-1">
             <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-3">Fecha de pago</p>
             <div className="flex gap-2 mb-4">
@@ -958,27 +1167,113 @@ function FormDrawer({
               </div>
             )}
           </div>
-        </div>
+          )}
 
-        {/* Notas */}
-        <div className="shrink-0 px-6 pb-4">
-          <div className="rounded-xl border-2 border-amber-400 bg-amber-50 p-3">
-            <label className="flex items-center gap-1.5 text-xs font-bold text-amber-700 uppercase tracking-widest mb-2">
-              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-              Notas del pedido
+        </div>{/* fin body scroll */}
+
+        {/* Notas — lado a lado */}
+        <div className={`shrink-0 px-6 pb-4 grid gap-3 ${canSeeProgNotas ? "grid-cols-2" : "grid-cols-1"}`}>
+          {/* Notas del vendedor */}
+          <div className={`rounded-xl border-2 p-3 ${canEditVendorNotas ? "border-blue-300 bg-blue-50" : "border-gray-200 bg-gray-50"}`}>
+            <label className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest mb-2 ${canEditVendorNotas ? "text-blue-700" : "text-gray-500"}`}>
+              <MessageSquare size={11} />
+              Notas vendedor
+              {!canEditVendorNotas && <span className="ml-1 normal-case tracking-normal font-normal text-gray-400">(lectura)</span>}
             </label>
             <textarea
-              rows={3}
-              value={form.notas}
-              onChange={(e) => set("notas", e.target.value)}
-              placeholder="Instrucciones especiales, observaciones, advertencias…"
-              className="w-full resize-none bg-white border border-amber-300 rounded-lg px-3 py-2 text-sm text-gray-800 placeholder-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-400"
+              rows={2}
+              readOnly={!canEditVendorNotas}
+              value={form.notasVendedor}
+              onChange={canEditVendorNotas ? (e) => set("notasVendedor", e.target.value) : undefined}
+              placeholder={canEditVendorNotas ? "Notas al equipo de programación…" : "Sin notas"}
+              className={`w-full resize-none rounded-lg px-2.5 py-2 text-xs focus:outline-none ${
+                canEditVendorNotas
+                  ? "bg-white border border-blue-300 text-gray-800 placeholder-blue-300 focus:ring-2 focus:ring-blue-400"
+                  : "bg-gray-100 border border-gray-200 text-gray-600 cursor-default"
+              }`}
             />
           </div>
+
+          {/* Notas de programación — ocultas al vendedor del registro */}
+          {canSeeProgNotas && (
+            <div className="rounded-xl border-2 border-amber-400 bg-amber-50 p-3">
+              <label className="flex items-center gap-1.5 text-[10px] font-bold text-amber-700 uppercase tracking-widest mb-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                Notas programación
+                <span className="ml-1 normal-case tracking-normal font-normal text-amber-500">(internas)</span>
+              </label>
+              <textarea
+                rows={2}
+                value={form.notas}
+                onChange={(e) => set("notas", e.target.value)}
+                placeholder="Instrucciones operativas internas…"
+                className="w-full resize-none bg-white border border-amber-300 rounded-lg px-2.5 py-2 text-xs text-gray-800 placeholder-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-400"
+              />
+            </div>
+          )}
         </div>
 
+        {/* Color de fila — solo admins */}
+        {isAdminInForm && (
+          <div className="shrink-0 px-6 pb-5">
+            <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+              <label className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-gray-500 mb-3">
+                <Palette size={12} />
+                Color de fila en tabla
+              </label>
+              <div className="flex gap-2 flex-wrap">
+                {ROW_COLORS.map(({ label, value, display }) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => set("rowColor", value)}
+                    title={label}
+                    className={`w-9 h-9 rounded-lg border-2 transition-all cursor-pointer flex items-center justify-center ${
+                      form.rowColor === value
+                        ? "border-gray-800 ring-2 ring-gray-800 ring-offset-1 scale-110"
+                        : "border-gray-300 hover:border-gray-500"
+                    }`}
+                    style={{ backgroundColor: display }}
+                  >
+                    {value === "" && (
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                        <line x1="2" y1="2" x2="12" y2="12" stroke="#9CA3AF" strokeWidth="2" strokeLinecap="round"/>
+                        <line x1="12" y1="2" x2="2" y2="12" stroke="#9CA3AF" strokeWidth="2" strokeLinecap="round"/>
+                      </svg>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Footer */}
-        <div className="shrink-0 border-t border-gray-100 px-6 py-4 flex items-center justify-end gap-3">
+        <div className="shrink-0 border-t border-gray-100 px-6 py-4 flex items-center gap-3">
+          {onDelete && initial?.id && (
+            <button
+              onClick={() => {
+                if (confirm(`¿Eliminar la programación ${initial.folio}? Esta acción no se puede deshacer.`)) {
+                  onDelete(initial.id!);
+                  onClose();
+                }
+              }}
+              className="px-3 py-2.5 text-sm font-medium text-red-500 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-xl transition-colors"
+            >
+              Eliminar
+            </button>
+          )}
+          {isAdminInForm && initial && (
+            <button
+              type="button"
+              onClick={() => setShowHistorial(true)}
+              className="flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium text-gray-500 hover:text-gray-800 border border-gray-200 rounded-xl transition-colors"
+            >
+              <History size={13} />
+              Historial
+            </button>
+          )}
+          <div className="flex-1" />
           <button onClick={onClose} className="px-4 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 border border-gray-200 rounded-xl transition-colors">
             Cancelar
           </button>
@@ -992,6 +1287,13 @@ function FormDrawer({
           </button>
         </div>
       </div>
+
+      <HistorialDrawer
+        open={showHistorial}
+        onClose={() => setShowHistorial(false)}
+        historial={initial?.historial ?? []}
+        cliente={form.cliente}
+      />
     </div>
   );
 }
@@ -1522,66 +1824,92 @@ export default function ProgramacionPage() {
   const [markingNotas, setMarkingNotas] = useState("");
   const [savingId, setSavingId] = useState<string | null>(null);
   const plantaActiva = useMemo(() => getStoredSession()?.planta ?? "", []);
+  const isAdmin = getStoredSession()?.role === "admin";
 
+  const migrationRan = useRef(false);
+
+  // Static data — load once
   useEffect(() => {
     Promise.all([
-      getCollectionDocs<Programacion>(COLLECTIONS.programaciones),
       getCollectionDocs<Operador>(COLLECTIONS.operadores),
       getCollectionDocs<Cliente>(COLLECTIONS.clientes),
-    ]).then(([progs, ops, clientes]) => {
-      setProgramaciones(filterByPlanta(progs));
+    ]).then(([ops, clientes]) => {
       setOperadoresList(ops.filter((o) => !o.baja).map((o) => ({ id: o.id, nombre: o.nombre })));
 
-      // Migrate existing records with incorrect totalXM3 / total values
-      const toFix = progs.filter((p) => {
-        const { totalXM3, total } = calcTotalesProg(p);
-        return (totalXM3 !== null && p.totalXM3 !== totalXM3) ||
-               (total !== null && p.total !== total);
-      });
-      if (toFix.length > 0) {
-        Promise.all(
-          toFix.map((p) => {
-            const { totalXM3, total } = calcTotalesProg(p);
-            const { id: _id, ...data } = p;
-            return upsertDocument(COLLECTIONS.programaciones, p.id!, withPlantaTag({ ...data, totalXM3, total }));
-          })
-        ).catch((err) => console.error("Error migrando totales:", err));
-      }
-
-      // Build unique client list from both sources, deduplicated
-      const fromProgs = progs.map((p) => p.cliente).filter(Boolean);
       const fromClientes = clientes.flatMap((c) => [c.razonSocial, c.nombreComercial].filter(Boolean));
-      const allNames = Array.from(new Set([...fromClientes, ...fromProgs])).sort();
-      setClientesList(allNames);
-
-      // Keep a normalized set of existing clientes for quick lookup
       const existingSet = new Set(clientes.map((c) => c.razonSocial.toLowerCase().trim()));
       setClientesSet(existingSet);
 
-      // Migrate clients from programaciones that don't exist yet in clientes collection
-      const today = todayCST();
-      const nuevos = Array.from(new Set(fromProgs.map((n) => n.trim()).filter(Boolean)))
-        .filter((nombre) => !existingSet.has(nombre.toLowerCase()));
-      if (nuevos.length > 0) {
-        Promise.all(
-          nuevos.map((nombre) => {
-            const id = `CL-prog-${nombre.toLowerCase().replace(/[^a-z0-9]/g, "-").slice(0, 30)}-${Date.now()}`;
-            return upsertDocument(COLLECTIONS.clientes, id, {
-              razonSocial: nombre,
-              nombreComercial: nombre,
-              rfc: "", domicilio: "", colonia: "", municipio: "", estado: "", cp: "",
-              contacto: "", cargo: "", telefono: "", email: "",
-              tipoCliente: "Particular", vendedorAsignado: "",
-              limiteCredito: 0, saldoPendiente: 0, diasCredito: 0,
-              ultimaCompra: today, totalComprasAnio: 0, m3Acumulados: 0,
-              estatus: "Activo", calificacion: "B", fechaAlta: today, notas: "",
-            });
-          })
-        ).catch((err) => console.error("Error migrando clientes:", err));
+      // Client list gets rebuilt on each programaciones snapshot (see below),
+      // but seed it from the clientes collection immediately.
+      setClientesList(Array.from(new Set(fromClientes)).sort());
+    }).catch((err) => console.error("Error cargando datos estáticos:", err));
+  }, []);
+
+  // Real-time programaciones subscription
+  useEffect(() => {
+    const unsub = subscribeToCollection<Programacion>(
+      COLLECTIONS.programaciones,
+      (progs) => {
+        const filtered = filterByPlanta(progs);
+        setProgramaciones(filtered);
+
+        // Rebuild client suggestions on every update
+        setClientesList((prev) => {
+          const fromProgs = filtered.map((p) => p.cliente).filter(Boolean);
+          const merged = Array.from(new Set([...prev, ...fromProgs])).sort();
+          return merged;
+        });
+
+        // One-time migrations on first snapshot
+        if (!migrationRan.current) {
+          migrationRan.current = true;
+          setLoading(false);
+
+          const toFix = filtered.filter((p) => {
+            const { totalXM3, total } = calcTotalesProg(p);
+            return (totalXM3 !== null && p.totalXM3 !== totalXM3) ||
+                   (total !== null && p.total !== total);
+          });
+          if (toFix.length > 0) {
+            Promise.all(
+              toFix.map((p) => {
+                const { totalXM3, total } = calcTotalesProg(p);
+                const { id: _id, ...data } = p;
+                return upsertDocument(COLLECTIONS.programaciones, p.id!, withPlantaTag({ ...data, totalXM3, total }));
+              })
+            ).catch((err) => console.error("Error migrando totales:", err));
+          }
+
+          // Migrate new clients from programaciones
+          setClientesSet((existingSet) => {
+            const today = todayCST();
+            const fromProgs = filtered.map((p) => p.cliente).filter(Boolean);
+            const nuevos = Array.from(new Set(fromProgs.map((n) => n.trim()).filter(Boolean)))
+              .filter((nombre) => !existingSet.has(nombre.toLowerCase()));
+            if (nuevos.length > 0) {
+              Promise.all(
+                nuevos.map((nombre) => {
+                  const id = `CL-prog-${nombre.toLowerCase().replace(/[^a-z0-9]/g, "-").slice(0, 30)}-${Date.now()}`;
+                  return upsertDocument(COLLECTIONS.clientes, id, {
+                    razonSocial: nombre,
+                    nombreComercial: nombre,
+                    rfc: "", domicilio: "", colonia: "", municipio: "", estado: "", cp: "",
+                    contacto: "", cargo: "", telefono: "", email: "",
+                    tipoCliente: "Particular", vendedorAsignado: "",
+                    limiteCredito: 0, saldoPendiente: 0, diasCredito: 0,
+                    ultimaCompra: today, totalComprasAnio: 0, m3Acumulados: 0,
+                    estatus: "Activo", calificacion: "B", fechaAlta: today, notas: "",
+                  });
+                })
+              ).catch((err) => console.error("Error migrando clientes:", err));
+            }
+            return existingSet;
+          });
+        }
       }
-    }).catch((err) => {
-      console.error("Error cargando programaciones:", err);
-    }).finally(() => setLoading(false));
+    );
+    return unsub;
   }, []);
 
   const filtered = useMemo(() => {
@@ -1685,8 +2013,6 @@ export default function ProgramacionPage() {
       });
       setMarkingId(null);
       setMarkingNotas("");
-      const progs = await getCollectionDocs<Programacion>(COLLECTIONS.programaciones);
-      setProgramaciones(filterByPlanta(progs));
     } finally {
       setSavingId(null);
     }
@@ -2089,6 +2415,19 @@ export default function ProgramacionPage() {
                   </button>
 
                   <div className="flex items-center gap-2">
+                    {isAdmin && prog.id && (
+                      <button
+                        onClick={() => {
+                          if (confirm(`¿Eliminar la programación ${prog.folio}? Esta acción no se puede deshacer.`))
+                            handleDelete(prog.id!)
+                        }}
+                        className="text-xs text-red-400 hover:text-red-600 transition-colors cursor-pointer px-2 py-1 rounded hover:bg-red-50"
+                        title="Eliminar programación"
+                      >
+                        Eliminar
+                      </button>
+                    )}
+
                     <button
                       onClick={() => setTimelineProg(prog)}
                       className="text-xs text-gray-400 hover:text-gray-700 transition-colors cursor-pointer px-2 py-1 rounded hover:bg-gray-200"
@@ -2194,6 +2533,7 @@ export default function ProgramacionPage() {
         open={showDrawer}
         onClose={() => setShowDrawer(false)}
         onSave={handleSave}
+        onDelete={isAdmin ? handleDelete : undefined}
         initial={editing}
         dia={diaActivo}
         operadoresList={operadoresList}

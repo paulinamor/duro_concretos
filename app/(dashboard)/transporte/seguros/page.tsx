@@ -9,9 +9,8 @@ import {
 import KPICard from "@/components/KPICard";
 import HScrollTable from "@/components/HScrollTable";
 import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS, where } from "@/lib/db";
-import { withPlantaTag } from "@/lib/auth";
 import { todayCST } from "@/lib/dateUtils";
-import { useCollection } from "@/lib/useCollection";
+import { useCollectionRaw } from "@/lib/useCollection";
 import type { Unidad, EstatusUnidad } from "@/lib/unidades";
 import { storage } from "@/lib/firebase";
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage";
@@ -106,6 +105,23 @@ const TIPOS_UNIDAD = [
   "Revolvedora", "Bomba", "Tractocamión", "Volteo", "Vehículo",
   "Maquinaria", "Remolque", "Plataforma", "Otro",
 ];
+
+const RUBROS: { tipo: string; label: string }[] = [
+  { tipo: "Revolvedora",  label: "Revolvedoras"  },
+  { tipo: "Bomba",        label: "Bombas"         },
+  { tipo: "Maquinaria",   label: "Maquinaria"     },
+  { tipo: "Volteo",       label: "Volteos"        },
+  { tipo: "Tractocamión", label: "Tractos"        },
+  { tipo: "Plataforma",   label: "Plataformas"    },
+  { tipo: "Remolque",     label: "Remolques"      },
+  { tipo: "Vehículo",     label: "Vehículos"      },
+  { tipo: "Otro",         label: "Otros"          },
+];
+const RUBRO_IDX = new Map(RUBROS.map(({ tipo }, i) => [tipo, i]));
+const rubroLabel = (tipo: string) => RUBROS.find((r) => r.tipo === tipo)?.label ?? tipo;
+function naturalCmp(a: string, b: string) {
+  return a.localeCompare(b, "es", { numeric: true, sensitivity: "base" });
+}
 
 const STATUS_POLIZA_OPTS: StatusPoliza[] = [
   "Condicionada", "Indefinida", "Renovada", "Con financiera",
@@ -863,8 +879,8 @@ function FormDrawer({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SegurosPage() {
-  const unidades = useCollection<Unidad>(COLLECTIONS.unidades);
-  const seguros = useCollection<Seguro>(COLLECTIONS.seguros);
+  const unidades = useCollectionRaw<Unidad>(COLLECTIONS.unidades);
+  const seguros = useCollectionRaw<Seguro>(COLLECTIONS.seguros);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<VigenciaStatus | "todos">("todos");
   const [filterTipo, setFilterTipo] = useState("Todos");
@@ -933,6 +949,26 @@ export default function SegurosPage() {
     return list;
   }, [rows, filterStatus, filterTipo, search]);
 
+  const groupedFiltered = useMemo(() => {
+    const sorted = [...filtered].sort((a, b) => {
+      const ta = a.seguro?.tipoUnidad ?? "";
+      const tb = b.seguro?.tipoUnidad ?? "";
+      const ri = (RUBRO_IDX.get(ta) ?? 99) - (RUBRO_IDX.get(tb) ?? 99);
+      if (ri !== 0) return ri;
+      const ea = a.unidad?.noEconomico ?? a.seguro?.noEconomico ?? "";
+      const eb = b.unidad?.noEconomico ?? b.seguro?.noEconomico ?? "";
+      return naturalCmp(ea, eb);
+    });
+    const sections: Array<{ tipo: string; label: string; rows: typeof sorted }> = [];
+    for (const row of sorted) {
+      const tipo = row.seguro?.tipoUnidad ?? "—";
+      const last = sections[sections.length - 1];
+      if (last && last.tipo === tipo) last.rows.push(row);
+      else sections.push({ tipo, label: rubroLabel(tipo), rows: [row] });
+    }
+    return sections;
+  }, [filtered]);
+
   const total = rows.length;
   const vigentes = rows.filter((r) => r.status === "vigente").length;
   const porVencer = rows.filter((r) => r.status === "por_vencer").length;
@@ -942,8 +978,8 @@ export default function SegurosPage() {
     const { id: sId, ...sData } = s;
     const { id: uId, ...uData } = u;
     await Promise.all([
-      upsertDocument(COLLECTIONS.seguros, sId!, withPlantaTag(sData)),
-      upsertDocument(COLLECTIONS.unidades, uId, withPlantaTag(uData)),
+      upsertDocument(COLLECTIONS.seguros, sId!, sData),
+      upsertDocument(COLLECTIONS.unidades, uId, uData),
     ]);
     // Real-time listener (useCollection) automatically reflects Firestore changes
     window.dispatchEvent(new CustomEvent("duro:toast", {
@@ -953,7 +989,7 @@ export default function SegurosPage() {
 
   async function handleDocsUpdate(docs: DocItem[]) {
     if (!docsTarget) return;
-    await upsertDocument(COLLECTIONS.seguros, docsTarget.seguro.id!, withPlantaTag({ documentos: docs }));
+    await upsertDocument(COLLECTIONS.seguros, docsTarget.seguro.id!, { documentos: docs });
     setDocsTarget((prev) => prev ? { ...prev, seguro: { ...prev.seguro, documentos: docs } } : null);
   }
 
@@ -1061,9 +1097,8 @@ export default function SegurosPage() {
             <thead className="sticky top-0 z-10">
               <tr className="bg-[#1A1A1A]">
                 {[
-                  "Tipo","No. Eco.","Estatus","Placa","Marca / Modelo","No. T.C.","Vence TC",
-                  "Aseguradora / Agente","No. Póliza","Status póliza",
-                  "Vence póliza","Días","Costo póliza","Valor mercado","Tenencia","",
+                  "No. Eco.","Estatus","Placa","Marca / Modelo","Tarjeta Circ.",
+                  "Aseguradora","No. Póliza","Status","Vence","Días","$ Póliza","Valor","Tenencia","",
                 ].map((h) => (
                   <th key={h} className="px-3 py-3 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap bg-[#1A1A1A]">
                     {h}
@@ -1071,141 +1106,177 @@ export default function SegurosPage() {
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#2A2A2A]">
+            <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={16} className="px-4 py-12 text-center text-sm text-gray-600">
+                  <td colSpan={14} className="px-4 py-12 text-center text-sm text-gray-600">
                     Sin registros.
                   </td>
                 </tr>
               ) : (
-                filtered.map(({ unidad, seguro, status }) => {
+                groupedFiltered.flatMap(({ label, rows: groupRows }) => [
+                  /* ── Rubro header ── */
+                  <tr key={`hdr-${label}`}>
+                    <td colSpan={14} className="px-4 pt-5 pb-1.5 border-t border-[#3A3A3A]">
+                      <div className="flex items-center gap-2">
+                        <div className="w-1 h-3.5 rounded-full bg-[#CC2229]/70 shrink-0" />
+                        <span className="text-[11px] font-semibold text-gray-200 tracking-wide">{label}</span>
+                        <span className="text-[10px] text-gray-600 tabular-nums">{groupRows.length}</span>
+                      </div>
+                    </td>
+                  </tr>,
+                  ...groupRows.map(({ unidad, seguro, status }) => {
                   const cfg = STATUS_VIG[status];
                   const dias = seguro?.vigenciaFin ? diasRestantes(seguro.vigenciaFin) : null;
                   const placa = unidad?.placa ?? seguro?.placa ?? "—";
                   const marca = unidad?.marca ?? seguro?.marca ?? "—";
                   const modelo = unidad?.modelo ?? seguro?.modelo ?? "";
                   const noEco = unidad?.noEconomico ?? seguro?.noEconomico ?? "—";
-                  const tipo = seguro?.tipoUnidad ?? "—";
                   return (
-                    <tr key={unidad?.id ?? seguro?.id} className="hover:bg-[#1A1F2B] transition-colors">
-                      <td className="px-3 py-3 text-gray-500 text-xs whitespace-nowrap">{tipo}</td>
-                      <td className="px-3 py-3 text-[#CC2229] font-mono text-xs font-semibold whitespace-nowrap">{noEco}</td>
-                      <td className="px-3 py-3 whitespace-nowrap">
+                    <tr key={unidad?.id ?? seguro?.id} className="border-b border-[#2A2A2A] hover:bg-[#2A2A2A] transition-colors">
+                      {/* No. Eco */}
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <span className="font-mono text-xs font-bold text-[#CC2229]">{noEco}</span>
+                      </td>
+                      {/* Estatus */}
+                      <td className="px-3 py-2.5 whitespace-nowrap">
                         {unidad?.estatus ? (
-                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                            unidad.estatus === "Activo" ? "bg-emerald-500/10 text-emerald-400"
-                            : unidad.estatus === "Mantenimiento" ? "bg-amber-500/10 text-amber-400"
-                            : "bg-red-500/10 text-red-400"
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                            unidad.estatus === "Activo"
+                              ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                              : unidad.estatus === "Mantenimiento"
+                              ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                              : "bg-red-500/10 text-red-400 border-red-500/20"
                           }`}>{unidad.estatus}</span>
                         ) : <span className="text-gray-700 text-[11px]">—</span>}
                       </td>
-                      <td className="px-3 py-3 text-gray-200 text-xs font-mono whitespace-nowrap">{placa}</td>
-                      <td className="px-3 py-3 whitespace-nowrap">
-                        <p className="text-gray-200 text-xs">{marca}</p>
-                        <p className="text-gray-600 text-[11px]">{modelo} {seguro?.anio ? `· ${seguro.anio}` : unidad?.anio ? `· ${unidad.anio}` : ""}</p>
+                      {/* Placa */}
+                      <td className="px-3 py-2.5 text-gray-300 text-xs font-mono whitespace-nowrap">{placa}</td>
+                      {/* Marca / Modelo */}
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <p className="text-gray-200 text-xs font-medium">{marca}</p>
+                        {(modelo || seguro?.anio || unidad?.anio) && (
+                          <p className="text-gray-600 text-[11px]">{modelo}{(seguro?.anio ?? unidad?.anio) ? ` · ${seguro?.anio ?? unidad?.anio}` : ""}</p>
+                        )}
                       </td>
-                      <td className="px-3 py-3 text-gray-400 font-mono text-[11px] whitespace-nowrap">
-                        {seguro?.noTarjetaCirculacion || <span className="text-gray-700">—</span>}
+                      {/* Tarjeta Circ. (No + Vence apilados) */}
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        {seguro?.noTarjetaCirculacion
+                          ? <>
+                              <p className="text-gray-300 text-[11px] font-mono">{seguro.noTarjetaCirculacion}</p>
+                              {seguro.vigenciaTarjetaCirculacion && <p className="text-gray-600 text-[10px]">Vence {seguro.vigenciaTarjetaCirculacion}</p>}
+                            </>
+                          : <span className="text-gray-700 text-[11px]">—</span>}
                       </td>
-                      <td className="px-3 py-3 text-gray-500 text-[11px] whitespace-nowrap">
-                        {seguro?.vigenciaTarjetaCirculacion || <span className="text-gray-700">—</span>}
+                      {/* Aseguradora */}
+                      <td className="px-3 py-2.5 max-w-[160px] whitespace-nowrap">
+                        {seguro?.aseguradora
+                          ? <>
+                              <p className="text-gray-200 text-xs truncate">{seguro.aseguradora}</p>
+                              {seguro.agente && <p className="text-gray-600 text-[11px] truncate">{seguro.agente}</p>}
+                            </>
+                          : <span className="text-gray-700 text-[11px]">—</span>}
                       </td>
-                      <td className="px-3 py-3 max-w-[180px]">
-                        <p className="text-gray-200 text-xs truncate">{seguro?.aseguradora || <span className="text-gray-700">—</span>}</p>
-                        {seguro?.agente && <p className="text-gray-600 text-[11px] truncate">{seguro.agente}</p>}
-                      </td>
-                      <td className="px-3 py-3 text-gray-400 font-mono text-[11px] whitespace-nowrap">
+                      {/* No. Póliza */}
+                      <td className="px-3 py-2.5 text-gray-400 font-mono text-[11px] whitespace-nowrap">
                         {seguro?.noPoliza || <span className="text-gray-700">—</span>}
                       </td>
-                      <td className="px-3 py-3 whitespace-nowrap">
+                      {/* Status póliza */}
+                      <td className="px-3 py-2.5 whitespace-nowrap">
                         {seguro?.statusPoliza ? (
                           <span className={`text-[11px] font-medium ${
                             seguro.statusPoliza === "Sin seguro" || seguro.statusPoliza === "Cancelada" ? "text-red-400"
                             : seguro.statusPoliza === "Cotizar" ? "text-amber-400"
-                            : "text-gray-300"
+                            : "text-gray-400"
                           }`}>{seguro.statusPoliza}</span>
                         ) : <span className="text-gray-700 text-[11px]">—</span>}
                       </td>
-                      <td className="px-3 py-3 whitespace-nowrap">
+                      {/* Vence póliza */}
+                      <td className="px-3 py-2.5 whitespace-nowrap">
                         {seguro?.vigenciaFin ? (
-                          <p className={`text-[11px] font-medium ${
+                          <span className={`text-[11px] font-medium ${
                             status === "vencido" ? "text-red-400"
                             : status === "por_vencer" ? "text-amber-400"
-                            : "text-gray-300"
-                          }`}>{seguro.vigenciaFin}</p>
+                            : "text-gray-400"
+                          }`}>{seguro.vigenciaFin}</span>
                         ) : <span className="text-gray-700 text-[11px]">—</span>}
                       </td>
-                      <td className="px-3 py-3 whitespace-nowrap">
-                        {dias !== null ? (
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${cfg.cls}`}>
-                            {dias < 0 ? `−${Math.abs(dias)}d` : dias === 0 ? "Hoy" : `${dias}d`}
-                          </span>
-                        ) : (
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${cfg.cls}`}>
-                            {cfg.label}
-                          </span>
-                        )}
+                      {/* Días */}
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${cfg.cls}`}>
+                          {dias !== null
+                            ? (dias < 0 ? `−${Math.abs(dias)}d` : dias === 0 ? "Hoy" : `${dias}d`)
+                            : cfg.label}
+                        </span>
                       </td>
-                      <td className="px-3 py-3 text-gray-300 text-[11px] tabular-nums whitespace-nowrap">
+                      {/* $ Póliza */}
+                      <td className="px-3 py-2.5 text-gray-400 text-[11px] tabular-nums whitespace-nowrap">
                         {seguro?.costoPoliza != null
-                          ? `$${seguro.costoPoliza.toLocaleString("es-MX", { minimumFractionDigits: 2 })}`
+                          ? `$${seguro.costoPoliza.toLocaleString("es-MX", { minimumFractionDigits: 0 })}`
                           : <span className="text-gray-700">—</span>}
                       </td>
-                      <td className="px-3 py-3 text-gray-300 text-[11px] tabular-nums whitespace-nowrap">
+                      {/* Valor */}
+                      <td className="px-3 py-2.5 text-gray-400 text-[11px] tabular-nums whitespace-nowrap">
                         {seguro?.valorMercado != null
                           ? `$${seguro.valorMercado.toLocaleString("es-MX")}`
                           : <span className="text-gray-700">—</span>}
                       </td>
-                      <td className="px-3 py-3 text-gray-500 text-[11px] whitespace-nowrap">
+                      {/* Tenencia */}
+                      <td className="px-3 py-2.5 text-gray-500 text-[11px] whitespace-nowrap">
                         {seguro?.tenencia || <span className="text-gray-700">—</span>}
                       </td>
-                      <td className="px-3 py-3 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
+                      {/* Acciones */}
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <div className="flex items-center gap-1">
                           <button
                             onClick={() => openDrawer(unidad, seguro)}
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium text-gray-400 hover:text-white bg-[#1A1A1A] hover:bg-[#252D3D] border border-[#3A3A3A] hover:border-[#CC2229]/40 rounded-lg transition-colors"
+                            title={seguro ? "Editar" : "Registrar seguro"}
+                            className={`p-1.5 rounded-lg border transition-colors ${
+                              seguro
+                                ? "text-gray-500 hover:text-white bg-[#1A1A1A] border-[#3A3A3A] hover:bg-[#2A2A2A] hover:border-[#CC2229]/40"
+                                : "text-[#CC2229] bg-[#CC2229]/10 border-[#CC2229]/30 hover:bg-[#CC2229]/20"
+                            }`}
                           >
-                            <Shield size={11} />
-                            {seguro ? "Editar" : "Registrar"}
+                            <Shield size={12} />
                           </button>
                           {seguro && (
                             <button
                               onClick={() => setDocsTarget({ seguro, unidadId: unidad?.id ?? seguro.unidadId, noEconomico: unidad?.noEconomico ?? seguro.noEconomico })}
-                              className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium text-gray-400 hover:text-blue-400 bg-[#1A1A1A] hover:bg-blue-500/10 border border-[#3A3A3A] hover:border-blue-500/30 rounded-lg transition-colors"
-                              title="Documentos y fotos"
+                              title="Documentos"
+                              className="relative p-1.5 rounded-lg border text-gray-500 hover:text-blue-400 bg-[#1A1A1A] border-[#3A3A3A] hover:bg-blue-500/10 hover:border-blue-500/30 transition-colors"
                             >
-                              <FolderOpen size={11} />
+                              <FolderOpen size={12} />
                               {(seguro.documentos?.length ?? 0) > 0 && (
-                                <span className="text-blue-400">{seguro.documentos!.length}</span>
+                                <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-blue-500 text-[8px] font-bold text-white flex items-center justify-center">
+                                  {seguro.documentos!.length}
+                                </span>
                               )}
                             </button>
                           )}
                           {seguro && (
                             <button
                               onClick={() => setConfirmDelete(seguro)}
-                              className="flex items-center justify-center p-1.5 text-gray-600 hover:text-red-400 bg-[#1A1A1A] hover:bg-red-500/10 border border-[#3A3A3A] hover:border-red-500/30 rounded-lg transition-colors"
-                              aria-label="Eliminar seguro"
-                              title="Eliminar póliza de seguro"
+                              title="Eliminar póliza"
+                              className="p-1.5 rounded-lg border text-gray-700 hover:text-red-400 bg-[#1A1A1A] border-[#3A3A3A] hover:bg-red-500/10 hover:border-red-500/30 transition-colors"
                             >
-                              <Trash2 size={11} />
+                              <Trash2 size={12} />
                             </button>
                           )}
                           {unidad && (
                             <button
                               onClick={() => openDeleteUnit(unidad, seguro)}
-                              className="flex items-center justify-center p-1.5 text-gray-700 hover:text-orange-400 bg-[#1A1A1A] hover:bg-orange-500/10 border border-[#3A3A3A] hover:border-orange-500/30 rounded-lg transition-colors"
-                              aria-label="Eliminar unidad del sistema"
-                              title="Eliminar unidad del sistema"
+                              title="Eliminar unidad"
+                              className="p-1.5 rounded-lg border text-gray-700 hover:text-orange-400 bg-[#1A1A1A] border-[#3A3A3A] hover:bg-orange-500/10 hover:border-orange-500/30 transition-colors"
                             >
-                              <XCircle size={11} />
+                              <XCircle size={12} />
                             </button>
                           )}
                         </div>
                       </td>
                     </tr>
                   );
-                })
+                }),
+                ])
               )}
             </tbody>
           </table>
