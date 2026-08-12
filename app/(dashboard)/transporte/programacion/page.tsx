@@ -80,7 +80,7 @@ interface Programacion {
   montoPagado: number | null;
   metodoPago: string;
   fechaPago: string;
-  exhibiciones?: "1" | "2";
+  exhibiciones?: "1" | "2" | null;
   montoPago2?: number | null;
   fechaPago2?: string;
   metodoPago2?: string;
@@ -732,7 +732,7 @@ function FormDrawer({
         montoPagado: form.pagado === "Parcial" ? (n(form.montoPagado) ?? null) : null,
         metodoPago: form.metodoPago.trim(),
         fechaPago: form.fechaPago,
-        exhibiciones: (form.exhibiciones || undefined) as "1" | "2" | undefined,
+        exhibiciones: (form.exhibiciones || null) as "1" | "2" | null,
         montoPago2: form.exhibiciones === "2" ? (n(form.montoPago2) ?? null) : null,
         fechaPago2: form.exhibiciones === "2" ? form.fechaPago2 : "",
         metodoPago2: form.exhibiciones === "2" ? form.metodoPago2.trim() : "",
