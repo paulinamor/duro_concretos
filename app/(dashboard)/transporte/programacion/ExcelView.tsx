@@ -98,6 +98,25 @@ function calcDescarga(inicio: string, fin: string): string {
   return h > 0 ? `${h}:${String(mn).padStart(2, "0")}` : `0:${String(mn).padStart(2, "0")}`;
 }
 
+// ─── Status dots per chofer ───────────────────────────────────────────────────
+
+const STAGE_LABELS = ["Sal.P", "Llg", "Ini", "Fin", "S.O"];
+function ChoferStatus({ c }: { c: ChoferRow }) {
+  const vals = [c.horaSalida, c.horaLlegadaObra, c.horaInicioDescarga, c.horaFinalDescarga, c.horaSalidaObra];
+  const done = vals.filter(Boolean).length;
+  return (
+    <div className="flex items-center gap-[3px]" title={`${done}/5 etapas completas`}>
+      {vals.map((v, i) => (
+        <div
+          key={i}
+          title={STAGE_LABELS[i]}
+          className={`w-[7px] h-[7px] rounded-sm ${v ? "bg-emerald-500" : "bg-red-500/40"}`}
+        />
+      ))}
+    </div>
+  );
+}
+
 // ─── Column widths (px) in render order ───────────────────────────────────────
 
 const W = [
@@ -108,6 +127,7 @@ const W = [
   65,  // MUEST.
   72,  // H.OBRA
   112, // CHOFER
+  46,  // PROG. (status dots)
   50,  // CR
   65,  // H/SAL
   82,  // REMISIÓN
@@ -153,6 +173,7 @@ const HEADERS: { label: string; color: string }[] = [
   { label: "MUEST.",       color: "text-blue-400/70" },
   { label: "H. OBRA",      color: "text-blue-400/70" },
   { label: "CHOFER",       color: "text-blue-400/70" },
+  { label: "PROG.",        color: "text-gray-600" },
   { label: "CR",           color: "text-blue-400/70" },
   { label: "H/SAL",        color: "text-blue-400/70" },
   { label: "REMISIÓN",     color: "text-blue-400/70" },
@@ -191,7 +212,7 @@ const HEADERS: { label: string; color: string }[] = [
   { label: "F. PAGO",      color: "text-amber-500/70" },
 ];
 
-const NCOLS = W.length; // 43
+const NCOLS = W.length; // 44
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -349,13 +370,17 @@ export default function ExcelView({
                       <td className={`${td} text-white font-semibold ${tx}`}>
                         {chofer?.chofer ?? ""}
                       </td>
+                      {/* PROG. status dots */}
+                      <td className={`${td} ${tx}`}>
+                        {chofer ? <ChoferStatus c={chofer} /> : ""}
+                      </td>
                       {/* CR */}
                       <td className={`${td} font-mono text-gray-300 text-center ${tx}`}>
                         {chofer?.cr ?? ""}
                       </td>
                       {/* H/SAL */}
-                      <td className={`${td} font-mono text-gray-300 ${tx}`}>
-                        {chofer?.horaSalida ?? ""}
+                      <td className={`${td} font-mono ${chofer && !chofer.horaSalida ? "text-red-500/50" : "text-gray-300"} ${tx}`}>
+                        {chofer?.horaSalida || (chofer ? "—" : "")}
                       </td>
                       {/* REMISIÓN */}
                       <td className={`${td} font-mono text-gray-300 ${tx}`}>
@@ -366,20 +391,20 @@ export default function ExcelView({
                         {chofer?.numSello ?? ""}
                       </td>
                       {/* LLEGADA */}
-                      <td className={`${td} font-mono text-gray-300 ${tx}`}>
-                        {chofer?.horaLlegadaObra ?? ""}
+                      <td className={`${td} font-mono ${chofer && !chofer.horaLlegadaObra ? "text-red-500/50" : "text-gray-300"} ${tx}`}>
+                        {chofer?.horaLlegadaObra || (chofer ? "—" : "")}
                       </td>
                       {/* INICIO DSC */}
-                      <td className={`${td} font-mono text-gray-300 ${tx}`}>
-                        {chofer?.horaInicioDescarga ?? ""}
+                      <td className={`${td} font-mono ${chofer && !chofer.horaInicioDescarga ? "text-red-500/50" : "text-gray-300"} ${tx}`}>
+                        {chofer?.horaInicioDescarga || (chofer ? "—" : "")}
                       </td>
                       {/* FINAL DSC */}
-                      <td className={`${td} font-mono text-gray-300 ${tx}`}>
-                        {chofer?.horaFinalDescarga ?? ""}
+                      <td className={`${td} font-mono ${chofer && !chofer.horaFinalDescarga ? "text-red-500/50" : "text-gray-300"} ${tx}`}>
+                        {chofer?.horaFinalDescarga || (chofer ? "—" : "")}
                       </td>
                       {/* SAL.OBRA */}
-                      <td className={`${td} font-mono text-gray-300 ${tx}`}>
-                        {chofer?.horaSalidaObra ?? ""}
+                      <td className={`${td} font-mono ${chofer && !chofer.horaSalidaObra ? "text-red-500/50" : "text-gray-300"} ${tx}`}>
+                        {chofer?.horaSalidaObra || (chofer ? "—" : "")}
                       </td>
                       {/* T.DESC (calc) */}
                       <td className={`${td} font-mono text-emerald-400/90 text-center font-semibold ${tx}`}>

@@ -13,6 +13,7 @@ import {
   FlaskConical, Package, Pencil, Plus, Search, Trash2, Users, X,
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
+import PlantaRequired from "@/components/PlantaRequired";
 import ClienteCombobox from "@/components/ClienteCombobox";
 import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
 import { filterByPlanta, getActivePlanta, getStoredSession, Planta, withPlantaTag } from "@/lib/auth";
@@ -862,15 +863,33 @@ export default function InventarioPage() {
                 <button onClick={() => exportXLSX(filtered)} disabled={filtered.length === 0} className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-300 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg hover:border-[#CC2229]/60 transition-colors disabled:opacity-40 cursor-pointer">
                   <Download size={13} /> Excel
                 </button>
-                <button onClick={() => setShowRemisionForm(true)} className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#B01E24] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-[#CC2229]/20 cursor-pointer">
-                  <Plus size={15} /> Nueva remisión
-                </button>
+                <PlantaRequired>
+                  {(ok) => (
+                    <button
+                      onClick={() => ok && setShowRemisionForm(true)}
+                      disabled={!ok}
+                      title={!ok ? "Selecciona Allende o Pesquería primero" : undefined}
+                      className={`flex items-center gap-2 bg-[#CC2229] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-[#CC2229]/20 ${ok ? "hover:bg-[#B01E24] cursor-pointer" : "opacity-40 cursor-not-allowed"}`}
+                    >
+                      <Plus size={15} /> Nueva remisión
+                    </button>
+                  )}
+                </PlantaRequired>
               </>
             )}
             {tab === "movimientos" && (
-              <button onClick={() => setShowEntradaForm(true)} className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#B01E24] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-[#CC2229]/20 cursor-pointer">
-                <Plus size={15} /> Entrada
-              </button>
+              <PlantaRequired>
+                {(ok) => (
+                  <button
+                    onClick={() => ok && setShowEntradaForm(true)}
+                    disabled={!ok}
+                    title={!ok ? "Selecciona Allende o Pesquería primero" : undefined}
+                    className={`flex items-center gap-2 bg-[#CC2229] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-[#CC2229]/20 ${ok ? "hover:bg-[#B01E24] cursor-pointer" : "opacity-40 cursor-not-allowed"}`}
+                  >
+                    <Plus size={15} /> Entrada
+                  </button>
+                )}
+              </PlantaRequired>
             )}
           </div>
         </div>

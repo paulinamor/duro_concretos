@@ -3,10 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  Camera,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   DollarSign,
+  ImagePlus,
   Pencil,
   Plus,
   Search,
@@ -16,11 +18,14 @@ import {
   X,
   Zap,
 } from "lucide-react";
+import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
+import { storage } from "@/lib/firebase";
 import KPICard from "@/components/KPICard";
 import { filterByPlanta, withPlantaTag } from "@/lib/auth";
 import { COLLECTIONS, deleteDocument, getCollectionDocs, upsertDocument } from "@/lib/db";
 import { todayCST } from "@/lib/dateUtils";
 import type { Unidad } from "@/lib/unidades";
+import PlantaRequired from "@/components/PlantaRequired";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -43,6 +48,9 @@ interface EventoRaw {
   status: string;
   notas?: string;
   planta?: string;
+  km?: number;
+  fotosFactura?: string[];
+  fotosEvidencia?: string[];
 }
 
 interface Evento extends EventoRaw {
@@ -160,7 +168,14 @@ function EventoRow({
           {ev.causa && <span className="text-xs text-gray-500">Causa: {ev.causa}</span>}
           {ev.taller && <span className="text-xs text-gray-500">Taller: {ev.taller}</span>}
           {ev.reportadoPor && <span className="text-xs text-gray-500">Reportó: {ev.reportadoPor}</span>}
+          {ev.km != null && <span className="text-xs text-gray-500">{ev.km.toLocaleString("es-MX")} km</span>}
           {ev.notas && <span className="text-xs text-gray-500 italic">{ev.notas}</span>}
+          {((ev.fotosFactura?.length ?? 0) + (ev.fotosEvidencia?.length ?? 0) > 0) && (
+            <span className="text-xs text-gray-500 flex items-center gap-1">
+              <Camera size={10} />
+              {(ev.fotosFactura?.length ?? 0) + (ev.fotosEvidencia?.length ?? 0)} foto{(ev.fotosFactura?.length ?? 0) + (ev.fotosEvidencia?.length ?? 0) !== 1 ? "s" : ""}
+            </span>
+          )}
         </div>
       </div>
 
@@ -332,6 +347,58 @@ function UnitCard({
   );
 }
 
+// ─── Photo Upload Area ─────────────────────────────────────────────────────────
+
+function PhotoUploadArea({
+  label,
+  fotos,
+  uploading,
+  onUpload,
+  onRemove,
+}: {
+  label: string;
+  fotos: string[];
+  uploading: boolean;
+  onUpload: (files: FileList) => void;
+  onRemove: (index: number) => void;
+}) {
+  return (
+    <div>
+      <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-2">{label}</p>
+      {fotos.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-2">
+          {fotos.map((url, i) => (
+            <div key={i} className="relative group">
+              <img src={url} alt="" className="h-16 w-16 object-cover rounded-lg border border-gray-200" />
+              <button
+                type="button"
+                onClick={() => onRemove(i)}
+                className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+              >
+                <X size={10} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <label className={`flex items-center gap-2 px-3 py-2.5 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-500 hover:border-[#CC2229]/40 hover:text-[#CC2229] transition-colors cursor-pointer ${uploading ? "opacity-50 pointer-events-none" : ""}`}>
+        {uploading ? (
+          <><span className="h-4 w-4 rounded-full border-2 border-gray-300 border-t-[#CC2229] animate-spin" /> Subiendo…</>
+        ) : (
+          <><ImagePlus size={16} /> Agregar fotos</>
+        )}
+        <input
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={(e) => e.target.files && onUpload(e.target.files)}
+        />
+      </label>
+    </div>
+  );
+}
+
 // ─── Registration Drawer ───────────────────────────────────────────────────────
 
 function RegistroDrawer({
@@ -352,6 +419,9 @@ function RegistroDrawer({
   const [tipo, setTipo] = useState<EventoTipo>("Mantenimiento");
   const [form, setForm] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [fotosFactura, setFotosFactura] = useState<string[]>([]);
+  const [fotosEvidencia, setFotosEvidencia] = useState<string[]>([]);
+  const [uploadingCat, setUploadingCat] = useState<"factura" | "evidencia" | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -370,14 +440,44 @@ function RegistroDrawer({
         causa: editing.causa ?? "",
         severidad: editing.severidad ?? "Media",
         reportadoPor: editing.reportadoPor ?? "",
+        km: editing.km != null ? String(editing.km) : "",
       });
+      setFotosFactura(editing.fotosFactura ?? []);
+      setFotosEvidencia(editing.fotosEvidencia ?? []);
     } else {
       setTipo("Mantenimiento");
-      setForm({ fecha: todayISO(), unidad: preselectedUnidad, status: "Pendiente" });
+      setForm({ fecha: todayISO(), unidad: preselectedUnidad, status: "Pendiente", km: "" });
+      setFotosFactura([]);
+      setFotosEvidencia([]);
     }
   }, [open, preselectedUnidad, editing]);
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
+
+  async function handlePhotoUpload(files: FileList, cat: "factura" | "evidencia") {
+    if (!storage || !files.length) {
+      if (!storage) {
+        window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Firebase Storage no está activado. Contacta al administrador." } }));
+      }
+      return;
+    }
+    setUploadingCat(cat);
+    const id = editing?.id ?? `evt-${Date.now()}`;
+    try {
+      const urls: string[] = [];
+      for (const file of Array.from(files)) {
+        const r = storageRef(storage, `mantenimiento/${id}/${cat}/${Date.now()}_${file.name}`);
+        const snap = await uploadBytes(r, file);
+        urls.push(await getDownloadURL(snap.ref));
+      }
+      if (cat === "factura") setFotosFactura((p) => [...p, ...urls]);
+      else setFotosEvidencia((p) => [...p, ...urls]);
+    } catch {
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al subir fotos. Verifica la configuración de Firebase Storage." } }));
+    } finally {
+      setUploadingCat(null);
+    }
+  }
 
   async function handleSave() {
     if (!form.unidad || !form.descripcion) return;
@@ -393,6 +493,9 @@ function RegistroDrawer({
         taller: form.taller ?? "",
         status: form.status ?? "Pendiente",
         notas: form.notas ?? "",
+        ...(form.km ? { km: parseFloat(form.km) } : {}),
+        ...(fotosFactura.length > 0 ? { fotosFactura } : {}),
+        ...(fotosEvidencia.length > 0 ? { fotosEvidencia } : {}),
       };
       if (tipo === "Mantenimiento") base.subtipo = (form.subtipo as SubtipoMant) ?? "Preventivo";
       if (tipo === "Reparación") base.causa = form.causa ?? "";
@@ -448,7 +551,7 @@ function RegistroDrawer({
             </div>
           </div>
 
-          {/* Unidad */}
+          {/* Unidad + Fecha + KM */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={lbl}>Unidad</label>
@@ -461,6 +564,17 @@ function RegistroDrawer({
               <label className={lbl}>Fecha</label>
               <input type="date" value={form.fecha ?? todayISO()} onChange={(e) => set("fecha", e.target.value)} className={inp} />
             </div>
+          </div>
+          <div>
+            <label className={lbl}>{tipo === "Falla" ? "KM al momento del paro" : "KM actual"}</label>
+            <input
+              type="number"
+              min={0}
+              value={form.km ?? ""}
+              onChange={(e) => set("km", e.target.value)}
+              placeholder="Ej. 125000"
+              className={inp}
+            />
           </div>
 
           {/* Tipo-specific fields */}
@@ -551,6 +665,25 @@ function RegistroDrawer({
           <div>
             <label className={lbl}>Notas adicionales</label>
             <textarea value={form.notas ?? ""} onChange={(e) => set("notas", e.target.value)} rows={2} className={`${inp} resize-none`} />
+          </div>
+
+          {/* Evidencia fotográfica */}
+          <div className="space-y-3 pt-1">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Evidencia fotográfica</p>
+            <PhotoUploadArea
+              label="Fotos de factura"
+              fotos={fotosFactura}
+              uploading={uploadingCat === "factura"}
+              onUpload={(files) => handlePhotoUpload(files, "factura")}
+              onRemove={(i) => setFotosFactura((p) => p.filter((_, idx) => idx !== i))}
+            />
+            <PhotoUploadArea
+              label="Evidencia de daños"
+              fotos={fotosEvidencia}
+              uploading={uploadingCat === "evidencia"}
+              onUpload={(files) => handlePhotoUpload(files, "evidencia")}
+              onRemove={(i) => setFotosEvidencia((p) => p.filter((_, idx) => idx !== i))}
+            />
           </div>
         </div>
 
@@ -768,10 +901,18 @@ export default function MantenimientoPage() {
           )}
         </div>
 
-        <button onClick={() => openDrawer()}
-          className="ml-auto flex items-center gap-2 bg-[#CC2229] hover:bg-[#B01E24] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-[#CC2229]/20 cursor-pointer">
-          <Plus size={15} /> Nuevo registro
-        </button>
+        <PlantaRequired>
+          {(ok) => (
+            <button
+              onClick={() => ok && openDrawer()}
+              disabled={!ok}
+              title={!ok ? "Selecciona Allende o Pesquería primero" : undefined}
+              className={`ml-auto flex items-center gap-2 bg-[#CC2229] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-[#CC2229]/20 ${ok ? "hover:bg-[#B01E24] cursor-pointer" : "opacity-40 cursor-not-allowed"}`}
+            >
+              <Plus size={15} /> Nuevo registro
+            </button>
+          )}
+        </PlantaRequired>
       </div>
 
       {/* Loading */}
@@ -840,10 +981,17 @@ export default function MantenimientoPage() {
                       <td className="px-4 py-3 text-gray-200 max-w-[240px]">
                         <p className="truncate">{ev.descripcion}</p>
                         {ev.causa && <p className="text-xs text-gray-500 truncate">{ev.causa}</p>}
+                        {ev.km != null && <p className="text-xs text-gray-500">{ev.km.toLocaleString("es-MX")} km</p>}
                       </td>
                       <td className="px-4 py-3 text-white font-semibold tabular-nums whitespace-nowrap">{currency(ev.costo)}</td>
                       <td className="px-4 py-3 text-gray-400 text-xs max-w-[140px]">
                         <p className="truncate">{ev.taller || ev.reportadoPor || "—"}</p>
+                        {((ev.fotosFactura?.length ?? 0) + (ev.fotosEvidencia?.length ?? 0) > 0) && (
+                          <p className="flex items-center gap-1 text-gray-600 mt-0.5">
+                            <Camera size={9} />
+                            {(ev.fotosFactura?.length ?? 0) + (ev.fotosEvidencia?.length ?? 0)} foto{(ev.fotosFactura?.length ?? 0) + (ev.fotosEvidencia?.length ?? 0) !== 1 ? "s" : ""}
+                          </p>
+                        )}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${STATUS_BADGE[ev.status] ?? "bg-gray-500/15 text-gray-400 border-gray-500/30"}`}>

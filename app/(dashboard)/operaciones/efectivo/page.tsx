@@ -7,6 +7,7 @@ import { filterByPlanta, withPlantaTag } from "@/lib/auth";
 import { todayCST } from "@/lib/dateUtils";
 import ClienteCombobox from "@/components/ClienteCombobox";
 import KPICard from "@/components/KPICard";
+import PlantaRequired from "@/components/PlantaRequired";
 import type { Cliente } from "@/lib/crmClientes";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -377,13 +378,19 @@ export default function EfectivoPage() {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-gray-500 text-sm">Registro de recibos de concreto</p>
-        <button
-          onClick={openNew}
-          className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#B01E24] text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors shadow-md shadow-[#CC2229]/20"
-        >
-          <Plus size={16} />
-          Nuevo recibo
-        </button>
+        <PlantaRequired>
+          {(ok) => (
+            <button
+              onClick={() => ok && openNew()}
+              disabled={!ok}
+              title={!ok ? "Selecciona Allende o Pesquería primero" : undefined}
+              className={`flex items-center gap-2 bg-[#CC2229] text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors shadow-md shadow-[#CC2229]/20 ${ok ? "hover:bg-[#B01E24] cursor-pointer" : "opacity-40 cursor-not-allowed"}`}
+            >
+              <Plus size={16} />
+              Nuevo recibo
+            </button>
+          )}
+        </PlantaRequired>
       </div>
 
       {/* KPIs */}

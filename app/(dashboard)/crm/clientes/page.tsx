@@ -22,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
+import PlantaRequired from "@/components/PlantaRequired";
 import StatusBadge from "@/components/StatusBadge";
 import {
   estatusCliente,
@@ -739,13 +740,19 @@ export default function CrmClientesPage() {
           <FileSpreadsheet size={15} />
           Excel
         </button>
-        <button
-          onClick={openCreate}
-          className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#991A1E] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-        >
-          <Plus size={15} />
-          Nuevo cliente
-        </button>
+        <PlantaRequired>
+          {(ok) => (
+            <button
+              onClick={() => ok && openCreate()}
+              disabled={!ok}
+              title={!ok ? "Selecciona Allende o Pesquería primero" : undefined}
+              className={`flex items-center gap-2 bg-[#CC2229] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors ${ok ? "hover:bg-[#991A1E] cursor-pointer" : "opacity-40 cursor-not-allowed"}`}
+            >
+              <Plus size={15} />
+              Nuevo cliente
+            </button>
+          )}
+        </PlantaRequired>
       </div>
 
       {/* Table */}

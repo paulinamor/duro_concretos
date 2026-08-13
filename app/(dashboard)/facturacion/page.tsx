@@ -9,7 +9,7 @@ import {
 import KPICard from "@/components/KPICard";
 import StatusBadge from "@/components/StatusBadge";
 import { getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
-import { getCapturePlanta } from "@/lib/auth";
+import { withPlantaTag } from "@/lib/auth";
 
 // ─── Catálogos SAT ────────────────────────────────────────────────────────────
 
@@ -213,7 +213,7 @@ function EmitirDrawer({
       const data = await resp.json();
       if (!resp.ok) { setError(data.error ?? "Error al timbrar"); return; }
 
-      const nuevo: CfdiEmitido = {
+      const nuevo: CfdiEmitido = withPlantaTag({
         uuid:          data.uuid,
         facturapiId:   data.id,
         tipo,
@@ -228,9 +228,8 @@ function EmitirDrawer({
         status:        "valid",
         pdfUrl:        data.pdfUrl,
         xmlUrl:        data.xmlUrl,
-        planta:        getCapturePlanta(),
         createdAt:     new Date().toISOString(),
-      };
+      });
 
       await upsertDocument(COLLECTIONS.cfdiEmitidos, nuevo.uuid, nuevo);
       onEmitido(nuevo);

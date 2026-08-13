@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
+import PlantaRequired from "@/components/PlantaRequired";
 import {
   pipelineStages,
   PipelineStage,
@@ -370,13 +371,19 @@ export default function CrmPipelinePage() {
         <div>
           <p className="text-gray-500 text-sm mt-0.5">Pipeline comercial de 5 etapas</p>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#991A1E] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-        >
-          <Plus size={16} />
-          Nueva oportunidad
-        </button>
+        <PlantaRequired>
+          {(ok) => (
+            <button
+              onClick={() => ok && setShowForm(true)}
+              disabled={!ok}
+              title={!ok ? "Selecciona Allende o Pesquería primero" : undefined}
+              className={`flex items-center gap-2 bg-[#CC2229] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors ${ok ? "hover:bg-[#991A1E] cursor-pointer" : "opacity-40 cursor-not-allowed"}`}
+            >
+              <Plus size={16} />
+              Nueva oportunidad
+            </button>
+          )}
+        </PlantaRequired>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">

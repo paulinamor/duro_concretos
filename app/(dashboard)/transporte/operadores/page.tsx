@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
+import PlantaRequired from "@/components/PlantaRequired";
 import { diasDesdeIngreso, docsProximos, operadoresActivos, type Operador } from "@/lib/operadores";
 import { COLLECTIONS, deleteDocument, subscribeToCollection, upsertDocument } from "@/lib/db";
 
@@ -396,10 +397,18 @@ export default function EmpleadosPage() {
             className="flex items-center gap-2 rounded-lg border border-[#3A3A3A] px-3 py-2 text-sm text-gray-300 hover:border-[#CC2229]/60 hover:text-[#CC2229] transition-colors cursor-pointer">
             <FileText size={15} /> PDF
           </button>
-          <button onClick={openCreate}
-            className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#991A1E] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer">
-            <Plus size={15} /> Nuevo empleado
-          </button>
+          <PlantaRequired>
+            {(ok) => (
+              <button
+                onClick={() => ok && openCreate()}
+                disabled={!ok}
+                title={!ok ? "Selecciona Allende o Pesquería primero" : undefined}
+                className={`flex items-center gap-2 bg-[#CC2229] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors ${ok ? "hover:bg-[#991A1E] cursor-pointer" : "opacity-40 cursor-not-allowed"}`}
+              >
+                <Plus size={15} /> Nuevo empleado
+              </button>
+            )}
+          </PlantaRequired>
         </div>
       </div>
 

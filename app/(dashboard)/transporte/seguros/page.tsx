@@ -12,6 +12,7 @@ import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS, where }
 import { todayCST } from "@/lib/dateUtils";
 import { useCollectionRaw } from "@/lib/useCollection";
 import type { Unidad, EstatusUnidad } from "@/lib/unidades";
+import PlantaRequired from "@/components/PlantaRequired";
 import { storage } from "@/lib/firebase";
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage";
 
@@ -1047,13 +1048,19 @@ export default function SegurosPage() {
             <Download size={14} />
             Exportar Excel
           </button>
-          <button
-            onClick={() => openDrawer(null)}
-            className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#B01E24] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-[#CC2229]/20"
-          >
-            <Plus size={15} />
-            Nuevo registro
-          </button>
+          <PlantaRequired>
+            {(ok) => (
+              <button
+                onClick={() => ok && openDrawer(null)}
+                disabled={!ok}
+                title={!ok ? "Selecciona Allende o Pesquería primero" : undefined}
+                className={`flex items-center gap-2 bg-[#CC2229] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-[#CC2229]/20 ${ok ? "hover:bg-[#B01E24] cursor-pointer" : "opacity-40 cursor-not-allowed"}`}
+              >
+                <Plus size={15} />
+                Nuevo registro
+              </button>
+            )}
+          </PlantaRequired>
         </div>
       </div>
 

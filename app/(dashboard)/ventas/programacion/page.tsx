@@ -6,6 +6,7 @@ import {
   MapPin, Package, Phone, Plus, Search, Truck, Users, X,
 } from "lucide-react";
 import ClienteCombobox from "@/components/ClienteCombobox";
+import PlantaRequired from "@/components/PlantaRequired";
 import { upsertDocument, COLLECTIONS } from "@/lib/db";
 import { withPlantaTag, getStoredSession } from "@/lib/auth";
 import { todayCST, localISODate } from "@/lib/dateUtils";
@@ -232,8 +233,10 @@ function PedidoDrawer({
     try {
       await onSave(form, prog?.id);
       onClose();
-    } catch {
-      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", title: "Error", message: "No se pudo guardar." } }));
+    } catch (err) {
+      if ((err as { code?: string }).code !== "PLANTA_REQUERIDA") {
+        window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", title: "Error", message: "No se pudo guardar." } }));
+      }
     } finally { setSaving(false); }
   }
 
@@ -759,12 +762,18 @@ export default function VentasProgramacionPage() {
         <p className="text-gray-500 text-sm" suppressHydrationWarning>
           Tus pedidos · <span className="text-white font-medium" suppressHydrationWarning>{vendedorNombre}</span>
         </p>
-        <button
-          onClick={() => { setEditing(null); setShowDrawer(true); }}
-          className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#B01E24] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-[#CC2229]/20 cursor-pointer"
-        >
-          <Plus size={15} /> Nuevo pedido
-        </button>
+        <PlantaRequired>
+          {(ok) => (
+            <button
+              onClick={() => { if (!ok) return; setEditing(null); setShowDrawer(true); }}
+              disabled={!ok}
+              title={!ok ? "Selecciona Allende o Pesquería primero" : undefined}
+              className={`flex items-center gap-2 bg-[#CC2229] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-[#CC2229]/20 ${ok ? "hover:bg-[#B01E24] cursor-pointer" : "opacity-40 cursor-not-allowed"}`}
+            >
+              <Plus size={15} /> Nuevo pedido
+            </button>
+          )}
+        </PlantaRequired>
       </div>
 
       {/* Selector de día + disponibilidad */}

@@ -13,6 +13,7 @@ import {
   Wallet,
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
+import PlantaRequired from "@/components/PlantaRequired";
 import StatusBadge from "@/components/StatusBadge";
 import FormModal from "@/components/FormModal";
 import { getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
@@ -126,13 +127,19 @@ export default function CajaChicaPage() {
             <RefreshCw size={14} />
             Reposición de Fondo
           </button>
-          <button
-            onClick={() => setShowForm(true)}
-            className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#991A1E] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-          >
-            <Plus size={16} />
-            Registrar Gasto
-          </button>
+          <PlantaRequired>
+            {(ok) => (
+              <button
+                onClick={() => ok && setShowForm(true)}
+                disabled={!ok}
+                title={!ok ? "Selecciona Allende o Pesquería primero" : undefined}
+                className={`flex items-center gap-2 bg-[#CC2229] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors ${ok ? "hover:bg-[#991A1E] cursor-pointer" : "opacity-40 cursor-not-allowed"}`}
+              >
+                <Plus size={16} />
+                Registrar Gasto
+              </button>
+            )}
+          </PlantaRequired>
         </div>
       </div>
 

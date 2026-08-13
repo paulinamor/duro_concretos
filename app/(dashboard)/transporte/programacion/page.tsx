@@ -14,6 +14,7 @@ import { filterByPlanta, getStoredSession, withPlantaTag } from "@/lib/auth";
 import { todayCST, localISODate } from "@/lib/dateUtils";
 import type { Operador } from "@/lib/operadores";
 import type { Cliente } from "@/lib/crmClientes";
+import type { Unidad } from "@/lib/unidades";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -382,7 +383,7 @@ function Sec({ title }: { title: string }) {
 function ChoferCard({
   entry, index, total,
   onChange, onRemove,
-  operadoresList,
+  operadoresList, revolveList,
 }: {
   entry: ChoferFormEntry;
   index: number;
@@ -390,6 +391,7 @@ function ChoferCard({
   onChange: (updated: ChoferFormEntry) => void;
   onRemove: () => void;
   operadoresList: Pick<Operador, "id" | "nombre">[];
+  revolveList: string[];
 }) {
   const set = (k: keyof ChoferFormEntry, v: string) => onChange({ ...entry, [k]: v });
   const tiempoAuto = calcTiempoDescarga(entry.horaInicioDescarga, entry.horaFinalDescarga);
@@ -431,7 +433,15 @@ function ChoferCard({
         </div>
         <div>
           <label className={lbl}>CR</label>
-          <input type="text" value={entry.cr} onChange={(e) => set("cr", e.target.value)} placeholder="CR-01" className={inp} />
+          <select value={entry.cr} onChange={(e) => set("cr", e.target.value)} className={inp}>
+            <option value="">— Sin asignar —</option>
+            {revolveList.map((eco) => (
+              <option key={eco} value={eco}>{eco}</option>
+            ))}
+            {entry.cr && !revolveList.includes(entry.cr) && (
+              <option value={entry.cr}>{entry.cr}</option>
+            )}
+          </select>
         </div>
         <div>
           <label className={lbl}>Hora salida</label>
@@ -599,7 +609,7 @@ function HistorialDrawer({
 // ─── FormDrawer ───────────────────────────────────────────────────────────────
 
 function FormDrawer({
-  open, onClose, onSave, onDelete, initial, dia, operadoresList, clientesList,
+  open, onClose, onSave, onDelete, initial, dia, operadoresList, clientesList, revolveList,
 }: {
   open: boolean;
   onClose: () => void;
@@ -609,6 +619,7 @@ function FormDrawer({
   dia: string;
   operadoresList: Pick<Operador, "id" | "nombre">[];
   clientesList: string[];
+  revolveList: string[];
 }) {
   const [form, setForm] = useState<FormState>(() => emptyForm(dia));
   const [saving, setSaving] = useState(false);
@@ -915,6 +926,7 @@ function FormDrawer({
                 onChange={(updated) => setChofer(i, updated)}
                 onRemove={() => removeChofer(i)}
                 operadoresList={operadoresList}
+                revolveList={revolveList}
               />
             ))}
             <button
@@ -1808,6 +1820,7 @@ export default function ProgramacionPage() {
   const [programaciones, setProgramaciones] = useState<Programacion[]>([]);
   const [operadoresList, setOperadoresList] = useState<Pick<Operador, "id" | "nombre">[]>([]);
   const [clientesList, setClientesList] = useState<string[]>([]);
+  const [revolveList, setRevolveList] = useState<string[]>([]);
   const [clientesSet, setClientesSet] = useState<Set<string>>(new Set());
   const [diaActivo, setDiaActivo] = useState(todayISO);
   const [viewMode, setViewMode] = useState<ViewMode>("dia");
@@ -1833,8 +1846,19 @@ export default function ProgramacionPage() {
     Promise.all([
       getCollectionDocs<Operador>(COLLECTIONS.operadores),
       getCollectionDocs<Cliente>(COLLECTIONS.clientes),
-    ]).then(([ops, clientes]) => {
+      getCollectionDocs<{ tipoUnidad: string; noEconomico: string; unidadId: string }>(COLLECTIONS.seguros),
+      getCollectionDocs<Unidad>(COLLECTIONS.unidades),
+    ]).then(([ops, clientes, segs, unis]) => {
       setOperadoresList(ops.filter((o) => !o.baja).map((o) => ({ id: o.id, nombre: o.nombre })));
+
+      const unitEstatusMap = new Map(unis.map((u) => [u.id, u.estatus]));
+      const revolvedoras = segs
+        .filter((s) => s.tipoUnidad === "Revolvedora" && s.noEconomico)
+        .filter((s) => !s.unidadId || unitEstatusMap.get(s.unidadId) !== "Baja")
+        .map((s) => s.noEconomico)
+        .filter((v, i, arr) => arr.indexOf(v) === i)
+        .sort((a, b) => a.localeCompare(b, "es", { numeric: true }));
+      setRevolveList(revolvedoras);
 
       const fromClientes = clientes.flatMap((c) => [c.razonSocial, c.nombreComercial].filter(Boolean));
       const existingSet = new Set(clientes.map((c) => c.razonSocial.toLowerCase().trim()));
@@ -2577,6 +2601,7 @@ export default function ProgramacionPage() {
         dia={diaActivo}
         operadoresList={operadoresList}
         clientesList={clientesList}
+        revolveList={revolveList}
       />
     </div>
   );
