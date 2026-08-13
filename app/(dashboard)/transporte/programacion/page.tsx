@@ -822,7 +822,7 @@ function FormDrawer({
             <CalendarDays size={18} />
           </div>
           <div>
-            <h2 className="text-sm font-semibold text-gray-900">{initial ? "Editar programación" : "Nueva programación"}</h2>
+            <h2 className="text-sm font-semibold text-gray-900">{initial ? "Completar programación" : "Programación"}</h2>
             <p className="text-xs text-gray-500">{formatDateLabel(form.dia)}</p>
           </div>
           <button onClick={onClose} className="ml-auto rounded-xl p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors">
@@ -1946,6 +1946,20 @@ export default function ProgramacionPage() {
   const totalM3Vacios = filtered.reduce((s, p) => s + (p.m3Vacios ?? 0), 0);
   const totalPagado = filtered.filter((p) => p.pagado === "Sí").length;
 
+  // Panel de trabajo: conteos por estado para el equipo de programación
+  const trabajoPendiente = useMemo(() => {
+    const sinAsignar = filtered.filter((p) => !p.choferes || p.choferes.length === 0).length;
+    const enProceso = filtered.filter((p) => {
+      const ch = (p.choferes ?? []) as ChoferEntry[];
+      return ch.length > 0 && !ch.every((c) => c.horaSalidaObra) && p.fase !== "Entregado";
+    }).length;
+    const porCerrar = filtered.filter((p) => {
+      const ch = (p.choferes ?? []) as ChoferEntry[];
+      return ch.length > 0 && ch.every((c) => c.horaSalidaObra) && p.fase !== "Entregado";
+    }).length;
+    return { sinAsignar, enProceso, porCerrar };
+  }, [filtered]);
+
   async function handleSave(p: Programacion) {
     const id = p.id!;
     const { id: _id, ...data } = p;
@@ -2116,13 +2130,35 @@ export default function ProgramacionPage() {
               <Download size={13} />
               Excel
             </button>
-            <button
-              onClick={() => { setEditing(undefined); setShowDrawer(true); }}
-              className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#B01E24] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-[#CC2229]/20"
-            >
-              <Plus size={15} />
-              Nueva programación
-            </button>
+            {/* Panel de trabajo del día */}
+            {filtered.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                {trabajoPendiente.sinAsignar > 0 && (
+                  <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-red-500/10 border border-red-500/25 cursor-default" title="Pedidos sin chofer asignado">
+                    <div className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse shrink-0" />
+                    <span className="text-[11px] font-semibold text-red-400 whitespace-nowrap">{trabajoPendiente.sinAsignar} sin asignar</span>
+                  </div>
+                )}
+                {trabajoPendiente.enProceso > 0 && (
+                  <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/25 cursor-default" title="En proceso — faltan horarios de algún viaje">
+                    <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
+                    <span className="text-[11px] font-semibold text-amber-400 whitespace-nowrap">{trabajoPendiente.enProceso} en proceso</span>
+                  </div>
+                )}
+                {trabajoPendiente.porCerrar > 0 && (
+                  <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/25 cursor-default" title="Todos los viajes terminados — listos para marcar entregado">
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                    <span className="text-[11px] font-semibold text-emerald-400 whitespace-nowrap">{trabajoPendiente.porCerrar} por cerrar</span>
+                  </div>
+                )}
+                {trabajoPendiente.sinAsignar === 0 && trabajoPendiente.enProceso === 0 && trabajoPendiente.porCerrar === 0 && (
+                  <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/25">
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                    <span className="text-[11px] font-semibold text-emerald-400 whitespace-nowrap">Todo entregado</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -2259,7 +2295,9 @@ export default function ProgramacionPage() {
             const tieneSalida = choferes.some((c) => c.horaSalida);
             const tieneLlegada = choferes.some((c) => c.horaLlegadaObra);
             const tieneDescarga = choferes.some((c) => c.horaInicioDescarga);
+            const todosSalieron = tieneChofer && choferes.every((c) => c.horaSalidaObra);
             const faseActual = isEntregado ? "Entregado"
+              : todosSalieron ? "Descargado"
               : tieneDescarga ? "Descargando"
               : tieneLlegada ? "En obra"
               : tieneSalida ? "En camino"
@@ -2268,6 +2306,7 @@ export default function ProgramacionPage() {
 
             const faseBadgeStyle = ({
               "Entregado":   { bg: "#ECFDF5", text: "#059669", border: "#6EE7B7" },
+              "Descargado":  { bg: "#F0FDF4", text: "#16A34A", border: "#BBF7D0" },
               "Descargando": { bg: "#FFF7ED", text: "#EA580C", border: "#FED7AA" },
               "En obra":     { bg: "#EFF6FF", text: "#2563EB", border: "#BFDBFE" },
               "En camino":   { bg: "#F0FDF4", text: "#16A34A", border: "#BBF7D0" },
@@ -2275,7 +2314,7 @@ export default function ProgramacionPage() {
               "Pendiente":   { bg: "#F9FAFB", text: "#6B7280", border: "#E5E7EB" },
             } as Record<string, { bg: string; text: string; border: string }>)[faseActual] ?? { bg: "#F9FAFB", text: "#6B7280", border: "#E5E7EB" };
 
-            const stepsDone = ["Pendiente","Asignado","En camino","En obra","Descargando","Entregado"].indexOf(faseActual);
+            const stepsDone = ["Pendiente","Asignado","En camino","En obra","Descargando","Descargado","Entregado"].indexOf(faseActual);
 
             const parseMins = (t: string | null) => {
               if (!t || !t.includes(":")) return null;

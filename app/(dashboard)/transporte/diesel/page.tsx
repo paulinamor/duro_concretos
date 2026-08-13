@@ -12,9 +12,8 @@ import {
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
 import { upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
-import { withPlantaTag } from "@/lib/auth";
 import { todayCST } from "@/lib/dateUtils";
-import { useCollection, useCollectionRaw } from "@/lib/useCollection";
+import { useCollectionRaw } from "@/lib/useCollection";
 import type { Unidad } from "@/lib/unidades";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -592,7 +591,7 @@ export default function DieselPage() {
   const [mes, setMes] = useState(() => currentMonth());
   const [query, setQuery] = useState("");
 
-  const cargas = useCollection<CargaDiesel>(COLLECTIONS.diesel);
+  const cargas = useCollectionRaw<CargaDiesel>(COLLECTIONS.diesel);
   const unidades = useCollectionRaw<Unidad>(COLLECTIONS.unidades);
   useEffect(() => {
     setUnidadesList(unidades.map((u) => u.noEconomico).filter(Boolean));
@@ -703,7 +702,7 @@ export default function DieselPage() {
   async function handleSave(carga: CargaDiesel) {
     const id = carga.id ?? Date.now().toString();
     const { id: _id, planta: _p, ...data } = { ...carga, id };
-    await upsertDocument(COLLECTIONS.diesel, id, withPlantaTag(data));
+    await upsertDocument(COLLECTIONS.diesel, id, data);
   }
 
   async function handleDelete(carga: CargaDiesel) {

@@ -84,6 +84,7 @@ interface NuevoClienteForm {
 
 type VForm = {
   dia: string;
+  horaEntrega: string;
   diaHoraPedido: string;
   cliente: string;
   telefono: string;
@@ -91,27 +92,22 @@ type VForm = {
   m3Totales: string;
   extras: string;
   tdBom: string;
-  exhibiciones: "" | "1" | "2";
-  fechaPago: string;
-  metodoPago: string;
-  montoPago1: string;
-  montoPago2: string;
-  fechaPago2: string;
-  metodoPago2: string;
+  precioM3: string;
+  precioM3Bomba: string;
 };
 
 function emptyForm(dia: string): VForm {
   return {
-    dia, diaHoraPedido: "", cliente: "", telefono: "", direccion: "",
+    dia, horaEntrega: "", diaHoraPedido: nowLocalISO(), cliente: "", telefono: "", direccion: "",
     m3Totales: "", extras: "", tdBom: "",
-    exhibiciones: "", fechaPago: "", metodoPago: "",
-    montoPago1: "", montoPago2: "", fechaPago2: "", metodoPago2: "",
+    precioM3: "", precioM3Bomba: "",
   };
 }
 
 function formFromProg(p: Programacion): VForm {
   return {
     dia: p.dia,
+    horaEntrega: p.hora ?? "",
     diaHoraPedido: p.diaHoraPedido ?? "",
     cliente: p.cliente,
     telefono: p.telefono,
@@ -119,19 +115,18 @@ function formFromProg(p: Programacion): VForm {
     m3Totales: p.m3Totales != null ? String(p.m3Totales) : "",
     extras: p.extras ?? "",
     tdBom: p.tdBom ?? "",
-    exhibiciones: p.exhibiciones ?? "",
-    fechaPago: p.fechaPago ?? "",
-    metodoPago: p.metodoPago ?? "",
-    montoPago1: p.montoPagado != null ? String(p.montoPagado) : "",
-    montoPago2: p.montoPago2 != null ? String(p.montoPago2) : "",
-    fechaPago2: p.fechaPago2 ?? "",
-    metodoPago2: p.metodoPago2 ?? "",
+    precioM3: p.precioM3 != null ? String(p.precioM3) : "",
+    precioM3Bomba: p.precioM3Bomba != null ? String(p.precioM3Bomba) : "",
   };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const todayISO = todayCST;
+function nowLocalISO(): string {
+  const now = new Date();
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
 function isUrl(v: string) { return v.startsWith("http://") || v.startsWith("https://"); }
 
 function extractCoordsFromUrl(url: string): { lat: number; lng: number } | null {
@@ -222,8 +217,15 @@ function PedidoDrawer({
   function set(k: keyof VForm, v: string) { setForm((f) => ({ ...f, [k]: v })); }
 
   async function handleSave() {
-    if (!form.cliente.trim()) {
-      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", title: "Cliente requerido", message: "Selecciona el cliente." } }));
+    const missing: string[] = [];
+    if (!form.cliente.trim()) missing.push("Cliente");
+    if (!form.telefono.trim()) missing.push("Teléfono");
+    if (!form.direccion.trim()) missing.push("Dirección / Obra");
+    if (!form.m3Totales) missing.push("M³ solicitados");
+    if (!form.horaEntrega) missing.push("Hora de entrega");
+    if (!form.tdBom) missing.push("T / D / BOM");
+    if (missing.length > 0) {
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", title: "Campos requeridos", message: missing.join(" · ") } }));
       return;
     }
     setSaving(true);
@@ -288,18 +290,18 @@ function PedidoDrawer({
               <input type="date" value={form.dia} onChange={(e) => set("dia", e.target.value)} className={inp} />
             </div>
             <div>
-              <label className={lbl}>Hora en pedido</label>
-              <div className="flex gap-1.5">
-                {form.diaHoraPedido === "N/A" ? (
-                  <div className={`${inp} flex-1 text-gray-400 bg-gray-50 cursor-default select-none`}>N/A</div>
-                ) : (
-                  <input type="datetime-local" value={form.diaHoraPedido} onChange={(e) => set("diaHoraPedido", e.target.value)} className={`${inp} flex-1`} />
-                )}
-                <button type="button" onClick={() => set("diaHoraPedido", form.diaHoraPedido === "N/A" ? "" : "N/A")}
-                  className={`shrink-0 px-2 text-xs font-semibold rounded-xl border transition-colors cursor-pointer ${form.diaHoraPedido === "N/A" ? "bg-gray-200 border-gray-300 text-gray-700" : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"}`}>
-                  N/A
-                </button>
-              </div>
+              <label className={lbl}>Hora de entrega <span className="text-[#CC2229]">*</span></label>
+              <input type="time" value={form.horaEntrega} onChange={(e) => set("horaEntrega", e.target.value)} className={inp} />
+            </div>
+          </div>
+
+          {/* Día y hora de registro — bloqueado */}
+          <div>
+            <label className={lbl}>Día y hora de registro de pedido</label>
+            <div className={`${inp} bg-gray-50 text-gray-500 cursor-default select-none`}>
+              {form.diaHoraPedido
+                ? new Date(form.diaHoraPedido).toLocaleString("es-MX", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
+                : <span className="text-gray-400">—</span>}
             </div>
           </div>
 
@@ -311,13 +313,13 @@ function PedidoDrawer({
 
           {/* Teléfono */}
           <div>
-            <label className={lbl}>Teléfono</label>
+            <label className={lbl}>Teléfono <span className="text-[#CC2229]">*</span></label>
             <input type="tel" value={form.telefono} onChange={(e) => set("telefono", e.target.value)} placeholder="81 0000 0000" className={inp} />
           </div>
 
           {/* Obra */}
           <div>
-            <label className={lbl}>Obra (dirección o link de Maps)</label>
+            <label className={lbl}>Obra (dirección o link de Maps) <span className="text-[#CC2229]">*</span></label>
             <input
               value={form.direccion}
               onChange={(e) => { set("direccion", e.target.value); setCopied(false); }}
@@ -411,7 +413,7 @@ function PedidoDrawer({
 
           {/* M3 */}
           <div>
-            <label className={lbl}>M³ solicitados</label>
+            <label className={lbl}>M³ solicitados <span className="text-[#CC2229]">*</span></label>
             <input type="number" step="0.5" min="0" value={form.m3Totales}
               onChange={(e) => set("m3Totales", e.target.value)} placeholder="0" className={inp}
               onWheel={(e) => e.currentTarget.blur()} />
@@ -419,7 +421,7 @@ function PedidoDrawer({
 
           {/* T/D BOM */}
           <div>
-            <label className={lbl}>T / D / BOM</label>
+            <label className={lbl}>T / D / BOM <span className="text-[#CC2229]">*</span></label>
             <div className="flex gap-2">
               {["Trompo", "Directo", "Bomba"].map((opt) => (
                 <button key={opt} type="button" onClick={() => set("tdBom", form.tdBom === opt ? "" : opt)}
@@ -437,109 +439,28 @@ function PedidoDrawer({
               placeholder="Fibra, impermeabilizante, acelerante…" className={inp} />
           </div>
 
-          {/* Pago */}
-          <div className="pt-1">
-            <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-3">Fecha de pago</p>
-
-            {/* Toggle exhibiciones */}
-            <div className="flex gap-2 mb-4">
-              {(["1", "2"] as const).map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  onClick={() => set("exhibiciones", form.exhibiciones === n ? "" : n)}
-                  className={`flex-1 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
-                    form.exhibiciones === n
-                      ? "bg-[#CC2229] border-[#CC2229] text-white"
-                      : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
-                  }`}
-                >
-                  {n === "1" ? "1 Exhibición" : "2 Exhibiciones"}
-                </button>
-              ))}
+          {/* Precios por m3 */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={lbl}>Precio / m³ <span className="text-[#CC2229]">*</span></label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                <input type="number" min="0" step="0.01" value={form.precioM3}
+                  onChange={(e) => set("precioM3", e.target.value)}
+                  placeholder="0.00" className={`${inp} pl-7`}
+                  onWheel={(e) => e.currentTarget.blur()} />
+              </div>
             </div>
-
-            {form.exhibiciones === "1" && (
-              <div className="space-y-3 bg-gray-50 rounded-xl p-4 border border-gray-100">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className={lbl}>Fecha</label>
-                    <input type="date" value={form.fechaPago} onChange={(e) => set("fechaPago", e.target.value)} className={inp} />
-                  </div>
-                  <div>
-                    <label className={lbl}>Método</label>
-                    <select value={form.metodoPago} onChange={(e) => set("metodoPago", e.target.value)} className={inp}>
-                      <option value="">Seleccionar…</option>
-                      {["Transferencia", "Efectivo", "Cheque", "Tarjeta", "Por definir"].map((m) => (
-                        <option key={m} value={m}>{m}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
+            <div>
+              <label className={lbl}>Precio / m³ Bomba</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                <input type="number" min="0" step="0.01" value={form.precioM3Bomba}
+                  onChange={(e) => set("precioM3Bomba", e.target.value)}
+                  placeholder="0.00" className={`${inp} pl-7`}
+                  onWheel={(e) => e.currentTarget.blur()} />
               </div>
-            )}
-
-            {form.exhibiciones === "2" && (
-              <div className="space-y-3">
-                {/* Exhibición 1 */}
-                <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
-                  <p className="text-xs font-semibold text-gray-500 mb-3">Exhibición 1</p>
-                  <div className="space-y-3">
-                    <div>
-                      <label className={lbl}>Monto</label>
-                      <input type="number" min="0" step="0.01" value={form.montoPago1}
-                        onChange={(e) => set("montoPago1", e.target.value)}
-                        placeholder="0.00" className={inp}
-                        onWheel={(e) => e.currentTarget.blur()} />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className={lbl}>Fecha</label>
-                        <input type="date" value={form.fechaPago} onChange={(e) => set("fechaPago", e.target.value)} className={inp} />
-                      </div>
-                      <div>
-                        <label className={lbl}>Método</label>
-                        <select value={form.metodoPago} onChange={(e) => set("metodoPago", e.target.value)} className={inp}>
-                          <option value="">Seleccionar…</option>
-                          {["Transferencia", "Efectivo", "Cheque", "Tarjeta", "Por definir"].map((m) => (
-                            <option key={m} value={m}>{m}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Exhibición 2 */}
-                <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
-                  <p className="text-xs font-semibold text-gray-500 mb-3">Exhibición 2</p>
-                  <div className="space-y-3">
-                    <div>
-                      <label className={lbl}>Monto</label>
-                      <input type="number" min="0" step="0.01" value={form.montoPago2}
-                        onChange={(e) => set("montoPago2", e.target.value)}
-                        placeholder="0.00" className={inp}
-                        onWheel={(e) => e.currentTarget.blur()} />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className={lbl}>Fecha</label>
-                        <input type="date" value={form.fechaPago2} onChange={(e) => set("fechaPago2", e.target.value)} className={inp} />
-                      </div>
-                      <div>
-                        <label className={lbl}>Método</label>
-                        <select value={form.metodoPago2} onChange={(e) => set("metodoPago2", e.target.value)} className={inp}>
-                          <option value="">Seleccionar…</option>
-                          {["Transferencia", "Efectivo", "Cheque", "Tarjeta", "Por definir"].map((m) => (
-                            <option key={m} value={m}>{m}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
+            </div>
           </div>
         </div>
 
@@ -745,6 +666,8 @@ export default function VentasProgramacionPage() {
 
   async function handleSave(form: VForm, existingId?: string) {
     const m3 = parseFloat(form.m3Totales) || null;
+    const precioM3 = form.precioM3 ? parseFloat(form.precioM3) : null;
+    const precioM3Bomba = form.precioM3Bomba ? parseFloat(form.precioM3Bomba) : null;
     if (existingId) {
       const current = allProgs.find((p) => p.id === existingId);
       if (!current) return;
@@ -759,13 +682,9 @@ export default function VentasProgramacionPage() {
         m3Totales: m3,
         extras: form.extras.trim(),
         tdBom: form.tdBom.trim(),
-        exhibiciones: (form.exhibiciones || undefined) as "1" | "2" | undefined,
-        fechaPago: form.fechaPago,
-        metodoPago: form.metodoPago,
-        montoPagado: form.montoPago1 ? parseFloat(form.montoPago1) : rest.montoPagado,
-        montoPago2: form.montoPago2 ? parseFloat(form.montoPago2) : null,
-        fechaPago2: form.fechaPago2 || undefined,
-        metodoPago2: form.metodoPago2 || undefined,
+        hora: form.horaEntrega.trim(),
+        precioM3,
+        precioM3Bomba,
       };
       await upsertDocument(COLLECTIONS.programaciones, existingId, withPlantaTag(merged));
       window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", title: "Guardado", message: "Pedido actualizado." } }));
@@ -782,19 +701,18 @@ export default function VentasProgramacionPage() {
         m3Totales: m3,
         extras: form.extras.trim(),
         tdBom: form.tdBom.trim(),
-        hora: "", hsr: "", muestras: "", tiempoExtraDescarga: "",
+        hora: form.horaEntrega.trim(), hsr: "", muestras: "", tiempoExtraDescarga: "",
         resistencia: "", color: "", paraUso: "", aditivo: "", credito: "",
         recibo: "", fact: "", pagado: "",
-        metodoPago: form.metodoPago, fechaPago: form.fechaPago,
-        exhibiciones: (form.exhibiciones || undefined) as "1" | "2" | undefined,
-        montoPagado: form.montoPago1 ? parseFloat(form.montoPago1) : null,
-        montoPago2: form.montoPago2 ? parseFloat(form.montoPago2) : null,
-        fechaPago2: form.fechaPago2 || undefined,
-        metodoPago2: form.metodoPago2 || undefined,
-        choferes: [], m3Vacios: null, precioM3: null, precioM3Bomba: null,
+        metodoPago: "", fechaPago: "",
+        choferes: [],
+        m3Vacios: null,
+        precioM3,
+        precioM3Bomba,
         factorBomba: null, aplicarFactorBomba: false, ltoAcelr: null,
         kiloFibra: null, m3Imper: null, tuberiaExtra: null, permisosOC: null,
         totalXM3: null, total: null,
+        montoPagado: null,
         folio,
         fase: "Creado",
         historial: [{ fase: "Creado", fecha: new Date().toISOString(), usuario: vendedorNombre }],
