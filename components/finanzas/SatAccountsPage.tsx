@@ -146,6 +146,8 @@ function FormDrawer({
   onClose,
   onSave,
   initial,
+  onAplicarNC,
+  ncYaAplicada,
 }: {
   open: boolean;
   kind: SatDownloadKind;
@@ -153,6 +155,8 @@ function FormDrawer({
   onClose: () => void;
   onSave: (data: Omit<Cuenta, "id" | "abonos" | "planta">) => Promise<void>;
   initial?: Cuenta;
+  onAplicarNC?: () => void;
+  ncYaAplicada?: boolean;
 }) {
   const isCxp = kind === "cxp";
 
@@ -416,13 +420,32 @@ function FormDrawer({
           </div>
         </div>
 
-        <div className="shrink-0 border-t border-gray-100 px-6 py-4 flex items-center justify-end gap-3">
-          <button onClick={onClose} disabled={saving} className="px-4 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl transition-colors hover:text-gray-900 disabled:opacity-50 cursor-pointer">
-            Cancelar
-          </button>
-          <button onClick={handleSave} disabled={saving || !form.contraparte || totalNum <= 0} className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-xl transition-colors disabled:opacity-60 shadow-lg shadow-[#CC2229]/20 cursor-pointer">
-            {saving ? <><span className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />Guardando...</> : "Guardar"}
-          </button>
+        <div className="shrink-0 border-t border-gray-100 px-6 py-4 space-y-3">
+          {initial?.tipo === "Nota de Crédito" && initial?.uuidRelacion && onAplicarNC && (
+            <div className="flex">
+              {ncYaAplicada ? (
+                <span className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-700 w-full justify-center">
+                  <CheckCircle2 size={14} /> NC ya aplicada a la factura
+                </span>
+              ) : (
+                <button
+                  onClick={() => { onClose(); onAplicarNC(); }}
+                  className="flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-700 hover:bg-amber-100 transition-colors cursor-pointer w-full justify-center"
+                >
+                  <RotateCcw size={14} />
+                  Aplicar NC a factura relacionada
+                </button>
+              )}
+            </div>
+          )}
+          <div className="flex items-center justify-end gap-3">
+            <button onClick={onClose} disabled={saving} className="px-4 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl transition-colors hover:text-gray-900 disabled:opacity-50 cursor-pointer">
+              Cancelar
+            </button>
+            <button onClick={handleSave} disabled={saving || !form.contraparte || totalNum <= 0} className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-xl transition-colors disabled:opacity-60 shadow-lg shadow-[#CC2229]/20 cursor-pointer">
+              {saving ? <><span className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />Guardando...</> : "Guardar"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -933,6 +956,8 @@ function CuentaRow({
   onDelete,
   onEditAbono,
   onDeleteAbono,
+  onAplicarNC,
+  ncYaAplicada,
 }: {
   cuenta: Cuenta;
   kind: SatDownloadKind;
@@ -943,6 +968,8 @@ function CuentaRow({
   onDelete: (c: Cuenta) => void;
   onEditAbono: (c: Cuenta, index: number) => void;
   onDeleteAbono: (c: Cuenta, index: number) => void;
+  onAplicarNC?: (c: Cuenta) => void;
+  ncYaAplicada?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const saldo = cuenta.total - cuenta.montoPagado;
@@ -1111,8 +1138,23 @@ function CuentaRow({
                     Origen: Programación
                   </div>
                 )}
-                <div className="flex gap-2 mt-1">
-                  {cuenta.status !== "Pagado" && cuenta.estadoSAT !== "Cancelado" && (
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {cuenta.tipo === "Nota de Crédito" && cuenta.uuidRelacion && onAplicarNC && (
+                    ncYaAplicada ? (
+                      <span className="flex items-center gap-1.5 rounded-lg border border-emerald-500/30 px-3 py-1.5 text-xs font-medium text-emerald-500 bg-emerald-500/5">
+                        <CheckCircle2 size={12} /> NC aplicada
+                      </span>
+                    ) : (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onAplicarNC(cuenta); }}
+                        className="flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:border-amber-500/70 hover:bg-amber-500/10 cursor-pointer"
+                      >
+                        <RotateCcw size={12} />
+                        Aplicar NC a factura
+                      </button>
+                    )
+                  )}
+                  {cuenta.status !== "Pagado" && cuenta.estadoSAT !== "Cancelado" && cuenta.tipo !== "Nota de Crédito" && (
                     <button
                       onClick={(e) => { e.stopPropagation(); onAbono(cuenta); }}
                       className="flex items-center gap-1.5 rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-3 py-1.5 text-xs font-medium text-gray-200 transition-colors hover:border-emerald-500/50 hover:text-emerald-400 cursor-pointer"
@@ -1505,6 +1547,8 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
   const [abonoTargetId, setAbonoTargetId] = useState<string | null>(null);
   const [editAbonoTarget, setEditAbonoTarget] = useState<{ cuenta: Cuenta; index: number } | null>(null);
   const [showCargaMasiva, setShowCargaMasiva] = useState(false);
+  const [ncTarget, setNcTarget] = useState<Cuenta | null>(null);
+  const [ncApplying, setNcApplying] = useState(false);
   const [query, setQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("todos");
   const [filterMes, setFilterMes] = useState("todos");
@@ -1721,6 +1765,66 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
     const { id, ...data } = updatedCuenta;
     await upsertDocument(collection, id!, withPlantaTag(data));
     showToast("success", isCxc ? "Cobro actualizado" : "Pago actualizado", `${currency(updatedAbono.monto)} · ${cuenta.contraparte}`);
+  }
+
+  // Detecta si una NC ya fue aplicada revisando si la factura relacionada tiene un abono con su referencia
+  const ncYaAplicadaMap = useMemo(() => {
+    const map = new Map<string, boolean>();
+    cuentas.filter((c) => c.tipo === "Nota de Crédito" && c.uuidRelacion).forEach((nc) => {
+      if (!nc.id) return;
+      const refUpper = nc.uuidRelacion.trim().toUpperCase();
+      const factura = cuentas.find((c) => c.uuid?.trim().toUpperCase() === refUpper);
+      if (!factura) { map.set(nc.id, false); return; }
+      const ncRef = (nc.folio || nc.uuid?.slice(0, 8) || "").toUpperCase();
+      const yaAplicada = !!ncRef && (factura.abonos ?? []).some(
+        (a) => (a.referencia ?? "").toUpperCase().includes(ncRef) && (a.referencia ?? "").startsWith("NC:"),
+      );
+      map.set(nc.id, yaAplicada);
+    });
+    return map;
+  }, [cuentas]);
+
+  function handleAplicarNC(nc: Cuenta) {
+    setNcTarget(nc);
+  }
+
+  async function confirmarAplicarNC() {
+    if (!ncTarget) return;
+    setNcApplying(true);
+    try {
+      const refUpper = ncTarget.uuidRelacion?.trim().toUpperCase();
+      const facturaDirecta = cuentas.find((c) => c.uuid?.trim().toUpperCase() === refUpper);
+      if (!facturaDirecta) {
+        showToast("error", "Factura no encontrada", "No existe ningún registro con ese UUID de relación.");
+        setNcTarget(null);
+        return;
+      }
+      const saldoFactura = Math.max(0, Math.round((facturaDirecta.total - facturaDirecta.montoPagado) * 100) / 100);
+      const montoFactura = Math.min(ncTarget.total, saldoFactura);
+      const ref = `NC: ${ncTarget.folio || ncTarget.uuid?.slice(0, 8) || "—"}`;
+      if (montoFactura > 0) {
+        await handleAbono(facturaDirecta, [{ fecha: todayISO(), monto: montoFactura, referencia: ref }]);
+      }
+      // Propaga al anticipo si la factura directa también tiene uuidRelacion
+      const anticipoRef = facturaDirecta.uuidRelacion?.trim().toUpperCase();
+      if (anticipoRef) {
+        const anticipo = cuentas.find((c) => c.uuid?.trim().toUpperCase() === anticipoRef);
+        if (anticipo) {
+          const saldoAnticipo = Math.max(0, Math.round((anticipo.total - anticipo.montoPagado) * 100) / 100);
+          const montoAnticipo = Math.min(montoFactura, saldoAnticipo);
+          if (montoAnticipo > 0) {
+            await handleAbono(anticipo, [{
+              fecha: todayISO(),
+              monto: montoAnticipo,
+              referencia: `${ref} (vía ${facturaDirecta.folio || "—"})`,
+            }]);
+          }
+        }
+      }
+      setNcTarget(null);
+    } finally {
+      setNcApplying(false);
+    }
   }
 
   async function handleCargaMasiva(records: Omit<Cuenta, "id" | "planta">[]) {
@@ -2143,6 +2247,8 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
                     onDelete={handleDelete}
                     onEditAbono={(c, i) => setEditAbonoTarget({ cuenta: c, index: i })}
                     onDeleteAbono={handleDeleteAbono}
+                    onAplicarNC={handleAplicarNC}
+                    ncYaAplicada={ncYaAplicadaMap.get(c.id!)}
                   />
                 ))}
               </tbody>
@@ -2151,10 +2257,104 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
         </div>
       )}
 
-      <FormDrawer open={showForm} kind={kind} clientesList={clientesList} initial={editing ?? undefined} onClose={() => { setShowForm(false); setEditing(null); }} onSave={handleSave} />
+      <FormDrawer
+        open={showForm}
+        kind={kind}
+        clientesList={clientesList}
+        initial={editing ?? undefined}
+        onClose={() => { setShowForm(false); setEditing(null); }}
+        onSave={handleSave}
+        onAplicarNC={editing ? () => handleAplicarNC(editing) : undefined}
+        ncYaAplicada={editing?.id ? ncYaAplicadaMap.get(editing.id) : undefined}
+      />
       <AbonoDrawer cuenta={abonoTarget} kind={kind} onClose={() => setAbonoTargetId(null)} onSave={handleAbono} onEditAbono={handleEditAbono} onDeleteAbono={handleDeleteAbono} />
       <EditAbonoDrawer target={editAbonoTarget} kind={kind} onClose={() => setEditAbonoTarget(null)} onSave={handleEditAbono} />
       <CargaMasivaModal open={showCargaMasiva} kind={kind} existingUuids={existingUuids} onClose={() => setShowCargaMasiva(false)} onConfirm={handleCargaMasiva} />
+
+      {/* Modal confirmación aplicar NC */}
+      {ncTarget && (() => {
+        const refUpper = ncTarget.uuidRelacion?.trim().toUpperCase();
+        const facturaDirecta = cuentas.find((c) => c.uuid?.trim().toUpperCase() === refUpper);
+        const saldoFactura = facturaDirecta
+          ? Math.max(0, Math.round((facturaDirecta.total - facturaDirecta.montoPagado) * 100) / 100)
+          : 0;
+        const montoFactura = Math.min(ncTarget.total, saldoFactura);
+        const anticipoRef = facturaDirecta?.uuidRelacion?.trim().toUpperCase();
+        const anticipo = anticipoRef ? cuentas.find((c) => c.uuid?.trim().toUpperCase() === anticipoRef) : null;
+        const saldoAnticipo = anticipo
+          ? Math.max(0, Math.round((anticipo.total - anticipo.montoPagado) * 100) / 100)
+          : 0;
+        const montoAnticipo = anticipo ? Math.min(montoFactura, saldoAnticipo) : 0;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-5">
+              <div>
+                <h3 className="text-base font-semibold text-gray-900">Aplicar nota de crédito</h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Esto registrará abonos automáticos en las facturas relacionadas.
+                </p>
+              </div>
+
+              {/* NC */}
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-1">
+                <p className="text-[11px] font-medium text-amber-700 uppercase tracking-wide">Nota de crédito</p>
+                <p className="text-sm font-semibold text-gray-900">{ncTarget.contraparte}</p>
+                <p className="text-xs text-gray-500">{ncTarget.folio || ncTarget.uuid?.slice(0, 16) || "—"}</p>
+                <p className="text-sm font-bold text-amber-700">{currency(ncTarget.total)}</p>
+              </div>
+
+              {/* Factura directa */}
+              {facturaDirecta ? (
+                <div className="rounded-xl border border-gray-200 p-3 space-y-1">
+                  <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wide">Se abonará a factura</p>
+                  <p className="text-sm font-semibold text-gray-900">{facturaDirecta.folio || "—"}</p>
+                  <div className="flex items-center justify-between text-xs text-gray-500">
+                    <span>Saldo actual</span>
+                    <span className="font-medium text-gray-700">{currency(saldoFactura)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-emerald-700 font-medium">Abono a aplicar</span>
+                    <span className="font-bold text-emerald-700">{currency(montoFactura)}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-red-200 bg-red-50 p-3">
+                  <p className="text-xs text-red-600">No se encontró la factura con UUID: {ncTarget.uuidRelacion?.slice(0, 20)}…</p>
+                </div>
+              )}
+
+              {/* Anticipo si aplica */}
+              {anticipo && montoAnticipo > 0 && (
+                <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 space-y-1">
+                  <p className="text-[11px] font-medium text-blue-600 uppercase tracking-wide">También se propagará al anticipo</p>
+                  <p className="text-sm font-semibold text-gray-900">{anticipo.folio || "—"}</p>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-blue-700 font-medium">Abono a aplicar</span>
+                    <span className="font-bold text-blue-700">{currency(montoAnticipo)}</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-1">
+                <button
+                  onClick={() => setNcTarget(null)}
+                  disabled={ncApplying}
+                  className="flex-1 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmarAplicarNC}
+                  disabled={ncApplying || !facturaDirecta || montoFactura === 0}
+                  className="flex-1 rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-600 transition-colors disabled:opacity-40"
+                >
+                  {ncApplying ? "Aplicando…" : "Confirmar"}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

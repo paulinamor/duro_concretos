@@ -8,6 +8,7 @@ import {
   query,
   where,
   orderBy,
+  limit,
   onSnapshot,
   QueryConstraint,
   DocumentData,
@@ -138,7 +139,7 @@ export const COLLECTIONS = {
   descargasSAT: "descargasSAT",
 } as const;
 
-export { where, orderBy };
+export { where, orderBy, limit };
 
 export function subscribeToCollection<T>(
   collectionName: string,

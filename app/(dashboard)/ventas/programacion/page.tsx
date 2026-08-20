@@ -7,10 +7,10 @@ import {
 } from "lucide-react";
 import ClienteCombobox from "@/components/ClienteCombobox";
 import PlantaRequired from "@/components/PlantaRequired";
-import { upsertDocument, COLLECTIONS } from "@/lib/db";
-import { withPlantaTag, getStoredSession } from "@/lib/auth";
+import { upsertDocument, getCollectionDocs, COLLECTIONS, orderBy, limit } from "@/lib/db";
+import { withPlantaTag, getStoredSession, getActivePlanta } from "@/lib/auth";
 import { todayCST, localISODate } from "@/lib/dateUtils";
-import { useCollection, useCollectionRaw } from "@/lib/useCollection";
+import { useCollection } from "@/lib/useCollection";
 import { tiposCliente, type Cliente, type TipoCliente } from "@/lib/crmClientes";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -72,6 +72,8 @@ interface Programacion {
   montoPago2?: number | null;
   fechaPago2?: string;
   metodoPago2?: string;
+  sgpSerie?: string;
+  sgpNumero?: string;
 }
 
 interface NuevoClienteForm {
@@ -556,8 +558,17 @@ export default function VentasProgramacionPage() {
   const session = useMemo(() => getStoredSession(), []);
   const vendedorNombre = session?.name ?? "";
 
-  const allProgs = useCollection<Programacion>(COLLECTIONS.programaciones);
-  const rawClientes = useCollectionRaw<Cliente>(COLLECTIONS.clientes);
+  // Limitar a 400 más recientes para evitar cargar toda la colección en memoria
+  const allProgs = useCollection<Programacion>(
+    COLLECTIONS.programaciones,
+    [orderBy("dia", "desc"), limit(400)],
+  );
+
+  // Carga única — no real-time, para no disparar re-render de toda la página al guardar un cliente
+  const [rawClientes, setRawClientes] = useState<Cliente[]>([]);
+  useEffect(() => {
+    getCollectionDocs<Cliente>(COLLECTIONS.clientes).then(setRawClientes);
+  }, []);
 
   const [diaActivo, setDiaActivo] = useState(todayISO);
   const [showDrawer, setShowDrawer] = useState(false);
@@ -635,6 +646,59 @@ export default function VentasProgramacionPage() {
     misPedidos.filter((p) => p.dia === diaActivo),
     [misPedidos, diaActivo]);
 
+  // ─── SGP helpers (fire-and-forget; don't block the UX) ───────────────────
+  async function sgpCrearPedido(progId: string, folio: string, form: VForm, planta: string) {
+    try {
+      const res = await fetch("/api/sgp/crear-pedido", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prog: {
+            serieErp: "ERP",
+            numeroErp: folio,
+            producto: "",
+            productoDescripcion: form.extras.trim() || "Concreto",
+            cantidadSolicitada: parseFloat(form.m3Totales) || 0,
+            fechaSuministro: form.dia,
+            horaEnObra: form.horaEntrega,
+            bombeoPropio: form.tdBom.toUpperCase().includes("BOM") ? "S" : "N",
+            bombeoCliente: "N",
+            clienteRazonSocial: form.cliente.trim(),
+            clienteTelefono: form.telefono.trim(),
+            obraDescripcion: form.cliente.trim(),
+            obraDireccion: form.direccion.trim(),
+            frenteDescripcion: form.extras.trim(),
+            planta,
+          },
+        }),
+      });
+      const data = await res.json() as { ok: boolean; sgpSerie?: string; sgpNumero?: string; error?: string };
+      if (data.ok && data.sgpNumero) {
+        await upsertDocument(COLLECTIONS.programaciones, progId, {
+          sgpSerie: data.sgpSerie ?? "ERP",
+          sgpNumero: data.sgpNumero,
+        });
+      } else if (!data.ok && data.error !== "SGP_NOT_CONFIGURED") {
+        console.warn("[SGP] crear-pedido:", data.error);
+      }
+    } catch {
+      console.warn("[SGP] crear-pedido: error de red");
+    }
+  }
+
+  async function sgpCerrarPedido(prog: Programacion) {
+    if (!prog.sgpSerie || !prog.sgpNumero || !prog.planta) return;
+    try {
+      await fetch("/api/sgp/cerrar-pedido", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ serie: prog.sgpSerie, numero: prog.sgpNumero, planta: prog.planta }),
+      });
+    } catch {
+      console.warn("[SGP] cerrar-pedido: error de red");
+    }
+  }
+
   async function handleSaveCliente(f: NuevoClienteForm): Promise<string> {
     const id = `CL-${Date.now()}`;
     const razonSocial = f.razonSocial.trim();
@@ -661,6 +725,8 @@ export default function VentasProgramacionPage() {
       notas: "",
     };
     await upsertDocument(COLLECTIONS.clientes, id, withPlantaTag(doc));
+    // Actualiza el estado local sin esperar re-fetch para no congelar la página
+    setRawClientes((prev) => [...prev, { id, ...doc } as Cliente]);
     window.dispatchEvent(new CustomEvent("duro:toast", {
       detail: { type: "success", message: `Cliente ${razonSocial} registrado.` },
     }));
@@ -722,6 +788,8 @@ export default function VentasProgramacionPage() {
       };
       await upsertDocument(COLLECTIONS.programaciones, id, withPlantaTag(newProg));
       window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", title: "Pedido creado", message: `${form.cliente} — en espera de asignación.` } }));
+      // Fire-and-forget: sync to SGP in background (non-blocking)
+      void sgpCrearPedido(id, folio, form, getActivePlanta());
     }
   }
 
@@ -743,12 +811,18 @@ export default function VentasProgramacionPage() {
         notasAcceso: cierreNotas.trim() || rest.notasAcceso,
         historial: [...(rest.historial ?? []), nuevaFase],
       };
-      await upsertDocument(COLLECTIONS.programaciones, id!, withPlantaTag(updated));
+      // El doc ya tiene planta; no usamos withPlantaTag para no requerir sesión con planta activa
+      await upsertDocument(COLLECTIONS.programaciones, id!, updated);
       setShowCierre(false);
       setCierreProg(null);
       setCierreNotas("");
       window.dispatchEvent(new CustomEvent("duro:toast", {
         detail: { type: "success", message: `${cierreProg.folio ?? "Pedido"} cerrado como Entregado.` },
+      }));
+      void sgpCerrarPedido(cierreProg);
+    } catch (err) {
+      window.dispatchEvent(new CustomEvent("duro:toast", {
+        detail: { type: "error", message: err instanceof Error ? err.message : "Error al cerrar el pedido." },
       }));
     } finally {
       setCierreSaving(false);

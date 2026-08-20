@@ -32,7 +32,7 @@ import {
   type EstatusCliente,
   type TipoCliente,
 } from "@/lib/crmClientes";
-import { COLLECTIONS, deleteDocument, getCollectionDocs, upsertDocument } from "@/lib/db";
+import { COLLECTIONS, deleteDocument, getCollectionDocs, upsertDocument, where } from "@/lib/db";
 import { todayCST } from "@/lib/dateUtils";
 
 const DIAS_CREDITO_OPTIONS = ["0", "15", "30", "45", "60", "90"];
@@ -62,12 +62,14 @@ function normalizeNombre(s: string) {
 
 async function cascadeRename(oldName: string, newName: string) {
   if (!oldName || oldName === newName) return;
-  const normOld = normalizeNombre(oldName);
 
+  // Usa where() para traer solo los docs que referencian este cliente (no toda la colección)
   const updateField = async (coll: string, field: "cliente" | "contraparte") => {
-    const docs = await getCollectionDocs<{ id: string; cliente?: string; contraparte?: string }>(coll);
-    const matches = docs.filter((d) => normalizeNombre(d[field] ?? "") === normOld);
-    await Promise.all(matches.map((d) => {
+    const docs = await getCollectionDocs<{ id: string; cliente?: string; contraparte?: string }>(
+      coll,
+      [where(field, "==", oldName)],
+    );
+    await Promise.all(docs.map((d) => {
       const { id, ...rest } = d;
       return upsertDocument(coll, id, { ...rest, [field]: newName });
     }));
