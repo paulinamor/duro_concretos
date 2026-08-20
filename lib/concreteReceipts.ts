@@ -1,5 +1,5 @@
-import { crmOpportunities } from "@/lib/crmPipeline";
 import { upsertDocument, COLLECTIONS } from "@/lib/db";
+import { withPlantaTag } from "@/lib/auth";
 import type { Viaje } from "@/lib/viajes";
 
 export type ConcreteSupplyType = "Tiro directo" | "Bombeado";
@@ -36,20 +36,12 @@ export interface ConcreteReceipt {
   planta?: string;
 }
 
-export const concreteReceiptClientes = Array.from(new Set([
-  ...crmOpportunities.map((item) => item.cliente),
-  "Roberto Peña",
-  "María Santos Cantu",
-  "Cristo Vive",
-]));
-
-export const concreteReceiptObras = Array.from(new Set([
-  ...crmOpportunities.map((item) => item.obra),
+export const concreteReceiptObras = [
   "Vista Encinos",
   "Colinas del Aeropuerto",
   "Residencial El Barrito",
   "Camino Agua Fría Apodaca",
-]));
+];
 
 export const concreteReceiptResistencias = [
   "F'C 150-20-14 KG/CM²",
@@ -129,6 +121,6 @@ export async function syncReceiptWithTrip(receipt: ConcreteReceipt) {
     estado: "Pendiente",
   };
 
-  await upsertDocument<Viaje>(COLLECTIONS.viajes, folio, trip);
+  await upsertDocument<Viaje>(COLLECTIONS.viajes, folio, withPlantaTag(trip));
 }
 
