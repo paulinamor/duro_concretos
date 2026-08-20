@@ -192,7 +192,7 @@ export default function CrmPipelinePage() {
     const id = existingId ?? `crm-${Date.now()}`;
     const doc: Opp = {
       id,
-      cliente: form.cliente, obra: form.obra, contacto: form.contacto,
+      cliente: form.cliente.trim().toUpperCase().replace(/\s+/g, " "), obra: form.obra, contacto: form.contacto,
       telefono: form.telefono, valorEstimado: Number(form.valorEstimado) || 0,
       m3Estimados: Number(form.m3Estimados) || 0, etapa: form.etapa,
       probabilidad: probabilidadPorEtapa[form.etapa],

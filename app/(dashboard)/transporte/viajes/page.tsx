@@ -21,9 +21,16 @@ function formatDate(date: string) {
 export default function ViajesPage() {
   const [viajes, setViajes] = useState<Viaje[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingLong, setLoadingLong] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [filterEstado, setFilterEstado] = useState("Todos");
   const [filterOperador, setFilterOperador] = useState("Todos");
+
+  useEffect(() => {
+    if (!loading) { setLoadingLong(false); return; }
+    const t = setTimeout(() => setLoadingLong(true), 3000);
+    return () => clearTimeout(t);
+  }, [loading]);
 
   useEffect(() => {
     getCollectionDocs<Viaje>(COLLECTIONS.viajes)
@@ -195,6 +202,17 @@ export default function ViajesPage() {
 
       {/* Table */}
       <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center gap-4 py-28">
+            <svg className="h-9 w-9 animate-spin text-[#CC2229]" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+              <path className="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+            </svg>
+            <p className="text-sm text-gray-400 text-center max-w-xs">
+              {loadingLong ? "Cargando información, esto puede tomar unos segundos…" : "Cargando…"}
+            </p>
+          </div>
+        ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -207,13 +225,7 @@ export default function ViajesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#3A3A3A]">
-              {loading ? (
-                <tr>
-                  <td colSpan={9} className="px-4 py-10 text-center text-sm text-gray-500">
-                    Cargando viajes...
-                  </td>
-                </tr>
-              ) : filtered.map((v) => (
+              {filtered.map((v) => (
                 <tr key={v.folio} className="transition-colors">
                   <td className="px-4 py-3 text-[#CC2229] font-mono text-xs">{v.folio}</td>
                   <td className="px-4 py-3 text-gray-400 text-xs">{v.fecha}</td>
@@ -241,6 +253,7 @@ export default function ViajesPage() {
             </tbody>
           </table>
         </div>
+        )}
       </div>
     </div>
   );

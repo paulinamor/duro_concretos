@@ -9,6 +9,8 @@ import {
   where,
   orderBy,
   limit,
+  startAfter,
+  getCountFromServer,
   onSnapshot,
   QueryConstraint,
   DocumentData,
@@ -139,7 +141,18 @@ export const COLLECTIONS = {
   descargasSAT: "descargasSAT",
 } as const;
 
-export { where, orderBy, limit };
+export { where, orderBy, limit, startAfter, type QueryConstraint };
+
+export async function countCollectionDocs(
+  collectionName: string,
+  constraints: QueryConstraint[] = [],
+): Promise<number> {
+  const dbInstance = getDb();
+  const ref = collection(dbInstance, collectionName);
+  const q = constraints.length ? query(ref, ...constraints) : ref;
+  const snap = await getCountFromServer(q);
+  return snap.data().count;
+}
 
 export function subscribeToCollection<T>(
   collectionName: string,

@@ -24,6 +24,7 @@ const pageTitles: Record<string, string> = {
   "/reportes":                         "Reportes",
   "/perfil":                           "Mi Perfil",
   "/configuracion":                    "Configuración",
+  "/configuracion/sgp":               "Prueba SGP",
   "/transporte/programacion":          "Programación",
   "/transporte/diesel":                "Consumo de Diésel",
   "/transporte/mantenimiento":         "Mantenimiento de Flota",
@@ -220,7 +221,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
 
     const allowedModules = getAllowedModuleSet(session);
-    const isAllowed = pathname === "/perfil" || pathname === "/finanzas/migrar-fechas" || allowedModules.has(pathname);
+    const isAllowed = pathname === "/perfil" || pathname === "/finanzas/migrar-fechas" || allowedModules.has(pathname) ||
+      [...allowedModules].some((m) => pathname.startsWith(m + "/"));
     if (isAllowed) return;
 
     window.dispatchEvent(new CustomEvent("duro:toast", {

@@ -27,7 +27,7 @@ import ClienteCombobox from "@/components/ClienteCombobox";
 import CargaMasivaModal from "@/components/finanzas/CargaMasivaModal";
 import { upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
 import { withPlantaTag } from "@/lib/auth";
-import { useCollection, useCollectionRaw } from "@/lib/useCollection";
+import { useCollectionRaw, useCollectionWithLoading } from "@/lib/useCollection";
 import type { SatDownloadKind } from "@/lib/satDownloads";
 import { todayCST } from "@/lib/dateUtils";
 
@@ -91,6 +91,10 @@ function displayToISO(display: string) {
 
 function currency(n: number) {
   return `$${n.toLocaleString("es-MX", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+}
+
+function normalizeName(s: string): string {
+  return s.trim().toUpperCase().replace(/\s+/g, " ");
 }
 
 function diasVencimiento(vencimiento: string): number {
@@ -978,7 +982,11 @@ function CuentaRow({
   return (
     <>
       <tr
-        className={`cursor-pointer transition-colors ${selected ? "bg-[#CC2229]/8" : expanded ? "bg-[#1A1A1A]" : "hover:bg-[#1A1A1A]"}`}
+        className={`cursor-pointer transition-colors ${
+          selected ? "bg-[#CC2229]/8" :
+          ncYaAplicada ? "bg-emerald-500/5 hover:bg-emerald-500/8" :
+          expanded ? "bg-[#1A1A1A]" : "hover:bg-[#1A1A1A]"
+        }`}
         onClick={() => setExpanded((v) => !v)}
       >
         <td className="pl-3 pr-1 py-2.5" onClick={(e) => e.stopPropagation()}>
@@ -1014,7 +1022,11 @@ function CuentaRow({
           </div>
         </td>
         <td className="px-2 py-2.5">
-          {cuenta.status === "Pagado" ? (
+          {ncYaAplicada ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">
+              <CheckCircle2 size={10} /> Aplicada
+            </span>
+          ) : cuenta.status === "Pagado" ? (
             <StatusBadge status="completado" />
           ) : cuenta.status === "Parcial" ? (
             <StatusBadge status="revision" />
@@ -1242,6 +1254,7 @@ function ExcelTable({
   onEdit,
   onDelete,
   onDeleteAbono,
+  ncYaAplicadaMap,
 }: {
   filtered: Cuenta[];
   kind: SatDownloadKind;
@@ -1249,12 +1262,16 @@ function ExcelTable({
   onEdit: (c: Cuenta) => void;
   onDelete: (c: Cuenta) => void;
   onDeleteAbono: (c: Cuenta, index: number) => void;
+  ncYaAplicadaMap?: Map<string, boolean>;
 }) {
   const isCxc = kind === "cxc";
   const contraparteLabel = isCxc ? "Nombre Receptor" : "Nombre Emisor";
 
   function rowStyle(cuenta: Cuenta): { backgroundColor: string } {
     if (cuenta.estadoSAT === "Cancelado") return { backgroundColor: "#BB6262" };
+    if (cuenta.tipo === "Nota de Crédito" && cuenta.id && ncYaAplicadaMap?.get(cuenta.id)) {
+      return { backgroundColor: "#BBDFC8" }; // verde suave = NC aplicada
+    }
     const idx = paymentMonthIndex(cuenta);
     if (idx !== null) return { backgroundColor: MONTH_COLORS[idx].bg };
     return { backgroundColor: "#F5F5F5" }; // sin pago = neutro
@@ -1426,6 +1443,11 @@ function ExcelTable({
                         {/* Tipo */}
                         <td className="px-2 py-1 whitespace-nowrap border-r border-black/10">
                           {c.tipo || "Factura"}
+                          {c.tipo === "Nota de Crédito" && c.id && ncYaAplicadaMap?.get(c.id) && (
+                            <span className="ml-1.5 inline-flex items-center gap-0.5 rounded-full bg-emerald-700 text-white text-[9px] font-bold px-1.5 py-0.5">
+                              ✓ Aplicada
+                            </span>
+                          )}
                         </td>
                         {/* Fecha Emision */}
                         <td className="px-2 py-1 whitespace-nowrap border-r border-black/10">
@@ -1549,13 +1571,24 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
   const [showCargaMasiva, setShowCargaMasiva] = useState(false);
   const [ncTarget, setNcTarget] = useState<Cuenta | null>(null);
   const [ncApplying, setNcApplying] = useState(false);
+  const [dupTarget, setDupTarget] = useState<{
+    data: Omit<Cuenta, "id" | "abonos" | "planta">;
+    existingName: string;
+    inputName: string;
+  } | null>(null);
   const [query, setQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("todos");
   const [filterMes, setFilterMes] = useState("todos");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<"dark" | "excel">("excel");
 
-  const rawCuentas = useCollection<Cuenta>(collection);
+  const { data: rawCuentas, loading } = useCollectionWithLoading<Cuenta>(collection);
+  const [loadingLong, setLoadingLong] = useState(false);
+  useEffect(() => {
+    if (!loading) { setLoadingLong(false); return; }
+    const t = setTimeout(() => setLoadingLong(true), 3000);
+    return () => clearTimeout(t);
+  }, [loading]);
   const cuentas = useMemo(
     () => rawCuentas.map((c) => ({ ...c, status: computeStatus(c) })),
     [rawCuentas],
@@ -1672,17 +1705,51 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
   const sinPagar = activas.filter((c) => c.status === "Pendiente").length;
 
   async function handleSave(data: Omit<Cuenta, "id" | "abonos" | "planta">) {
+    const normalized: typeof data = {
+      ...data,
+      contraparte: normalizeName(data.contraparte),
+      uuid: data.uuid?.trim().toUpperCase() ?? "",
+      uuidRelacion: data.uuidRelacion?.trim().toUpperCase() ?? "",
+      rfc: data.rfc?.trim().toUpperCase() ?? "",
+      folio: data.folio?.trim() ?? "",
+    };
+
     if (editing) {
-      const updated: Cuenta = { ...editing, ...data };
+      const updated: Cuenta = { ...editing, ...normalized };
       const { id: _id, ...rest } = updated;
       await upsertDocument(collection, editing.id!, withPlantaTag(rest));
-      showToast("success", "Registro actualizado", `${data.contraparte} · ${data.folio || "Sin folio"}`);
+      showToast("success", "Registro actualizado", `${normalized.contraparte} · ${normalized.folio || "Sin folio"}`);
       setEditing(null);
-    } else {
-      const id = Date.now().toString();
-      await upsertDocument(collection, id, withPlantaTag({ ...data, abonos: [] }));
-      showToast("success", isCxc ? "Cuenta por cobrar agregada" : "Cuenta por pagar agregada", `${data.contraparte} · ${data.folio || "Sin folio"}`);
+      return;
     }
+
+    // UUID duplicado
+    if (normalized.uuid && existingUuids.has(normalized.uuid)) {
+      showToast("error", "UUID duplicado", "Ya existe un registro con ese folio fiscal.");
+      return;
+    }
+
+    // Mismo proveedor, nombre diferente (ej: "holcim" vs "HOLCIM")
+    const normContraparte = normalizeName(data.contraparte);
+    const existingMatch = cuentas.find(
+      (c) => normalizeName(c.contraparte) === normContraparte && c.contraparte !== normContraparte,
+    );
+    if (existingMatch) {
+      setDupTarget({ data: normalized, existingName: existingMatch.contraparte, inputName: data.contraparte });
+      return;
+    }
+
+    const id = Date.now().toString();
+    await upsertDocument(collection, id, withPlantaTag({ ...normalized, abonos: [] }));
+    showToast("success", isCxc ? "Cuenta por cobrar agregada" : "Cuenta por pagar agregada", `${normalized.contraparte} · ${normalized.folio || "Sin folio"}`);
+  }
+
+  async function confirmarDup() {
+    if (!dupTarget) return;
+    const id = Date.now().toString();
+    await upsertDocument(collection, id, withPlantaTag({ ...dupTarget.data, abonos: [] }));
+    showToast("success", isCxc ? "Cuenta por cobrar agregada" : "Cuenta por pagar agregada", `${dupTarget.data.contraparte} · ${dupTarget.data.folio || "Sin folio"}`);
+    setDupTarget(null);
   }
 
   async function handleDelete(cuenta: Cuenta) {
@@ -1821,6 +1888,14 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
           }
         }
       }
+      // Marcar la NC como aplicada (montoPagado = total → queda en $0 de saldo)
+      const { id: ncId, ...ncData } = ncTarget;
+      await upsertDocument(collection, ncId!, withPlantaTag({
+        ...ncData,
+        montoPagado: ncTarget.total,
+        status: "Pagado" as const,
+      }));
+      showToast("success", "NC aplicada", `${ncTarget.folio || "—"} aplicada correctamente.`);
       setNcTarget(null);
     } finally {
       setNcApplying(false);
@@ -1829,10 +1904,21 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
 
   async function handleCargaMasiva(records: Omit<Cuenta, "id" | "planta">[]) {
     const items: Cuenta[] = records.map((r) => {
-      const id = r.uuid?.trim()
-        ? r.uuid.trim().replace(/[^a-zA-Z0-9-]/g, "").toLowerCase()
+      const uuidNorm = r.uuid?.trim().toUpperCase() ?? "";
+      const id = uuidNorm
+        ? uuidNorm.replace(/[^a-zA-Z0-9-]/g, "").toLowerCase()
         : Date.now().toString() + Math.random().toString(36).slice(2);
-      return { ...r, id, abonos: r.abonos ?? [], status: computeStatus(r as Cuenta) };
+      return {
+        ...r,
+        contraparte: normalizeName(r.contraparte || ""),
+        uuid: uuidNorm,
+        uuidRelacion: r.uuidRelacion?.trim().toUpperCase() ?? "",
+        rfc: r.rfc?.trim().toUpperCase() ?? "",
+        folio: r.folio?.trim() ?? "",
+        id,
+        abonos: r.abonos ?? [],
+        status: computeStatus(r as Cuenta),
+      };
     });
     await Promise.all(
       items.map((item) => {
@@ -2197,7 +2283,19 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
       )}
 
       {/* Table */}
-      {viewMode === "excel" ? (
+      {loading ? (
+        <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
+          <div className="flex flex-col items-center justify-center gap-4 py-28">
+            <svg className="h-9 w-9 animate-spin text-[#CC2229]" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+              <path className="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+            </svg>
+            <p className="text-sm text-gray-400 text-center max-w-xs">
+              {loadingLong ? "Cargando información, esto puede tomar unos segundos…" : "Cargando…"}
+            </p>
+          </div>
+        </div>
+      ) : viewMode === "excel" ? (
         <ExcelTable
           filtered={filtered}
           kind={kind}
@@ -2205,6 +2303,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
           onEdit={(c) => { setEditing(c); setShowForm(true); }}
           onDelete={handleDelete}
           onDeleteAbono={handleDeleteAbono}
+          ncYaAplicadaMap={ncYaAplicadaMap}
         />
       ) : (
         <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
@@ -2270,6 +2369,44 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
       <AbonoDrawer cuenta={abonoTarget} kind={kind} onClose={() => setAbonoTargetId(null)} onSave={handleAbono} onEditAbono={handleEditAbono} onDeleteAbono={handleDeleteAbono} />
       <EditAbonoDrawer target={editAbonoTarget} kind={kind} onClose={() => setEditAbonoTarget(null)} onSave={handleEditAbono} />
       <CargaMasivaModal open={showCargaMasiva} kind={kind} existingUuids={existingUuids} onClose={() => setShowCargaMasiva(false)} onConfirm={handleCargaMasiva} />
+
+      {/* Modal duplicado de proveedor */}
+      {dupTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900">¿Es el mismo proveedor?</h3>
+              <p className="text-xs text-gray-500 mt-1">
+                Ya tienes registros con un nombre muy similar. Para evitar duplicados, se guardará con el nombre normalizado.
+              </p>
+            </div>
+            <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 space-y-2 text-xs">
+              <div className="flex justify-between gap-2">
+                <span className="text-gray-400 shrink-0">Escribiste</span>
+                <span className="font-mono text-gray-600 text-right">{dupTarget.inputName}</span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span className="text-gray-400 shrink-0">Se guardará como</span>
+                <span className="font-mono font-semibold text-gray-900 text-right">{dupTarget.data.contraparte}</span>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDupTarget(null)}
+                className="flex-1 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmarDup}
+                className="flex-1 rounded-xl bg-[#CC2229] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#B01E24] transition-colors cursor-pointer"
+              >
+                Sí, guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal confirmación aplicar NC */}
       {ncTarget && (() => {

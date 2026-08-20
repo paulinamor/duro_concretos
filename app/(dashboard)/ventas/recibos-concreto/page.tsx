@@ -101,6 +101,7 @@ export default function RecibosConcretoPage() {
     const nextReceipt: ConcreteReceipt = {
       ...data,
       id,
+      cliente: data.cliente.trim().toUpperCase().replace(/\s+/g, " "),
       total: realTotal,
       resta: realResta,
       viajeFolio: data.viajeFolio ?? `VJ-2026-${data.receiptNumber}`,

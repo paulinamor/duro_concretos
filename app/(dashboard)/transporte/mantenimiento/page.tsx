@@ -710,12 +710,19 @@ export default function MantenimientoPage() {
   const [unidades, setUnidades] = useState<Unidad[]>([]);
   const [eventos, setEventos] = useState<Evento[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingLong, setLoadingLong] = useState(false);
   const [query, setQuery] = useState("");
   const [showDrawer, setShowDrawer] = useState(false);
   const [preselectedUnidad, setPreselectedUnidad] = useState("");
   const [viewMode, setViewMode] = useState<"unidades" | "cronologico">("unidades");
   const [editingEvento, setEditingEvento] = useState<Evento | null>(null);
   const [confirmDeleteEvento, setConfirmDeleteEvento] = useState<Evento | null>(null);
+
+  useEffect(() => {
+    if (!loading) { setLoadingLong(false); return; }
+    const t = setTimeout(() => setLoadingLong(true), 3000);
+    return () => clearTimeout(t);
+  }, [loading]);
 
   useEffect(() => {
     async function load() {
@@ -917,8 +924,16 @@ export default function MantenimientoPage() {
 
       {/* Loading */}
       {loading && (
-        <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl px-5 py-16 text-center text-gray-500 text-sm">
-          Cargando historial…
+        <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
+          <div className="flex flex-col items-center justify-center gap-4 py-28">
+            <svg className="h-9 w-9 animate-spin text-[#CC2229]" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+              <path className="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+            </svg>
+            <p className="text-sm text-gray-400 text-center max-w-xs">
+              {loadingLong ? "Cargando información, esto puede tomar unos segundos…" : "Cargando…"}
+            </p>
+          </div>
         </div>
       )}
 

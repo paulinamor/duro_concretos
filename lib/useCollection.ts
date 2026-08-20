@@ -39,6 +39,33 @@ export function useCollection<T extends { planta?: string }>(
 }
 
 /**
+ * Igual que useCollection pero devuelve { data, loading } donde loading es true
+ * hasta que onSnapshot dispara la primera vez (aunque la colección esté vacía).
+ */
+export function useCollectionWithLoading<T extends { planta?: string }>(
+  collectionName: string,
+  constraints: QueryConstraint[] = [],
+): { data: T[]; loading: boolean } {
+  const [data, setData] = useState<T[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const unsub = subscribeToCollection<T>(
+      collectionName,
+      (docs) => {
+        setData(filterByPlanta(docs));
+        setLoading(false);
+      },
+      constraints,
+    );
+    return unsub;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collectionName]);
+
+  return { data, loading };
+}
+
+/**
  * Variante sin filtro de planta — para colecciones globales como users, clientes.
  */
 export function useCollectionRaw<T>(

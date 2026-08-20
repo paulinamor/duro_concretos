@@ -1905,31 +1905,6 @@ export default function ProgramacionPage() {
             ).catch((err) => console.error("Error migrando totales:", err));
           }
 
-          // Migrate new clients from programaciones
-          setClientesSet((existingSet) => {
-            const today = todayCST();
-            const fromProgs = filtered.map((p) => p.cliente).filter(Boolean);
-            const nuevos = Array.from(new Set(fromProgs.map((n) => n.trim()).filter(Boolean)))
-              .filter((nombre) => !existingSet.has(nombre.toLowerCase()));
-            if (nuevos.length > 0) {
-              Promise.all(
-                nuevos.map((nombre) => {
-                  const id = `CL-prog-${nombre.toLowerCase().replace(/[^a-z0-9]/g, "-").slice(0, 30)}-${Date.now()}`;
-                  return upsertDocument(COLLECTIONS.clientes, id, {
-                    razonSocial: nombre,
-                    nombreComercial: nombre,
-                    rfc: "", domicilio: "", colonia: "", municipio: "", estado: "", cp: "",
-                    contacto: "", cargo: "", telefono: "", email: "",
-                    tipoCliente: "Particular", vendedorAsignado: "",
-                    limiteCredito: 0, saldoPendiente: 0, diasCredito: 0,
-                    ultimaCompra: today, totalComprasAnio: 0, m3Acumulados: 0,
-                    estatus: "Activo", calificacion: "B", fechaAlta: today, notas: "",
-                  });
-                })
-              ).catch((err) => console.error("Error migrando clientes:", err));
-            }
-            return existingSet;
-          });
         }
       }
     );
@@ -1994,41 +1969,6 @@ export default function ProgramacionPage() {
       return idx >= 0 ? prev.map((x, i) => (i === idx ? updated : x)) : [updated, ...prev];
     });
 
-    // Auto-registrar cliente en base de clientes si no existe
-    const nombreCliente = p.cliente.trim();
-    if (nombreCliente && !clientesSet.has(nombreCliente.toLowerCase())) {
-      const clienteId = `CL-${Date.now()}`;
-      const today = todayCST();
-      const nuevoCliente: Omit<Cliente, "id"> = {
-        razonSocial: nombreCliente,
-        nombreComercial: nombreCliente,
-        rfc: "",
-        domicilio: p.direccion ?? "",
-        colonia: "",
-        municipio: "",
-        estado: "",
-        cp: "",
-        contacto: "",
-        cargo: "",
-        telefono: p.telefono ?? "",
-        email: "",
-        tipoCliente: "Particular",
-        vendedorAsignado: p.vendedor ?? "",
-        limiteCredito: 0,
-        saldoPendiente: 0,
-        diasCredito: 0,
-        ultimaCompra: today,
-        totalComprasAnio: 0,
-        m3Acumulados: 0,
-        estatus: "Activo",
-        calificacion: "B",
-        fechaAlta: today,
-        notas: "",
-      };
-      await upsertDocument(COLLECTIONS.clientes, clienteId, nuevoCliente);
-      setClientesSet((prev) => new Set([...prev, nombreCliente.toLowerCase()]));
-      setClientesList((prev) => Array.from(new Set([...prev, nombreCliente])).sort());
-    }
   }
 
   async function handleDelete(id: string) {

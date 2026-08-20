@@ -201,6 +201,7 @@ function SectionHeader({ title }: { title: string }) {
 export default function ReportesPage() {
   const [programaciones, setProgramaciones] = useState<Programacion[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingLong, setLoadingLong] = useState(false);
   const [period, setPeriod] = useState<Period>("mes");
   const [customStart, setCustomStart] = useState(() => todayCST().slice(0, 7) + "-01");
   const [customEnd, setCustomEnd] = useState(todayCST);
@@ -212,6 +213,12 @@ export default function ReportesPage() {
       .then((docs) => setProgramaciones(filterByPlanta(docs)))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!loading) { setLoadingLong(false); return; }
+    const t = setTimeout(() => setLoadingLong(true), 3000);
+    return () => clearTimeout(t);
+  }, [loading]);
 
   // ── Ranges ────────────────────────────────────────────────────────────────
   const { start, end } = useMemo(() => {
@@ -415,10 +422,16 @@ export default function ReportesPage() {
 
       {/* KPI Cards */}
       {loading ? (
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-28 rounded-xl bg-[#242424] border border-[#3A3A3A] animate-pulse" />
-          ))}
+        <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
+          <div className="flex flex-col items-center justify-center gap-4 py-28">
+            <svg className="h-9 w-9 animate-spin text-[#CC2229]" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+              <path className="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+            </svg>
+            <p className="text-sm text-gray-400 text-center max-w-xs">
+              {loadingLong ? "Cargando información, esto puede tomar unos segundos…" : "Cargando reportes…"}
+            </p>
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
@@ -456,6 +469,9 @@ export default function ReportesPage() {
           />
         </div>
       )}
+
+      {/* Charts & Tables — solo cuando cargó */}
+      {!loading && <>
 
       {/* Charts row 1 — Tendencia + Estado */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
@@ -665,6 +681,7 @@ export default function ReportesPage() {
           </table>
         </div>
       </div>
+      </>}
     </div>
   );
 }

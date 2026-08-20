@@ -35,6 +35,9 @@ import {
 import { COLLECTIONS, deleteDocument, getCollectionDocs, upsertDocument, where } from "@/lib/db";
 import { todayCST } from "@/lib/dateUtils";
 
+const DEDUP_STARTED_KEY = "duro_dedup_started_ts";
+const DEDUP_DONE_KEY = "duro_dedup_done_ts";
+
 const DIAS_CREDITO_OPTIONS = ["0", "15", "30", "45", "60", "90"];
 const CALIFICACION_OPTIONS: CalificacionCliente[] = ["A", "B", "C"];
 
@@ -63,7 +66,6 @@ function normalizeNombre(s: string) {
 async function cascadeRename(oldName: string, newName: string) {
   if (!oldName || oldName === newName) return;
 
-  // Usa where() para traer solo los docs que referencian este cliente (no toda la colección)
   const updateField = async (coll: string, field: "cliente" | "contraparte") => {
     const docs = await getCollectionDocs<{ id: string; cliente?: string; contraparte?: string }>(
       coll,
@@ -79,6 +81,7 @@ async function cascadeRename(oldName: string, newName: string) {
     updateField(COLLECTIONS.programaciones, "cliente"),
     updateField(COLLECTIONS.efectivo, "cliente"),
     updateField(COLLECTIONS.remisiones, "cliente"),
+    updateField(COLLECTIONS.pipeline, "cliente"),
     updateField(COLLECTIONS.cuentasPorCobrar, "contraparte"),
     updateField(COLLECTIONS.cuentasPorPagar, "contraparte"),
   ]);
@@ -397,15 +400,20 @@ function ClienteDrawer({ open, editing, onClose, onSave, errorMsg, vendedoresLis
   );
 }
 
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function CrmClientesPage() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingLong, setLoadingLong] = useState(false);
+
+  const [searchInput, setSearchInput] = useState("");
   const [query, setQuery] = useState("");
   const [filtroEstatus, setFiltroEstatus] = useState<EstatusCliente | "Todos">("Todos");
   const [filtroTipo, setFiltroTipo] = useState<TipoCliente | "Todos">("Todos");
   const [filtroVendedor, setFiltroVendedor] = useState("Todos");
+
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Cliente | null>(null);
   const [detail, setDetail] = useState<Cliente | null>(null);
@@ -413,34 +421,132 @@ export default function CrmClientesPage() {
   const [showDedupModal, setShowDedupModal] = useState(false);
   const [dedupKeep, setDedupKeep] = useState<Record<string, string>>({});
   const [normalizingAll, setNormalizingAll] = useState(false);
+  const [dedupProgress, setDedupProgress] = useState<{ done: number; total: number } | null>(null);
   const [showMergeModal, setShowMergeModal] = useState(false);
   const [mergeQuery, setMergeQuery] = useState("");
   const [mergePartner, setMergePartner] = useState<Cliente | null>(null);
   const [mergeWinnerId, setMergeWinnerId] = useState<string | null>(null);
   const [mergingClients, setMergingClients] = useState(false);
+  const [autoCleanMsg, setAutoCleanMsg] = useState("");
+
+  // Debounce search input
+  useEffect(() => {
+    const t = setTimeout(() => setQuery(searchInput), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
   useEffect(() => {
-    getCollectionDocs<Cliente>(COLLECTIONS.clientes)
-      .then(setClientes)
-      .finally(() => setLoading(false));
+    let cancelled = false;
+    getCollectionDocs<Cliente>(COLLECTIONS.clientes).then(async (data) => {
+      if (cancelled) return;
+      setClientes(data);
+      setLoading(false);
+      await autoNormalizeAndDedup(data);
+    });
+    return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    if (!loading) { setLoadingLong(false); return; }
+    const t = setTimeout(() => setLoadingLong(true), 3000);
+    return () => clearTimeout(t);
+  }, [loading]);
+
+  async function autoNormalizeAndDedup(data: Cliente[]) {
+    const started = Number(localStorage.getItem(DEDUP_STARTED_KEY) ?? 0);
+    const done = Number(localStorage.getItem(DEDUP_DONE_KEY) ?? 0);
+    // Si una corrida anterior arrancó pero nunca terminó, reintentar siempre
+    const wasIncomplete = started > done + 5000;
+    const recentSuccess = !wasIncomplete && Date.now() - done < 24 * 60 * 60 * 1000;
+    if (recentSuccess) { setAutoCleanMsg(""); return; }
+
+    localStorage.setItem(DEDUP_STARTED_KEY, String(Date.now()));
+
+    // 1. Normalizar a MAYÚSCULAS en batches paralelos de 50
+    const toNormalize = data.filter((c) => c.razonSocial !== c.razonSocial.trim().toUpperCase());
+    if (toNormalize.length > 0) {
+      setAutoCleanMsg(`Normalizando ${toNormalize.length} nombres…`);
+      const CHUNK = 50;
+      for (let i = 0; i < toNormalize.length; i += CHUNK) {
+        const chunk = toNormalize.slice(i, i + CHUNK);
+        await Promise.all(chunk.map((c) => {
+          const newName = c.razonSocial.trim().toUpperCase();
+          c.razonSocial = newName;
+          const { id, ...rest } = c;
+          return upsertDocument(COLLECTIONS.clientes, id, { ...rest, razonSocial: newName });
+        }));
+      }
+      setClientes((curr) => curr.map((c) => ({ ...c, razonSocial: c.razonSocial.trim().toUpperCase() })));
+    }
+
+    // 2. Detectar duplicados
+    const groups = new Map<string, Cliente[]>();
+    data.forEach((c) => {
+      const key = normalizeNombre(c.razonSocial);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(c);
+    });
+    const dupeGroups: { winner: Cliente; losers: Cliente[] }[] = [];
+    groups.forEach((members) => {
+      if (members.length < 2) return;
+      const scored = [...members].sort((a, b) => {
+        const scoreA = [a.rfc, a.contacto, a.municipio, a.domicilio, a.telefono, a.email].filter(Boolean).length;
+        const scoreB = [b.rfc, b.contacto, b.municipio, b.domicilio, b.telefono, b.email].filter(Boolean).length;
+        return scoreB - scoreA || a.fechaAlta.localeCompare(b.fechaAlta);
+      });
+      dupeGroups.push({ winner: scored[0], losers: scored.slice(1) });
+    });
+
+    if (dupeGroups.length === 0) {
+      localStorage.setItem(DEDUP_DONE_KEY, String(Date.now()));
+      setAutoCleanMsg("");
+      return;
+    }
+
+    setAutoCleanMsg(`Unificando ${dupeGroups.length} duplicados…`);
+    const toDelete: string[] = [];
+    const BATCH = 20;
+    for (let i = 0; i < dupeGroups.length; i += BATCH) {
+      const slice = dupeGroups.slice(i, i + BATCH);
+      await Promise.all(slice.map(async ({ winner, losers }) => {
+        const merged = mergeData(winner, ...losers);
+        const { id: wId, ...wData } = winner;
+        await upsertDocument(COLLECTIONS.clientes, wId, { ...wData, ...merged });
+        losers.forEach((l) => toDelete.push(l.id));
+      }));
+      // Yield al browser para que el spinner no se congele
+      await new Promise((r) => setTimeout(r, 0));
+      setAutoCleanMsg(`Unificando ${Math.min(i + BATCH, dupeGroups.length)}/${dupeGroups.length} duplicados…`);
+    }
+    const DELETE_BATCH = 50;
+    for (let i = 0; i < toDelete.length; i += DELETE_BATCH) {
+      await Promise.all(toDelete.slice(i, i + DELETE_BATCH).map((id) => deleteDocument(COLLECTIONS.clientes, id)));
+      await new Promise((r) => setTimeout(r, 30));
+    }
+    const deleteSet = new Set(toDelete);
+    setClientes((curr) => curr.filter((c) => !deleteSet.has(c.id)));
+
+    localStorage.setItem(DEDUP_DONE_KEY, String(Date.now()));
+    setAutoCleanMsg("");
+  }
 
   const filtered = useMemo(() => {
     const term = query.toLowerCase();
-    return clientes.filter((c) => {
-      const matchQuery =
-        !term ||
-        c.razonSocial.toLowerCase().includes(term) ||
-        (c.nombreComercial ?? "").toLowerCase().includes(term) ||
-        c.rfc.toLowerCase().includes(term) ||
-        c.contacto.toLowerCase().includes(term) ||
-        c.municipio.toLowerCase().includes(term);
-      const matchEstatus = filtroEstatus === "Todos" || c.estatus === filtroEstatus;
-      const matchTipo = filtroTipo === "Todos" || c.tipoCliente === filtroTipo;
-      const matchVendedor = filtroVendedor === "Todos" || c.vendedorAsignado === filtroVendedor;
-      return matchQuery && matchEstatus && matchTipo && matchVendedor;
-    }).sort((a, b) => a.razonSocial.localeCompare(b.razonSocial, "es", { sensitivity: "base" }));
+    return clientes
+      .filter((c) => {
+        if (term && !(
+          c.razonSocial.toLowerCase().includes(term) ||
+          (c.nombreComercial ?? "").toLowerCase().includes(term) ||
+          c.rfc.toLowerCase().includes(term) ||
+          c.contacto.toLowerCase().includes(term) ||
+          c.municipio.toLowerCase().includes(term)
+        )) return false;
+        if (filtroEstatus !== "Todos" && c.estatus !== filtroEstatus) return false;
+        if (filtroTipo !== "Todos" && c.tipoCliente !== filtroTipo) return false;
+        if (filtroVendedor !== "Todos" && c.vendedorAsignado !== filtroVendedor) return false;
+        return true;
+      })
+      .sort((a, b) => a.razonSocial.localeCompare(b.razonSocial, "es", { sensitivity: "base" }));
   }, [clientes, query, filtroEstatus, filtroTipo, filtroVendedor]);
 
   const vendedoresActivos = useMemo(
@@ -484,8 +590,12 @@ export default function CrmClientesPage() {
   }
 
   async function confirmDedup() {
+    const total = duplicadoGroups.length;
+    setDedupProgress({ done: 0, total });
+    setShowDedupModal(false);
     const toDelete: string[] = [];
-    for (const { key, members } of duplicadoGroups) {
+    for (let i = 0; i < duplicadoGroups.length; i++) {
+      const { key, members } = duplicadoGroups[i];
       const keepId = dedupKeep[key] ?? members[0].id;
       const winner = members.find((c) => c.id === keepId)!;
       const losers = members.filter((c) => c.id !== keepId);
@@ -499,6 +609,7 @@ export default function CrmClientesPage() {
         }
         toDelete.push(loser.id);
       }
+      setDedupProgress({ done: i + 1, total });
     }
     await Promise.all(toDelete.map((id) => deleteDocument(COLLECTIONS.clientes, id)));
     const toDeleteSet = new Set(toDelete);
@@ -511,27 +622,29 @@ export default function CrmClientesPage() {
         return { ...c, ...mergeData(c, ...group.members.filter((m) => m.id !== keepId)) };
       }),
     );
-    setShowDedupModal(false);
+    setDedupProgress(null);
     window.dispatchEvent(new CustomEvent("duro:toast", {
       detail: { type: "success", message: `${toDelete.length} duplicado${toDelete.length !== 1 ? "s" : ""} fusionado${toDelete.length !== 1 ? "s" : ""} y referencias actualizadas.` },
     }));
   }
 
   async function normalizeAll() {
-    const toUpdate = clientes.filter((c) => c.razonSocial !== c.razonSocial.toUpperCase());
+    const toUpdate = clientes.filter((c) => c.razonSocial !== c.razonSocial.trim().toUpperCase());
     if (toUpdate.length === 0) {
       window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "info", message: "Todos los nombres ya están en mayúsculas." } }));
       return;
     }
     setNormalizingAll(true);
     try {
-      await Promise.all(toUpdate.map((c) => {
+      for (const c of toUpdate) {
+        const newName = c.razonSocial.trim().toUpperCase();
         const { id, ...data } = c;
-        return upsertDocument(COLLECTIONS.clientes, id, { ...data, razonSocial: c.razonSocial.toUpperCase() });
-      }));
-      setClientes((curr) => curr.map((c) => ({ ...c, razonSocial: c.razonSocial.toUpperCase() })));
+        await upsertDocument(COLLECTIONS.clientes, id, { ...data, razonSocial: newName });
+        await cascadeRename(c.razonSocial, newName);
+      }
+      setClientes((curr) => curr.map((c) => ({ ...c, razonSocial: c.razonSocial.trim().toUpperCase() })));
       window.dispatchEvent(new CustomEvent("duro:toast", {
-        detail: { type: "success", message: `${toUpdate.length} nombre${toUpdate.length !== 1 ? "s" : ""} normalizado${toUpdate.length !== 1 ? "s" : ""}.` },
+        detail: { type: "success", message: `${toUpdate.length} nombre${toUpdate.length !== 1 ? "s" : ""} normalizado${toUpdate.length !== 1 ? "s" : ""} y referencias actualizadas.` },
       }));
     } finally {
       setNormalizingAll(false);
@@ -573,7 +686,6 @@ export default function CrmClientesPage() {
   const nuevosEsteAnio = clientes.filter((c) => c.fechaAlta.startsWith("2026")).length;
 
   function openCreate() { setSaveError(""); setEditing(null); setShowForm(true); }
-
   function openEdit(c: Cliente) { setSaveError(""); setDetail(null); setEditing(c); setShowForm(true); }
 
   async function handleDelete(id: string) {
@@ -670,52 +782,79 @@ export default function CrmClientesPage() {
     setShowMergeModal(false); setMergePartner(null); setMergeQuery(""); setMergeWinnerId(null);
   }
 
+  const isFiltered = filtroEstatus !== "Todos" || filtroTipo !== "Todos" || filtroVendedor !== "Todos";
+
   return (
     <div className="space-y-6">
       {/* KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <KPICard title="Total clientes" value={String(clientes.length)} icon={Users} />
-        <KPICard title="Clientes activos" value={String(totalActivos)} icon={UserCheck} iconColor="text-green-400" iconBg="bg-green-500/10" />
+        <KPICard
+          title="Total clientes"
+          value={loading ? "—" : String(clientes.length)}
+          icon={Users}
+        />
+        <KPICard title="Clientes activos" value={loading ? "—" : String(totalActivos)} icon={UserCheck} iconColor="text-green-400" iconBg="bg-green-500/10" />
         <KPICard
           title="Cartera anual"
-          value={`$${(totalCarteraAnio / 1000000).toFixed(1)}M`}
+          value={loading ? "—" : `$${(totalCarteraAnio / 1000000).toFixed(1)}M`}
           icon={TrendingUp}
           iconColor="text-[#CC2229]"
-          subtitle={`$${Math.round(totalSaldoPendiente).toLocaleString()} pendiente`}
+          subtitle={loading ? undefined : `$${Math.round(totalSaldoPendiente).toLocaleString()} pendiente`}
         />
-        <KPICard title="Nuevos en 2026" value={String(nuevosEsteAnio)} icon={BadgeDollarSign} iconColor="text-blue-400" iconBg="bg-blue-500/10" />
+        <KPICard title="Nuevos en 2026" value={loading ? "—" : String(nuevosEsteAnio)} icon={BadgeDollarSign} iconColor="text-blue-400" iconBg="bg-blue-500/10" />
       </div>
-
 
       {/* Toolbar */}
       <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl p-4 flex flex-wrap items-center gap-3">
         <div className="relative min-w-[240px] flex-1">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
           <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar razón social, nombre comercial, RFC, municipio..."
-            className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg pl-9 pr-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
+            disabled={loading}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Buscar en resultados cargados…"
+            className={`w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg pl-9 pr-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229] ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
           />
         </div>
         {[
-          { value: filtroEstatus, onChange: (v: string) => setFiltroEstatus(v as EstatusCliente | "Todos"), options: ["Todos los estatus", ...estatusCliente] },
-          { value: filtroTipo, onChange: (v: string) => setFiltroTipo(v as TipoCliente | "Todos"), options: ["Todos los tipos", ...tiposCliente] },
-          { value: filtroVendedor, onChange: (v: string) => setFiltroVendedor(v), options: ["Todos los vendedores", ...vendedoresActivos] },
+          {
+            value: filtroEstatus,
+            onChange: (v: string) => { setFiltroEstatus(v as EstatusCliente | "Todos"); },
+            options: ["Todos los estatus", ...estatusCliente],
+          },
+          {
+            value: filtroTipo,
+            onChange: (v: string) => { setFiltroTipo(v as TipoCliente | "Todos"); },
+            options: ["Todos los tipos", ...tiposCliente],
+          },
+          {
+            value: filtroVendedor,
+            onChange: (v: string) => { setFiltroVendedor(v); },
+            options: ["Todos los vendedores", ...vendedoresActivos],
+          },
         ].map(({ value, onChange, options }, idx) => (
           <div key={idx} className="relative">
             <select
+              disabled={loading}
               value={value}
               onChange={(e) => onChange(e.target.value)}
-              className="appearance-none bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg pl-3 pr-8 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
+              className={`appearance-none bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg pl-3 pr-8 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229] ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
             >
               {options.map((opt) => <option key={opt}>{opt}</option>)}
             </select>
             <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
           </div>
         ))}
-        <span className="text-xs text-gray-500 ml-auto">{filtered.length} clientes</span>
-        {duplicadoGroups.length > 0 && (
+        <span className="text-xs text-gray-500 ml-auto">
+          {loading ? "…" : `${filtered.length} clientes`}
+        </span>
+        {autoCleanMsg && (
+          <span className="flex items-center gap-2 rounded-lg border border-blue-500/30 bg-blue-500/5 px-3 py-2 text-xs text-blue-300 animate-pulse">
+            <GitMerge size={13} />
+            {autoCleanMsg}
+          </span>
+        )}
+        {!autoCleanMsg && duplicadoGroups.length > 0 && (
           <button
             type="button"
             onClick={openDedupModal}
@@ -759,6 +898,17 @@ export default function CrmClientesPage() {
 
       {/* Table */}
       <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center gap-4 py-28">
+            <svg className="h-9 w-9 animate-spin text-[#CC2229]" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+              <path className="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+            </svg>
+            <p className="text-sm text-gray-400 text-center max-w-xs">
+              {loadingLong ? "Cargando información, esto puede tomar unos segundos…" : "Cargando clientes…"}
+            </p>
+          </div>
+        ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-10 bg-[#1A1A1A]">
@@ -769,9 +919,7 @@ export default function CrmClientesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#3A3A3A]">
-              {loading ? (
-                <tr><td colSpan={9} className="px-5 py-10 text-center text-gray-500">Cargando clientes...</td></tr>
-              ) : filtered.length === 0 ? (
+              {filtered.length === 0 ? (
                 <tr><td colSpan={9} className="px-5 py-10 text-center text-gray-500">No se encontraron clientes con ese filtro.</td></tr>
               ) : (
                 filtered.map((c) => {
@@ -829,6 +977,7 @@ export default function CrmClientesPage() {
             </tbody>
           </table>
         </div>
+        )}
       </div>
 
       {/* Detail panel */}
@@ -1003,6 +1152,30 @@ export default function CrmClientesPage() {
                 <button onClick={() => setShowDedupModal(false)} className="px-4 py-2 text-sm text-gray-400 border border-[#3A3A3A] rounded-xl hover:border-gray-500 transition-colors">Cancelar</button>
                 <button onClick={confirmDedup} className="px-5 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors">Confirmar y fusionar</button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Progreso de fusión */}
+      {dedupProgress && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="bg-[#1A1A1A] border border-[#3A3A3A] rounded-2xl px-8 py-7 w-full max-w-sm text-center space-y-4 shadow-2xl">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500/10 mx-auto">
+              <GitMerge size={22} className="text-amber-400 animate-pulse" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-white">Fusionando duplicados…</p>
+              <p className="text-xs text-gray-500 mt-1">Actualizando referencias en todos los módulos</p>
+            </div>
+            <div className="space-y-1.5">
+              <div className="h-2 w-full rounded-full bg-[#2A2A2A] overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-amber-500 transition-all duration-300"
+                  style={{ width: `${Math.round((dedupProgress.done / dedupProgress.total) * 100)}%` }}
+                />
+              </div>
+              <p className="text-xs text-gray-500">{dedupProgress.done} / {dedupProgress.total} grupos procesados</p>
             </div>
           </div>
         </div>

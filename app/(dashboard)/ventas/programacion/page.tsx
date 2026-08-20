@@ -701,7 +701,7 @@ export default function VentasProgramacionPage() {
 
   async function handleSaveCliente(f: NuevoClienteForm): Promise<string> {
     const id = `CL-${Date.now()}`;
-    const razonSocial = f.razonSocial.trim();
+    const razonSocial = f.razonSocial.trim().toUpperCase().replace(/\s+/g, " ");
     const doc = {
       razonSocial,
       nombreComercial: razonSocial,
@@ -745,7 +745,7 @@ export default function VentasProgramacionPage() {
         ...rest,
         diaHoraPedido: form.diaHoraPedido,
         dia: form.dia,
-        cliente: form.cliente.trim(),
+        cliente: form.cliente.trim().toUpperCase().replace(/\s+/g, " "),
         telefono: form.telefono.trim(),
         direccion: form.direccion.trim(),
         m3Totales: m3,
@@ -764,7 +764,7 @@ export default function VentasProgramacionPage() {
         dia: form.dia,
         vendedor: vendedorNombre,
         diaHoraPedido: form.diaHoraPedido,
-        cliente: form.cliente.trim(),
+        cliente: form.cliente.trim().toUpperCase().replace(/\s+/g, " "),
         telefono: form.telefono.trim(),
         direccion: form.direccion.trim(),
         m3Totales: m3,

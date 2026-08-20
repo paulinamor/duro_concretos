@@ -48,6 +48,7 @@ export default function ConfiguracionPage() {
 
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
+  const [loadingLong, setLoadingLong] = useState(false);
   const [savingUser, setSavingUser] = useState(false);
   const [userSearch, setUserSearch] = useState("");
   const [userDraft, setUserDraft] = useState<UserDraft | null>(null);
@@ -90,6 +91,12 @@ export default function ConfiguracionPage() {
       setSavingCoords(false);
     }
   }
+
+  useEffect(() => {
+    if (!loadingUsers) { setLoadingLong(false); return; }
+    const t = setTimeout(() => setLoadingLong(true), 3000);
+    return () => clearTimeout(t);
+  }, [loadingUsers]);
 
   useEffect(() => {
     setSession(getStoredSession());
@@ -324,6 +331,17 @@ export default function ConfiguracionPage() {
             )}
           </div>
 
+          {loadingUsers ? (
+            <div className="flex flex-col items-center justify-center gap-4 py-28">
+              <svg className="h-9 w-9 animate-spin text-[#CC2229]" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                <path className="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+              </svg>
+              <p className="text-sm text-gray-400 text-center max-w-xs">
+                {loadingLong ? "Cargando información, esto puede tomar unos segundos…" : "Cargando…"}
+              </p>
+            </div>
+          ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -336,13 +354,7 @@ export default function ConfiguracionPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#3A3A3A]">
-                {loadingUsers ? (
-                  <tr>
-                    <td colSpan={7} className="px-5 py-8 text-center text-sm text-gray-500">
-                      Cargando usuarios...
-                    </td>
-                  </tr>
-                ) : filteredUsers.length === 0 ? (
+                {filteredUsers.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-5 py-8 text-center text-sm text-gray-500">
                       No se encontraron usuarios.
@@ -401,6 +413,7 @@ export default function ConfiguracionPage() {
               </tbody>
             </table>
           </div>
+          )}
         </div>
       )}
 

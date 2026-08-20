@@ -18,6 +18,8 @@ import {
   Menu,
   ChevronDown,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   Lock,
   ShieldCheck,
   BarChart3,
@@ -63,7 +65,7 @@ const administracionItems: { href: string; icon: React.ElementType; label: strin
 
 const transporteItems = [
   { href: "/transporte/programacion",  icon: CalendarDays, label: "Programación" },
-  { href: "/transporte/seguros",       icon: Truck,        label: "Flota" },
+  { href: "/transporte/seguros",       icon: Truck,        label: "Seguros de Flota" },
   { href: "/transporte/diesel",        icon: Fuel,         label: "Consumo de Diésel" },
   { href: "/transporte/mantenimiento", icon: Wrench,       label: "Mantenimiento de Flota" },
 ];
@@ -72,11 +74,14 @@ const operacionesItems = [
   { href: "/operaciones/inventario", icon: Package, label: "Inventarios" },
 ];
 
+const crmItems = [
+  { href: "/crm/clientes",  icon: BookUser,          label: "Clientes" },
+  { href: "/crm/pipeline",  icon: ChartNoAxesColumn, label: "Pipeline" },
+];
+
 const ventasItems = [
-  { href: "/crm/clientes",            icon: BookUser,        label: "Base de Clientes" },
-  { href: "/crm/pipeline",            icon: ChartNoAxesColumn, label: "Pipeline CRM" },
-  { href: "/ventas/programacion",     icon: CalendarDays,    label: "Programación" },
-  { href: "/ventas/recibos-concreto", icon: ReceiptText,     label: "Recibos de Concreto" },
+  { href: "/ventas/programacion",     icon: CalendarDays, label: "Programación" },
+  { href: "/ventas/recibos-concreto", icon: ReceiptText,  label: "Recibos de Concreto" },
 ];
 
 const finanzasItems = [
@@ -236,6 +241,8 @@ export default function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
   const [statuses, setStatuses]           = useState<Record<string, ModuleStatus>>(MODULE_STATUS_DEFAULTS);
   const [devMode, setDevMode]             = useState(false);
 
+  const [collapsed, setCollapsed] = useState(false);
+
   const canSwitchPlanta = !session?.planta || session.planta === "Todas";
   const isAdmin         = session?.role === "admin";
   const isDeveloper     = session?.email === DEVELOPER_EMAIL;
@@ -248,6 +255,7 @@ export default function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
   const transporteLocked      = !hasEnabledItems(transporteItems);
   const administracionLocked  = !hasEnabledItems(administracionItems);
   const operacionesLocked     = !hasEnabledItems(operacionesItems);
+  const crmLocked             = !hasEnabledItems(crmItems);
   const ventasLocked          = !hasEnabledItems(ventasItems);
   const finanzasLocked        = !hasEnabledItems(finanzasItems);
   const facturacionLocked     = !hasEnabledItems(facturacionItems);
@@ -257,6 +265,7 @@ export default function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
   const [transporteOpen,      setTransporteOpen]      = useState(true);
   const [administracionOpen,  setAdministracionOpen]  = useState(true);
   const [operacionesOpen,     setOperacionesOpen]      = useState(true);
+  const [crmOpen,             setCrmOpen]              = useState(true);
   const [ventasOpen,          setVentasOpen]           = useState(true);
   const [finanzasOpen,        setFinanzasOpen]         = useState(true);
   const [facturacionOpen,     setFacturacionOpen]      = useState(true);
@@ -385,6 +394,13 @@ export default function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
         ))}
 
         <div className="pt-4 pb-1">
+          <SectionHeader label="CRM" expanded={crmOpen && !crmLocked} locked={crmLocked} onToggle={() => setCrmOpen((v) => !v)} />
+        </div>
+        {crmOpen && !crmLocked && crmItems.map((item) => (
+          <NavLink key={item.href} {...item} {...navLinkProps(item.href)} />
+        ))}
+
+        <div className="pt-4 pb-1">
           <SectionHeader label="Ventas" expanded={ventasOpen && !ventasLocked} locked={ventasLocked} onToggle={() => setVentasOpen((v) => !v)} />
         </div>
         {ventasOpen && !ventasLocked && ventasItems.map((item) => (
@@ -422,6 +438,13 @@ export default function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
 
       {/* Footer */}
       <div className="border-t border-white/10 px-4 py-3 space-y-2">
+        <button
+          onClick={() => setCollapsed(true)}
+          className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-slate-500 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+        >
+          <ChevronsLeft size={13} />
+          Ocultar menú
+        </button>
         {/* Dev tools — solo visible para leonardo@lpsoft.mx */}
         {isDeveloper && (
           <div className="space-y-1">
@@ -468,8 +491,18 @@ export default function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
 
   return (
     <>
-      <aside className="duro-sidebar hidden min-h-screen w-72 shrink-0 flex-col border-r border-[#1E293B] bg-[#0B1220] lg:flex">
-        {content}
+      <aside className={`duro-sidebar hidden min-h-screen shrink-0 flex-col border-r border-[#1E293B] bg-[#0B1220] lg:flex transition-all duration-200 overflow-hidden ${collapsed ? "w-14" : "w-72"}`}>
+        {collapsed ? (
+          <div className="flex flex-col items-center pt-4">
+            <button
+              onClick={() => setCollapsed(false)}
+              title="Mostrar menú"
+              className="p-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+            >
+              <ChevronsRight size={20} />
+            </button>
+          </div>
+        ) : content}
       </aside>
 
       {mobileOpen && (
