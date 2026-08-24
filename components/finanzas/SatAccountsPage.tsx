@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -1557,6 +1558,143 @@ function ExcelTable({
   );
 }
 
+// ─── MultiSelectFilter ────────────────────────────────────────────────────────
+
+function MultiSelectFilter({
+  placeholder,
+  options,
+  selected,
+  onChange,
+}: {
+  placeholder: string;
+  options: string[];
+  selected: Set<string>;
+  onChange: (v: Set<string>) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) { setSearch(""); return; }
+    setTimeout(() => searchRef.current?.focus(), 50);
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const visible = search
+    ? options.filter((o) => o.toLowerCase().includes(search.toLowerCase()))
+    : options;
+
+  function toggle(v: string) {
+    const next = new Set(selected);
+    next.has(v) ? next.delete(v) : next.add(v);
+    onChange(next);
+  }
+
+  const label =
+    selected.size === 0 ? placeholder
+    : selected.size === 1 ? [...selected][0]
+    : `${selected.size} seleccionados`;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={`flex items-center gap-1.5 bg-[#1A1A1A] border text-xs rounded-lg px-3 py-1.5 focus:outline-none transition-colors cursor-pointer whitespace-nowrap ${
+          selected.size > 0
+            ? "border-[#CC2229]/60 text-white"
+            : "border-[#3A3A3A] text-gray-300 hover:border-[#CC2229]/40"
+        }`}
+      >
+        <span className="max-w-[140px] truncate">{label}</span>
+        {selected.size > 0 && (
+          <span
+            onClick={(e) => { e.stopPropagation(); onChange(new Set()); }}
+            className="text-gray-500 hover:text-white transition-colors"
+            aria-label="Limpiar"
+          >
+            <X size={11} />
+          </span>
+        )}
+        <ChevronDown size={11} className={`text-gray-500 transition-transform shrink-0 ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="absolute top-full mt-1 left-0 z-[200] bg-[#1A1A1A] border border-[#3A3A3A] rounded-xl shadow-2xl w-64 flex flex-col">
+          {/* Buscador interno */}
+          {options.length > 6 && (
+            <div className="p-2 border-b border-[#2A2A2A]">
+              <div className="relative">
+                <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+                <input
+                  ref={searchRef}
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Buscar…"
+                  className="w-full bg-[#242424] border border-[#3A3A3A] rounded-lg pl-7 pr-3 py-1.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[#CC2229]/50"
+                />
+              </div>
+            </div>
+          )}
+          {/* Lista */}
+          <div className="overflow-y-auto max-h-56 py-1">
+            {!search && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => onChange(new Set())}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-gray-300 hover:bg-white/5 transition-colors"
+                >
+                  <span className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 ${selected.size === 0 ? "bg-[#CC2229] border-[#CC2229]" : "border-[#4A4A4A]"}`}>
+                    {selected.size === 0 && <Check size={10} className="text-white" />}
+                  </span>
+                  Todos
+                </button>
+                <div className="border-t border-[#2A2A2A] mx-3 my-1" />
+              </>
+            )}
+            {visible.length === 0 ? (
+              <p className="px-3 py-3 text-xs text-gray-600 text-center">Sin resultados</p>
+            ) : visible.map((o) => (
+              <button
+                key={o}
+                type="button"
+                onClick={() => toggle(o)}
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-gray-300 hover:bg-white/5 transition-colors"
+              >
+                <span className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 ${selected.has(o) ? "bg-[#CC2229] border-[#CC2229]" : "border-[#4A4A4A]"}`}>
+                  {selected.has(o) && <Check size={10} className="text-white" />}
+                </span>
+                <span className="truncate text-left">{o}</span>
+              </button>
+            ))}
+          </div>
+          {/* Footer con conteo */}
+          {selected.size > 0 && (
+            <div className="border-t border-[#2A2A2A] px-3 py-2 flex items-center justify-between">
+              <span className="text-[10px] text-gray-500">{selected.size} seleccionado{selected.size !== 1 ? "s" : ""}</span>
+              <button
+                type="button"
+                onClick={() => onChange(new Set())}
+                className="text-[10px] text-[#CC2229] hover:text-red-400 transition-colors cursor-pointer"
+              >
+                Limpiar
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
@@ -1579,6 +1717,10 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
   const [query, setQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("todos");
   const [filterMes, setFilterMes] = useState("todos");
+  const [filterTipo, setFilterTipo] = useState("todos");
+  const [filterEstadoSAT, setFilterEstadoSAT] = useState("todos");
+  const [filterContraparte, setFilterContraparte] = useState<Set<string>>(new Set());
+  const [filterFormaPago, setFilterFormaPago] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<"dark" | "excel">("excel");
 
@@ -1622,6 +1764,18 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
     return Array.from(set).sort().reverse();
   }, [cuentas]);
 
+  const contrapartesDisponibles = useMemo(() => {
+    const set = new Set<string>();
+    cuentas.forEach((c) => { if (c.contraparte) set.add(c.contraparte); });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "es", { sensitivity: "base" }));
+  }, [cuentas]);
+
+  const formasPagoDisponibles = useMemo(() => {
+    const set = new Set<string>();
+    cuentas.forEach((c) => { if (c.formaPago) set.add(c.formaPago); });
+    return Array.from(set).sort();
+  }, [cuentas]);
+
   const filtered = useMemo(() => {
     const q = query.toLowerCase();
     return cuentas.filter((c) => {
@@ -1633,6 +1787,18 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
         const iso = c.fecha.includes("/") ? displayToISO(c.fecha) : c.fecha;
         if (!iso.startsWith(filterMes)) return false;
       }
+
+      // Filtro por tipo de documento
+      if (filterTipo !== "todos" && (c.tipo ?? "Factura") !== filterTipo) return false;
+
+      // Filtro por estado SAT
+      if (filterEstadoSAT !== "todos" && (c.estadoSAT ?? "Vigente") !== filterEstadoSAT) return false;
+
+      // Filtro por receptor / emisor (multi)
+      if (filterContraparte.size > 0 && !filterContraparte.has(c.contraparte)) return false;
+
+      // Filtro por forma de pago (multi)
+      if (filterFormaPago.size > 0 && !filterFormaPago.has(c.formaPago ?? "")) return false;
 
       // Búsqueda de texto
       if (!q) return true;
@@ -1650,7 +1816,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
       if (byFecha !== 0) return byFecha;
       return b.folio.localeCompare(a.folio, undefined, { numeric: true });
     });
-  }, [cuentas, query, filterStatus, filterMes]);
+  }, [cuentas, query, filterStatus, filterMes, filterTipo, filterEstadoSAT, filterContraparte, filterFormaPago]);
 
   // KPIs — facturas canceladas no cuentan en saldos ni conteos financieros
   const canceladas = filtered.filter((c) => c.estadoSAT === "Cancelado");
@@ -2205,9 +2371,9 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl p-3 flex flex-wrap items-center gap-2">
         {/* Status tabs */}
-        <div className="flex gap-1 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg p-1 w-fit">
+        <div className="flex gap-1 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg p-1">
           {[["todos", "Todos"], ["pendiente", "Pendiente"], ["parcial", "Parcial"], ["pagado", "Pagado"]].map(([v, l]) => (
             <button
               key={v}
@@ -2218,17 +2384,64 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
             </button>
           ))}
         </div>
+
+        <div className="w-px h-5 bg-[#3A3A3A]" />
+
         {/* Month filter */}
         <select
           value={filterMes}
           onChange={(e) => setFilterMes(e.target.value)}
-          className="bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-[#CC2229]/60"
+          className="bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-[#CC2229]/60 cursor-pointer"
         >
           <option value="todos">Todos los meses</option>
           {mesesDisponibles.map((m) => (
             <option key={m} value={m}>{mesLabel(`${m}-01`)}</option>
           ))}
         </select>
+        {/* Tipo filter */}
+        <select
+          value={filterTipo}
+          onChange={(e) => setFilterTipo(e.target.value)}
+          className="bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-[#CC2229]/60 cursor-pointer"
+        >
+          <option value="todos">Tipo: Todos</option>
+          <option value="Factura">Factura</option>
+          <option value="Nota de Crédito">Nota de Crédito</option>
+          <option value="Complemento de Pago">Complemento de Pago</option>
+        </select>
+        {/* Estado SAT filter */}
+        <select
+          value={filterEstadoSAT}
+          onChange={(e) => setFilterEstadoSAT(e.target.value)}
+          className="bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-[#CC2229]/60 cursor-pointer"
+        >
+          <option value="todos">SAT: Todos</option>
+          <option value="Vigente">Vigente</option>
+          <option value="Cancelado">Cancelado</option>
+          <option value="Sustituida">Sustituida</option>
+        </select>
+
+        <div className="w-px h-5 bg-[#3A3A3A]" />
+
+        {/* Contraparte multi-select */}
+        {contrapartesDisponibles.length > 0 && (
+          <MultiSelectFilter
+            placeholder={isCxc ? "Receptor" : "Emisor"}
+            options={contrapartesDisponibles}
+            selected={filterContraparte}
+            onChange={setFilterContraparte}
+          />
+        )}
+        {/* Forma de pago multi-select */}
+        {formasPagoDisponibles.length > 0 && (
+          <MultiSelectFilter
+            placeholder="Forma de pago"
+            options={formasPagoDisponibles}
+            selected={filterFormaPago}
+            onChange={setFilterFormaPago}
+          />
+        )}
+
         {/* Search */}
         <div className="relative ml-auto">
           <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
@@ -2236,7 +2449,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={`Buscar ${contraparteLabel.toLowerCase()}, folio…`}
-            className="bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 text-xs rounded-lg pl-7 pr-3 py-1.5 w-56 focus:outline-none focus:border-[#CC2229]/60 placeholder-gray-600"
+            className="bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 text-xs rounded-lg pl-7 pr-3 py-1.5 w-52 focus:outline-none focus:border-[#CC2229]/60 placeholder-gray-600"
           />
           {query && (
             <button onClick={() => setQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 cursor-pointer">
@@ -2244,6 +2457,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
             </button>
           )}
         </div>
+
         {/* View mode toggle */}
         <div className="flex gap-1 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg p-1">
           <button
