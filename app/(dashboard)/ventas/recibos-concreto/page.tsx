@@ -89,8 +89,14 @@ export default function RecibosConcretoPage() {
   const effectiveReceiptNumber = isLoadedReceipt ? receipt.receiptNumber : nextReceiptNum;
 
   const totalM3 = useMemo(() => savedReceipts.reduce((s, r) => s + (r.m3 ?? 0), 0), [savedReceipts]);
-  const totalFacturado = useMemo(() => savedReceipts.reduce((s, r) => s + (r.total ?? 0), 0), [savedReceipts]);
-  const totalPendiente = useMemo(() => savedReceipts.reduce((s, r) => s + (r.resta ?? 0), 0), [savedReceipts]);
+  const totalFacturado = useMemo(
+    () => savedReceipts.reduce((s, r) => s + calculateConcreteReceiptTotal(r).total, 0),
+    [savedReceipts],
+  );
+  const totalPendiente = useMemo(
+    () => savedReceipts.reduce((s, r) => s + calculateConcreteReceiptTotal(r).resta, 0),
+    [savedReceipts],
+  );
 
   const filteredReceipts = useMemo(() => {
     const sorted = [...savedReceipts].sort((a, b) => b.receiptNumber - a.receiptNumber);
@@ -116,8 +122,8 @@ export default function RecibosConcretoPage() {
 
   const totals = useMemo(() => calculateConcreteReceiptTotal(receipt), [receipt]);
   const receiptDate = formatReceiptDate(receipt.fecha);
-  const realTotal = totals.total * 10;
-  const realResta = totals.resta * 10;
+  const realTotal = totals.total;
+  const realResta = totals.resta;
 
   function updateReceipt(partial: Partial<ConcreteReceipt>) {
     setReceipt((current) => ({
@@ -201,8 +207,7 @@ export default function RecibosConcretoPage() {
   }
 
   function getTicketAmounts(targetReceipt: ConcreteReceipt) {
-    const total = targetReceipt.total ?? 0;
-    const resta = targetReceipt.resta ?? 0;
+    const { total, resta } = calculateConcreteReceiptTotal(targetReceipt);
     return { realTotal: total, realResta: resta };
   }
 
@@ -243,18 +248,14 @@ export default function RecibosConcretoPage() {
   }
 
   function loadSavedReceipt(savedReceipt: ConcreteReceipt) {
-    setReceipt({
-      ...savedReceipt,
-      total: savedReceipt.total / 10,
-      resta: savedReceipt.resta / 10,
-    });
+    setReceipt({ ...savedReceipt });
     setIsLoadedReceipt(true);
     setShowForm(true);
   }
 
   function printSavedReceipt(savedReceipt: ConcreteReceipt) {
     flushSync(() => {
-      setReceipt({ ...savedReceipt, total: savedReceipt.total / 10, resta: savedReceipt.resta / 10 });
+      setReceipt({ ...savedReceipt });
       setIsLoadedReceipt(true);
     });
     window.print();

@@ -18,6 +18,8 @@ export interface CrmOpportunity {
   proximaAccion: string;
   fechaSeguimiento: string;
   responsable: string;
+  resistencia?: string;
+  comentarios?: string;
 }
 
 export type CustomerStatus = "Activo" | "Prospecto" | "En riesgo" | "Ganado";

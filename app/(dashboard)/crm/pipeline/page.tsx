@@ -32,6 +32,7 @@ interface OppForm {
   cliente: string; obra: string; contacto: string; telefono: string;
   valorEstimado: string; m3Estimados: string; fechaSeguimiento: string;
   responsable: string; etapa: PipelineStage; proximaAccion: string;
+  resistencia: string; comentarios: string;
 }
 
 const emptyOppForm = (): OppForm => ({
@@ -39,6 +40,7 @@ const emptyOppForm = (): OppForm => ({
   valorEstimado: "", m3Estimados: "",
   fechaSeguimiento: todayCST(),
   responsable: "", etapa: "Prospecto", proximaAccion: "",
+  resistencia: "", comentarios: "",
 });
 
 const probabilidadPorEtapa: Record<PipelineStage, number> = {
@@ -65,6 +67,8 @@ function OppDrawer({ open, onClose, onSave, editing }: {
         responsable: editing.responsable,
         etapa: editing.etapa,
         proximaAccion: editing.proximaAccion,
+        resistencia: editing.resistencia ?? "",
+        comentarios: editing.comentarios ?? "",
       });
     } else {
       setForm(emptyOppForm());
@@ -137,6 +141,26 @@ function OppDrawer({ open, onClose, onSave, editing }: {
               <label className={lbl}>Próxima acción</label>
               <input type="text" value={form.proximaAccion} onChange={(e) => set("proximaAccion", e.target.value)} placeholder="Ej. Llamar para cotizar" className={inp} />
             </div>
+            <div className="col-span-2">
+              <label className={lbl}>Resistencia</label>
+              <select value={form.resistencia} onChange={(e) => set("resistencia", e.target.value)} className={inp}>
+                <option value="">Sin especificar</option>
+                <option>F&apos;C 150-20-14 KG/CM²</option>
+                <option>F&apos;C 200-20-14 KG/CM²</option>
+                <option>F&apos;C 250-20-14 KG/CM²</option>
+                <option>F&apos;C 300-20-14 KG/CM²</option>
+              </select>
+            </div>
+            <div className="col-span-2">
+              <label className={lbl}>Comentarios</label>
+              <textarea
+                rows={3}
+                value={form.comentarios}
+                onChange={(e) => set("comentarios", e.target.value)}
+                placeholder="Notas adicionales, condiciones especiales, observaciones…"
+                className={`${inp} resize-none`}
+              />
+            </div>
           </div>
         </div>
         <div className="shrink-0 border-t border-gray-100 px-6 py-4 flex items-center justify-end gap-3">
@@ -198,6 +222,8 @@ export default function CrmPipelinePage() {
       probabilidad: probabilidadPorEtapa[form.etapa],
       fechaSeguimiento: form.fechaSeguimiento, responsable: form.responsable,
       proximaAccion: form.proximaAccion || "Dar seguimiento comercial",
+      resistencia: form.resistencia || undefined,
+      comentarios: form.comentarios || undefined,
     };
     await upsertDocument(COLLECTIONS.pipeline, id, doc);
     setOpportunities((cur) =>
@@ -468,6 +494,11 @@ export default function CrmPipelinePage() {
                       <div>
                         <p className="text-white font-semibold text-sm">{opportunity.cliente}</p>
                         <p className="text-gray-500 text-xs mt-0.5">{opportunity.obra}</p>
+                        {opportunity.resistencia && (
+                          <span className="inline-block mt-1 text-[10px] font-mono bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded px-1.5 py-0.5">
+                            {opportunity.resistencia}
+                          </span>
+                        )}
                       </div>
                       <span className="text-[#CC2229] text-xs font-mono">{opportunity.id}</span>
                     </div>
@@ -489,6 +520,12 @@ export default function CrmPipelinePage() {
                       <p className="text-gray-500 text-[11px]">Próxima acción</p>
                       <p className="text-gray-300 text-xs mt-0.5">{opportunity.proximaAccion}</p>
                     </div>
+                    {opportunity.comentarios && (
+                      <div className="mt-2 pt-2 border-t border-[#2A2A2A]">
+                        <p className="text-gray-500 text-[11px]">Comentarios</p>
+                        <p className="text-gray-400 text-xs mt-0.5 line-clamp-2">{opportunity.comentarios}</p>
+                      </div>
+                    )}
                     <div className="mt-3 pt-2 border-t border-[#2A2A2A] flex justify-end gap-1">
                       <button
                         onClick={(e) => { e.stopPropagation(); setEditingOpp(opportunity); setShowForm(true); }}
