@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { MapPin, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { ArrowDownToLine, MapPin, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { upsertDocument, deleteDocument, getCollectionDocs, COLLECTIONS } from "@/lib/db";
 import { useCollectionWithLoading } from "@/lib/useCollection";
 import type { Cliente } from "@/lib/crmClientes";
+import { migrarObras, type ResultadoMigracion } from "@/lib/migraciones";
 
 interface Obra {
   id: string;
@@ -27,6 +28,8 @@ export default function CatalogoObrasPage() {
   const [form, setForm] = useState(emptyForm());
   const [saving, setSaving] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [migrating, setMigrating] = useState(false);
+  const [migracionResult, setMigracionResult] = useState<ResultadoMigracion | null>(null);
 
   useEffect(() => {
     getCollectionDocs<Cliente>(COLLECTIONS.clientes).then((docs) => {
@@ -88,6 +91,30 @@ export default function CatalogoObrasPage() {
     }
   }
 
+  async function handleMigrar() {
+    setMigrating(true);
+    setMigracionResult(null);
+    try {
+      const resultado = await migrarObras();
+      setMigracionResult(resultado);
+      if (resultado.nuevas > 0) {
+        window.dispatchEvent(new CustomEvent("duro:toast", {
+          detail: { type: "success", message: `${resultado.nuevas} obra${resultado.nuevas !== 1 ? "s" : ""} importada${resultado.nuevas !== 1 ? "s" : ""} del historial.` },
+        }));
+      } else {
+        window.dispatchEvent(new CustomEvent("duro:toast", {
+          detail: { type: "success", message: "El catálogo ya está al día. No hay obras nuevas por importar." },
+        }));
+      }
+    } catch {
+      window.dispatchEvent(new CustomEvent("duro:toast", {
+        detail: { type: "error", message: "Error durante la importación." },
+      }));
+    } finally {
+      setMigrating(false);
+    }
+  }
+
   async function handleDelete(id: string) {
     await deleteDocument(COLLECTIONS.obras, id);
     setConfirmDeleteId(null);
@@ -102,14 +129,50 @@ export default function CatalogoObrasPage() {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-gray-500">Obras y ubicaciones vinculadas por cliente</p>
-        <button
-          onClick={openNew}
-          className="flex items-center gap-2 bg-[#CC2229] text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-[#B01E24] transition-colors shadow-md shadow-[#CC2229]/20 cursor-pointer"
-        >
-          <Plus size={16} />
-          Nueva obra
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleMigrar}
+            disabled={migrating}
+            title="Importa obras desde el historial de pedidos y recibos existentes"
+            className="flex items-center gap-2 border border-[#3A3A3A] text-gray-300 px-4 py-2 rounded-xl text-sm font-medium hover:border-blue-500/60 hover:text-blue-400 transition-colors disabled:opacity-50 cursor-pointer"
+          >
+            <ArrowDownToLine size={15} />
+            {migrating ? "Importando…" : "Importar del historial"}
+          </button>
+          <button
+            onClick={openNew}
+            className="flex items-center gap-2 bg-[#CC2229] text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-[#B01E24] transition-colors shadow-md shadow-[#CC2229]/20 cursor-pointer"
+          >
+            <Plus size={16} />
+            Nueva obra
+          </button>
+        </div>
       </div>
+
+      {/* Resultado de migración */}
+      {migracionResult && (
+        <div className="bg-[#1A1A1A] border border-[#3A3A3A] rounded-xl p-4 text-sm space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="font-semibold text-white">Resultado de importación</p>
+            <button onClick={() => setMigracionResult(null)} className="text-gray-500 hover:text-white cursor-pointer"><X size={14} /></button>
+          </div>
+          <div className="flex flex-wrap gap-4 text-xs">
+            <span className="text-emerald-400">✓ {migracionResult.nuevas} obras nuevas importadas</span>
+            {migracionResult.yaExistian > 0 && <span className="text-gray-500">{migracionResult.yaExistian} ya existían</span>}
+            {migracionResult.errores.length > 0 && <span className="text-red-400">{migracionResult.errores.length} errores</span>}
+          </div>
+          {migracionResult.detalle.length > 0 && (
+            <div className="mt-2 max-h-32 overflow-y-auto space-y-0.5">
+              {migracionResult.detalle.map((d, i) => (
+                <p key={i} className="text-xs text-gray-500">
+                  <span className="text-gray-400 font-medium">{d.cliente}</span> — {d.nombre}
+                  <span className="ml-2 text-gray-600">({d.fuente})</span>
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Filtros */}
       <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl p-3 flex flex-wrap items-center gap-2">
