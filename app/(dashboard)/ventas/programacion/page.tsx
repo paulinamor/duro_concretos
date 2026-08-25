@@ -62,6 +62,7 @@ interface Programacion {
   tiempoExtraDescarga: string;
   choferes: unknown[];
   notas?: string;
+  nombreObra?: string;
   planta?: string;
   folio?: string;
   notasAcceso?: string;
@@ -85,12 +86,20 @@ interface NuevoClienteForm {
   vendedorAsignado: string;
 }
 
+interface Obra {
+  id: string;
+  cliente: string;
+  nombre: string;
+  direccion: string;
+}
+
 type VForm = {
   dia: string;
   horaEntrega: string;
   diaHoraPedido: string;
   cliente: string;
   telefono: string;
+  obraNombre: string;
   direccion: string;
   m3Totales: string;
   extras: string;
@@ -101,7 +110,8 @@ type VForm = {
 
 function emptyForm(dia: string): VForm {
   return {
-    dia, horaEntrega: "", diaHoraPedido: nowLocalISO(), cliente: "", telefono: "", direccion: "",
+    dia, horaEntrega: "", diaHoraPedido: nowLocalISO(), cliente: "", telefono: "",
+    obraNombre: "", direccion: "",
     m3Totales: "", extras: "", tdBom: "",
     precioM3: "", precioM3Bomba: "",
   };
@@ -114,6 +124,7 @@ function formFromProg(p: Programacion): VForm {
     diaHoraPedido: p.diaHoraPedido ?? "",
     cliente: p.cliente,
     telefono: p.telefono,
+    obraNombre: p.nombreObra ?? "",
     direccion: p.direccion,
     m3Totales: p.m3Totales != null ? String(p.m3Totales) : "",
     extras: p.extras ?? "",
@@ -168,11 +179,12 @@ function fmtHoraPedido(dt: string) {
 // ─── Drawer ───────────────────────────────────────────────────────────────────
 
 function PedidoDrawer({
-  open, prog, clientesList, vendedorNombre, onClose, onSave, onSaveCliente,
+  open, prog, clientesList, obrasData, vendedorNombre, onClose, onSave, onSaveCliente,
 }: {
   open: boolean;
   prog: Programacion | null;
   clientesList: string[];
+  obrasData: Obra[];
   vendedorNombre: string;
   onClose: () => void;
   onSave: (data: VForm, id?: string) => Promise<void>;
@@ -189,6 +201,14 @@ function PedidoDrawer({
   const [nuevoError, setNuevoError] = useState("");
   const [resolvedCoords, setResolvedCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [resolvingUrl, setResolvingUrl] = useState(false);
+
+  const obrasSugeridas = useMemo(() => {
+    if (!form.cliente) return [];
+    const clienteLower = form.cliente.toLowerCase();
+    return obrasData
+      .filter((o) => o.cliente.toLowerCase() === clienteLower)
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+  }, [obrasData, form.cliente]);
 
   useEffect(() => {
     if (open) {
@@ -312,9 +332,38 @@ function PedidoDrawer({
 
           {/* Cliente */}
           <ClienteCombobox
-            label="Cliente" required value={form.cliente} onChange={(v) => set("cliente", v)}
+            label="Cliente" required value={form.cliente}
+            onChange={(v) => setForm((f) => ({ ...f, cliente: v, obraNombre: v !== f.cliente ? "" : f.obraNombre, direccion: v !== f.cliente ? "" : f.direccion }))}
             options={clientesList} placeholder="Buscar cliente registrado…"
           />
+
+          {/* Nombre de la obra */}
+          <div>
+            <label className={lbl}>
+              Nombre de la obra <span className="text-[#CC2229]">*</span>
+              {obrasSugeridas.length > 0 && (
+                <span className="ml-2 text-[10px] font-normal normal-case tracking-normal text-blue-400">
+                  {obrasSugeridas.length} guardada{obrasSugeridas.length !== 1 ? "s" : ""}
+                </span>
+              )}
+            </label>
+            <input
+              list="obras-cliente-list"
+              value={form.obraNombre}
+              onChange={(e) => {
+                const nombre = e.target.value;
+                set("obraNombre", nombre);
+                const found = obrasSugeridas.find((o) => o.nombre.toLowerCase() === nombre.toLowerCase());
+                if (found?.direccion) { set("direccion", found.direccion); setCopied(false); }
+              }}
+              placeholder={form.cliente ? "Ej. PIEDRA ALTA, VISTA ENCINOS…" : "Selecciona un cliente primero"}
+              disabled={!form.cliente}
+              className={`${inp} ${!form.cliente ? "opacity-50 cursor-not-allowed" : ""}`}
+            />
+            <datalist id="obras-cliente-list">
+              {obrasSugeridas.map((o) => <option key={o.id} value={o.nombre} />)}
+            </datalist>
+          </div>
 
           {/* Teléfono */}
           <div>
@@ -322,9 +371,9 @@ function PedidoDrawer({
             <input type="tel" value={form.telefono} onChange={(e) => set("telefono", e.target.value)} placeholder="81 0000 0000" className={inp} />
           </div>
 
-          {/* Obra */}
+          {/* Dirección / Maps */}
           <div>
-            <label className={lbl}>Obra (dirección o link de Maps) <span className="text-[#CC2229]">*</span></label>
+            <label className={lbl}>Dirección o link de Maps <span className="text-[#CC2229]">*</span></label>
             <input
               value={form.direccion}
               onChange={(e) => { set("direccion", e.target.value); setCopied(false); }}
@@ -570,6 +619,11 @@ export default function VentasProgramacionPage() {
     getCollectionDocs<Cliente>(COLLECTIONS.clientes).then(setRawClientes);
   }, []);
 
+  const [obrasData, setObrasData] = useState<Obra[]>([]);
+  useEffect(() => {
+    getCollectionDocs<Obra>(COLLECTIONS.obras).then(setObrasData);
+  }, []);
+
   const [diaActivo, setDiaActivo] = useState(todayISO);
   const [showDrawer, setShowDrawer] = useState(false);
   const [editing, setEditing] = useState<Programacion | null>(null);
@@ -699,6 +753,23 @@ export default function VentasProgramacionPage() {
     }
   }
 
+  async function autoSaveObra(cliente: string, nombre: string, direccion: string) {
+    if (!nombre.trim() || !cliente.trim()) return;
+    const ya = obrasData.find(
+      (o) => o.cliente.toLowerCase() === cliente.toLowerCase() && o.nombre.toLowerCase() === nombre.trim().toLowerCase(),
+    );
+    if (ya) return;
+    const id = `obra-${Date.now()}`;
+    const doc: Obra = {
+      id,
+      cliente: cliente.trim().toUpperCase().replace(/\s+/g, " "),
+      nombre: nombre.trim().toUpperCase().replace(/\s+/g, " "),
+      direccion: direccion.trim(),
+    };
+    await upsertDocument(COLLECTIONS.obras, id, doc);
+    setObrasData((prev) => [...prev, doc]);
+  }
+
   async function handleSaveCliente(f: NuevoClienteForm): Promise<string> {
     const id = `CL-${Date.now()}`;
     const razonSocial = f.razonSocial.trim().toUpperCase().replace(/\s+/g, " ");
@@ -747,6 +818,7 @@ export default function VentasProgramacionPage() {
         dia: form.dia,
         cliente: form.cliente.trim().toUpperCase().replace(/\s+/g, " "),
         telefono: form.telefono.trim(),
+        nombreObra: form.obraNombre.trim() || rest.nombreObra,
         direccion: form.direccion.trim(),
         m3Totales: m3,
         extras: form.extras.trim(),
@@ -756,6 +828,7 @@ export default function VentasProgramacionPage() {
         precioM3Bomba,
       };
       await upsertDocument(COLLECTIONS.programaciones, existingId, withPlantaTag(merged));
+      if (form.obraNombre.trim()) void autoSaveObra(form.cliente, form.obraNombre, form.direccion);
       window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", title: "Guardado", message: "Pedido actualizado." } }));
     } else {
       const id = `prog-v-${Date.now()}`;
@@ -766,6 +839,7 @@ export default function VentasProgramacionPage() {
         diaHoraPedido: form.diaHoraPedido,
         cliente: form.cliente.trim().toUpperCase().replace(/\s+/g, " "),
         telefono: form.telefono.trim(),
+        nombreObra: form.obraNombre.trim() || undefined,
         direccion: form.direccion.trim(),
         m3Totales: m3,
         extras: form.extras.trim(),
@@ -787,6 +861,7 @@ export default function VentasProgramacionPage() {
         historial: [{ fase: "Creado", fecha: new Date().toISOString(), usuario: vendedorNombre }],
       };
       await upsertDocument(COLLECTIONS.programaciones, id, withPlantaTag(newProg));
+      if (form.obraNombre.trim()) void autoSaveObra(form.cliente, form.obraNombre, form.direccion);
       window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", title: "Pedido creado", message: `${form.cliente} — en espera de asignación.` } }));
       // Fire-and-forget: sync to SGP in background (non-blocking)
       void sgpCrearPedido(id, folio, form, getActivePlanta());
@@ -1287,6 +1362,7 @@ export default function VentasProgramacionPage() {
         open={showDrawer}
         prog={editing}
         clientesList={clientesList}
+        obrasData={obrasData}
         vendedorNombre={vendedorNombre}
         onClose={() => { setShowDrawer(false); setEditing(null); }}
         onSave={handleSave}
