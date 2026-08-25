@@ -32,6 +32,7 @@ import {
   Terminal,
   UserRound,
   ScanEye,
+  MapPin,
 } from "lucide-react";
 import {
   getAllowedModuleSet,
@@ -82,6 +83,7 @@ const crmItems = [
 const ventasItems = [
   { href: "/ventas/programacion",     icon: CalendarDays, label: "Programación" },
   { href: "/ventas/recibos-concreto", icon: ReceiptText,  label: "Recibos de Concreto" },
+  { href: "/ventas/obras",            icon: MapPin,       label: "Catálogo de Obras" },
 ];
 
 const finanzasItems = [
