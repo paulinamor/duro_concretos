@@ -16,6 +16,7 @@ import KPICard from "@/components/KPICard";
 import PlantaRequired from "@/components/PlantaRequired";
 import StatusBadge from "@/components/StatusBadge";
 import FormModal from "@/components/FormModal";
+import AppSelect from "@/components/AppSelect";
 import { getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
 import {
   PieChart,
@@ -208,46 +209,46 @@ export default function CajaChicaPage() {
             </div>
             <div>
               <label className="block text-sm text-gray-400 mb-1">Categoría</label>
-              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+              <AppSelect dark>
                 {["Oficina", "Consumibles", "Transporte", "Mantenimiento", "Representación", "Seguridad"].map(c => <option key={c}>{c}</option>)}
-              </select>
+              </AppSelect>
             </div>
             <div>
               <label className="block text-sm text-gray-400 mb-1">Monto ($)</label>
-              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+              <AppSelect dark>
                 {[120, 210, 340, 380, 450, 620, 700, 890].map((monto) => <option key={monto}>${monto.toLocaleString()}</option>)}
-              </select>
+              </AppSelect>
             </div>
             <div>
               <label className="block text-sm text-gray-400 mb-1">No. Comprobante</label>
-              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+              <AppSelect dark>
                 {["Ticket", "Factura", "Nota de venta", "Recibo interno"].map((comprobante) => <option key={comprobante}>{comprobante}</option>)}
-              </select>
+              </AppSelect>
             </div>
             <div>
               <label className="block text-sm text-gray-400 mb-1">Responsable</label>
-              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+              <AppSelect dark>
                 {["Ana López", "Carlos Ortiz", "José Martínez", "Admin"].map((responsable) => <option key={responsable}>{responsable}</option>)}
-              </select>
+              </AppSelect>
             </div>
             <div>
               <label className="block text-sm text-gray-400 mb-1">Descripción</label>
-              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+              <AppSelect dark>
                 {["Material de limpieza oficina", "Café y consumibles comedor", "Papelería e impresión", "Gasolina vehículo administrativo", "Herramientas menores", "Comida reunión con cliente"].map((descripcion) => <option key={descripcion}>{descripcion}</option>)}
-              </select>
+              </AppSelect>
             </div>
             <div>
               <label className="block text-sm text-gray-400 mb-1">Autoriza</label>
-              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+              <AppSelect dark>
                 {["Admin", "Dirección", "Mantenimiento", "Seguridad"].map((autoriza) => <option key={autoriza}>{autoriza}</option>)}
-              </select>
+              </AppSelect>
             </div>
             <div>
               <label className="block text-sm text-gray-400 mb-1">Comprobante</label>
-              <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+              <AppSelect dark>
                 <option>Validado</option>
                 <option>Pendiente</option>
-              </select>
+              </AppSelect>
             </div>
           </div>
       </FormModal>
@@ -293,20 +294,12 @@ export default function CajaChicaPage() {
             className="w-72 max-w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg pl-9 pr-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
           />
         </div>
-        <select
-          value={filterEstado}
-          onChange={(e) => setFilterEstado(e.target.value)}
-          className="bg-[#1A1A1A] border border-[#3A3A3A] text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-        >
+        <AppSelect dark value={filterEstado} onChange={(e) => setFilterEstado(e.target.value)} wrapperClassName="">
           {estadosFiltro.map((estado) => <option key={estado}>{estado}</option>)}
-        </select>
-        <select
-          value={filterCategoria}
-          onChange={(e) => setFilterCategoria(e.target.value)}
-          className="bg-[#1A1A1A] border border-[#3A3A3A] text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-        >
+        </AppSelect>
+        <AppSelect dark value={filterCategoria} onChange={(e) => setFilterCategoria(e.target.value)} wrapperClassName="">
           {categoriasFiltro.map((categoria) => <option key={categoria}>{categoria}</option>)}
-        </select>
+        </AppSelect>
         <span className="text-gray-500 text-xs ml-auto">{filtered.length} gastos</span>
       </div>
 

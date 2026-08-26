@@ -6,6 +6,7 @@ import {
   Plus, RefreshCw, Search, Send, Trash2, X, FileDown,
   Receipt, CloudDownload, AlertCircle,
 } from "lucide-react";
+import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
 import StatusBadge from "@/components/StatusBadge";
 import { getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
@@ -264,38 +265,38 @@ function EmitirDrawer({
           {/* Tipo y serie */}
           <div className="grid grid-cols-3 gap-4">
             <Field label="Tipo de comprobante">
-              <select value={tipo} onChange={(e) => setTipo(e.target.value as TipoCFDI)} className={selectCls}>
+              <AppSelect value={tipo} onChange={(e) => setTipo(e.target.value as TipoCFDI)}>
                 <option value="I">I — Ingreso</option>
                 <option value="E">E — Egreso</option>
                 <option value="T">T — Traslado</option>
-              </select>
+              </AppSelect>
             </Field>
             <Field label="Serie">
               <input value={serie} onChange={(e) => setSerie(e.target.value)} className={inputCls} placeholder="A" />
             </Field>
             <Field label="Uso CFDI">
-              <select value={uso} onChange={(e) => setUso(e.target.value)} className={selectCls}>
+              <AppSelect value={uso} onChange={(e) => setUso(e.target.value)}>
                 {USO_CFDI.map((u) => (
                   <option key={u.clave} value={u.clave}>{u.clave} — {u.desc}</option>
                 ))}
-              </select>
+              </AppSelect>
             </Field>
           </div>
 
           {/* Pago */}
           <div className="grid grid-cols-2 gap-4">
             <Field label="Método de pago">
-              <select value={metodo} onChange={(e) => setMetodo(e.target.value as MetodoPago)} className={selectCls}>
+              <AppSelect value={metodo} onChange={(e) => setMetodo(e.target.value as MetodoPago)}>
                 <option value="PUE">PUE — Pago en una exhibición</option>
                 <option value="PPD">PPD — Pago en parcialidades o diferido</option>
-              </select>
+              </AppSelect>
             </Field>
             <Field label="Forma de pago">
-              <select value={forma} onChange={(e) => setForma(e.target.value)} className={selectCls}>
+              <AppSelect value={forma} onChange={(e) => setForma(e.target.value)}>
                 {FORMA_PAGO.map((f) => (
                   <option key={f.clave} value={f.clave}>{f.clave} — {f.desc}</option>
                 ))}
-              </select>
+              </AppSelect>
             </Field>
           </div>
 
@@ -310,11 +311,11 @@ function EmitirDrawer({
                 <input value={nombre} onChange={(e) => setNombre(e.target.value)} className={inputCls} placeholder="Empresa S.A. de C.V." />
               </Field>
               <Field label="Régimen fiscal">
-                <select value={regimen} onChange={(e) => setRegimen(e.target.value)} className={selectCls}>
+                <AppSelect value={regimen} onChange={(e) => setRegimen(e.target.value)}>
                   {REGIMEN_FISCAL.map((r) => (
                     <option key={r.clave} value={r.clave}>{r.clave} — {r.desc}</option>
                   ))}
-                </select>
+                </AppSelect>
               </Field>
               <Field label="Código postal *">
                 <input value={cp} onChange={(e) => setCp(e.target.value)} className={inputCls} placeholder="64000" maxLength={5} />
@@ -360,11 +361,11 @@ function EmitirDrawer({
                       <input type="number" value={c.precio} min={0} step={0.01} onChange={(e) => updConcepto(i, "precio", Number(e.target.value))} className={inputCls} />
                     </Field>
                     <Field label="IVA (%)">
-                      <select value={c.tasaIVA} onChange={(e) => updConcepto(i, "tasaIVA", Number(e.target.value))} className={selectCls}>
+                      <AppSelect value={c.tasaIVA} onChange={(e) => updConcepto(i, "tasaIVA", Number(e.target.value))}>
                         <option value={0.16}>16%</option>
                         <option value={0.08}>8%</option>
                         <option value={0}>0%</option>
-                      </select>
+                      </AppSelect>
                     </Field>
                     <Field label="Subtotal">
                       <div className="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-500">
@@ -388,11 +389,11 @@ function EmitirDrawer({
                       </datalist>
                     </Field>
                     <Field label="Clave unidad SAT">
-                      <select value={c.claveUnidad} onChange={(e) => updConcepto(i, "claveUnidad", e.target.value)} className={selectCls}>
+                      <AppSelect value={c.claveUnidad} onChange={(e) => updConcepto(i, "claveUnidad", e.target.value)}>
                         {CLAVE_UNIDAD.map((u) => (
                           <option key={u.clave} value={u.clave}>{u.clave} — {u.desc}</option>
                         ))}
-                      </select>
+                      </AppSelect>
                     </Field>
                   </div>
                 </div>
@@ -512,11 +513,10 @@ function DescargaSATTab() {
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
           <div className="flex flex-col gap-1.5">
             <label className="block text-[10px] font-semibold uppercase tracking-widest text-gray-500">Tipo</label>
-            <select value={tipo} onChange={(e) => setTipo(e.target.value as "emitidas" | "recibidas")}
-              className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors cursor-pointer">
+            <AppSelect dark value={tipo} onChange={(e) => setTipo(e.target.value as "emitidas" | "recibidas")}>
               <option value="emitidas">CFDIs emitidos</option>
               <option value="recibidas">CFDIs recibidos</option>
-            </select>
+            </AppSelect>
           </div>
           <div className="flex flex-col gap-1.5">
             <label className="block text-[10px] font-semibold uppercase tracking-widest text-gray-500">Fecha inicio</label>

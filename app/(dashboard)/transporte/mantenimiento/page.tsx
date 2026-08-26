@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { storage } from "@/lib/firebase";
+import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
 import { filterByPlanta, withPlantaTag } from "@/lib/auth";
 import { COLLECTIONS, deleteDocument, getCollectionDocs, upsertDocument } from "@/lib/db";
@@ -555,10 +556,10 @@ function RegistroDrawer({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={lbl}>Unidad</label>
-              <select value={form.unidad ?? ""} onChange={(e) => set("unidad", e.target.value)} className={inp}>
+              <AppSelect value={form.unidad ?? ""} onChange={(e) => set("unidad", e.target.value)}>
                 <option value="">Seleccionar…</option>
                 {unidadesList.map((u) => <option key={u}>{u}</option>)}
-              </select>
+              </AppSelect>
             </div>
             <div>
               <label className={lbl}>Fecha</label>
@@ -582,19 +583,19 @@ function RegistroDrawer({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={lbl}>Subtipo</label>
-                <select value={form.subtipo ?? "Preventivo"} onChange={(e) => set("subtipo", e.target.value)} className={inp}>
+                <AppSelect value={form.subtipo ?? "Preventivo"} onChange={(e) => set("subtipo", e.target.value)}>
                   <option>Preventivo</option>
                   <option>Correctivo</option>
                   <option>Inspección</option>
-                </select>
+                </AppSelect>
               </div>
               <div>
                 <label className={lbl}>Status</label>
-                <select value={form.status ?? "Pendiente"} onChange={(e) => set("status", e.target.value)} className={inp}>
+                <AppSelect value={form.status ?? "Pendiente"} onChange={(e) => set("status", e.target.value)}>
                   <option>Pendiente</option>
                   <option>En proceso</option>
                   <option>Completado</option>
-                </select>
+                </AppSelect>
               </div>
             </div>
           )}
@@ -607,11 +608,11 @@ function RegistroDrawer({
               </div>
               <div>
                 <label className={lbl}>Status</label>
-                <select value={form.status ?? "Pendiente"} onChange={(e) => set("status", e.target.value)} className={inp}>
+                <AppSelect value={form.status ?? "Pendiente"} onChange={(e) => set("status", e.target.value)}>
                   <option>Pendiente</option>
                   <option>En proceso</option>
                   <option>Completado</option>
-                </select>
+                </AppSelect>
               </div>
             </div>
           )}
@@ -620,19 +621,19 @@ function RegistroDrawer({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={lbl}>Severidad</label>
-                <select value={form.severidad ?? "Media"} onChange={(e) => set("severidad", e.target.value)} className={inp}>
+                <AppSelect value={form.severidad ?? "Media"} onChange={(e) => set("severidad", e.target.value)}>
                   <option>Alta</option>
                   <option>Media</option>
                   <option>Baja</option>
-                </select>
+                </AppSelect>
               </div>
               <div>
                 <label className={lbl}>Status</label>
-                <select value={form.status ?? "Reportada"} onChange={(e) => set("status", e.target.value)} className={inp}>
+                <AppSelect value={form.status ?? "Reportada"} onChange={(e) => set("status", e.target.value)}>
                   <option>Reportada</option>
                   <option>En proceso</option>
                   <option>Resuelta</option>
-                </select>
+                </AppSelect>
               </div>
             </div>
           )}

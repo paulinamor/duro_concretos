@@ -11,6 +11,7 @@ import {
   ArrowUpRight, ArrowDownRight, Minus, ClipboardList, CalendarRange,
 } from "lucide-react";
 import { getCollectionDocs, COLLECTIONS } from "@/lib/db";
+import AppSelect from "@/components/AppSelect";
 import { filterByPlanta } from "@/lib/auth";
 import { todayCST } from "@/lib/dateUtils";
 
@@ -621,15 +622,11 @@ export default function ReportesPage() {
             <span className="ml-2 text-xs text-gray-500 font-normal">({tableRows.length} de {filtered.length})</span>
           </h3>
           <div className="flex items-center gap-2">
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as "fecha" | "total" | "m3")}
-              className="bg-[#1A1A1A] border border-[#3A3A3A] text-gray-400 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[#CC2229]/60"
-            >
+            <AppSelect dark compact value={sortBy} onChange={(e) => setSortBy(e.target.value as "fecha" | "total" | "m3")} wrapperClassName="">
               <option value="fecha">Por fecha</option>
               <option value="total">Por total</option>
               <option value="m3">Por m³</option>
-            </select>
+            </AppSelect>
             <div className="relative">
               <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
               <input

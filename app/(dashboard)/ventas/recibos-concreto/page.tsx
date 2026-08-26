@@ -32,6 +32,7 @@ import { todayCST } from "@/lib/dateUtils";
 import { useCollectionWithLoading } from "@/lib/useCollection";
 import type { Cliente } from "@/lib/crmClientes";
 import KPICard from "@/components/KPICard";
+import AppSelect from "@/components/AppSelect";
 
 function money(value: number | undefined | null) {
   return `$${(value ?? 0).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -576,14 +577,13 @@ export default function RecibosConcretoPage() {
                   </div>
                   <div>
                     <label className={lbl}>Tipo de suministro</label>
-                    <select
+                    <AppSelect
                       value={receipt.supplyType}
                       onChange={(e) => updateReceipt({ supplyType: e.target.value as ConcreteSupplyType })}
-                      className={inp}
                     >
                       <option>Tiro directo</option>
                       <option>Bombeado</option>
-                    </select>
+                    </AppSelect>
                   </div>
                   <div>
                     <label className={lbl}>Servicio de bomba</label>

@@ -1,101 +1,118 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// BoxFactura Descarga Masiva SAT
-// Documentación: https://www.boxfactura.com/info/api-descarga-masiva
+// BoxFactura SAT Web Service API v1.0
+// Docs: https://satws.bxf.mx/
+// Auth: header BXFSATWS-API-KEY
+// Respuesta es asíncrona — BoxFactura llama al webhook cuando termina.
 
-export interface DescargaMasivaRequest {
-  tipo: "emitidas" | "recibidas";
-  fechaInicio: string;   // YYYY-MM-DD
-  fechaFin: string;      // YYYY-MM-DD
-  rfc?: string;          // Si no se pasa, usa el RFC configurado en BoxFactura
+export interface SolicitarDescargaRequest {
+  direccion: "emisor" | "receptor";
+  tipo?: "cfdi" | "metadata";
+  fechaInicio: string;                // YYYY-MM-DD
+  fechaFin: string;                   // YYYY-MM-DD
+  tipoDocumento?: "ingreso" | "egreso" | "traslado" | "nomina" | "pago";
+  estadoDocumento?: "todos" | "vigente" | "cancelado";
+  usarPortalCfdi?: boolean;           // true = usa CIEC en lugar de e.firma webservice
+}
+
+function getCredenciales() {
+  const apiKey = process.env.BOXFACTURA_API_KEY;
+  const rfc    = process.env.BOXFACTURA_RFC_DURO;
+  const cert   = process.env.BOXFACTURA_EFIRMA_CERT_DURO;
+  const key    = process.env.BOXFACTURA_EFIRMA_KEY_DURO;
+  const pwd    = process.env.BOXFACTURA_EFIRMA_PASSWORD_DURO;
+
+  if (!apiKey || !rfc || !cert || !key || !pwd) return null;
+  return {
+    apiKey,
+    rfc,
+    efirmaCertB64: cert,
+    efirmaKeyB64:  key,
+    efirmaPassword: pwd,
+    ciecPassword: process.env.BOXFACTURA_CIEC_DURO,
+  };
+}
+
+function b64ToBlob(b64: string, filename: string): Blob {
+  const bytes = Buffer.from(b64, "base64");
+  return new File([bytes], filename, { type: "application/octet-stream" });
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const body: DescargaMasivaRequest = await req.json();
+    const body: SolicitarDescargaRequest = await req.json();
 
-    const apiKey = process.env.BOXFACTURA_API_KEY;
-    const rfcEnv = process.env.BOXFACTURA_RFC;
-
-    if (!apiKey) {
-      return NextResponse.json({ error: "BOXFACTURA_API_KEY no configurada" }, { status: 500 });
+    const creds = getCredenciales();
+    if (!creds) {
+      return NextResponse.json(
+        { error: "Credenciales de e.firma no configuradas. Revisa las variables de entorno BOXFACTURA_*." },
+        { status: 500 },
+      );
     }
 
-    const rfc = body.rfc ?? rfcEnv;
-    if (!rfc) {
-      return NextResponse.json({ error: "RFC no proporcionado ni configurado en env" }, { status: 400 });
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL
+      ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+    const webhookUrl = `${appUrl}/api/boxfactura/webhook`;
+
+    const fechaInicio = `${body.fechaInicio}T00:00:00`;
+    const fechaFin    = `${body.fechaFin}T23:59:59`;
+
+    const form = new FormData();
+    form.append("rfc",          creds.rfc);
+    form.append("direccion",    body.direccion);
+    form.append("tipo",         body.tipo ?? "cfdi");
+    form.append("fecha_inicial", fechaInicio);
+    form.append("fecha_final",   fechaFin);
+    form.append("webhook",       webhookUrl);
+
+    if (body.tipoDocumento)   form.append("tipo_documento",    body.tipoDocumento);
+    if (body.estadoDocumento) form.append("estado_documento",  body.estadoDocumento);
+
+    // SAT sólo permite vigente al descargar como receptor
+    if (body.direccion === "receptor" && body.tipo === "cfdi" && !body.estadoDocumento) {
+      form.append("estado_documento", "vigente");
     }
 
-    // Solicitar descarga masiva a BoxFactura
-    const resp = await fetch("https://api.boxfactura.com/v1/descarga-masiva/solicitar", {
+    const endpoint = body.usarPortalCfdi
+      ? "https://satws.bxf.mx/v1.0/portalcfdi/solicita"
+      : "https://satws.bxf.mx/v1.0/solicita";
+
+    if (body.usarPortalCfdi && creds.ciecPassword) {
+      form.append("ciec_password", creds.ciecPassword);
+    } else {
+      form.append("efirma_cert",         b64ToBlob(creds.efirmaCertB64, "efirma.cer"));
+      form.append("efirma_key",          b64ToBlob(creds.efirmaKeyB64,  "efirma.key"));
+      form.append("efirma_key_password", creds.efirmaPassword);
+    }
+
+    const resp = await fetch(endpoint, {
       method:  "POST",
-      headers: {
-        "x-api-key":    apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        rfc,
-        tipo:         body.tipo === "emitidas" ? "CFDI_EMITIDOS" : "CFDI_RECIBIDOS",
-        fecha_inicio: body.fechaInicio,
-        fecha_fin:    body.fechaFin,
-      }),
+      headers: { "BXFSATWS-API-KEY": creds.apiKey },
+      body:    form,
     });
-
-    if (!resp.ok) {
-      const err = await resp.text();
-      console.error("[boxfactura/descargar] Error:", err);
-      return NextResponse.json({ error: "Error en BoxFactura API", details: err }, { status: resp.status });
-    }
 
     const data = await resp.json();
 
-    // BoxFactura regresa un ID de solicitud — el procesamiento es asíncrono
+    if (!resp.ok) {
+      console.error("[boxfactura/descargar] Error:", data);
+      return NextResponse.json(
+        { error: data.mensaje ?? data.message ?? "Error en BoxFactura API", details: data },
+        { status: resp.status },
+      );
+    }
+
     return NextResponse.json({
-      solicitudId: data.id ?? data.solicitud_id,
-      status:      data.status ?? "procesando",
-      mensaje:     "Solicitud enviada. Consulta el estado con GET /api/boxfactura/descargar?id={solicitudId}",
+      idSolicitud:  data.id_solicitud,
+      codigoStatus: data.codigo_status,
+      mensaje:      data.mensaje ?? "Solicitud aceptada",
+      rfc:          creds.rfc,
+      direccion:    body.direccion,
+      fechaInicio:  body.fechaInicio,
+      fechaFin:     body.fechaFin,
+      webhookUrl,
     });
   } catch (err) {
     console.error("[boxfactura/descargar]", err);
     return NextResponse.json({ error: "Error interno al solicitar descarga masiva" }, { status: 500 });
-  }
-}
-
-// Consultar estado de una solicitud de descarga
-export async function GET(req: NextRequest) {
-  try {
-    const { searchParams } = new URL(req.url);
-    const solicitudId = searchParams.get("id");
-
-    if (!solicitudId) {
-      return NextResponse.json({ error: "Parámetro id requerido" }, { status: 400 });
-    }
-
-    const apiKey = process.env.BOXFACTURA_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json({ error: "BOXFACTURA_API_KEY no configurada" }, { status: 500 });
-    }
-
-    const resp = await fetch(`https://api.boxfactura.com/v1/descarga-masiva/estado/${solicitudId}`, {
-      headers: { "x-api-key": apiKey },
-    });
-
-    if (!resp.ok) {
-      const err = await resp.text();
-      return NextResponse.json({ error: "Error consultando estado", details: err }, { status: resp.status });
-    }
-
-    const data = await resp.json();
-
-    return NextResponse.json({
-      solicitudId,
-      status:   data.status,
-      total:    data.total ?? 0,
-      paquetes: data.paquetes ?? [],
-      cfdis:    data.cfdis ?? [],
-    });
-  } catch (err) {
-    console.error("[boxfactura/estado]", err);
-    return NextResponse.json({ error: "Error consultando estado de descarga" }, { status: 500 });
   }
 }

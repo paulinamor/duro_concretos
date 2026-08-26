@@ -16,6 +16,7 @@ import {
   UsersRound,
   X,
 } from "lucide-react";
+import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
 import PlantaRequired from "@/components/PlantaRequired";
 import {
@@ -125,9 +126,9 @@ function OppDrawer({ open, onClose, onSave, editing }: {
             </div>
             <div>
               <label className={lbl}>Etapa</label>
-              <select value={form.etapa} onChange={(e) => set("etapa", e.target.value as PipelineStage)} className={inp}>
+              <AppSelect value={form.etapa} onChange={(e) => set("etapa", e.target.value as PipelineStage)}>
                 {pipelineStages.map((s) => <option key={s}>{s}</option>)}
-              </select>
+              </AppSelect>
             </div>
             <div>
               <label className={lbl}>Fecha seguimiento</label>
@@ -143,13 +144,13 @@ function OppDrawer({ open, onClose, onSave, editing }: {
             </div>
             <div className="col-span-2">
               <label className={lbl}>Resistencia</label>
-              <select value={form.resistencia} onChange={(e) => set("resistencia", e.target.value)} className={inp}>
+              <AppSelect value={form.resistencia} onChange={(e) => set("resistencia", e.target.value)}>
                 <option value="">Sin especificar</option>
                 <option>F&apos;C 150-20-14 KG/CM²</option>
                 <option>F&apos;C 200-20-14 KG/CM²</option>
                 <option>F&apos;C 250-20-14 KG/CM²</option>
                 <option>F&apos;C 300-20-14 KG/CM²</option>
-              </select>
+              </AppSelect>
             </div>
             <div className="col-span-2">
               <label className={lbl}>Comentarios</label>

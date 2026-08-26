@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { CircleDollarSign, Info, Mail, Phone, Search, Target, UserRound, UsersRound } from "lucide-react";
+import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
 import StatusBadge from "@/components/StatusBadge";
 import { useCollectionRaw } from "@/lib/useCollection";
@@ -111,13 +112,9 @@ export default function ClientesPorVendedorPage() {
             className="w-80 max-w-full rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] py-2 pl-9 pr-3 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
           />
         </div>
-        <select
-          value={seller}
-          onChange={(e) => setSeller(e.target.value)}
-          className="rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-        >
+        <AppSelect dark value={seller} onChange={(e) => setSeller(e.target.value)}>
           {sellers.map((v) => <option key={v}>{v}</option>)}
-        </select>
+        </AppSelect>
         <div className="flex items-center gap-1 flex-wrap">
           {STATUSES.map((s) => (
             <button

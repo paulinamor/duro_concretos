@@ -15,6 +15,7 @@ import {
 import KPICard from "@/components/KPICard";
 import PlantaRequired from "@/components/PlantaRequired";
 import ClienteCombobox from "@/components/ClienteCombobox";
+import AppSelect from "@/components/AppSelect";
 import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
 import { filterByPlanta, getActivePlanta, getStoredSession, Planta, withPlantaTag } from "@/lib/auth";
 import { todayCST, currentMonthCST } from "@/lib/dateUtils";
@@ -343,10 +344,10 @@ function EntradaDrawer({ open, onClose, onSave }: {
             <div className="col-span-2">
               <label className={lbl}>Material <span className="text-[#CC2229]">*</span></label>
               {form.categoria === "inventario" ? (
-                <select value={form.material} onChange={(e) => set("material", e.target.value)} className={inp}>
+                <AppSelect value={form.material} onChange={(e) => set("material", e.target.value)}>
                   <option value="">Seleccionar material…</option>
                   {INVENTARIO_MATERIALES.map((m) => <option key={m.key} value={m.key}>{m.label}{m.unidad ? ` (${m.unidad})` : ""}</option>)}
-                </select>
+                </AppSelect>
               ) : (
                 <input type="text" value={form.material} onChange={(e) => set("material", e.target.value)} placeholder="Ej: Diesel, Lubricante, Bolsas…" className={inp} />
               )}
@@ -965,9 +966,9 @@ export default function InventarioPage() {
                 <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cliente, remisión, operador…" className="bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 text-xs rounded-lg pl-7 pr-8 py-1.5 w-52 focus:outline-none focus:border-[#CC2229]/60 placeholder-gray-600" />
                 {search && <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 cursor-pointer"><X size={11} /></button>}
               </div>
-              <select value={filterMezcla} onChange={(e) => setFilterMezcla(e.target.value)} className="bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[#CC2229]/60 cursor-pointer">
+              <AppSelect dark compact value={filterMezcla} onChange={(e) => setFilterMezcla(e.target.value)} wrapperClassName="">
                 {mezclas.map((m) => <option key={m}>{m}</option>)}
-              </select>
+              </AppSelect>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">

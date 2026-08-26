@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   BadgeDollarSign,
   Building2,
-  ChevronDown,
   ChevronRight,
   FileSpreadsheet,
   GitMerge,
@@ -21,6 +20,7 @@ import {
   Users,
   X,
 } from "lucide-react";
+import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
 import PlantaRequired from "@/components/PlantaRequired";
 import StatusBadge from "@/components/StatusBadge";
@@ -320,9 +320,9 @@ function ClienteDrawer({ open, editing, onClose, onSave, errorMsg, vendedoresLis
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={lbl}>Tipo de cliente</label>
-                <select value={form.tipoCliente} onChange={(e) => set("tipoCliente", e.target.value as TipoCliente)} className={inp}>
+                <AppSelect value={form.tipoCliente} onChange={(e) => set("tipoCliente", e.target.value as TipoCliente)}>
                   {tiposCliente.map((t) => <option key={t}>{t}</option>)}
-                </select>
+                </AppSelect>
               </div>
               <div>
                 <label className={lbl}>Vendedor asignado</label>
@@ -341,15 +341,15 @@ function ClienteDrawer({ open, editing, onClose, onSave, errorMsg, vendedoresLis
               </div>
               <div>
                 <label className={lbl}>Calificación</label>
-                <select value={form.calificacion} onChange={(e) => set("calificacion", e.target.value as CalificacionCliente)} className={inp}>
+                <AppSelect value={form.calificacion} onChange={(e) => set("calificacion", e.target.value as CalificacionCliente)}>
                   {CALIFICACION_OPTIONS.map((c) => <option key={c}>{c}</option>)}
-                </select>
+                </AppSelect>
               </div>
               <div>
                 <label className={lbl}>Días de crédito</label>
-                <select value={form.diasCredito} onChange={(e) => set("diasCredito", e.target.value)} className={inp}>
+                <AppSelect value={form.diasCredito} onChange={(e) => set("diasCredito", e.target.value)}>
                   {DIAS_CREDITO_OPTIONS.map((d) => <option key={d}>{d}</option>)}
-                </select>
+                </AppSelect>
               </div>
               <div>
                 <label className={lbl}>Límite de crédito</label>
@@ -361,9 +361,9 @@ function ClienteDrawer({ open, editing, onClose, onSave, errorMsg, vendedoresLis
               </div>
               <div className="col-span-2">
                 <label className={lbl}>Estatus</label>
-                <select value={form.estatus} onChange={(e) => set("estatus", e.target.value as EstatusCliente)} className={inp}>
+                <AppSelect value={form.estatus} onChange={(e) => set("estatus", e.target.value as EstatusCliente)}>
                   {estatusCliente.map((s) => <option key={s}>{s}</option>)}
-                </select>
+                </AppSelect>
               </div>
             </div>
           </div>
@@ -833,17 +833,9 @@ export default function CrmClientesPage() {
             options: ["Todos los vendedores", ...vendedoresActivos],
           },
         ].map(({ value, onChange, options }, idx) => (
-          <div key={idx} className="relative">
-            <select
-              disabled={loading}
-              value={value}
-              onChange={(e) => onChange(e.target.value)}
-              className={`appearance-none bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg pl-3 pr-8 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229] ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
-            >
-              {options.map((opt) => <option key={opt}>{opt}</option>)}
-            </select>
-            <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
-          </div>
+          <AppSelect key={idx} dark disabled={loading} value={value} onChange={(e) => onChange(e.target.value)}>
+            {options.map((opt) => <option key={opt}>{opt}</option>)}
+          </AppSelect>
         ))}
         <span className="text-xs text-gray-500 ml-auto">
           {loading ? "…" : `${filtered.length} clientes`}

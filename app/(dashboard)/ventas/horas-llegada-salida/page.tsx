@@ -14,6 +14,7 @@ import {
 import KPICard from "@/components/KPICard";
 import StatusBadge from "@/components/StatusBadge";
 import FormModal from "@/components/FormModal";
+import AppSelect from "@/components/AppSelect";
 import {
   calcularDiferenciaMinutos,
   enlazarHorasGpsVentas,
@@ -118,15 +119,11 @@ export default function HorasLlegadaSalidaPage() {
             className="w-80 max-w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg pl-9 pr-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
           />
         </div>
-        <select
-          value={filterEstado}
-          onChange={(e) => setFilterEstado(e.target.value)}
-          className="bg-[#1A1A1A] border border-[#3A3A3A] text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-        >
+        <AppSelect dark value={filterEstado} onChange={(e) => setFilterEstado(e.target.value)} wrapperClassName="">
           {["Todos", "Pendiente", "Validado", "Diferencia"].map((estado) => (
             <option key={estado}>{estado}</option>
           ))}
-        </select>
+        </AppSelect>
         <button className="ml-auto flex items-center gap-2 bg-[#1A1A1A] border border-[#3A3A3A] hover:border-[#CC2229] text-gray-300 hover:text-white px-3 py-2 rounded-lg text-sm transition-colors">
           <Download size={14} />
           Exportar documento
@@ -148,63 +145,63 @@ export default function HorasLlegadaSalidaPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm text-gray-400 mb-1">Folio venta/viaje</label>
-            <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+            <AppSelect dark>
               {ventasEntregasBase.map((entrega) => <option key={entrega.folio}>{entrega.folio}</option>)}
-            </select>
+            </AppSelect>
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">Cliente</label>
-            <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+            <AppSelect dark>
               {ventasEntregasBase.map((entrega) => <option key={entrega.cliente}>{entrega.cliente}</option>)}
-            </select>
+            </AppSelect>
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">Obra</label>
-            <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+            <AppSelect dark>
               {ventasEntregasBase.map((entrega) => <option key={entrega.obra}>{entrega.obra}</option>)}
-            </select>
+            </AppSelect>
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">Unidad</label>
-            <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+            <AppSelect dark>
               {ventasEntregasBase.map((entrega) => <option key={entrega.unidad}>{entrega.unidad}</option>)}
-            </select>
+            </AppSelect>
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">Operador</label>
-            <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+            <AppSelect dark>
               {ventasEntregasBase.map((entrega) => <option key={entrega.operador}>{entrega.operador}</option>)}
-            </select>
+            </AppSelect>
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">M3</label>
-            <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+            <AppSelect dark>
               {[5.5, 6, 7.5, 8].map((m3) => <option key={m3}>{m3} m3</option>)}
-            </select>
+            </AppSelect>
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">Hora programada</label>
-            <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+            <AppSelect dark>
               {["08:30", "10:00", "12:00", "14:15"].map((hora) => <option key={hora}>{hora}</option>)}
-            </select>
+            </AppSelect>
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">Hora llegada manual</label>
-            <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+            <AppSelect dark>
               {["08:36", "10:25", "12:04", "14:39"].map((hora) => <option key={hora}>{hora}</option>)}
-            </select>
+            </AppSelect>
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">Hora salida manual</label>
-            <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+            <AppSelect dark>
               {["09:10", "11:05", "12:45", "15:15"].map((hora) => <option key={hora}>{hora}</option>)}
-            </select>
+            </AppSelect>
           </div>
           <div className="sm:col-span-2 lg:col-span-3">
             <label className="block text-sm text-gray-400 mb-1">Observaciones</label>
-            <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+            <AppSelect dark>
               {ventasEntregasBase.map((entrega) => <option key={entrega.observaciones}>{entrega.observaciones}</option>)}
-            </select>
+            </AppSelect>
           </div>
         </div>
       </FormModal>

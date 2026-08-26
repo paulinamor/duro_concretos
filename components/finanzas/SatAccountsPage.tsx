@@ -26,6 +26,7 @@ import KPICard from "@/components/KPICard";
 import StatusBadge from "@/components/StatusBadge";
 import ClienteCombobox from "@/components/ClienteCombobox";
 import CargaMasivaModal from "@/components/finanzas/CargaMasivaModal";
+import AppSelect from "@/components/AppSelect";
 import { upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
 import { withPlantaTag } from "@/lib/auth";
 import { useCollectionRaw, useCollectionWithLoading } from "@/lib/useCollection";
@@ -294,19 +295,19 @@ function FormDrawer({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={lbl}>Estado SAT</label>
-              <select value={form.estadoSAT} onChange={(e) => setForm({ ...form, estadoSAT: e.target.value as Cuenta["estadoSAT"] })} className={inp}>
+              <AppSelect value={form.estadoSAT} onChange={(e) => setForm({ ...form, estadoSAT: e.target.value as Cuenta["estadoSAT"] })}>
                 <option>Vigente</option>
                 <option>Cancelado</option>
                 <option>Sustituida</option>
-              </select>
+              </AppSelect>
             </div>
             <div>
               <label className={lbl}>Tipo</label>
-              <select value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value as Cuenta["tipo"] })} className={inp}>
+              <AppSelect value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value as Cuenta["tipo"] })}>
                 <option>Factura</option>
                 <option>Nota de Crédito</option>
                 <option>Complemento de Pago</option>
-              </select>
+              </AppSelect>
             </div>
             <div>
               <label className={lbl}>Serie</label>
@@ -400,13 +401,13 @@ function FormDrawer({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={lbl}>Forma de pago</label>
-              <select value={form.formaPago} onChange={(e) => setForm({ ...form, formaPago: e.target.value })} className={inp}>
+              <AppSelect value={form.formaPago} onChange={(e) => setForm({ ...form, formaPago: e.target.value })}>
                 <option>99 - Por definir</option>
                 <option>01 - Efectivo</option>
                 <option>03 - Transferencia electrónica</option>
                 <option>04 - Tarjeta de crédito</option>
                 <option>28 - Tarjeta de débito</option>
-              </select>
+              </AppSelect>
             </div>
             <div>
               <label className={lbl}>COSEC. TC</label>
@@ -2388,38 +2389,24 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
         <div className="w-px h-5 bg-[#3A3A3A]" />
 
         {/* Month filter */}
-        <select
-          value={filterMes}
-          onChange={(e) => setFilterMes(e.target.value)}
-          className="bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-[#CC2229]/60 cursor-pointer"
-        >
+        <AppSelect dark compact value={filterMes} onChange={(e) => setFilterMes(e.target.value)} wrapperClassName="">
           <option value="todos">Todos los meses</option>
           {mesesDisponibles.map((m) => (
             <option key={m} value={m}>{mesLabel(`${m}-01`)}</option>
           ))}
-        </select>
-        {/* Tipo filter */}
-        <select
-          value={filterTipo}
-          onChange={(e) => setFilterTipo(e.target.value)}
-          className="bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-[#CC2229]/60 cursor-pointer"
-        >
+        </AppSelect>
+        <AppSelect dark compact value={filterTipo} onChange={(e) => setFilterTipo(e.target.value)} wrapperClassName="">
           <option value="todos">Tipo: Todos</option>
           <option value="Factura">Factura</option>
           <option value="Nota de Crédito">Nota de Crédito</option>
           <option value="Complemento de Pago">Complemento de Pago</option>
-        </select>
-        {/* Estado SAT filter */}
-        <select
-          value={filterEstadoSAT}
-          onChange={(e) => setFilterEstadoSAT(e.target.value)}
-          className="bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-[#CC2229]/60 cursor-pointer"
-        >
+        </AppSelect>
+        <AppSelect dark compact value={filterEstadoSAT} onChange={(e) => setFilterEstadoSAT(e.target.value)} wrapperClassName="">
           <option value="todos">SAT: Todos</option>
           <option value="Vigente">Vigente</option>
           <option value="Cancelado">Cancelado</option>
           <option value="Sustituida">Sustituida</option>
-        </select>
+        </AppSelect>
 
         <div className="w-px h-5 bg-[#3A3A3A]" />
 

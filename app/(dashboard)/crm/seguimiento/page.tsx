@@ -10,6 +10,7 @@ import {
   Target,
   UserRound,
 } from "lucide-react";
+import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
 import StatusBadge from "@/components/StatusBadge";
 import FormModal from "@/components/FormModal";
@@ -95,13 +96,9 @@ export default function CrmSeguimientoPage() {
             className="w-96 max-w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg pl-9 pr-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
           />
         </div>
-        <select
-          value={responsable}
-          onChange={(e) => setResponsable(e.target.value)}
-          className="bg-[#1A1A1A] border border-[#3A3A3A] text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-        >
+        <AppSelect dark value={responsable} onChange={(e) => setResponsable(e.target.value)}>
           {responsables.map((item) => <option key={item}>{item}</option>)}
-        </select>
+        </AppSelect>
         <span className="text-gray-500 text-xs ml-auto">{filtered.length} seguimientos</span>
       </div>
 
@@ -120,27 +117,27 @@ export default function CrmSeguimientoPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm text-gray-400 mb-1">Cliente</label>
-            <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+            <AppSelect dark>
               {seguimientos.map((item) => <option key={item.id}>{item.cliente}</option>)}
-            </select>
+            </AppSelect>
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">Contacto</label>
-            <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+            <AppSelect dark>
               {seguimientos.map((item) => <option key={item.contacto}>{item.contacto}</option>)}
-            </select>
+            </AppSelect>
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">Oportunidad</label>
-            <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+            <AppSelect dark>
               {seguimientos.map((item) => <option key={item.oportunidad}>{item.oportunidad}</option>)}
-            </select>
+            </AppSelect>
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">Responsable</label>
-            <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+            <AppSelect dark>
               {responsables.filter((item) => item !== "Todos").map((item) => <option key={item}>{item}</option>)}
-            </select>
+            </AppSelect>
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">Fecha seguimiento</label>
@@ -148,21 +145,21 @@ export default function CrmSeguimientoPage() {
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">Próxima acción</label>
-            <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+            <AppSelect dark>
               {seguimientos.map((item) => <option key={item.proximaAccion}>{item.proximaAccion}</option>)}
-            </select>
+            </AppSelect>
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">Canal</label>
-            <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+            <AppSelect dark>
               {["Llamada", "WhatsApp", "Visita", "Correo"].map((item) => <option key={item}>{item}</option>)}
-            </select>
+            </AppSelect>
           </div>
           <div className="sm:col-span-2">
             <label className="block text-sm text-gray-400 mb-1">Comentario</label>
-            <select className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]">
+            <AppSelect dark>
               {seguimientos.map((item) => <option key={item.ultimoComentario}>{item.ultimoComentario}</option>)}
-            </select>
+            </AppSelect>
           </div>
         </div>
       </FormModal>

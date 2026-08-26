@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertTriangle, ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, Clock, Copy, ExternalLink,
+  AlertTriangle, ArrowLeft, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Clock, Copy, ExternalLink,
   MapPin, Package, Phone, Plus, Search, Truck, Users, X,
 } from "lucide-react";
+import AppSelect from "@/components/AppSelect";
 import ClienteCombobox from "@/components/ClienteCombobox";
 import PlantaRequired from "@/components/PlantaRequired";
 import { upsertDocument, getCollectionDocs, COLLECTIONS, orderBy, limit } from "@/lib/db";
@@ -179,16 +180,18 @@ function fmtHoraPedido(dt: string) {
 // ─── Drawer ───────────────────────────────────────────────────────────────────
 
 function PedidoDrawer({
-  open, prog, clientesList, obrasData, vendedorNombre, onClose, onSave, onSaveCliente,
+  open, prog, clientesList, obrasData, rawClientes, vendedorNombre, onClose, onSave, onSaveCliente, onSaveObra,
 }: {
   open: boolean;
   prog: Programacion | null;
   clientesList: string[];
   obrasData: Obra[];
+  rawClientes: Cliente[];
   vendedorNombre: string;
   onClose: () => void;
   onSave: (data: VForm, id?: string) => Promise<void>;
   onSaveCliente?: (f: NuevoClienteForm) => Promise<string>;
+  onSaveObra?: (cliente: string, nombre: string, direccion: string) => void;
 }) {
   const [form, setForm] = useState<VForm>(emptyForm(todayISO()));
   const [saving, setSaving] = useState(false);
@@ -202,6 +205,14 @@ function PedidoDrawer({
   const [resolvedCoords, setResolvedCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [resolvingUrl, setResolvingUrl] = useState(false);
 
+  // Obra selector state
+  const [obraOpen, setObraOpen] = useState(false);
+  const [obraQuery, setObraQuery] = useState("");
+  const [obraNewOpen, setObraNewOpen] = useState(false);
+  const [obraNewNombre, setObraNewNombre] = useState("");
+  const [obraNewDireccion, setObraNewDireccion] = useState("");
+  const obraContainerRef = useRef<HTMLDivElement>(null);
+
   const obrasSugeridas = useMemo(() => {
     if (!form.cliente) return [];
     const clienteLower = form.cliente.toLowerCase();
@@ -210,11 +221,60 @@ function PedidoDrawer({
       .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
   }, [obrasData, form.cliente]);
 
+  const creditoAlerta = useMemo(() => {
+    if (!form.cliente) return null;
+    const norm = form.cliente.trim().toUpperCase().replace(/\s+/g, " ");
+    const cl = rawClientes.find(
+      (c) => c.razonSocial.trim().toUpperCase().replace(/\s+/g, " ") === norm,
+    );
+    if (!cl) return null;
+    if (cl.limiteCredito > 0 && cl.saldoPendiente > cl.limiteCredito) {
+      return {
+        tipo: "excedido" as const,
+        msg: `Límite de crédito excedido · Saldo $${cl.saldoPendiente.toLocaleString("es-MX")} / Límite $${cl.limiteCredito.toLocaleString("es-MX")}`,
+      };
+    }
+    if (cl.diasCredito > 0 && cl.ultimaCompra && cl.ultimaCompra !== "—") {
+      const venc = new Date(cl.ultimaCompra + "T12:00:00");
+      venc.setDate(venc.getDate() + cl.diasCredito);
+      if (venc < new Date()) {
+        return {
+          tipo: "vencido" as const,
+          msg: `Crédito ${cl.diasCredito} días · Vencido desde ${venc.toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" })}`,
+        };
+      }
+    }
+    return null;
+  }, [form.cliente, rawClientes]);
+
+  const obrasFiltradas = useMemo(() => {
+    if (!obraQuery.trim()) return obrasSugeridas;
+    const q = obraQuery.toLowerCase();
+    return obrasSugeridas.filter((o) => o.nombre.toLowerCase().includes(q));
+  }, [obrasSugeridas, obraQuery]);
+
+  // Click-outside cierra el selector de obras
+  useEffect(() => {
+    function handle(e: MouseEvent) {
+      if (obraContainerRef.current && !obraContainerRef.current.contains(e.target as Node)) {
+        setObraOpen(false);
+        setObraNewOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, []);
+
   useEffect(() => {
     if (open) {
       setForm(prog ? formFromProg(prog) : emptyForm(todayISO()));
       setNuevoOpen(false);
       setResolvedCoords(null);
+      setObraOpen(false);
+      setObraQuery("");
+      setObraNewOpen(false);
+      setObraNewNombre("");
+      setObraNewDireccion("");
     }
   }, [open, prog]);
 
@@ -333,12 +393,25 @@ function PedidoDrawer({
           {/* Cliente */}
           <ClienteCombobox
             label="Cliente" required value={form.cliente}
-            onChange={(v) => setForm((f) => ({ ...f, cliente: v, obraNombre: v !== f.cliente ? "" : f.obraNombre, direccion: v !== f.cliente ? "" : f.direccion }))}
+            onChange={(v) => {
+              const norm = v.trim().toUpperCase().replace(/\s+/g, " ");
+              setForm((f) => ({ ...f, cliente: norm, obraNombre: norm !== f.cliente ? "" : f.obraNombre, direccion: norm !== f.cliente ? "" : f.direccion }));
+            }}
             options={clientesList} placeholder="Buscar cliente registrado…"
           />
+          {creditoAlerta && (
+            <div className={`flex items-start gap-2 rounded-xl px-3.5 py-2.5 border ${
+              creditoAlerta.tipo === "excedido"
+                ? "bg-red-50 border-red-200 text-red-700"
+                : "bg-amber-50 border-amber-200 text-amber-700"
+            }`}>
+              <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+              <span className="text-xs font-medium">{creditoAlerta.msg}</span>
+            </div>
+          )}
 
-          {/* Nombre de la obra */}
-          <div>
+          {/* Nombre de la obra — selector con dropdown */}
+          <div ref={obraContainerRef} className="relative">
             <label className={lbl}>
               Nombre de la obra <span className="text-[#CC2229]">*</span>
               {obrasSugeridas.length > 0 && (
@@ -347,22 +420,140 @@ function PedidoDrawer({
                 </span>
               )}
             </label>
-            <input
-              list="obras-cliente-list"
-              value={form.obraNombre}
-              onChange={(e) => {
-                const nombre = e.target.value;
-                set("obraNombre", nombre);
-                const found = obrasSugeridas.find((o) => o.nombre.toLowerCase() === nombre.toLowerCase());
-                if (found?.direccion) { set("direccion", found.direccion); setCopied(false); }
-              }}
-              placeholder={form.cliente ? "Ej. PIEDRA ALTA, VISTA ENCINOS…" : "Selecciona un cliente primero"}
-              disabled={!form.cliente}
-              className={`${inp} ${!form.cliente ? "opacity-50 cursor-not-allowed" : ""}`}
-            />
-            <datalist id="obras-cliente-list">
-              {obrasSugeridas.map((o) => <option key={o.id} value={o.nombre} />)}
-            </datalist>
+
+            {/* Trigger */}
+            <div
+              role="button"
+              tabIndex={form.cliente ? 0 : -1}
+              onClick={() => { if (form.cliente) setObraOpen((v) => !v); }}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (form.cliente) setObraOpen((v) => !v); } }}
+              className={`flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-sm cursor-pointer select-none transition-colors ${
+                obraOpen ? "border-[#CC2229]/60 ring-1 ring-[#CC2229]/20" : "border-gray-200 hover:border-gray-300"
+              } ${!form.cliente ? "opacity-50 cursor-not-allowed bg-gray-50" : "bg-white"}`}
+            >
+              <span className={`flex-1 truncate ${form.obraNombre ? "text-gray-900 font-medium" : "text-gray-400"}`}>
+                {form.obraNombre || (form.cliente ? "Seleccionar o agregar obra…" : "Selecciona un cliente primero")}
+              </span>
+              {form.obraNombre && (
+                <button
+                  type="button"
+                  onMouseDown={(e) => { e.stopPropagation(); set("obraNombre", ""); setObraQuery(""); }}
+                  className="p-0.5 text-gray-300 hover:text-gray-500 transition-colors cursor-pointer"
+                >
+                  <X size={11} />
+                </button>
+              )}
+              <ChevronDown size={13} className={`text-gray-400 shrink-0 transition-transform duration-150 ${obraOpen ? "rotate-180" : ""}`} />
+            </div>
+
+            {/* Dropdown */}
+            {obraOpen && (
+              <div className="absolute z-[300] mt-1 w-full rounded-xl border border-gray-200 bg-white overflow-hidden"
+                style={{ boxShadow: "0 8px 24px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.06)" }}>
+
+                {/* Búsqueda */}
+                {obrasSugeridas.length > 0 && (
+                  <div className="p-2 border-b border-gray-100">
+                    <input
+                      autoFocus
+                      value={obraQuery}
+                      onChange={(e) => setObraQuery(e.target.value)}
+                      placeholder="Buscar obra…"
+                      className="w-full text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20"
+                    />
+                  </div>
+                )}
+
+                {/* Lista de obras */}
+                <ul className="max-h-52 overflow-y-auto py-1">
+                  {obrasFiltradas.length === 0 && !obraNewOpen && (
+                    <li className="px-4 py-3 text-sm text-gray-400 text-center">
+                      {obrasSugeridas.length === 0 ? "Sin obras registradas para este cliente" : "Sin resultados"}
+                    </li>
+                  )}
+                  {obrasFiltradas.map((o) => (
+                    <li key={o.id}>
+                      <button
+                        type="button"
+                        onMouseDown={() => {
+                          set("obraNombre", o.nombre);
+                          if (o.direccion) { set("direccion", o.direccion); setCopied(false); }
+                          setObraOpen(false);
+                          setObraQuery("");
+                        }}
+                        className={`w-full text-left px-3.5 py-2.5 hover:bg-gray-50 transition-colors cursor-pointer ${form.obraNombre === o.nombre ? "bg-gray-50" : ""}`}
+                      >
+                        <div className="text-sm font-medium text-gray-800">{o.nombre}</div>
+                        {o.direccion && (
+                          <div className="text-xs text-gray-400 truncate mt-0.5">
+                            {isUrl(o.direccion) ? "Ubicación en Maps guardada" : o.direccion}
+                          </div>
+                        )}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+
+                {/* Footer: agregar nueva obra */}
+                {!obraNewOpen && (
+                  <div className="border-t border-gray-100 px-3 py-2">
+                    <button
+                      type="button"
+                      onMouseDown={() => { setObraNewOpen(true); setObraNewNombre(obraQuery); setObraNewDireccion(""); }}
+                      className="w-full text-left text-xs font-semibold text-[#CC2229] hover:text-[#B01E24] py-1 cursor-pointer transition-colors"
+                    >
+                      + Agregar nueva obra
+                    </button>
+                  </div>
+                )}
+
+                {/* Formulario inline: nueva obra */}
+                {obraNewOpen && (
+                  <div className="border-t border-gray-100 bg-gray-50 p-3 space-y-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-2">Nueva obra</p>
+                    <input
+                      value={obraNewNombre}
+                      onChange={(e) => setObraNewNombre(e.target.value)}
+                      placeholder="Nombre de la obra *"
+                      className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 bg-white focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20"
+                    />
+                    <input
+                      value={obraNewDireccion}
+                      onChange={(e) => setObraNewDireccion(e.target.value)}
+                      placeholder="Dirección o link de Maps"
+                      className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 bg-white focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20"
+                    />
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        type="button"
+                        onMouseDown={() => setObraNewOpen(false)}
+                        className="flex-1 text-sm py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-100 cursor-pointer transition-colors"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!obraNewNombre.trim()}
+                        onMouseDown={() => {
+                          if (!obraNewNombre.trim()) return;
+                          const nombre = obraNewNombre.trim().toUpperCase().replace(/\s+/g, " ");
+                          const direccion = obraNewDireccion.trim();
+                          set("obraNombre", nombre);
+                          if (direccion) { set("direccion", direccion); setCopied(false); }
+                          onSaveObra?.(form.cliente, nombre, direccion);
+                          setObraOpen(false);
+                          setObraNewOpen(false);
+                          setObraQuery("");
+                        }}
+                        className="flex-1 text-sm py-1.5 rounded-lg bg-[#CC2229] text-white hover:bg-[#B01E24] disabled:opacity-50 cursor-pointer transition-colors font-medium"
+                      >
+                        Guardar
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Teléfono */}
@@ -560,9 +751,9 @@ function PedidoDrawer({
                 </div>
                 <div>
                   <label className={lbl}>Tipo</label>
-                  <select value={nuevoForm.tipoCliente} onChange={(e) => setNuevo("tipoCliente", e.target.value as TipoCliente)} className={inp}>
+                  <AppSelect value={nuevoForm.tipoCliente} onChange={(e) => setNuevo("tipoCliente", e.target.value as TipoCliente)}>
                     {tiposCliente.map((t) => <option key={t}>{t}</option>)}
-                  </select>
+                  </AppSelect>
                 </div>
               </div>
               <div>
@@ -665,7 +856,9 @@ export default function VentasProgramacionPage() {
   }, [allProgs]);
 
   const clientesList = useMemo(() => {
-    const fromClientes = rawClientes.flatMap((c) => [c.razonSocial, c.nombreComercial].filter(Boolean)) as string[];
+    const fromClientes = rawClientes
+      .flatMap((c) => [c.razonSocial, c.nombreComercial].filter(Boolean))
+      .map((n) => (n as string).trim().toUpperCase().replace(/\s+/g, " "));
     return Array.from(new Set(fromClientes)).sort();
   }, [rawClientes]);
 
@@ -770,6 +963,19 @@ export default function VentasProgramacionPage() {
     setObrasData((prev) => [...prev, doc]);
   }
 
+  async function syncClienteM3(clienteNorm: string, deltam3: number, dia: string) {
+    if (!deltam3) return;
+    const found = rawClientes.find(
+      (c) => c.razonSocial.trim().toUpperCase().replace(/\s+/g, " ") === clienteNorm,
+    );
+    if (!found?.id) return;
+    const nuevosM3 = Math.max(0, (found.m3Acumulados ?? 0) + deltam3);
+    await upsertDocument(COLLECTIONS.clientes, found.id, { m3Acumulados: nuevosM3, ultimaCompra: dia });
+    setRawClientes((prev) =>
+      prev.map((c) => (c.id === found.id ? { ...c, m3Acumulados: nuevosM3, ultimaCompra: dia } : c)),
+    );
+  }
+
   async function handleSaveCliente(f: NuevoClienteForm): Promise<string> {
     const id = `CL-${Date.now()}`;
     const razonSocial = f.razonSocial.trim().toUpperCase().replace(/\s+/g, " ");
@@ -828,6 +1034,7 @@ export default function VentasProgramacionPage() {
         precioM3Bomba,
       };
       await upsertDocument(COLLECTIONS.programaciones, existingId, withPlantaTag(merged));
+      void syncClienteM3(merged.cliente, (m3 ?? 0) - (current.m3Totales ?? 0), form.dia);
       if (form.obraNombre.trim()) void autoSaveObra(form.cliente, form.obraNombre, form.direccion);
       window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", title: "Guardado", message: "Pedido actualizado." } }));
     } else {
@@ -861,6 +1068,7 @@ export default function VentasProgramacionPage() {
         historial: [{ fase: "Creado", fecha: new Date().toISOString(), usuario: vendedorNombre }],
       };
       await upsertDocument(COLLECTIONS.programaciones, id, withPlantaTag(newProg));
+      void syncClienteM3(newProg.cliente, m3 ?? 0, form.dia);
       if (form.obraNombre.trim()) void autoSaveObra(form.cliente, form.obraNombre, form.direccion);
       window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", title: "Pedido creado", message: `${form.cliente} — en espera de asignación.` } }));
       // Fire-and-forget: sync to SGP in background (non-blocking)
@@ -1363,10 +1571,12 @@ export default function VentasProgramacionPage() {
         prog={editing}
         clientesList={clientesList}
         obrasData={obrasData}
+        rawClientes={rawClientes}
         vendedorNombre={vendedorNombre}
         onClose={() => { setShowDrawer(false); setEditing(null); }}
         onSave={handleSave}
         onSaveCliente={handleSaveCliente}
+        onSaveObra={(cliente, nombre, direccion) => void autoSaveObra(cliente, nombre, direccion)}
       />
     </div>
   );

@@ -6,6 +6,7 @@ import { upsertDocument, deleteDocument, getCollectionDocs, COLLECTIONS } from "
 import { useCollectionWithLoading } from "@/lib/useCollection";
 import type { Cliente } from "@/lib/crmClientes";
 import { migrarObras, type ResultadoMigracion } from "@/lib/migraciones";
+import AppSelect from "@/components/AppSelect";
 
 interface Obra {
   id: string;
@@ -186,14 +187,10 @@ export default function CatalogoObrasPage() {
             className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg pl-8 pr-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229] placeholder-gray-600"
           />
         </div>
-        <select
-          value={filterCliente}
-          onChange={(e) => setFilterCliente(e.target.value)}
-          className="bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-        >
+        <AppSelect dark value={filterCliente} onChange={(e) => setFilterCliente(e.target.value)}>
           <option value="">Todos los clientes</option>
           {clientesDisponibles.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
+        </AppSelect>
         <span className="text-xs text-gray-500 ml-auto">{filtered.length} obra{filtered.length !== 1 ? "s" : ""}</span>
       </div>
 

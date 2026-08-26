@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { CheckCircle, ChevronDown, ChevronUp, Loader2, Send, Wifi, XCircle } from "lucide-react";
+import AppSelect from "@/components/AppSelect";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -190,10 +191,10 @@ export default function SgpTestPage() {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className={lbl}>Planta a probar</label>
-            <select value={planta} onChange={e => setPlanta(e.target.value as "Allende" | "Pesquería")} className={inp}>
+            <AppSelect dark value={planta} onChange={e => setPlanta(e.target.value as "Allende" | "Pesquería")}>
               <option value="Allende">Allende</option>
               <option value="Pesquería">Pesquería</option>
-            </select>
+            </AppSelect>
           </div>
           <div>
             <label className={lbl}>Usuario (pw_usuario)</label>

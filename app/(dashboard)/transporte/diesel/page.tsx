@@ -10,6 +10,7 @@ import {
   DollarSign, Download, Fuel, Gauge, MapPin, MessageSquare,
   Pencil, Plus, Receipt, Search, Shield, Trash2, Truck, X,
 } from "lucide-react";
+import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
 import { upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
 import { todayCST } from "@/lib/dateUtils";
@@ -258,10 +259,10 @@ function FormDrawer({ open, onClose, onSave, unidadesList, editing, lastKmByUnid
             </div>
             <div className="mt-3">
               <label className={lbl}>Unidad {req}</label>
-              <select value={form.unidad} onChange={(e) => handleUnidadChange(e.target.value)} className={inp("unidad")}>
+              <AppSelect value={form.unidad} onChange={(e) => handleUnidadChange(e.target.value)}>
                 <option value="">Seleccionar unidad…</option>
                 {unidadesList.map((u) => <option key={u} value={u}>{u}</option>)}
-              </select>
+              </AppSelect>
               {errors.unidad && <p className="mt-1 text-xs text-red-400">{errors.unidad}</p>}
             </div>
           </fieldset>
@@ -786,10 +787,9 @@ export default function DieselPage() {
         </div>
 
         {/* Unidad */}
-        <select value={filterUnidad} onChange={(e) => setFilterUnidad(e.target.value)}
-          className="bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 text-xs rounded-lg px-2.5 py-2 focus:outline-none focus:border-[#CC2229]/60 cursor-pointer">
+        <AppSelect dark compact value={filterUnidad} onChange={(e) => setFilterUnidad(e.target.value)}>
           {allUnidades.map((u) => <option key={u}>{u}</option>)}
-        </select>
+        </AppSelect>
 
         {hasFilters && (
           <button onClick={() => { setFilterUnidad("Todas"); setFilterCombustible("Todos"); setQuery(""); }}

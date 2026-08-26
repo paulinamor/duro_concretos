@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertTriangle, CalendarDays, ChevronLeft, ChevronRight,
+  AlertTriangle, CalendarDays, ChevronDown, ChevronLeft, ChevronRight,
   Clock, Download, Expand, ExternalLink, History, MapPin, MessageSquare, Navigation, Palette, Plus, Search, Shrink, UserRound, X,
 } from "lucide-react";
 import ExcelView from "./ExcelView";
 import type { ExcelProg } from "./ExcelView";
+import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
 import ClienteCombobox from "@/components/ClienteCombobox";
 import { getCollectionDocs, subscribeToCollection, upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
@@ -95,6 +96,14 @@ interface Programacion {
   notasAcceso?: string;
   vehiculoSamsaraId?: string;
   rowColor?: string;
+  nombreObra?: string;
+}
+
+interface Obra {
+  id: string;
+  cliente: string;
+  nombre: string;
+  direccion: string;
 }
 
 interface ChoferFormEntry {
@@ -129,6 +138,7 @@ interface FormState {
   notas: string;
   notasVendedor: string;
   rowColor: string;
+  obraNombre: string;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -248,7 +258,7 @@ function emptyForm(dia: string): FormState {
     aditivo: "", tuberiaExtra: "", permisosOC: "",
     recibo: "", credito: "", fact: "", pagado: "", montoPagado: "", metodoPago: "", fechaPago: "",
     exhibiciones: "", montoPago2: "", fechaPago2: "", metodoPago2: "",
-    notas: "", notasVendedor: "", rowColor: "",
+    notas: "", notasVendedor: "", rowColor: "", obraNombre: "",
   };
 }
 
@@ -286,6 +296,7 @@ function formFromProg(p: Programacion): FormState {
   return {
     dia: p.dia, vendedor: p.vendedor, diaHoraPedido: p.diaHoraPedido, muestras: p.muestras,
     cliente: p.cliente, telefono: p.telefono, direccion: p.direccion, paraUso: p.paraUso,
+    obraNombre: p.nombreObra ?? "",
     hora: p.hora, hsr: p.hsr, choferes,
     tiempoExtraDescarga: p.tiempoExtraDescarga,
     extras: p.extras, tdBom: p.tdBom, resistencia: p.resistencia, color: p.color,
@@ -420,12 +431,12 @@ function ChoferCard({
       <div className="grid grid-cols-2 gap-3">
         <div className="col-span-2">
           <label className={lbl}>Chofer</label>
-          <select value={entry.chofer} onChange={(e) => set("chofer", e.target.value)} className={inp}>
+          <AppSelect value={entry.chofer} onChange={(e) => set("chofer", e.target.value)}>
             <option value="">Sin asignar</option>
             {operadoresList.map((o) => (
               <option key={o.id} value={o.nombre}>{o.nombre}</option>
             ))}
-          </select>
+          </AppSelect>
         </div>
         <div>
           <label className={lbl}>M3</label>
@@ -433,7 +444,7 @@ function ChoferCard({
         </div>
         <div>
           <label className={lbl}>CR</label>
-          <select value={entry.cr} onChange={(e) => set("cr", e.target.value)} className={inp}>
+          <AppSelect value={entry.cr} onChange={(e) => set("cr", e.target.value)}>
             <option value="">— Sin asignar —</option>
             {revolveList.map((eco) => (
               <option key={eco} value={eco}>{eco}</option>
@@ -441,7 +452,7 @@ function ChoferCard({
             {entry.cr && !revolveList.includes(entry.cr) && (
               <option value={entry.cr}>{entry.cr}</option>
             )}
-          </select>
+          </AppSelect>
         </div>
         <div>
           <label className={lbl}>Hora salida</label>
@@ -609,7 +620,7 @@ function HistorialDrawer({
 // ─── FormDrawer ───────────────────────────────────────────────────────────────
 
 function FormDrawer({
-  open, onClose, onSave, onDelete, initial, dia, operadoresList, clientesList, revolveList,
+  open, onClose, onSave, onDelete, initial, dia, operadoresList, clientesList, revolveList, obrasData,
 }: {
   open: boolean;
   onClose: () => void;
@@ -620,10 +631,19 @@ function FormDrawer({
   operadoresList: Pick<Operador, "id" | "nombre">[];
   clientesList: string[];
   revolveList: string[];
+  obrasData: Obra[];
 }) {
   const [form, setForm] = useState<FormState>(() => emptyForm(dia));
   const [saving, setSaving] = useState(false);
   const [showHistorial, setShowHistorial] = useState(false);
+
+  // Obra selector state
+  const [obraOpen, setObraOpen] = useState(false);
+  const [obraQuery, setObraQuery] = useState("");
+  const [obraNewOpen, setObraNewOpen] = useState(false);
+  const [obraNewNombre, setObraNewNombre] = useState("");
+  const [obraNewDireccion, setObraNewDireccion] = useState("");
+  const obraContainerRef = useRef<HTMLDivElement>(null);
 
   const sessionInForm   = getStoredSession();
   const isAdminInForm   = sessionInForm?.role === "admin";
@@ -634,10 +654,36 @@ function FormDrawer({
   const canEditVendorNotas = isAdminInForm || isVendorOfRecord || vendedorDeRegistro === "";
 
   useEffect(() => {
+    function handle(e: MouseEvent) {
+      if (obraContainerRef.current && !obraContainerRef.current.contains(e.target as Node)) {
+        setObraOpen(false); setObraNewOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, []);
+
+  useEffect(() => {
     if (!open) return;
     setForm(initial ? formFromProg(initial) : emptyForm(dia));
     setShowHistorial(false);
+    setObraOpen(false); setObraQuery(""); setObraNewOpen(false);
+    setObraNewNombre(""); setObraNewDireccion("");
   }, [open, initial, dia]);
+
+  const obrasSugeridas = useMemo(() => {
+    if (!form.cliente) return [];
+    const cl = form.cliente.toLowerCase();
+    return obrasData
+      .filter((o) => o.cliente.toLowerCase() === cl)
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+  }, [obrasData, form.cliente]);
+
+  const obrasFiltradas = useMemo(() => {
+    if (!obraQuery.trim()) return obrasSugeridas;
+    const q = obraQuery.toLowerCase();
+    return obrasSugeridas.filter((o) => o.nombre.toLowerCase().includes(q));
+  }, [obrasSugeridas, obraQuery]);
 
   const set = (k: keyof Omit<FormState, "choferes" | "aplicarFactorBomba">, v: string) =>
     setForm((p) => ({ ...p, [k]: v }));
@@ -750,6 +796,7 @@ function FormDrawer({
         notas: form.notas.trim(),
         notasVendedor: form.notasVendedor.trim(),
         rowColor: form.rowColor,
+        nombreObra: form.obraNombre.trim() || undefined,
       };
 
       // ── Registro de historial ──────────────────────────────────────────────
@@ -892,6 +939,113 @@ function FormDrawer({
               <label className={lbl}>Para uso</label>
               <input type="text" value={form.paraUso} onChange={(e) => set("paraUso", e.target.value)} placeholder="Losa, zapata, muro…" className={inp} />
             </div>
+            {/* Nombre de la obra */}
+            <div ref={obraContainerRef} className="col-span-2 relative">
+              <label className={lbl}>
+                Nombre de la obra
+                {obrasSugeridas.length > 0 && (
+                  <span className="ml-2 text-[10px] font-normal normal-case tracking-normal text-blue-400">
+                    {obrasSugeridas.length} guardada{obrasSugeridas.length !== 1 ? "s" : ""}
+                  </span>
+                )}
+              </label>
+              <div
+                role="button" tabIndex={form.cliente ? 0 : -1}
+                onClick={() => { if (form.cliente) setObraOpen((v) => !v); }}
+                onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && form.cliente) { e.preventDefault(); setObraOpen((v) => !v); } }}
+                className={`flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-sm cursor-pointer select-none transition-colors ${
+                  obraOpen ? "border-[#CC2229]/60 ring-1 ring-[#CC2229]/20" : "border-gray-200 hover:border-gray-300"
+                } ${!form.cliente ? "opacity-50 cursor-not-allowed bg-gray-50" : "bg-white"}`}
+              >
+                <span className={`flex-1 truncate ${form.obraNombre ? "text-gray-900 font-medium" : "text-gray-400"}`}>
+                  {form.obraNombre || (form.cliente ? "Seleccionar o agregar obra…" : "Selecciona un cliente primero")}
+                </span>
+                {form.obraNombre && (
+                  <button type="button" onMouseDown={(e) => { e.stopPropagation(); set("obraNombre", ""); setObraQuery(""); }}
+                    className="p-0.5 text-gray-300 hover:text-gray-500 cursor-pointer transition-colors">
+                    <X size={11} />
+                  </button>
+                )}
+                <ChevronDown size={13} className={`text-gray-400 shrink-0 transition-transform duration-150 ${obraOpen ? "rotate-180" : ""}`} />
+              </div>
+              {obraOpen && (
+                <div className="absolute z-[300] mt-1 w-full rounded-xl border border-gray-200 bg-white overflow-hidden"
+                  style={{ boxShadow: "0 8px 24px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.06)" }}>
+                  {obrasSugeridas.length > 0 && (
+                    <div className="p-2 border-b border-gray-100">
+                      <input autoFocus value={obraQuery} onChange={(e) => setObraQuery(e.target.value)}
+                        placeholder="Buscar obra…"
+                        className="w-full text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20" />
+                    </div>
+                  )}
+                  <ul className="max-h-52 overflow-y-auto py-1">
+                    {obrasFiltradas.length === 0 && !obraNewOpen && (
+                      <li className="px-4 py-3 text-sm text-gray-400 text-center">
+                        {obrasSugeridas.length === 0 ? "Sin obras registradas para este cliente" : "Sin resultados"}
+                      </li>
+                    )}
+                    {obrasFiltradas.map((o) => (
+                      <li key={o.id}>
+                        <button type="button"
+                          onMouseDown={() => {
+                            set("obraNombre", o.nombre);
+                            if (o.direccion) set("direccion", o.direccion);
+                            setObraOpen(false); setObraQuery("");
+                          }}
+                          className="w-full text-left px-3.5 py-2.5 hover:bg-gray-50 transition-colors cursor-pointer">
+                          <div className="text-sm font-medium text-gray-800">{o.nombre}</div>
+                          {o.direccion && (
+                            <div className="text-xs text-gray-400 truncate mt-0.5">
+                              {o.direccion.startsWith("http") ? "Ubicación en Maps guardada" : o.direccion}
+                            </div>
+                          )}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  {!obraNewOpen && (
+                    <div className="border-t border-gray-100 px-3 py-2">
+                      <button type="button"
+                        onMouseDown={() => { setObraNewOpen(true); setObraNewNombre(obraQuery); setObraNewDireccion(""); }}
+                        className="text-xs font-semibold text-[#CC2229] hover:text-[#B01E24] py-1 cursor-pointer transition-colors">
+                        + Agregar nueva obra
+                      </button>
+                    </div>
+                  )}
+                  {obraNewOpen && (
+                    <div className="border-t border-gray-100 bg-gray-50 p-3 space-y-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-2">Nueva obra</p>
+                      <input value={obraNewNombre} onChange={(e) => setObraNewNombre(e.target.value)}
+                        placeholder="Nombre de la obra *"
+                        className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 bg-white focus:outline-none focus:border-[#CC2229]/60" />
+                      <input value={obraNewDireccion} onChange={(e) => setObraNewDireccion(e.target.value)}
+                        placeholder="Dirección o link de Maps"
+                        className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 bg-white focus:outline-none focus:border-[#CC2229]/60" />
+                      <div className="flex gap-2 pt-1">
+                        <button type="button" onMouseDown={() => setObraNewOpen(false)}
+                          className="flex-1 text-sm py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-100 cursor-pointer">Cancelar</button>
+                        <button type="button" disabled={!obraNewNombre.trim()}
+                          onMouseDown={async () => {
+                            if (!obraNewNombre.trim()) return;
+                            const nombre = obraNewNombre.trim().toUpperCase().replace(/\s+/g, " ");
+                            const direccion = obraNewDireccion.trim();
+                            set("obraNombre", nombre);
+                            if (direccion) set("direccion", direccion);
+                            const id = `obra-${Date.now()}`;
+                            const doc: Obra = { id, cliente: form.cliente.trim().toUpperCase().replace(/\s+/g, " "), nombre, direccion };
+                            try { await (await import("@/lib/db")).upsertDocument(COLLECTIONS.obras, id, doc); } catch { /* ignore */ }
+                            setObraOpen(false); setObraNewOpen(false); setObraQuery("");
+                          }}
+                          className="flex-1 text-sm py-1.5 rounded-lg bg-[#CC2229] text-white hover:bg-[#B01E24] disabled:opacity-50 cursor-pointer font-medium">
+                          Guardar
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             <div className="col-span-2">
               <label className={lbl}>Dirección</label>
               <input type="text" value={form.direccion} onChange={(e) => set("direccion", e.target.value)} placeholder="Dirección de la obra" className={inp} />
@@ -1065,12 +1219,12 @@ function FormDrawer({
             </div>
             <div>
               <label className={lbl}>Pagado</label>
-              <select value={form.pagado} onChange={(e) => set("pagado", e.target.value)} className={inp}>
+              <AppSelect value={form.pagado} onChange={(e) => set("pagado", e.target.value)}>
                 <option value="">—</option>
                 <option value="Sí">Sí</option>
                 <option value="No">No</option>
                 <option value="Parcial">Parcial</option>
-              </select>
+              </AppSelect>
             </div>
             {form.pagado === "Parcial" && (
               <div>
@@ -1116,12 +1270,12 @@ function FormDrawer({
                 </div>
                 <div>
                   <label className={lbl}>Método</label>
-                  <select value={form.metodoPago} onChange={(e) => set("metodoPago", e.target.value)} className={inp}>
+                  <AppSelect value={form.metodoPago} onChange={(e) => set("metodoPago", e.target.value)}>
                     <option value="">—</option>
                     {["Efectivo", "Transferencia", "Cheque", "Crédito", "Por definir"].map((m) => (
                       <option key={m} value={m}>{m}</option>
                     ))}
-                  </select>
+                  </AppSelect>
                 </div>
               </div>
             )}
@@ -1137,12 +1291,12 @@ function FormDrawer({
                     </div>
                     <div>
                       <label className={lbl}>Método</label>
-                      <select value={form.metodoPago} onChange={(e) => set("metodoPago", e.target.value)} className={inp}>
+                      <AppSelect value={form.metodoPago} onChange={(e) => set("metodoPago", e.target.value)}>
                         <option value="">—</option>
                         {["Efectivo", "Transferencia", "Cheque", "Crédito", "Por definir"].map((m) => (
                           <option key={m} value={m}>{m}</option>
                         ))}
-                      </select>
+                      </AppSelect>
                     </div>
                   </div>
                 </div>
@@ -1166,12 +1320,12 @@ function FormDrawer({
                       </div>
                       <div>
                         <label className={lbl}>Método</label>
-                        <select value={form.metodoPago2} onChange={(e) => set("metodoPago2", e.target.value)} className={inp}>
+                        <AppSelect value={form.metodoPago2} onChange={(e) => set("metodoPago2", e.target.value)}>
                           <option value="">—</option>
                           {["Efectivo", "Transferencia", "Cheque", "Crédito", "Por definir"].map((m) => (
                             <option key={m} value={m}>{m}</option>
                           ))}
-                        </select>
+                        </AppSelect>
                       </div>
                     </div>
                   </div>
@@ -1821,6 +1975,7 @@ export default function ProgramacionPage() {
   const [operadoresList, setOperadoresList] = useState<Pick<Operador, "id" | "nombre">[]>([]);
   const [clientesList, setClientesList] = useState<string[]>([]);
   const [revolveList, setRevolveList] = useState<string[]>([]);
+  const [obrasData, setObrasData] = useState<Obra[]>([]);
   const [clientesSet, setClientesSet] = useState<Set<string>>(new Set());
   const [diaActivo, setDiaActivo] = useState(todayISO);
   const [viewMode, setViewMode] = useState<ViewMode>("dia");
@@ -1868,6 +2023,7 @@ export default function ProgramacionPage() {
       // but seed it from the clientes collection immediately.
       setClientesList(Array.from(new Set(fromClientes)).sort());
     }).catch((err) => console.error("Error cargando datos estáticos:", err));
+    getCollectionDocs<Obra>(COLLECTIONS.obras).then(setObrasData).catch(() => {});
   }, []);
 
   // Real-time programaciones subscription
@@ -2542,6 +2698,7 @@ export default function ProgramacionPage() {
         operadoresList={operadoresList}
         clientesList={clientesList}
         revolveList={revolveList}
+        obrasData={obrasData}
       />
     </div>
   );

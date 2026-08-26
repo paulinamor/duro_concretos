@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getFacturApiKey, FACTURAPI_BASE, type Empresa } from "@/lib/facturapi";
 
 // Documentación FacturAPI nómina:
 // https://docs.facturapi.io/docs/guides/invoices/nomina/
@@ -25,15 +26,18 @@ export interface TimbrarNominaRequest {
   totalInfonavit?: number;
   // Serie para el CFDI
   serie?: string;                 // default "NOM"
+  empresa?: Empresa;              // "duro" | "grupo_jc" — default "duro"
 }
 
 export async function POST(req: NextRequest) {
   try {
     const body: TimbrarNominaRequest = await req.json();
 
-    const apiKey = process.env.FACTURAPI_KEY;
-    if (!apiKey) {
-      return NextResponse.json({ error: "FACTURAPI_KEY no configurada" }, { status: 500 });
+    let apiKey: string;
+    try {
+      apiKey = getFacturApiKey(body.empresa ?? "duro");
+    } catch (e) {
+      return NextResponse.json({ error: (e as Error).message }, { status: 500 });
     }
 
     // Construir el payload CFDI nómina para FacturAPI
@@ -129,7 +133,7 @@ export async function POST(req: NextRequest) {
       ],
     };
 
-    const resp = await fetch("https://www.facturapi.io/v2/invoices", {
+    const resp = await fetch(`${FACTURAPI_BASE}/invoices`, {
       method:  "POST",
       headers: {
         Authorization:  `Bearer ${apiKey}`,
@@ -150,8 +154,8 @@ export async function POST(req: NextRequest) {
       folio:     data.folio_number,
       serie:     data.series,
       fechaTimbrado: data.stamp?.date,
-      pdfUrl:    `https://www.facturapi.io/v2/invoices/${data.id}/pdf`,
-      xmlUrl:    `https://www.facturapi.io/v2/invoices/${data.id}/xml`,
+      pdfUrl:    `${FACTURAPI_BASE}/invoices/${data.id}/pdf`,
+      xmlUrl:    `${FACTURAPI_BASE}/invoices/${data.id}/xml`,
       id:        data.id,
     });
   } catch (err) {

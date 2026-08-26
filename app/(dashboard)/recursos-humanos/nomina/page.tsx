@@ -6,6 +6,7 @@ import {
   Loader2, Plus, ReceiptText, Search, Send, UsersRound, X,
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
+import AppSelect from "@/components/AppSelect";
 import StatusBadge from "@/components/StatusBadge";
 import { getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
 import type { DesglosePago, Periodicidad } from "@/lib/nomina/calcular";
@@ -420,11 +421,11 @@ function CalcularDrawer({ onClose, onGuardar }: CalcularDrawerProps) {
               </div>
               <div>
                 <label className={lbl}>Periodicidad</label>
-                <select className={inp} value={form.periodicidad} onChange={(e) => set("periodicidad", e.target.value)}>
+                <AppSelect value={form.periodicidad} onChange={(e) => set("periodicidad", e.target.value)}>
                   {PERIODICIDADES.map((p) => (
                     <option key={p.value} value={p.value}>{p.label}</option>
                   ))}
-                </select>
+                </AppSelect>
               </div>
               <div>
                 <label className={lbl}>Fecha de pago</label>

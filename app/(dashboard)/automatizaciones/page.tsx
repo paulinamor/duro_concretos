@@ -12,6 +12,7 @@ import {
   Settings2,
   Zap,
 } from "lucide-react";
+import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
 import StatusBadge from "@/components/StatusBadge";
 import {
@@ -104,13 +105,9 @@ export default function AutomatizacionesPage() {
             className="w-80 max-w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg pl-9 pr-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
           />
         </div>
-        <select
-          value={area}
-          onChange={(e) => setArea(e.target.value as "Todas" | AutomationArea)}
-          className="bg-[#1A1A1A] border border-[#3A3A3A] text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-        >
+        <AppSelect dark value={area} onChange={(e) => setArea(e.target.value as "Todas" | AutomationArea)}>
           {areaOptions.map((option) => <option key={option}>{option}</option>)}
-        </select>
+        </AppSelect>
         <span className="text-gray-500 text-xs ml-auto">{filtered.length} reglas</span>
       </div>
 

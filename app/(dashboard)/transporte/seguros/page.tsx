@@ -6,6 +6,7 @@ import {
   FolderOpen, Image, Plus, Search, Shield, ShieldOff, Trash2, Upload,
   X, XCircle,
 } from "lucide-react";
+import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
 import HScrollTable from "@/components/HScrollTable";
 import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS, where } from "@/lib/db";
@@ -409,13 +410,9 @@ function DocumentosDrawer({
             <div>
               <div className="flex items-center gap-2 mb-3">
                 <label className="block text-[10px] font-semibold uppercase tracking-widest text-gray-500">Categoría</label>
-                <select
-                  value={categoria}
-                  onChange={(e) => setCategoria(e.target.value)}
-                  className="text-xs bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-gray-700 focus:outline-none focus:border-blue-400"
-                >
+                <AppSelect compact value={categoria} onChange={(e) => setCategoria(e.target.value)}>
                   {DOC_CATS.map((c) => <option key={c}>{c}</option>)}
-                </select>
+                </AppSelect>
               </div>
               <div
                 onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
@@ -721,9 +718,9 @@ function FormDrawer({
             </div>
             <div>
               <label className={lbl}>Tipo de unidad</label>
-              <select value={form.tipoUnidad} onChange={(e) => set("tipoUnidad", e.target.value)} className={inp}>
+              <AppSelect value={form.tipoUnidad} onChange={(e) => set("tipoUnidad", e.target.value)}>
                 {TIPOS_UNIDAD.map((t) => <option key={t}>{t}</option>)}
-              </select>
+              </AppSelect>
             </div>
             <div>
               <label className={lbl}>Placa</label>
@@ -731,9 +728,9 @@ function FormDrawer({
             </div>
             <div>
               <label className={lbl}>Estado placa</label>
-              <select value={form.estadoPlaca} onChange={(e) => set("estadoPlaca", e.target.value)} className={inp}>
+              <AppSelect value={form.estadoPlaca} onChange={(e) => set("estadoPlaca", e.target.value)}>
                 {ESTADOS_MX.map((e) => <option key={e}>{e}</option>)}
-              </select>
+              </AppSelect>
             </div>
             <div>
               <label className={lbl}>Marca</label>
@@ -766,11 +763,11 @@ function FormDrawer({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={lbl}>Estatus</label>
-              <select value={form.estatus} onChange={(e) => set("estatus", e.target.value as EstatusUnidad)} className={inp}>
+              <AppSelect value={form.estatus} onChange={(e) => set("estatus", e.target.value as EstatusUnidad)}>
                 <option value="Activo">Activo</option>
                 <option value="Mantenimiento">Mantenimiento</option>
                 <option value="Baja">Baja</option>
-              </select>
+              </AppSelect>
             </div>
             <div>
               <label className={lbl}>Capacidad m³</label>
@@ -824,9 +821,9 @@ function FormDrawer({
             </div>
             <div>
               <label className={lbl}>Status póliza</label>
-              <select value={form.statusPoliza} onChange={(e) => set("statusPoliza", e.target.value as StatusPoliza)} className={inp}>
+              <AppSelect value={form.statusPoliza} onChange={(e) => set("statusPoliza", e.target.value as StatusPoliza)}>
                 {STATUS_POLIZA_OPTS.map((s) => <option key={s}>{s}</option>)}
-              </select>
+              </AppSelect>
             </div>
             <div className="col-span-2">
               <label className={lbl}>Vigencia</label>
@@ -1084,18 +1081,16 @@ export default function SegurosPage() {
               className="w-full bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 text-xs rounded-lg pl-7 pr-3 py-1.5 focus:outline-none focus:border-[#CC2229]/60 placeholder-gray-600"
             />
           </div>
-          <select value={filterTipo} onChange={(e) => setFilterTipo(e.target.value)}
-            className="bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[#CC2229]/60">
+          <AppSelect dark compact value={filterTipo} onChange={(e) => setFilterTipo(e.target.value)}>
             {tipos.map((t) => <option key={t}>{t}</option>)}
-          </select>
-          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as VigenciaStatus | "todos")}
-            className="bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[#CC2229]/60">
+          </AppSelect>
+          <AppSelect dark compact value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as VigenciaStatus | "todos")}>
             <option value="todos">Todos los estatus</option>
             <option value="vigente">Vigente</option>
             <option value="por_vencer">Por vencer</option>
             <option value="vencido">Vencido</option>
             <option value="sin_registro">Sin registro</option>
-          </select>
+          </AppSelect>
           <span className="text-xs text-gray-600 ml-auto">{filtered.length} unidades</span>
         </div>
 

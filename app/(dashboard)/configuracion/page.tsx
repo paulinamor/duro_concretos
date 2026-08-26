@@ -13,6 +13,7 @@ import {
   COLLECTIONS,
   type UserProfile,
 } from "@/lib/db";
+import AppSelect from "@/components/AppSelect";
 import StatusBadge from "@/components/StatusBadge";
 import { getStoredTheme, setStoredTheme, type AppTheme } from "@/components/ThemeSync";
 import {
@@ -638,52 +639,36 @@ export default function ConfiguracionPage() {
                 )}
                 <div>
                   <label className="block text-sm text-gray-400 mb-1">Rol</label>
-                  <select
-                    value={userDraft.role}
-                    onChange={(event) => setUserDraft({ ...userDraft, role: event.target.value as UserRole })}
-                    className="w-full rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-                  >
+                  <AppSelect dark value={userDraft.role} onChange={(event) => setUserDraft({ ...userDraft, role: event.target.value as UserRole })}>
                     <option value="admin">Administrador</option>
                     <option value="operador">Operador</option>
-                  </select>
+                  </AppSelect>
                 </div>
                 <div>
                   <label className="block text-sm text-gray-400 mb-1">Planta</label>
-                  <select
-                    value={userDraft.planta}
-                    onChange={(event) => setUserDraft({ ...userDraft, planta: event.target.value as Planta })}
-                    className="w-full rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-                  >
+                  <AppSelect dark value={userDraft.planta} onChange={(event) => setUserDraft({ ...userDraft, planta: event.target.value as Planta })}>
                     <option value="Pesquería">Pesquería</option>
                     <option value="Allende">Allende</option>
                     <option value="Todas">Todas (acceso completo)</option>
-                  </select>
+                  </AppSelect>
                   <p className="mt-1 text-xs text-gray-600">Define a qué planta pertenece este usuario.</p>
                 </div>
                 <div>
                   <label className="block text-sm text-gray-400 mb-1">Estatus</label>
-                  <select
-                    value={userDraft.status}
-                    onChange={(event) => setUserDraft({ ...userDraft, status: event.target.value as "Activo" | "Inactivo" })}
-                    className="w-full rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-                  >
+                  <AppSelect dark value={userDraft.status} onChange={(event) => setUserDraft({ ...userDraft, status: event.target.value as "Activo" | "Inactivo" })}>
                     <option>Activo</option>
                     <option>Inactivo</option>
-                  </select>
+                  </AppSelect>
                 </div>
                 <div>
                   <label className="block text-sm text-gray-400 mb-1">Acceso</label>
-                  <select
-                    value={userDraft.modules === "all" ? "all" : "custom"}
-                    onChange={(event) => setUserDraft({
+                  <AppSelect dark value={userDraft.modules === "all" ? "all" : "custom"} onChange={(event) => setUserDraft({
                       ...userDraft,
                       modules: event.target.value === "all" ? "all" : ["/dashboard"],
-                    })}
-                    className="w-full rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-                  >
+                    })}>
                     <option value="custom">Módulos específicos</option>
                     <option value="all">Todos los módulos</option>
-                  </select>
+                  </AppSelect>
                 </div>
               </div>
 

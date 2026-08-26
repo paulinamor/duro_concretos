@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
-  ChevronDown,
   FileSpreadsheet,
   FileText,
   HardHat,
@@ -16,6 +15,7 @@ import {
   Users,
   X,
 } from "lucide-react";
+import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
 import PlantaRequired from "@/components/PlantaRequired";
 import { diasDesdeIngreso, docsProximos, operadoresActivos, type Operador } from "@/lib/operadores";
@@ -199,9 +199,9 @@ function EmpleadoDrawer({ open, editing, onClose, onSave }: {
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className={lbl}>Tipo licencia</label>
-                <select value={form.tipoLicencia} onChange={(e) => set("tipoLicencia", e.target.value)} className={inp}>
+                <AppSelect value={form.tipoLicencia} onChange={(e) => set("tipoLicencia", e.target.value)}>
                   {TIPOS_LICENCIA.map((t) => <option key={t}>{t}</option>)}
-                </select>
+                </AppSelect>
               </div>
               <div>
                 <label className={lbl}>Venc. licencia</label>
@@ -385,15 +385,11 @@ export default function EmpleadosPage() {
             placeholder="Buscar nombre, apodo, puesto, RFC, CURP..."
             className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg pl-9 pr-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229] placeholder-gray-600" />
         </div>
-        <div className="relative">
-          <select value={filtro} onChange={(e) => setFiltro(e.target.value as typeof filtro)}
-            className="appearance-none bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg pl-3 pr-8 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229] cursor-pointer">
-            <option value="Todos">Todos</option>
-            <option value="Activos">Activos</option>
-            <option value="Baja">Dados de baja</option>
-          </select>
-          <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
-        </div>
+        <AppSelect dark value={filtro} onChange={(e) => setFiltro(e.target.value as typeof filtro)}>
+          <option value="Todos">Todos</option>
+          <option value="Activos">Activos</option>
+          <option value="Baja">Dados de baja</option>
+        </AppSelect>
         <span className="text-xs text-gray-500">{filtered.length} empleados</span>
         <div className="ml-auto flex items-center gap-2">
           <button type="button" onClick={exportExcel}

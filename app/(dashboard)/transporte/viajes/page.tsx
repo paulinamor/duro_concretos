@@ -9,6 +9,7 @@ import FormSection from "@/components/FormSection";
 import type { Viaje } from "@/lib/viajes";
 import { COLLECTIONS, getCollectionDocs, upsertDocument } from "@/lib/db";
 import { unidadesDisponibilidad } from "@/lib/disponibilidadCargas";
+import AppSelect from "@/components/AppSelect";
 
 const estados = ["Todos", "Completado", "En ruta", "Cancelado", "Pendiente"];
 
@@ -130,43 +131,43 @@ export default function ViajesPage() {
                 </div>
                 <div>
                   <label className={lbl}>Unidad</label>
-                  <select className={inp}>
+                  <AppSelect>
                     {unidadesDisponibilidad.map((u) => <option key={u}>{u}</option>)}
-                  </select>
+                  </AppSelect>
                 </div>
                 <div>
                   <label className={lbl}>Chofer</label>
-                  <select className={inp}>
+                  <AppSelect>
                     {operadoresOptions.filter((o) => o !== "Todos").map((o) => <option key={o}>{o}</option>)}
-                  </select>
+                  </AppSelect>
                 </div>
                 <div>
                   <label className={lbl}>Estado</label>
-                  <select className={inp}>
+                  <AppSelect>
                     <option>Pendiente</option>
                     <option>En ruta</option>
                     <option>Completado</option>
-                  </select>
+                  </AppSelect>
                 </div>
               </FormSection>
               <FormSection title="Carga y destino">
                 <div>
                   <label className={lbl}>Destino</label>
-                  <select className={inp}>
+                  <AppSelect>
                     {["Monterrey Centro", "San Nicolás", "Apodaca Industrial", "García NL", "Guadalupe NL", "Santa Catarina"].map((d) => <option key={d}>{d}</option>)}
-                  </select>
+                  </AppSelect>
                 </div>
                 <div>
                   <label className={lbl}>M3 a entregar</label>
-                  <select className={inp}>
+                  <AppSelect>
                     {["5.0", "5.5", "6.0", "6.5", "7.0", "7.5", "8.0", "8.5"].map((m3) => <option key={m3}>{m3}</option>)}
-                  </select>
+                  </AppSelect>
                 </div>
                 <div>
                   <label className={lbl}>Precio por M3 ($)</label>
-                  <select className={inp}>
+                  <AppSelect>
                     {["1850", "1900", "2000"].map((precio) => <option key={precio}>{precio}</option>)}
-                  </select>
+                  </AppSelect>
                 </div>
               </FormSection>
               <div>
@@ -182,20 +183,12 @@ export default function ViajesPage() {
       <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl p-4 flex flex-wrap gap-3 items-center">
         <Filter size={16} className="text-gray-400" />
         <div className="flex flex-wrap gap-3">
-          <select
-            value={filterEstado}
-            onChange={(e) => setFilterEstado(e.target.value)}
-            className="bg-[#1A1A1A] border border-[#3A3A3A] text-white text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-          >
+          <AppSelect dark value={filterEstado} onChange={(e) => setFilterEstado(e.target.value)} wrapperClassName="">
             {estados.map((e) => <option key={e}>{e}</option>)}
-          </select>
-          <select
-            value={filterOperador}
-            onChange={(e) => setFilterOperador(e.target.value)}
-            className="bg-[#1A1A1A] border border-[#3A3A3A] text-white text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-          >
+          </AppSelect>
+          <AppSelect dark value={filterOperador} onChange={(e) => setFilterOperador(e.target.value)} wrapperClassName="">
             {operadoresOptions.map((o) => <option key={o}>{o}</option>)}
-          </select>
+          </AppSelect>
         </div>
         <span className="text-gray-500 text-xs ml-auto">{filtered.length} registros</span>
       </div>

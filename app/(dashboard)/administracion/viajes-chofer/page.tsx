@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { CalendarDays, Download, Search, Truck, UserRound } from "lucide-react";
+import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
 import StatusBadge from "@/components/StatusBadge";
 import { driverTrips, getDriverTripSummaries } from "@/lib/driverTrips";
@@ -53,13 +54,9 @@ export default function ViajesChoferPage() {
       </div>
 
       <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl p-4 flex flex-wrap gap-3 items-center">
-        <select
-          value={operador}
-          onChange={(e) => setOperador(e.target.value)}
-          className="bg-[#1A1A1A] border border-[#3A3A3A] text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-        >
+        <AppSelect dark value={operador} onChange={(e) => setOperador(e.target.value)}>
           {operadores.map((item) => <option key={item}>{item}</option>)}
-        </select>
+        </AppSelect>
         <div className="relative">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
           <input
