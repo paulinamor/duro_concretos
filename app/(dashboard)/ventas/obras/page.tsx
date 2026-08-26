@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowDownToLine, MapPin, Pencil, Plus, Search, Trash2, X } from "lucide-react";
-import { upsertDocument, deleteDocument, getCollectionDocs, COLLECTIONS } from "@/lib/db";
+import { ArrowDownToLine, GitMerge, MapPin, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { upsertDocument, deleteDocument, getCollectionDocs, COLLECTIONS, where } from "@/lib/db";
 import { useCollectionWithLoading } from "@/lib/useCollection";
 import type { Cliente } from "@/lib/crmClientes";
 import { migrarObras, type ResultadoMigracion } from "@/lib/migraciones";
@@ -14,6 +14,13 @@ interface Obra {
   nombre: string;
   direccion: string;
 }
+
+interface Programacion {
+  id: string;
+  nombreObra?: string;
+}
+
+const norm = (s: string) => s.trim().toUpperCase().replace(/\s+/g, " ");
 
 const emptyForm = (): { cliente: string; nombre: string; direccion: string } => ({
   cliente: "", nombre: "", direccion: "",
@@ -31,6 +38,13 @@ export default function CatalogoObrasPage() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [migrating, setMigrating] = useState(false);
   const [migracionResult, setMigracionResult] = useState<ResultadoMigracion | null>(null);
+
+  // Fusionar duplicados
+  const [showMerge, setShowMerge] = useState(false);
+  const [merging, setMerging] = useState(false);
+  const [mergeProgress, setMergeProgress] = useState("");
+  // keepId[groupKey] = id de la obra que se conserva
+  const [keepId, setKeepId] = useState<Record<string, string>>({});
 
   useEffect(() => {
     getCollectionDocs<Cliente>(COLLECTIONS.clientes).then((docs) => {
@@ -52,6 +66,86 @@ export default function CatalogoObrasPage() {
       return true;
     }).sort((a, b) => a.cliente.localeCompare(b.cliente, "es") || a.nombre.localeCompare(b.nombre, "es"));
   }, [obras, search, filterCliente]);
+
+  // Grupos de duplicados — misma clave normalizada (cliente + nombre)
+  const duplicateGroups = useMemo(() => {
+    const map = new Map<string, Obra[]>();
+    obras.forEach((o) => {
+      const key = `${norm(o.cliente)}|||${norm(o.nombre)}`;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(o);
+    });
+    return [...map.entries()]
+      .filter(([, group]) => group.length > 1)
+      .map(([key, group]) => ({ key, group }));
+  }, [obras]);
+
+  // Inicializa keepId cuando abre el modal: conserva la que tenga dirección, si no la primera
+  function openMerge() {
+    const initial: Record<string, string> = {};
+    duplicateGroups.forEach(({ key, group }) => {
+      const withDir = group.find((o) => o.direccion?.trim());
+      initial[key] = withDir?.id ?? group[0].id;
+    });
+    setKeepId(initial);
+    setShowMerge(true);
+  }
+
+  async function handleMerge() {
+    setMerging(true);
+    let merged = 0;
+    let progsUpdated = 0;
+    try {
+      for (const { key, group } of duplicateGroups) {
+        const kId = keepId[key] ?? group[0].id;
+        const keeper = group.find((o) => o.id === kId) ?? group[0];
+        const discards = group.filter((o) => o.id !== keeper.id);
+
+        for (const discard of discards) {
+          // Actualizar programaciones que referencian el nombre descartado
+          setMergeProgress(`Actualizando programaciones de "${discard.nombre}"…`);
+          try {
+            const progs = await getCollectionDocs<Programacion>(
+              COLLECTIONS.programaciones,
+              where("nombreObra", "==", discard.nombre),
+            );
+            for (const prog of progs) {
+              await upsertDocument(COLLECTIONS.programaciones, prog.id, { nombreObra: keeper.nombre });
+              progsUpdated++;
+            }
+          } catch {
+            // Si no hay coincidencias exactas, continuar
+          }
+
+          // Eliminar obra duplicada
+          setMergeProgress(`Eliminando duplicado "${discard.nombre}"…`);
+          await deleteDocument(COLLECTIONS.obras, discard.id);
+          merged++;
+        }
+
+        // Si el keeper no tiene dirección pero algún descartado sí tenía, recuperarla
+        if (!keeper.direccion?.trim()) {
+          const withDir = discards.find((d) => d.direccion?.trim());
+          if (withDir) {
+            await upsertDocument(COLLECTIONS.obras, keeper.id, { direccion: withDir.direccion });
+          }
+        }
+      }
+
+      setShowMerge(false);
+      window.dispatchEvent(new CustomEvent("duro:toast", {
+        detail: {
+          type: "success",
+          message: `${merged} duplicado${merged !== 1 ? "s" : ""} eliminado${merged !== 1 ? "s" : ""}${progsUpdated > 0 ? ` · ${progsUpdated} programación${progsUpdated !== 1 ? "es" : ""} actualizada${progsUpdated !== 1 ? "s" : ""}` : ""}.`,
+        },
+      }));
+    } catch {
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error durante la fusión." } }));
+    } finally {
+      setMerging(false);
+      setMergeProgress("");
+    }
+  }
 
   function openNew() {
     setEditingObra(null);
@@ -131,6 +225,15 @@ export default function CatalogoObrasPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-gray-500">Obras y ubicaciones vinculadas por cliente</p>
         <div className="flex items-center gap-2">
+          {duplicateGroups.length > 0 && (
+            <button
+              onClick={openMerge}
+              className="flex items-center gap-2 border border-amber-500/40 text-amber-400 px-4 py-2 rounded-xl text-sm font-medium hover:border-amber-400 hover:bg-amber-500/5 transition-colors cursor-pointer"
+            >
+              <GitMerge size={15} />
+              Fusionar duplicados ({duplicateGroups.length})
+            </button>
+          )}
           <button
             onClick={handleMigrar}
             disabled={migrating}
@@ -269,6 +372,100 @@ export default function CatalogoObrasPage() {
           </div>
         )}
       </div>
+
+      {/* Modal: fusionar duplicados */}
+      {showMerge && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+          <button className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => !merging && setShowMerge(false)} />
+          <div className="relative bg-[#1A1A1A] border border-[#3A3A3A] rounded-2xl w-full max-w-2xl shadow-2xl flex flex-col max-h-[85vh]">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[#3A3A3A] shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/10 text-amber-400">
+                  <GitMerge size={18} />
+                </div>
+                <div>
+                  <h2 className="text-sm font-semibold text-white">Fusionar duplicados</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">{duplicateGroups.length} grupo{duplicateGroups.length !== 1 ? "s" : ""} con nombre similar · Elige cuál conservar</p>
+                </div>
+              </div>
+              {!merging && (
+                <button onClick={() => setShowMerge(false)} className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer">
+                  <X size={18} />
+                </button>
+              )}
+            </div>
+
+            {/* Grupos */}
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+              {duplicateGroups.map(({ key, group }) => (
+                <div key={key} className="border border-[#3A3A3A] rounded-xl overflow-hidden">
+                  <div className="bg-[#2A2A2A] px-4 py-2 border-b border-[#3A3A3A]">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500">
+                      {group[0].cliente} — {group.length} variantes
+                    </p>
+                  </div>
+                  <div className="divide-y divide-[#3A3A3A]">
+                    {group.map((obra) => {
+                      const isKeep = keepId[key] === obra.id;
+                      return (
+                        <button
+                          key={obra.id}
+                          onClick={() => setKeepId((prev) => ({ ...prev, [key]: obra.id }))}
+                          disabled={merging}
+                          className={`w-full text-left px-4 py-3 flex items-start gap-3 transition-colors cursor-pointer ${isKeep ? "bg-emerald-500/5" : "hover:bg-white/3"}`}
+                        >
+                          <div className={`mt-0.5 w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors ${isKeep ? "border-emerald-400 bg-emerald-400" : "border-[#4A4A4A]"}`}>
+                            {isKeep && <div className="w-1.5 h-1.5 rounded-full bg-[#1A1A1A]" />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm font-medium truncate ${isKeep ? "text-emerald-400" : "text-white"}`}>
+                              {obra.nombre}
+                              {isKeep && <span className="ml-2 text-[10px] font-bold uppercase tracking-widest text-emerald-500/70">conservar</span>}
+                            </p>
+                            {obra.direccion ? (
+                              <p className="text-xs text-gray-500 truncate mt-0.5">{obra.direccion}</p>
+                            ) : (
+                              <p className="text-xs text-gray-600 mt-0.5">Sin dirección</p>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Footer */}
+            <div className="shrink-0 border-t border-[#3A3A3A] px-6 py-4 space-y-3">
+              {merging && mergeProgress && (
+                <p className="text-xs text-amber-400 text-center">{mergeProgress}</p>
+              )}
+              <p className="text-xs text-gray-600 text-center">
+                Las programaciones vinculadas al nombre descartado se actualizarán automáticamente.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowMerge(false)}
+                  disabled={merging}
+                  className="flex-1 px-4 py-2.5 text-sm text-gray-400 border border-[#3A3A3A] rounded-xl hover:border-gray-500 transition-colors disabled:opacity-40 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleMerge}
+                  disabled={merging}
+                  className="flex-1 flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-semibold bg-amber-500 hover:bg-amber-400 text-black rounded-xl transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  <GitMerge size={14} />
+                  {merging ? "Fusionando…" : `Fusionar ${duplicateGroups.length} grupo${duplicateGroups.length !== 1 ? "s" : ""}`}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Drawer: nueva / editar obra */}
       {showForm && (
