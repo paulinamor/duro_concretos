@@ -1,18 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { initializeApp, getApps } from "firebase/app";
-import { getFirestore, doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import { getSatConfig, buildSatService } from "@/lib/sat-service";
-
-function getDb() {
-  if (!getApps().length) {
-    initializeApp({
-      apiKey:     process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-      authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-      projectId:  process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-    });
-  }
-  return getFirestore();
-}
 
 export interface SolicitarBody {
   password: string;
@@ -63,7 +52,7 @@ export async function POST(req: NextRequest) {
     const requestId = result.getRequestId();
 
     // Guardar en Firestore para historial
-    const db = getDb();
+    if (!db) return NextResponse.json({ error: "Firebase no configurado." }, { status: 500 });
     await setDoc(doc(db, "descargasSAT", requestId), {
       requestId,
       rfc:          cfg.rfc,

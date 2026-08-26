@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowDownToLine, GitMerge, MapPin, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { ArrowDownToLine, CheckSquare, GitMerge, MapPin, Pencil, Plus, Search, Square, Trash2, X } from "lucide-react";
 import { upsertDocument, deleteDocument, getCollectionDocs, COLLECTIONS, where } from "@/lib/db";
 import { useCollectionWithLoading } from "@/lib/useCollection";
 import type { Cliente } from "@/lib/crmClientes";
@@ -39,12 +39,16 @@ export default function CatalogoObrasPage() {
   const [migrating, setMigrating] = useState(false);
   const [migracionResult, setMigracionResult] = useState<ResultadoMigracion | null>(null);
 
-  // Fusionar duplicados
+  // Fusionar duplicados (auto-detectados)
   const [showMerge, setShowMerge] = useState(false);
   const [merging, setMerging] = useState(false);
   const [mergeProgress, setMergeProgress] = useState("");
-  // keepId[groupKey] = id de la obra que se conserva
   const [keepId, setKeepId] = useState<Record<string, string>>({});
+
+  // Fusión manual: selección libre de 2+ obras para unificar
+  const [manualMergeIds, setManualMergeIds] = useState<Set<string>>(new Set());
+  const [showManualMerge, setShowManualMerge] = useState(false);
+  const [manualKeepId, setManualKeepId] = useState<string>("");
 
   useEffect(() => {
     getCollectionDocs<Cliente>(COLLECTIONS.clientes).then((docs) => {
@@ -147,6 +151,63 @@ export default function CatalogoObrasPage() {
     }
   }
 
+  function toggleManualSelect(id: string) {
+    setManualMergeIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function openManualMerge() {
+    const selected = obras.filter((o) => manualMergeIds.has(o.id));
+    // Auto-selecciona como keeper la que tenga dirección, si no la primera
+    const withDir = selected.find((o) => o.direccion?.trim());
+    setManualKeepId(withDir?.id ?? selected[0]?.id ?? "");
+    setShowManualMerge(true);
+  }
+
+  async function handleManualMerge() {
+    const selected = obras.filter((o) => manualMergeIds.has(o.id));
+    const keeper   = selected.find((o) => o.id === manualKeepId) ?? selected[0];
+    const discards = selected.filter((o) => o.id !== keeper.id);
+    setMerging(true);
+    let progsUpdated = 0;
+    try {
+      for (const discard of discards) {
+        setMergeProgress(`Actualizando programaciones de "${discard.nombre}"…`);
+        try {
+          const progs = await getCollectionDocs<Programacion>(
+            COLLECTIONS.programaciones,
+            [where("nombreObra", "==", discard.nombre)],
+          );
+          for (const prog of progs) {
+            await upsertDocument(COLLECTIONS.programaciones, prog.id, { nombreObra: keeper.nombre });
+            progsUpdated++;
+          }
+        } catch { /* sin coincidencias exactas */ }
+
+        setMergeProgress(`Eliminando "${discard.nombre}"…`);
+        await deleteDocument(COLLECTIONS.obras, discard.id);
+      }
+      // Copiar dirección al keeper si no tiene
+      if (!keeper.direccion?.trim()) {
+        const withDir = discards.find((d) => d.direccion?.trim());
+        if (withDir) await upsertDocument(COLLECTIONS.obras, keeper.id, { direccion: withDir.direccion });
+      }
+      setShowManualMerge(false);
+      setManualMergeIds(new Set());
+      window.dispatchEvent(new CustomEvent("duro:toast", {
+        detail: { type: "success", message: `Obras fusionadas. ${progsUpdated} programación${progsUpdated !== 1 ? "es" : ""} actualizada${progsUpdated !== 1 ? "s" : ""}.` },
+      }));
+    } catch {
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al fusionar." } }));
+    } finally {
+      setMerging(false);
+      setMergeProgress("");
+    }
+  }
+
   function openNew() {
     setEditingObra(null);
     setForm(emptyForm());
@@ -225,6 +286,18 @@ export default function CatalogoObrasPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-gray-500">Obras y ubicaciones vinculadas por cliente</p>
         <div className="flex items-center gap-2">
+          {manualMergeIds.size >= 2 && (
+            <button
+              onClick={openManualMerge}
+              className="flex items-center gap-2 border border-blue-500/40 text-blue-400 px-4 py-2 rounded-xl text-sm font-medium hover:border-blue-400 hover:bg-blue-500/5 transition-colors cursor-pointer"
+            >
+              <GitMerge size={15} />
+              Fusionar selección ({manualMergeIds.size})
+            </button>
+          )}
+          {manualMergeIds.size > 0 && manualMergeIds.size < 2 && (
+            <span className="text-xs text-gray-500 px-3 py-2">Selecciona 1 más para fusionar</span>
+          )}
           {duplicateGroups.length > 0 && (
             <button
               onClick={openMerge}
@@ -322,6 +395,7 @@ export default function CatalogoObrasPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-[#1A1A1A] border-b border-[#3A3A3A]">
+                  <th className="px-3 py-3 w-8" />
                   {["Cliente", "Nombre de obra", "Dirección / Maps", ""].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-400 whitespace-nowrap">
                       {h}
@@ -330,43 +404,55 @@ export default function CatalogoObrasPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#3A3A3A]">
-                {filtered.map((obra) => (
-                  <tr key={obra.id} className="hover:bg-white/5 transition-colors">
-                    <td className="px-4 py-3 font-medium text-white max-w-[180px] truncate">{obra.cliente}</td>
-                    <td className="px-4 py-3">
-                      <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-white">
-                        <MapPin size={13} className="text-[#CC2229] shrink-0" />
-                        {obra.nombre}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-gray-400 max-w-[260px] truncate text-xs" title={obra.direccion}>
-                      {obra.direccion
-                        ? obra.direccion.startsWith("http")
-                          ? <a href={obra.direccion} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline">Ver en Maps</a>
-                          : obra.direccion
-                        : <span className="text-gray-600">Sin dirección</span>
-                      }
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1 justify-end">
+                {filtered.map((obra) => {
+                  const selected = manualMergeIds.has(obra.id);
+                  return (
+                    <tr key={obra.id} className={`hover:bg-white/5 transition-colors ${selected ? "bg-blue-500/5" : ""}`}>
+                      <td className="px-3 py-3">
                         <button
-                          onClick={() => openEdit(obra)}
-                          className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
-                          aria-label="Editar"
+                          onClick={() => toggleManualSelect(obra.id)}
+                          className={`p-0.5 rounded transition-colors cursor-pointer ${selected ? "text-blue-400" : "text-gray-600 hover:text-gray-400"}`}
+                          title="Seleccionar para fusionar"
                         >
-                          <Pencil size={14} />
+                          {selected ? <CheckSquare size={16} /> : <Square size={16} />}
                         </button>
-                        <button
-                          onClick={() => setConfirmDeleteId(obra.id)}
-                          className="p-1.5 rounded-lg text-gray-500 hover:text-[#CC2229] hover:bg-[#CC2229]/10 transition-colors cursor-pointer"
-                          aria-label="Eliminar"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-4 py-3 font-medium text-white max-w-[180px] truncate">{obra.cliente}</td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-white">
+                          <MapPin size={13} className="text-[#CC2229] shrink-0" />
+                          {obra.nombre}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-gray-400 max-w-[260px] truncate text-xs" title={obra.direccion}>
+                        {obra.direccion
+                          ? obra.direccion.startsWith("http")
+                            ? <a href={obra.direccion} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline">Ver en Maps</a>
+                            : obra.direccion
+                          : <span className="text-gray-600">Sin dirección</span>
+                        }
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1 justify-end">
+                          <button
+                            onClick={() => openEdit(obra)}
+                            className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+                            aria-label="Editar"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                          <button
+                            onClick={() => setConfirmDeleteId(obra.id)}
+                            className="p-1.5 rounded-lg text-gray-500 hover:text-[#CC2229] hover:bg-[#CC2229]/10 transition-colors cursor-pointer"
+                            aria-label="Eliminar"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -535,6 +621,51 @@ export default function CatalogoObrasPage() {
               >
                 <MapPin size={14} />
                 {saving ? "Guardando…" : editingObra ? "Actualizar" : "Guardar obra"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal fusión manual */}
+      {showManualMerge && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+          <button className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowManualMerge(false)} />
+          <div className="relative bg-[#1A1A1A] border border-[#3A3A3A] rounded-2xl p-6 w-full max-w-md shadow-2xl">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/10">
+                <GitMerge size={18} className="text-blue-400" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-white">Fusionar obras seleccionadas</h3>
+                <p className="text-xs text-gray-500">Elige cuál conservar. Las demás se eliminarán y sus programaciones se remapearán.</p>
+              </div>
+            </div>
+
+            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-2">¿Cuál obra conservar?</p>
+            <div className="space-y-2 mb-5">
+              {obras.filter((o) => manualMergeIds.has(o.id)).map((o) => (
+                <label key={o.id} className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${manualKeepId === o.id ? "border-blue-500/50 bg-blue-500/10" : "border-[#3A3A3A] hover:border-gray-500"}`}>
+                  <input type="radio" name="keepId" value={o.id} checked={manualKeepId === o.id} onChange={() => setManualKeepId(o.id)} className="mt-0.5 accent-blue-500" />
+                  <div>
+                    <p className="text-sm font-semibold text-white">{o.nombre}</p>
+                    <p className="text-xs text-gray-500">{o.cliente}{o.direccion ? ` · ${o.direccion}` : ""}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+
+            {mergeProgress && (
+              <p className="text-xs text-amber-400 mb-3">{mergeProgress}</p>
+            )}
+
+            <div className="flex gap-3">
+              <button onClick={() => setShowManualMerge(false)} className="flex-1 px-4 py-2.5 text-sm text-gray-400 border border-[#3A3A3A] rounded-xl hover:border-gray-500 transition-colors cursor-pointer">
+                Cancelar
+              </button>
+              <button onClick={handleManualMerge} disabled={merging || !manualKeepId}
+                className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-xl transition-colors disabled:opacity-50 cursor-pointer">
+                {merging ? "Fusionando…" : "Fusionar"}
               </button>
             </div>
           </div>
