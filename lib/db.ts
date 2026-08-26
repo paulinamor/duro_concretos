@@ -140,6 +140,7 @@ export const COLLECTIONS = {
   cfdiEmitidos: "cfdiEmitidos",
   descargasSAT: "descargasSAT",
   obras: "obras",
+  salidasEfectivo: "salidasEfectivo",
 } as const;
 
 export { where, orderBy, limit, startAfter, type QueryConstraint };

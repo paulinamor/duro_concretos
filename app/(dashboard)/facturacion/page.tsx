@@ -2,14 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  BadgeCheck, CalendarDays, Download, FileText, Loader2,
-  Plus, RefreshCw, Search, Send, Trash2, X, FileDown,
-  Receipt, CloudDownload, AlertCircle,
+  BadgeCheck, CalendarDays, CheckCircle2, ChevronDown, CloudDownload,
+  Download, Eye, EyeOff, FileDown, FileKey2, FileText, Loader2,
+  Plus, Receipt, RefreshCw, Search, Send, ShieldCheck, Trash2, Upload, X, AlertCircle,
 } from "lucide-react";
 import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
 import StatusBadge from "@/components/StatusBadge";
 import { getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
+import { useCollectionRaw } from "@/lib/useCollection";
 import { withPlantaTag } from "@/lib/auth";
 
 // ─── Catálogos SAT ────────────────────────────────────────────────────────────
@@ -104,27 +105,17 @@ interface CfdiEmitido {
   createdAt:     string;
 }
 
-interface DescargaSolicitud {
-  id?:         string;
-  solicitudId: string;
-  tipo:        "emitidas" | "recibidas";
+interface DescargaSAT {
+  id:          string;
+  requestId:   string;
+  rfc:         string;
+  status:      "pendiente" | "procesando" | "listo" | "error";
+  direccion:   string;
+  tipo:        string;
   fechaInicio: string;
   fechaFin:    string;
-  status:      "procesando" | "completado" | "error";
-  total:       number;
-  cfdis:       DescargaCfdi[];
-  createdAt:   string;
-}
-
-interface DescargaCfdi {
-  uuid:         string;
-  rfcEmisor:    string;
-  rfcReceptor:  string;
-  nombreEmisor: string;
-  total:        number;
-  fecha:        string;
-  tipo:         string;
-  efecto:       string;
+  packageIds:  string[];
+  solicitadoEn?: { seconds: number };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -439,177 +430,388 @@ function EmitirDrawer({
   );
 }
 
-// ─── Tab: Descarga SAT ────────────────────────────────────────────────────────
+// ─── Tab: Descarga SAT (directo al SAT, sin BoxFactura) ──────────────────────
+
+const satInp = "w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-xl px-3.5 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-all";
+const satLbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5";
+
+function fmtSatDate(ts?: { seconds: number }) {
+  if (!ts) return "—";
+  return new Date(ts.seconds * 1000).toLocaleDateString("es-MX", {
+    day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+}
 
 function DescargaSATTab() {
-  const [tipo, setTipo]           = useState<"emitidas" | "recibidas">("emitidas");
-  const [fechaInicio, setFechaI]  = useState(() => {
-    const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10);
-  });
-  const [fechaFin, setFechaF]     = useState(() => new Date().toISOString().slice(0, 10));
-  const [loading, setLoading]     = useState(false);
-  const [polling, setPolling]     = useState(false);
-  const [solicitud, setSolicitud] = useState<DescargaSolicitud | null>(null);
-  const [historial, setHistorial] = useState<DescargaSolicitud[]>([]);
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // ── Config e.firma ──────────────────────────────────────────────────────────
+  const [satConfig,      setSatConfig]      = useState<{ rfc?: string; activo?: boolean } | null>(null);
+  const [loadingConfig,  setLoadingConfig]  = useState(true);
+  const cerRef = useRef<HTMLInputElement>(null);
+  const keyRef = useRef<HTMLInputElement>(null);
+  const [cerFile,       setCerFile]       = useState<File | null>(null);
+  const [keyFile,       setKeyFile]       = useState<File | null>(null);
+  const [configPwd,     setConfigPwd]     = useState("");
+  const [showConfigPwd, setShowConfigPwd] = useState(false);
+  const [savingConfig,  setSavingConfig]  = useState(false);
+  const [configMsg,     setConfigMsg]     = useState<{ type: "ok" | "err"; text: string } | null>(null);
+
+  // ── Contraseña de sesión ────────────────────────────────────────────────────
+  const [sessionPwd,     setSessionPwd]     = useState("");
+  const [showSessionPwd, setShowSessionPwd] = useState(false);
+
+  // ── Nueva solicitud ─────────────────────────────────────────────────────────
+  const [fechaInicio,   setFechaInicio]   = useState(() => { const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10); });
+  const [fechaFin,      setFechaFin]      = useState(() => new Date().toISOString().slice(0, 10));
+  const [direccion,     setDireccion]     = useState<"emitidos" | "recibidos">("emitidos");
+  const [tipoSolicitud, setTipoSolicitud] = useState<"cfdi" | "metadata">("cfdi");
+  const [tipoDoc,       setTipoDoc]       = useState("");
+  const [solicitando,   setSolicitando]   = useState(false);
+  const [solicitudMsg,  setSolicitudMsg]  = useState<{ type: "ok" | "err"; text: string } | null>(null);
+
+  // ── Verificación / descarga ─────────────────────────────────────────────────
+  const [verificandoId,  setVerificandoId]  = useState<string | null>(null);
+  const [descargandoPkg, setDescargandoPkg] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ── Historial ───────────────────────────────────────────────────────────────
+  const historialRaw = useCollectionRaw<DescargaSAT>(COLLECTIONS.descargasSAT ?? "descargasSAT");
+  const historial = [...(historialRaw ?? [])].sort((a, b) =>
+    (b.solicitadoEn?.seconds ?? 0) - (a.solicitadoEn?.seconds ?? 0));
 
   useEffect(() => {
-    getCollectionDocs<DescargaSolicitud>(COLLECTIONS.descargasSAT).then(setHistorial);
-    return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
+    fetch("/api/sat/config-status")
+      .then((r) => r.json())
+      .then((d) => setSatConfig(d.config ?? null))
+      .catch(() => setSatConfig(null))
+      .finally(() => setLoadingConfig(false));
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
 
-  async function checkStatus(id: string, docId: string) {
+  async function handleGuardarConfig() {
+    if (!cerFile || !keyFile || !configPwd) return;
+    setSavingConfig(true);
+    setConfigMsg(null);
     try {
-      const resp = await fetch(`/api/boxfactura/descargar?id=${id}`);
+      const form = new FormData();
+      form.append("cer", cerFile);
+      form.append("key", keyFile);
+      form.append("password", configPwd);
+      const resp = await fetch("/api/sat/configurar", { method: "POST", body: form });
       const data = await resp.json();
-      if (data.status === "completado" || data.status === "error") {
-        if (pollingRef.current) clearInterval(pollingRef.current);
-        setPolling(false);
-        const updated = { ...solicitud!, status: data.status, total: data.total, cfdis: data.cfdis ?? [] };
-        setSolicitud(updated);
-        await upsertDocument(COLLECTIONS.descargasSAT, docId, updated);
-        setHistorial((prev) => prev.map((s) => s.id === docId ? { ...updated, id: docId } : s));
+      if (!resp.ok) {
+        setConfigMsg({ type: "err", text: data.error });
+      } else {
+        setConfigMsg({ type: "ok", text: `e.firma configurada · RFC ${data.rfc}` });
+        setSatConfig({ rfc: data.rfc, activo: true });
+        setCerFile(null); setKeyFile(null); setConfigPwd("");
       }
-    } catch { /* silencio en polling */ }
-  }
-
-  async function handleSolicitar() {
-    setLoading(true);
-    try {
-      const resp = await fetch("/api/boxfactura/descargar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tipo, fechaInicio, fechaFin }),
-      });
-      const data = await resp.json();
-      if (!resp.ok) { alert(data.error ?? "Error al solicitar descarga"); return; }
-
-      const nueva: DescargaSolicitud = {
-        solicitudId: data.solicitudId,
-        tipo, fechaInicio, fechaFin,
-        status: "procesando",
-        total: 0, cfdis: [],
-        createdAt: new Date().toISOString(),
-      };
-      const docId = `${Date.now()}-${data.solicitudId}`;
-      await upsertDocument(COLLECTIONS.descargasSAT, docId, nueva);
-      const conId = { ...nueva, id: docId };
-      setSolicitud(conId);
-      setHistorial((prev) => [conId, ...prev]);
-
-      // Inicia polling cada 8 segundos
-      setPolling(true);
-      pollingRef.current = setInterval(() => checkStatus(data.solicitudId, docId), 8000);
+    } catch {
+      setConfigMsg({ type: "err", text: "Error de red al guardar la configuración." });
     } finally {
-      setLoading(false);
+      setSavingConfig(false);
     }
   }
 
+  async function handleSolicitar() {
+    if (!sessionPwd || !fechaInicio || !fechaFin) return;
+    setSolicitando(true);
+    setSolicitudMsg(null);
+    try {
+      const resp = await fetch("/api/sat/solicitar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: sessionPwd, fechaInicio, fechaFin, direccion, tipo: tipoSolicitud, tipoDocumento: tipoDoc || undefined }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        setSolicitudMsg({ type: "err", text: data.error });
+      } else {
+        setSolicitudMsg({ type: "ok", text: `Solicitud enviada · ID ${data.requestId}. El SAT puede tardar 2–10 min.` });
+        iniciarPolling(data.requestId);
+      }
+    } catch {
+      setSolicitudMsg({ type: "err", text: "Error de red al solicitar." });
+    } finally {
+      setSolicitando(false);
+    }
+  }
+
+  function iniciarPolling(requestId: string) {
+    if (pollRef.current) clearInterval(pollRef.current);
+    setVerificandoId(requestId);
+    pollRef.current = setInterval(() => verificar(requestId), 30_000);
+  }
+
+  async function verificar(requestId: string) {
+    if (!sessionPwd) return;
+    try {
+      const resp = await fetch("/api/sat/verificar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId, password: sessionPwd }),
+      });
+      const data = await resp.json();
+      if (data.status === "listo" || data.status === "error") {
+        if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+        setVerificandoId(null);
+      }
+    } catch { /* silent */ }
+  }
+
+  async function descargarPaquete(packageId: string) {
+    if (!sessionPwd) return;
+    setDescargandoPkg(packageId);
+    try {
+      const resp = await fetch("/api/sat/descargar-paquete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ packageId, password: sessionPwd }),
+      });
+      if (!resp.ok) { const e = await resp.json(); alert(e.error); return; }
+      const blob = await resp.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href = url; a.download = `cfdi-${packageId}.zip`; a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setDescargandoPkg(null);
+    }
+  }
+
+  const statusBadge = (s: DescargaSAT["status"]) => {
+    const cls: Record<DescargaSAT["status"], string> = {
+      pendiente:  "bg-amber-500/10 text-amber-400",
+      procesando: "bg-blue-500/10 text-blue-400",
+      listo:      "bg-emerald-500/10 text-emerald-400",
+      error:      "bg-red-500/10 text-red-400",
+    };
+    const labels: Record<DescargaSAT["status"], string> = {
+      pendiente: "Pendiente", procesando: "Procesando…", listo: "Listo", error: "Error",
+    };
+    return (
+      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${cls[s]}`}>
+        {labels[s]}
+      </span>
+    );
+  };
+
   return (
-    <div className="space-y-6">
-      {/* Formulario solicitud */}
-      <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl p-5">
-        <p className="text-sm font-semibold text-white mb-4">Nueva solicitud de descarga masiva</p>
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-          <div className="flex flex-col gap-1.5">
-            <label className="block text-[10px] font-semibold uppercase tracking-widest text-gray-500">Tipo</label>
-            <AppSelect dark value={tipo} onChange={(e) => setTipo(e.target.value as "emitidas" | "recibidas")}>
-              <option value="emitidas">CFDIs emitidos</option>
-              <option value="recibidas">CFDIs recibidos</option>
-            </AppSelect>
+    <div className="space-y-5">
+
+      {/* ── e.firma ────────────────────────────────────────────────────────── */}
+      <div className="bg-[#242424] border border-[#3A3A3A] rounded-2xl overflow-hidden">
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-[#3A3A3A]">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#CC2229]/10 text-[#CC2229]">
+            <FileKey2 size={17} />
           </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="block text-[10px] font-semibold uppercase tracking-widest text-gray-500">Fecha inicio</label>
-            <input type="date" value={fechaInicio} onChange={(e) => setFechaI(e.target.value)}
-              className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors" />
+          <div>
+            <p className="text-sm font-semibold text-white">e.firma del SAT</p>
+            <p className="text-xs text-gray-500">Sube .cer y .key una sola vez</p>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="block text-[10px] font-semibold uppercase tracking-widest text-gray-500">Fecha fin</label>
-            <input type="date" value={fechaFin} onChange={(e) => setFechaF(e.target.value)}
-              className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors" />
+          {!loadingConfig && satConfig?.activo && (
+            <span className="ml-auto flex items-center gap-1.5 text-xs text-emerald-400">
+              <ShieldCheck size={13} /> Configurada · {satConfig.rfc}
+            </span>
+          )}
+        </div>
+
+        <div className="px-5 py-4 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            {([
+              { label: "Archivo .cer", ref: cerRef, file: cerFile, set: setCerFile, accept: ".cer" },
+              { label: "Archivo .key", ref: keyRef, file: keyFile, set: setKeyFile, accept: ".key" },
+            ] as const).map((f) => (
+              <div key={f.label}>
+                <label className={satLbl}>{f.label}</label>
+                <button
+                  onClick={() => f.ref.current?.click()}
+                  className={`w-full flex items-center gap-2 px-3.5 py-2.5 rounded-xl border text-sm transition-colors cursor-pointer ${
+                    f.file ? "border-emerald-500/40 text-emerald-400 bg-emerald-500/5" : "border-[#3A3A3A] text-gray-400 hover:border-gray-500 hover:text-gray-300"
+                  }`}
+                >
+                  {f.file ? <CheckCircle2 size={13} /> : <Upload size={13} />}
+                  <span className="truncate">{f.file ? f.file.name : `Seleccionar ${f.accept}`}</span>
+                </button>
+                <input ref={f.ref} type="file" accept={f.accept} className="hidden"
+                  onChange={(e) => f.set(e.target.files?.[0] ?? null)} />
+              </div>
+            ))}
           </div>
-          <div className="flex items-end">
+
+          <div>
+            <label className={satLbl}>Contraseña de la llave privada</label>
+            <div className="relative">
+              <input
+                type={showConfigPwd ? "text" : "password"}
+                value={configPwd}
+                onChange={(e) => setConfigPwd(e.target.value)}
+                placeholder="Contraseña del archivo .key"
+                className={satInp + " pr-10"}
+              />
+              <button onClick={() => setShowConfigPwd(!showConfigPwd)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 cursor-pointer">
+                {showConfigPwd ? <EyeOff size={14} /> : <Eye size={14} />}
+              </button>
+            </div>
+            <p className="text-[11px] text-gray-600 mt-1">La contraseña no se guarda. Se usa solo para validar la e.firma.</p>
+          </div>
+
+          {configMsg && (
+            <div className={`flex items-start gap-2 rounded-xl px-3.5 py-2.5 text-sm ${configMsg.type === "ok" ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"}`}>
+              {configMsg.type === "ok" ? <CheckCircle2 size={13} className="shrink-0 mt-0.5" /> : <X size={13} className="shrink-0 mt-0.5" />}
+              {configMsg.text}
+            </div>
+          )}
+
+          <div className="flex justify-end">
             <button
-              onClick={handleSolicitar}
-              disabled={loading || polling}
-              className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#CC2229] py-2.5 text-sm font-semibold text-white hover:bg-[#B01E24] disabled:opacity-50 transition-colors shadow-lg shadow-[#CC2229]/20"
+              onClick={handleGuardarConfig}
+              disabled={savingConfig || !cerFile || !keyFile || !configPwd}
+              className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-xl transition-colors disabled:opacity-40 cursor-pointer"
             >
-              {loading || polling ? <Loader2 size={15} className="animate-spin" /> : <CloudDownload size={15} />}
-              {loading ? "Solicitando…" : polling ? "Procesando…" : "Solicitar"}
+              {savingConfig ? <Loader2 size={13} className="animate-spin" /> : <ShieldCheck size={13} />}
+              {savingConfig ? "Validando…" : "Guardar e.firma"}
             </button>
           </div>
         </div>
-        {polling && (
-          <p className="text-xs text-amber-400 mt-3 flex items-center gap-1.5">
-            <Loader2 size={12} className="animate-spin" />
-            La descarga se está procesando en el SAT. Verificando cada 8 seg…
-          </p>
-        )}
       </div>
 
-      {/* Solicitud activa */}
-      {solicitud && (
-        <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl p-5">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-sm font-semibold text-white">
-              Descarga {solicitud.tipo} · {fmtDate(solicitud.fechaInicio)} – {fmtDate(solicitud.fechaFin)}
-            </p>
-            <StatusBadge status={
-              solicitud.status === "completado" ? "aprobado" :
-              solicitud.status === "error" ? "cancelado" : "pendiente"
-            } />
+      {/* ── Nueva solicitud ─────────────────────────────────────────────────── */}
+      <div className="bg-[#242424] border border-[#3A3A3A] rounded-2xl overflow-hidden">
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-[#3A3A3A]">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-500/10 text-blue-400">
+            <CloudDownload size={17} />
           </div>
-          {solicitud.status === "completado" && solicitud.cfdis.length > 0 && (
-            <div className="overflow-x-auto rounded-lg border border-[#3A3A3A]">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-[#3A3A3A] bg-[#1A1A1A]">
-                    {["UUID", "RFC Emisor", "RFC Receptor", "Total", "Fecha", "Tipo"].map((h) => (
-                      <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {solicitud.cfdis.map((c) => (
-                    <tr key={c.uuid} className="border-b border-[#2A2A2A] hover:bg-white/5 transition-colors">
-                      <td className="px-4 py-2.5 font-mono text-xs text-gray-400">{c.uuid.slice(0, 8)}…</td>
-                      <td className="px-4 py-2.5 text-gray-300">{c.rfcEmisor}</td>
-                      <td className="px-4 py-2.5 text-gray-300">{c.rfcReceptor}</td>
-                      <td className="px-4 py-2.5 text-white font-medium">{fmt(c.total)}</td>
-                      <td className="px-4 py-2.5 text-gray-400">{fmtDate(c.fecha)}</td>
-                      <td className="px-4 py-2.5 text-gray-400">{c.efecto}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          <div>
+            <p className="text-sm font-semibold text-white">Nueva descarga del SAT</p>
+            <p className="text-xs text-gray-500">El SAT puede tardar 2–10 minutos en preparar los paquetes</p>
+          </div>
+        </div>
+
+        <div className="px-5 py-4 space-y-4">
+          <div>
+            <label className={satLbl}>Contraseña de la e.firma <span className="text-[#CC2229]">*</span></label>
+            <div className="relative">
+              <input
+                type={showSessionPwd ? "text" : "password"}
+                value={sessionPwd}
+                onChange={(e) => setSessionPwd(e.target.value)}
+                placeholder="Necesaria para firmar cada solicitud al SAT"
+                className={satInp + " pr-10"}
+              />
+              <button onClick={() => setShowSessionPwd(!showSessionPwd)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 cursor-pointer">
+                {showSessionPwd ? <EyeOff size={14} /> : <Eye size={14} />}
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={satLbl}>Fecha inicio</label>
+              <input type="date" value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} className={satInp} />
+            </div>
+            <div>
+              <label className={satLbl}>Fecha fin</label>
+              <input type="date" value={fechaFin} onChange={(e) => setFechaFin(e.target.value)} className={satInp} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className={satLbl}>Dirección</label>
+              <AppSelect dark value={direccion} onChange={(e) => setDireccion(e.target.value as "emitidos" | "recibidos")}>
+                <option value="emitidos">Emitidos</option>
+                <option value="recibidos">Recibidos</option>
+              </AppSelect>
+            </div>
+            <div>
+              <label className={satLbl}>Tipo de solicitud</label>
+              <AppSelect dark value={tipoSolicitud} onChange={(e) => setTipoSolicitud(e.target.value as "cfdi" | "metadata")}>
+                <option value="cfdi">CFDI (XML)</option>
+                <option value="metadata">Metadata</option>
+              </AppSelect>
+            </div>
+            <div>
+              <label className={satLbl}>Tipo de comprobante</label>
+              <AppSelect dark value={tipoDoc} onChange={(e) => setTipoDoc(e.target.value)}>
+                <option value="">Todos</option>
+                <option value="ingreso">Ingreso</option>
+                <option value="egreso">Egreso</option>
+                <option value="traslado">Traslado</option>
+                <option value="nomina">Nómina</option>
+                <option value="pago">Pago</option>
+              </AppSelect>
+            </div>
+          </div>
+
+          {solicitudMsg && (
+            <div className={`flex items-start gap-2 rounded-xl px-3.5 py-2.5 text-sm ${solicitudMsg.type === "ok" ? "bg-blue-500/10 text-blue-400" : "bg-red-500/10 text-red-400"}`}>
+              {solicitudMsg.type === "ok" ? <CheckCircle2 size={13} className="shrink-0 mt-0.5" /> : <X size={13} className="shrink-0 mt-0.5" />}
+              {solicitudMsg.text}
             </div>
           )}
-          {solicitud.status === "completado" && solicitud.cfdis.length === 0 && (
-            <p className="text-sm text-gray-500">No se encontraron CFDIs en el rango seleccionado.</p>
-          )}
-        </div>
-      )}
 
-      {/* Historial de solicitudes */}
+          <div className="flex justify-end">
+            <button
+              onClick={handleSolicitar}
+              disabled={solicitando || !sessionPwd || !fechaInicio || !fechaFin || !satConfig?.activo}
+              className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-colors disabled:opacity-40 cursor-pointer"
+            >
+              {solicitando ? <Loader2 size={13} className="animate-spin" /> : <CloudDownload size={13} />}
+              {solicitando ? "Enviando al SAT…" : "Solicitar descarga"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Historial ────────────────────────────────────────────────────────── */}
       {historial.length > 0 && (
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Solicitudes anteriores</p>
-          <div className="space-y-2">
-            {historial.map((s) => (
-              <button
-                key={s.id}
-                onClick={() => setSolicitud(s)}
-                className="w-full flex items-center justify-between bg-[#242424] border border-[#3A3A3A] rounded-xl px-4 py-3 hover:border-[#CC2229]/40 transition-colors text-left"
-              >
-                <div>
-                  <p className="text-sm text-white capitalize">{s.tipo} · {fmtDate(s.fechaInicio)} – {fmtDate(s.fechaFin)}</p>
-                  <p className="text-xs text-gray-500">{s.total} CFDIs · {fmtDate(s.createdAt)}</p>
+        <div className="bg-[#242424] border border-[#3A3A3A] rounded-2xl overflow-hidden">
+          <div className="flex items-center gap-3 px-5 py-4 border-b border-[#3A3A3A]">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#3A3A3A] text-gray-400">
+              <FileText size={17} />
+            </div>
+            <p className="text-sm font-semibold text-white">Historial de descargas</p>
+          </div>
+          <div className="divide-y divide-[#3A3A3A]">
+            {historial.map((d) => (
+              <div key={d.id} className="px-5 py-4 space-y-2">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {statusBadge(d.status)}
+                    <span className="text-xs text-gray-400 font-mono">{d.requestId?.slice(0, 16)}…</span>
+                    <span className="text-xs text-gray-500">{d.direccion} · {d.tipo}</span>
+                    <span className="text-xs text-gray-600">{d.fechaInicio} → {d.fechaFin}</span>
+                  </div>
+                  {(d.status === "pendiente" || d.status === "procesando") && (
+                    <button
+                      onClick={() => verificar(d.requestId)}
+                      disabled={!sessionPwd || verificandoId === d.requestId}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-[#3A3A3A] text-gray-400 rounded-lg hover:border-blue-500/40 hover:text-blue-400 transition-colors disabled:opacity-40 cursor-pointer"
+                    >
+                      <RefreshCw size={11} className={verificandoId === d.requestId ? "animate-spin" : ""} />
+                      Verificar
+                    </button>
+                  )}
                 </div>
-                <StatusBadge status={
-                  s.status === "completado" ? "aprobado" :
-                  s.status === "error" ? "cancelado" : "pendiente"
-                } />
-              </button>
+
+                {d.status === "listo" && d.packageIds?.length > 0 && (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {d.packageIds.map((pkgId) => (
+                      <button
+                        key={pkgId}
+                        onClick={() => descargarPaquete(pkgId)}
+                        disabled={descargandoPkg === pkgId || !sessionPwd}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-lg hover:bg-emerald-500/20 transition-colors disabled:opacity-40 cursor-pointer"
+                      >
+                        {descargandoPkg === pkgId ? <Loader2 size={11} className="animate-spin" /> : <ChevronDown size={11} />}
+                        Paquete {pkgId.slice(-6)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <p className="text-[10px] text-gray-600">{fmtSatDate(d.solicitadoEn)}</p>
+              </div>
             ))}
           </div>
         </div>

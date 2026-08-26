@@ -33,6 +33,7 @@ import {
   UserRound,
   ScanEye,
   MapPin,
+  CloudDownload,
 } from "lucide-react";
 import {
   getAllowedModuleSet,
@@ -59,7 +60,8 @@ const navItems = [
 ];
 
 const systemItems = [
-  { href: "/configuracion", icon: ShieldCheck, label: "Configuración" },
+  { href: "/configuracion",              icon: ShieldCheck,   label: "Configuración" },
+  { href: "/configuracion/sat-descarga", icon: CloudDownload, label: "Descarga SAT", devOnly: true },
 ];
 
 const administracionItems: { href: string; icon: React.ElementType; label: string }[] = [];

@@ -107,7 +107,7 @@ export default function CatalogoObrasPage() {
           try {
             const progs = await getCollectionDocs<Programacion>(
               COLLECTIONS.programaciones,
-              where("nombreObra", "==", discard.nombre),
+              [where("nombreObra", "==", discard.nombre)],
             );
             for (const prog of progs) {
               await upsertDocument(COLLECTIONS.programaciones, prog.id, { nombreObra: keeper.nombre });

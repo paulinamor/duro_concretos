@@ -44,13 +44,17 @@ export const moduleCatalog = [
   { href: "/finanzas/estado-cuenta-clientes", label: "Estados de Cuenta" },
   { href: "/configuracion", label: "Autenticación y roles" },
   { href: "/facturacion", label: "Facturación CFDI" },
+  { href: "/configuracion/sat-descarga", label: "Descarga masiva SAT" },
   // Módulos en desarrollo — solo accesibles para DEV_EMAILS
   { href: "/recursos-humanos/nomina", label: "Nómina" },
 ];
 
 // Rutas en desarrollo — solo visibles para role === "admin"
 // Cuando estén listas, mover al moduleCatalog normal y quitar de aquí
-export const DEV_ONLY_ROUTES = new Set(["/recursos-humanos/nomina"]);
+export const DEV_ONLY_ROUTES = new Set([
+  "/recursos-humanos/nomina",
+  "/configuracion/sat-descarga",
+]);
 
 // Email con acceso completo a herramientas de desarrollo en el sidebar
 export const DEVELOPER_EMAIL = "leonardo@lpsoft.mx";
