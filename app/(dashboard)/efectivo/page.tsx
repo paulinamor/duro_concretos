@@ -411,41 +411,63 @@ function SalidaDrawer({ open, onClose, onSave, initial, nextFolio }: {
 // ─── PrintRecibo (recibo imprimible de salida) ────────────────────────────────
 
 function PrintRecibo({ salida, onClose }: { salida: SalidaEfectivo; onClose: () => void }) {
-  const printRef = useRef<HTMLDivElement>(null);
+  const folioStr = `SE-${String(salida.folio).padStart(4, "0")}`;
 
   function handlePrint() {
-    const content = printRef.current?.innerHTML ?? "";
-    const w = window.open("", "_blank", "width=800,height=600");
+    const w = window.open("", "_blank", "width=820,height=700");
     if (!w) return;
-    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Recibo SE-${String(salida.folio).padStart(4,"0")}</title>
-    <style>
-      * { box-sizing: border-box; margin: 0; padding: 0; }
-      body { font-family: 'Arial', sans-serif; background: #fff; color: #111; padding: 32px; }
-      .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #CC2229; padding-bottom: 16px; margin-bottom: 24px; }
-      .empresa { font-size: 20px; font-weight: 800; color: #CC2229; letter-spacing: -0.5px; }
-      .empresa-sub { font-size: 11px; color: #666; margin-top: 2px; }
-      .folio-box { text-align: right; }
-      .folio-label { font-size: 10px; text-transform: uppercase; letter-spacing: 2px; color: #888; }
-      .folio-num { font-size: 28px; font-weight: 900; color: #CC2229; font-family: monospace; }
-      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 24px; margin-bottom: 20px; }
-      .field label { font-size: 9px; text-transform: uppercase; letter-spacing: 1.5px; color: #888; display: block; margin-bottom: 4px; font-weight: 700; }
-      .field .val { font-size: 13px; color: #111; font-weight: 600; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; min-height: 24px; }
-      .importe-box { background: #f9fafb; border: 2px solid #CC2229; border-radius: 8px; padding: 16px; margin: 20px 0; }
-      .importe-label { font-size: 9px; text-transform: uppercase; letter-spacing: 2px; color: #888; font-weight: 700; }
-      .importe-valor { font-size: 32px; font-weight: 900; color: #CC2229; margin: 4px 0; }
-      .importe-letra { font-size: 11px; color: #444; font-style: italic; line-height: 1.5; margin-top: 6px; }
-      .concepto-box { border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px 16px; margin-bottom: 24px; }
-      .concepto-label { font-size: 9px; text-transform: uppercase; letter-spacing: 1.5px; color: #888; font-weight: 700; margin-bottom: 6px; }
-      .concepto-val { font-size: 13px; color: #111; line-height: 1.6; }
-      .firmas { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 48px; }
-      .firma { border-top: 1.5px solid #111; padding-top: 8px; text-align: center; }
-      .firma-label { font-size: 10px; color: #555; }
-      .footer { margin-top: 32px; text-align: center; font-size: 9px; color: #aaa; border-top: 1px solid #e5e7eb; padding-top: 10px; }
-      .rubro-badge { display: inline-block; background: #FEF3C7; color: #92400E; border: 1px solid #FDE68A; border-radius: 99px; padding: 2px 10px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
-      @media print { body { padding: 24px; } }
-    </style></head><body>${content}</body></html>`);
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>Recibo ${folioStr}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,sans-serif;background:#fff;color:#111;padding:40px 48px}
+  .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #CC2229;padding-bottom:14px;margin-bottom:22px}
+  .empresa{font-size:22px;font-weight:900;color:#CC2229;letter-spacing:-0.5px}
+  .empresa-sub{font-size:11px;color:#666;margin-top:3px}
+  .folio-box{text-align:right}
+  .folio-label{font-size:9px;text-transform:uppercase;letter-spacing:2px;color:#888;font-weight:700}
+  .folio-num{font-size:30px;font-weight:900;color:#CC2229;font-family:monospace}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 28px;margin-bottom:18px}
+  .field-label{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#888;font-weight:700;display:block;margin-bottom:4px}
+  .field-val{font-size:13px;color:#111;font-weight:600;border-bottom:1px solid #e5e7eb;padding-bottom:4px;min-height:22px}
+  .importe-box{border:2px solid #CC2229;border-radius:8px;padding:16px 20px;margin:18px 0;background:#fff8f8}
+  .importe-label{font-size:9px;text-transform:uppercase;letter-spacing:2px;color:#888;font-weight:700}
+  .importe-valor{font-size:34px;font-weight:900;color:#CC2229;margin:4px 0}
+  .importe-letra{font-size:11px;color:#555;font-style:italic;margin-top:5px;line-height:1.5}
+  .concepto-box{border:1px solid #e5e7eb;border-radius:6px;padding:12px 16px;margin-bottom:32px}
+  .concepto-label{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#888;font-weight:700;margin-bottom:6px}
+  .concepto-val{font-size:13px;color:#111;line-height:1.6}
+  .firmas{display:grid;grid-template-columns:1fr 1fr;gap:48px;margin-top:48px}
+  .firma{border-top:1.5px solid #111;padding-top:8px;text-align:center}
+  .firma-label{font-size:10px;color:#555}
+  @media print{body{padding:24px 32px}@page{margin:10mm}}
+</style></head><body>
+<div class="header">
+  <div><div class="empresa">DURO CONCRETOS</div><div class="empresa-sub">Recibo de Salida de Efectivo</div></div>
+  <div class="folio-box"><div class="folio-label">Folio</div><div class="folio-num">${folioStr}</div></div>
+</div>
+<div class="grid">
+  <div><span class="field-label">Fecha</span><div class="field-val">${fmtFecha(salida.fecha)}</div></div>
+  <div><span class="field-label">Rubro</span><div class="field-val">${salida.rubro}</div></div>
+  <div><span class="field-label">Proveedor / Beneficiario</span><div class="field-val">${salida.proveedor}</div></div>
+  <div><span class="field-label">Notas</span><div class="field-val">${salida.notas || "—"}</div></div>
+</div>
+<div class="importe-box">
+  <div class="importe-label">Importe</div>
+  <div class="importe-valor">${currency(salida.importe)}</div>
+  <div class="importe-letra">${salida.importeLetra}</div>
+</div>
+<div class="concepto-box">
+  <div class="concepto-label">Concepto</div>
+  <div class="concepto-val">${salida.concepto}</div>
+</div>
+<div class="firmas">
+  <div class="firma"><div class="firma-label">Entregó</div></div>
+  <div class="firma"><div class="firma-label">Recibió</div></div>
+</div>
+</body></html>`);
     w.document.close();
-    setTimeout(() => { w.focus(); w.print(); }, 400);
+    setTimeout(() => { w.focus(); w.print(); }, 300);
   }
 
   return (
@@ -464,7 +486,7 @@ function PrintRecibo({ salida, onClose }: { salida: SalidaEfectivo; onClose: () 
         </div>
 
         {/* Contenido del recibo */}
-        <div ref={printRef} className="px-10 py-8 text-gray-900">
+        <div className="px-10 py-8 text-gray-900">
           {/* Header */}
           <div className="flex justify-between items-start border-b-4 border-[#CC2229] pb-5 mb-6">
             <div>
@@ -514,9 +536,6 @@ function PrintRecibo({ salida, onClose }: { salida: SalidaEfectivo; onClose: () 
             ))}
           </div>
 
-          <p className="text-center text-[9px] text-gray-300 mt-8 border-t border-gray-100 pt-4">
-            Documento generado por Duro Concretos ERP · {new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "long", year: "numeric" })}
-          </p>
         </div>
       </div>
     </div>

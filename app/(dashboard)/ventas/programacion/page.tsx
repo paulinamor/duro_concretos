@@ -1043,7 +1043,7 @@ export default function VentasProgramacionPage() {
         dia: form.dia,
         cliente: form.cliente.trim().toUpperCase().replace(/\s+/g, " "),
         telefono: form.telefono.trim(),
-        nombreObra: form.obraNombre.trim() || rest.nombreObra,
+        nombreObra: form.obraNombre.trim() || rest.nombreObra || "",
         direccion: form.direccion.trim(),
         m3Totales: m3,
         resistencia: form.resistencia.trim(),

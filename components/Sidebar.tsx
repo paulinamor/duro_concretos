@@ -34,6 +34,7 @@ import {
   ScanEye,
   MapPin,
   CloudDownload,
+  CreditCard,
 } from "lucide-react";
 import {
   getAllowedModuleSet,
@@ -91,6 +92,7 @@ const ventasItems = [
 const finanzasItems = [
   { href: "/finanzas/cxc",                    icon: FileDown,  label: "Cuentas x Cobrar" },
   { href: "/finanzas/cxp",                    icon: DollarSign, label: "Cuentas x Pagar" },
+  { href: "/finanzas/cobros",                 icon: CreditCard, label: "Cobros", dev: true },
   { href: "/finanzas/estado-cuenta-clientes", icon: FileText,  label: "Estados Cliente" },
 ];
 
