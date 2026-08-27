@@ -414,42 +414,100 @@ function PedidoDrawer({
 
           {/* Nombre de la obra — selector con dropdown */}
           <div ref={obraContainerRef} className="relative">
-            <label className={lbl}>
-              Nombre de la obra <span className="text-[#CC2229]">*</span>
-              {obrasSugeridas.length > 0 && (
-                <span className="ml-2 text-[10px] font-normal normal-case tracking-normal text-blue-400">
-                  {obrasSugeridas.length} guardada{obrasSugeridas.length !== 1 ? "s" : ""}
-                </span>
-              )}
-            </label>
-
-            {/* Trigger */}
-            <div
-              role="button"
-              tabIndex={form.cliente ? 0 : -1}
-              onClick={() => { if (form.cliente) setObraOpen((v) => !v); }}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (form.cliente) setObraOpen((v) => !v); } }}
-              className={`flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-sm cursor-pointer select-none transition-colors ${
-                obraOpen ? "border-[#CC2229]/60 ring-1 ring-[#CC2229]/20" : "border-gray-200 hover:border-gray-300"
-              } ${!form.cliente ? "opacity-50 cursor-not-allowed bg-gray-50" : "bg-white"}`}
-            >
-              <span className={`flex-1 truncate ${form.obraNombre ? "text-gray-900 font-medium" : "text-gray-400"}`}>
-                {form.obraNombre || (form.cliente ? "Seleccionar o agregar obra…" : "Selecciona un cliente primero")}
-              </span>
-              {form.obraNombre && (
+            <div className="flex items-center justify-between mb-1">
+              <label className={lbl} style={{ marginBottom: 0 }}>
+                Nombre de la obra <span className="text-[#CC2229]">*</span>
+                {obrasSugeridas.length > 0 && !obraNewOpen && (
+                  <span className="ml-2 text-[10px] font-normal normal-case tracking-normal text-blue-400">
+                    {obrasSugeridas.length} guardada{obrasSugeridas.length !== 1 ? "s" : ""}
+                  </span>
+                )}
+              </label>
+              {form.cliente && !obraNewOpen && (
                 <button
                   type="button"
-                  onMouseDown={(e) => { e.stopPropagation(); set("obraNombre", ""); setObraQuery(""); }}
-                  className="p-0.5 text-gray-300 hover:text-gray-500 transition-colors cursor-pointer"
+                  onClick={() => { setObraNewOpen(true); setObraOpen(false); setObraNewNombre(""); setObraNewDireccion(""); }}
+                  className="text-[11px] font-semibold text-[#CC2229] hover:text-[#B01E24] cursor-pointer transition-colors shrink-0"
                 >
-                  <X size={11} />
+                  + Nueva obra
                 </button>
               )}
-              <ChevronDown size={13} className={`text-gray-400 shrink-0 transition-transform duration-150 ${obraOpen ? "rotate-180" : ""}`} />
+              {obraNewOpen && (
+                <button
+                  type="button"
+                  onClick={() => { setObraNewOpen(false); setObraQuery(""); }}
+                  className="text-[11px] font-medium text-gray-400 hover:text-gray-600 cursor-pointer transition-colors shrink-0"
+                >
+                  Cancelar
+                </button>
+              )}
             </div>
 
+            {/* Formulario nueva obra — en flujo normal, siempre visible cuando obraNewOpen */}
+            {obraNewOpen && (
+              <div className="rounded-xl border border-[#CC2229]/30 bg-red-50/40 p-3 space-y-2">
+                <input
+                  autoFocus
+                  value={obraNewNombre}
+                  onChange={(e) => setObraNewNombre(e.target.value)}
+                  placeholder="Nombre de la obra *"
+                  className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 bg-white focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20"
+                />
+                <input
+                  value={obraNewDireccion}
+                  onChange={(e) => setObraNewDireccion(e.target.value)}
+                  placeholder="Dirección o link de Maps (opcional)"
+                  className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 bg-white focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20"
+                />
+                <button
+                  type="button"
+                  disabled={!obraNewNombre.trim()}
+                  onClick={() => {
+                    if (!obraNewNombre.trim()) return;
+                    const nombre = obraNewNombre.trim().toUpperCase().replace(/\s+/g, " ");
+                    const direccion = obraNewDireccion.trim();
+                    set("obraNombre", nombre);
+                    if (direccion) { set("direccion", direccion); setCopied(false); }
+                    onSaveObra?.(form.cliente, nombre, direccion);
+                    setObraNewOpen(false);
+                    setObraQuery("");
+                  }}
+                  className="w-full text-sm py-2 rounded-lg bg-[#CC2229] text-white hover:bg-[#B01E24] disabled:opacity-50 cursor-pointer transition-colors font-medium"
+                >
+                  Guardar obra
+                </button>
+              </div>
+            )}
+
+            {/* Trigger selector — oculto cuando está el formulario nueva obra */}
+            {!obraNewOpen && (
+              <div
+                role="button"
+                tabIndex={form.cliente ? 0 : -1}
+                onClick={() => { if (form.cliente) setObraOpen((v) => !v); }}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (form.cliente) setObraOpen((v) => !v); } }}
+                className={`flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-sm cursor-pointer select-none transition-colors ${
+                  obraOpen ? "border-[#CC2229]/60 ring-1 ring-[#CC2229]/20" : "border-gray-200 hover:border-gray-300"
+                } ${!form.cliente ? "opacity-50 cursor-not-allowed bg-gray-50" : "bg-white"}`}
+              >
+                <span className={`flex-1 truncate ${form.obraNombre ? "text-gray-900 font-medium" : "text-gray-400"}`}>
+                  {form.obraNombre || (form.cliente ? "Seleccionar obra…" : "Selecciona un cliente primero")}
+                </span>
+                {form.obraNombre && (
+                  <button
+                    type="button"
+                    onMouseDown={(e) => { e.stopPropagation(); set("obraNombre", ""); setObraQuery(""); }}
+                    className="p-0.5 text-gray-300 hover:text-gray-500 transition-colors cursor-pointer"
+                  >
+                    <X size={11} />
+                  </button>
+                )}
+                <ChevronDown size={13} className={`text-gray-400 shrink-0 transition-transform duration-150 ${obraOpen ? "rotate-180" : ""}`} />
+              </div>
+            )}
+
             {/* Dropdown */}
-            {obraOpen && (
+            {obraOpen && !obraNewOpen && (
               <div className="absolute z-[300] mt-1 w-full rounded-xl border border-gray-200 bg-white overflow-hidden"
                 style={{ boxShadow: "0 8px 24px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.06)" }}>
 
@@ -468,7 +526,7 @@ function PedidoDrawer({
 
                 {/* Lista de obras */}
                 <ul className="max-h-52 overflow-y-auto py-1">
-                  {obrasFiltradas.length === 0 && !obraNewOpen && (
+                  {obrasFiltradas.length === 0 && (
                     <li className="px-4 py-3 text-sm text-gray-400 text-center">
                       {obrasSugeridas.length === 0 ? "Sin obras registradas para este cliente" : "Sin resultados"}
                     </li>
@@ -495,65 +553,6 @@ function PedidoDrawer({
                     </li>
                   ))}
                 </ul>
-
-                {/* Footer: agregar nueva obra */}
-                {!obraNewOpen && (
-                  <div className="border-t border-gray-100 px-3 py-2">
-                    <button
-                      type="button"
-                      onMouseDown={() => { setObraNewOpen(true); setObraNewNombre(obraQuery); setObraNewDireccion(""); }}
-                      className="w-full text-left text-xs font-semibold text-[#CC2229] hover:text-[#B01E24] py-1 cursor-pointer transition-colors"
-                    >
-                      + Agregar nueva obra
-                    </button>
-                  </div>
-                )}
-
-                {/* Formulario inline: nueva obra */}
-                {obraNewOpen && (
-                  <div className="border-t border-gray-100 bg-gray-50 p-3 space-y-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-2">Nueva obra</p>
-                    <input
-                      value={obraNewNombre}
-                      onChange={(e) => setObraNewNombre(e.target.value)}
-                      placeholder="Nombre de la obra *"
-                      className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 bg-white focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20"
-                    />
-                    <input
-                      value={obraNewDireccion}
-                      onChange={(e) => setObraNewDireccion(e.target.value)}
-                      placeholder="Dirección o link de Maps"
-                      className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 bg-white focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20"
-                    />
-                    <div className="flex gap-2 pt-1">
-                      <button
-                        type="button"
-                        onMouseDown={() => setObraNewOpen(false)}
-                        className="flex-1 text-sm py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-100 cursor-pointer transition-colors"
-                      >
-                        Cancelar
-                      </button>
-                      <button
-                        type="button"
-                        disabled={!obraNewNombre.trim()}
-                        onMouseDown={() => {
-                          if (!obraNewNombre.trim()) return;
-                          const nombre = obraNewNombre.trim().toUpperCase().replace(/\s+/g, " ");
-                          const direccion = obraNewDireccion.trim();
-                          set("obraNombre", nombre);
-                          if (direccion) { set("direccion", direccion); setCopied(false); }
-                          onSaveObra?.(form.cliente, nombre, direccion);
-                          setObraOpen(false);
-                          setObraNewOpen(false);
-                          setObraQuery("");
-                        }}
-                        className="flex-1 text-sm py-1.5 rounded-lg bg-[#CC2229] text-white hover:bg-[#B01E24] disabled:opacity-50 cursor-pointer transition-colors font-medium"
-                      >
-                        Guardar
-                      </button>
-                    </div>
-                  </div>
-                )}
               </div>
             )}
           </div>
