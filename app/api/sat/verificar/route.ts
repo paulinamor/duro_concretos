@@ -1,22 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
-import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import { getSatConfig, buildSatService } from "@/lib/sat-service";
+import { buildSatService } from "@/lib/sat-service";
+// certB64/keyB64 vienen del cliente (tiene sesión autenticada y los leyó de Firestore)
 
-// POST /api/sat/verificar  { requestId, password }
+// POST /api/sat/verificar  { requestId, password, certB64, keyB64 }
 export async function POST(req: NextRequest) {
   try {
-    const { requestId, password } = await req.json() as { requestId: string; password: string };
+    const { requestId, password, certB64, keyB64 } = await req.json() as {
+      requestId: string; password: string; certB64: string; keyB64: string;
+    };
 
-    if (!requestId || !password) {
-      return NextResponse.json({ error: "requestId y password requeridos." }, { status: 400 });
+    if (!requestId || !password || !certB64 || !keyB64) {
+      return NextResponse.json({ error: "requestId, password, certB64 y keyB64 requeridos." }, { status: 400 });
     }
 
-    const cfg = await getSatConfig();
-    if (!cfg) return NextResponse.json({ error: "e.firma no configurada." }, { status: 404 });
+    const service = await buildSatService(certB64, keyB64, password);
 
-    const service = await buildSatService(cfg.certB64, cfg.keyB64, password);
-    const result  = await service.verify(requestId);
+    let result;
+    try {
+      result = await service.verify(requestId);
+    } catch (libErr) {
+      const msg = (libErr as Error).message ?? "";
+      // La librería lanza este error cuando el SAT devuelve un HTTP error en lugar de SOAP
+      if (msg.includes("getResponse") || msg.includes("not a function")) {
+        return NextResponse.json({
+          status: "error",
+          mensaje: "El SAT devolvió una respuesta inesperada. La solicitud puede haber expirado.",
+          packageIds: [],
+        });
+      }
+      throw libErr;
+    }
 
     const statusRequest = result.getStatusRequest();
     const satStatus     = statusRequest.isTypeOf("Finished") ? "listo"
@@ -25,17 +38,9 @@ export async function POST(req: NextRequest) {
 
     const packageIds = satStatus === "listo" ? result.getPackageIds() : [];
 
-    // Actualizar Firestore
-    if (!db) return NextResponse.json({ error: "Firebase no configurado." }, { status: 500 });
-    await updateDoc(doc(db, "descargasSAT", requestId), {
-      status:       satStatus,
-      packageIds,
-      actualizadoEn: serverTimestamp(),
-    });
-
     return NextResponse.json({
-      status:    satStatus,
-      mensaje:   result.getStatus().getMessage(),
+      status:  satStatus,
+      mensaje: result.getStatus().getMessage(),
       packageIds,
     });
   } catch (err) {

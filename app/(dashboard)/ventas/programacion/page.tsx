@@ -103,6 +103,7 @@ type VForm = {
   obraNombre: string;
   direccion: string;
   m3Totales: string;
+  resistencia: string;
   extras: string;
   tdBom: string;
   precioM3: string;
@@ -113,7 +114,7 @@ function emptyForm(dia: string): VForm {
   return {
     dia, horaEntrega: "", diaHoraPedido: nowLocalISO(), cliente: "", telefono: "",
     obraNombre: "", direccion: "",
-    m3Totales: "", extras: "", tdBom: "",
+    m3Totales: "", resistencia: "", extras: "", tdBom: "",
     precioM3: "", precioM3Bomba: "",
   };
 }
@@ -128,6 +129,7 @@ function formFromProg(p: Programacion): VForm {
     obraNombre: p.nombreObra ?? "",
     direccion: p.direccion,
     m3Totales: p.m3Totales != null ? String(p.m3Totales) : "",
+    resistencia: p.resistencia ?? "",
     extras: p.extras ?? "",
     tdBom: p.tdBom ?? "",
     precioM3: p.precioM3 != null ? String(p.precioM3) : "",
@@ -664,6 +666,23 @@ function PedidoDrawer({
               onWheel={(e) => e.currentTarget.blur()} />
           </div>
 
+          {/* Resistencia */}
+          <div>
+            <label className={lbl}>Resistencia (f&apos;c)</label>
+            <div className="flex flex-wrap gap-2">
+              {["100", "150", "200", "250", "300", "350", "400"].map((r) => (
+                <button key={r} type="button"
+                  onClick={() => set("resistencia", form.resistencia === r ? "" : r)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${form.resistencia === r ? "bg-[#CC2229] border-[#CC2229] text-white" : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"}`}>
+                  {r}
+                </button>
+              ))}
+              <input value={["100","150","200","250","300","350","400"].includes(form.resistencia) ? "" : form.resistencia}
+                onChange={(e) => set("resistencia", e.target.value)}
+                placeholder="Otro…" className="w-20 px-3 py-1.5 rounded-xl text-xs border border-gray-200 focus:outline-none focus:border-[#CC2229]" />
+            </div>
+          </div>
+
           {/* T/D BOM */}
           <div>
             <label className={lbl}>T / D / BOM <span className="text-[#CC2229]">*</span></label>
@@ -1027,6 +1046,7 @@ export default function VentasProgramacionPage() {
         nombreObra: form.obraNombre.trim() || rest.nombreObra,
         direccion: form.direccion.trim(),
         m3Totales: m3,
+        resistencia: form.resistencia.trim(),
         extras: form.extras.trim(),
         tdBom: form.tdBom.trim(),
         hora: form.horaEntrega.trim(),
@@ -1049,10 +1069,11 @@ export default function VentasProgramacionPage() {
         nombreObra: form.obraNombre.trim() || undefined,
         direccion: form.direccion.trim(),
         m3Totales: m3,
+        resistencia: form.resistencia.trim(),
         extras: form.extras.trim(),
         tdBom: form.tdBom.trim(),
         hora: form.horaEntrega.trim(), hsr: "", muestras: "", tiempoExtraDescarga: "",
-        resistencia: "", color: "", paraUso: "", aditivo: "", credito: "",
+        color: "", paraUso: "", aditivo: "", credito: "",
         recibo: "", fact: "", pagado: "",
         metodoPago: "", fechaPago: "",
         choferes: [],

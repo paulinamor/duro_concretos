@@ -1,21 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSatConfig, buildSatService } from "@/lib/sat-service";
+import { buildSatService } from "@/lib/sat-service";
 
-// POST /api/sat/descargar-paquete  { packageId, password }
-// Devuelve el ZIP como base64 para que el cliente lo descargue directamente.
+// POST /api/sat/descargar-paquete  { packageId, password, certB64, keyB64 }
+// certB64/keyB64 vienen del cliente (tiene sesión autenticada y los leyó de Firestore)
 
 export async function POST(req: NextRequest) {
   try {
-    const { packageId, password } = await req.json() as { packageId: string; password: string };
+    const { packageId, password, certB64, keyB64 } = await req.json() as {
+      packageId: string; password: string; certB64: string; keyB64: string;
+    };
 
-    if (!packageId || !password) {
-      return NextResponse.json({ error: "packageId y password requeridos." }, { status: 400 });
+    if (!packageId || !password || !certB64 || !keyB64) {
+      return NextResponse.json({ error: "packageId, password, certB64 y keyB64 requeridos." }, { status: 400 });
     }
 
-    const cfg = await getSatConfig();
-    if (!cfg) return NextResponse.json({ error: "e.firma no configurada." }, { status: 404 });
-
-    const service = await buildSatService(cfg.certB64, cfg.keyB64, password);
+    const service = await buildSatService(certB64, keyB64, password);
     const result  = await service.download(packageId);
 
     if (!result.getStatus().isAccepted()) {

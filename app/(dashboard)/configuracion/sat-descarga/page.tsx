@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { CheckCircle2, ChevronDown, CloudDownload, Eye, EyeOff, FileKey2, FileText, Loader2, RefreshCw, ShieldCheck, Upload, X } from "lucide-react";
 import { useCollectionRaw } from "@/lib/useCollection";
-import { COLLECTIONS } from "@/lib/db";
+import { upsertDocument, COLLECTIONS } from "@/lib/db";
 import AppSelect from "@/components/AppSelect";
 
 interface DescargaSAT {
@@ -89,6 +89,9 @@ export default function SatDescargaPage() {
       if (!resp.ok) {
         setConfigMsg({ type: "err", text: data.error });
       } else {
+        await upsertDocument(COLLECTIONS.configuracion, "sat_efirma", {
+          certB64: data.certB64, keyB64: data.keyB64, rfc: data.rfc, activo: true,
+        });
         setConfigMsg({ type: "ok", text: `e.firma configurada. RFC: ${data.rfc}` });
         setSatConfig({ rfc: data.rfc, activo: true });
         setCerFile(null); setKeyFile(null); setConfigPwd("");
@@ -114,6 +117,12 @@ export default function SatDescargaPage() {
       if (!resp.ok) {
         setSolicitudMsg({ type: "err", text: data.error });
       } else {
+        await upsertDocument(COLLECTIONS.descargasSAT, data.requestId, {
+          requestId: data.requestId, rfc: data.rfc,
+          status: "pendiente", direccion, tipo: tipoSolicitud,
+          tipoDocumento: tipoDoc || null, fechaInicio, fechaFin,
+          packageIds: [], solicitadoEn: new Date().toISOString(),
+        });
         setSolicitudMsg({ type: "ok", text: `Solicitud enviada al SAT. ID: ${data.requestId}. Espera ~2-5 min y verifica el estado.` });
         iniciarPolling(data.requestId);
       }
@@ -140,9 +149,14 @@ export default function SatDescargaPage() {
         body: JSON.stringify({ requestId, password: sessionPwd }),
       });
       const data = await resp.json();
-      if (data.status === "listo" || data.status === "error") {
-        if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-        setVerificandoId(null);
+      if (data.status) {
+        await upsertDocument(COLLECTIONS.descargasSAT, requestId, {
+          status: data.status, packageIds: data.packageIds ?? [],
+        });
+        if (data.status === "listo" || data.status === "error") {
+          if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+          setVerificandoId(null);
+        }
       }
     } catch { /* silent */ }
   }

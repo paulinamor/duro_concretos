@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 
-// Recibe .cer y .key como archivos (multipart FormData), los guarda como base64 en Firestore.
+// Valida la e.firma y devuelve certB64, keyB64 y RFC.
+// El CLIENTE es quien escribe en Firestore (tiene sesión autenticada).
 // La contraseña NO se guarda — se pide en cada sesión de descarga.
 
 async function fileToBase64(file: File): Promise<string> {
@@ -24,7 +23,7 @@ export async function POST(req: NextRequest) {
     const certB64 = await fileToBase64(cerFile);
     const keyB64  = await fileToBase64(keyFile);
 
-    // Validar e.firma antes de guardar
+    // Validar e.firma
     const { Fiel } = await import("@nodecfdi/sat-ws-descarga-masiva");
     const certBinary = Buffer.from(certB64, "base64").toString("binary");
     const keyBinary  = Buffer.from(keyB64,  "base64").toString("binary");
@@ -40,18 +39,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `e.firma incorrecta: ${(e as Error).message}` }, { status: 422 });
     }
 
-    if (!db) return NextResponse.json({ error: "Firebase no configurado." }, { status: 500 });
-    await setDoc(doc(db, "configuracion", "sat_efirma"), {
-      certB64,
-      keyB64,
-      rfc,
-      activo: true,
-      configuradoEn: serverTimestamp(),
-    });
-
-    return NextResponse.json({ ok: true, rfc });
+    // Devolver datos al cliente — el cliente escribe en Firestore (tiene sesión autenticada)
+    return NextResponse.json({ ok: true, rfc, certB64, keyB64 });
   } catch (err) {
     console.error("[sat/configurar]", err);
-    return NextResponse.json({ error: `Error al guardar: ${(err as Error).message}` }, { status: 500 });
+    return NextResponse.json({ error: `Error al validar: ${(err as Error).message}` }, { status: 500 });
   }
 }

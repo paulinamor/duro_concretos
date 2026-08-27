@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import { getSatConfig, buildSatService } from "@/lib/sat-service";
+import { buildSatService } from "@/lib/sat-service";
+// certB64/keyB64 vienen del cliente (tiene sesión autenticada y los leyó de Firestore)
 
 export interface SolicitarBody {
   password: string;
+  certB64: string;
+  keyB64: string;
   fechaInicio: string;   // YYYY-MM-DD
   fechaFin: string;      // YYYY-MM-DD
   direccion: "emitidos" | "recibidos";
@@ -15,16 +16,13 @@ export interface SolicitarBody {
 export async function POST(req: NextRequest) {
   try {
     const body: SolicitarBody = await req.json();
-    const { password, fechaInicio, fechaFin, direccion, tipo, tipoDocumento } = body;
+    const { password, certB64, keyB64, fechaInicio, fechaFin, direccion, tipo, tipoDocumento } = body;
 
-    if (!password || !fechaInicio || !fechaFin) {
+    if (!password || !certB64 || !keyB64 || !fechaInicio || !fechaFin) {
       return NextResponse.json({ error: "Faltan campos requeridos." }, { status: 400 });
     }
 
-    const cfg = await getSatConfig();
-    if (!cfg) return NextResponse.json({ error: "e.firma no configurada. Ve a Configuración > Descarga SAT." }, { status: 404 });
-
-    const service = await buildSatService(cfg.certB64, cfg.keyB64, password);
+    const service = await buildSatService(certB64, keyB64, password);
 
     const {
       QueryParameters, DateTimePeriod, DownloadType, RequestType, DocumentType,
@@ -51,23 +49,12 @@ export async function POST(req: NextRequest) {
 
     const requestId = result.getRequestId();
 
-    // Guardar en Firestore para historial
-    if (!db) return NextResponse.json({ error: "Firebase no configurado." }, { status: 500 });
-    await setDoc(doc(db, "descargasSAT", requestId), {
+    // El cliente guarda en Firestore con su sesión autenticada
+    return NextResponse.json({
       requestId,
-      rfc:          cfg.rfc,
-      status:       "pendiente",
-      direccion,
-      tipo,
-      tipoDocumento: tipoDocumento ?? null,
-      fechaInicio,
-      fechaFin,
-      packageIds:   [],
-      solicitadoEn: serverTimestamp(),
-      actualizadoEn: serverTimestamp(),
+      // Datos para que el cliente construya el doc de Firestore
+      direccion, tipo, tipoDocumento: tipoDocumento ?? null, fechaInicio, fechaFin,
     });
-
-    return NextResponse.json({ requestId, rfc: cfg.rfc });
   } catch (err) {
     console.error("[sat/solicitar]", err);
     return NextResponse.json({ error: (err as Error).message ?? "Error al solicitar descarga." }, { status: 500 });

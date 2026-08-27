@@ -9,7 +9,7 @@ import {
 import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
 import StatusBadge from "@/components/StatusBadge";
-import { getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
+import { getCollectionDocs, getDocument, upsertDocument, COLLECTIONS } from "@/lib/db";
 import { useCollectionRaw } from "@/lib/useCollection";
 import { withPlantaTag } from "@/lib/auth";
 
@@ -115,7 +115,7 @@ interface DescargaSAT {
   fechaInicio: string;
   fechaFin:    string;
   packageIds:  string[];
-  solicitadoEn?: { seconds: number };
+  solicitadoEn?: { seconds: number } | string;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -435,16 +435,17 @@ function EmitirDrawer({
 const satInp = "w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-xl px-3.5 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-all";
 const satLbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5";
 
-function fmtSatDate(ts?: { seconds: number }) {
+function fmtSatDate(ts?: { seconds: number } | string) {
   if (!ts) return "—";
-  return new Date(ts.seconds * 1000).toLocaleDateString("es-MX", {
+  const d = typeof ts === "string" ? new Date(ts) : new Date((ts as { seconds: number }).seconds * 1000);
+  return d.toLocaleDateString("es-MX", {
     day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
   });
 }
 
 function DescargaSATTab() {
   // ── Config e.firma ──────────────────────────────────────────────────────────
-  const [satConfig,      setSatConfig]      = useState<{ rfc?: string; activo?: boolean } | null>(null);
+  const [satConfig,      setSatConfig]      = useState<{ rfc?: string; activo?: boolean; certB64?: string; keyB64?: string } | null>(null);
   const [loadingConfig,  setLoadingConfig]  = useState(true);
   const cerRef = useRef<HTMLInputElement>(null);
   const keyRef = useRef<HTMLInputElement>(null);
@@ -469,23 +470,50 @@ function DescargaSATTab() {
   const [solicitudMsg,  setSolicitudMsg]  = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
   // ── Verificación / descarga ─────────────────────────────────────────────────
-  const [verificandoId,  setVerificandoId]  = useState<string | null>(null);
+  const [verificandoIds,  setVerificandoIds]  = useState<Set<string>>(new Set());
+  const [verifyMsgs,      setVerifyMsgs]      = useState<Record<string, { ok: boolean; text: string }>>({});
   const [descargandoPkg, setDescargandoPkg] = useState<string | null>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollRef       = useRef<ReturnType<typeof setInterval> | null>(null);
+  const sessionPwdRef = useRef(sessionPwd);
+  const satConfigRef  = useRef(satConfig);
+  const historialRef  = useRef<DescargaSAT[]>([]);
+
+  useEffect(() => { sessionPwdRef.current = sessionPwd; }, [sessionPwd]);
+  useEffect(() => { satConfigRef.current  = satConfig;  }, [satConfig]);
 
   // ── Historial ───────────────────────────────────────────────────────────────
   const historialRaw = useCollectionRaw<DescargaSAT>(COLLECTIONS.descargasSAT ?? "descargasSAT");
-  const historial = [...(historialRaw ?? [])].sort((a, b) =>
-    (b.solicitadoEn?.seconds ?? 0) - (a.solicitadoEn?.seconds ?? 0));
+  const toSecs = (v?: { seconds: number } | string) =>
+    !v ? 0 : typeof v === "string" ? new Date(v).getTime() / 1000 : v.seconds;
+  const historial = [...(historialRaw ?? [])].sort((a, b) => toSecs(b.solicitadoEn) - toSecs(a.solicitadoEn));
+  useEffect(() => { historialRef.current = historial; }, [historial]);
 
   useEffect(() => {
-    fetch("/api/sat/config-status")
-      .then((r) => r.json())
-      .then((d) => setSatConfig(d.config ?? null))
-      .catch(() => setSatConfig(null))
+    getDocument<{ certB64: string; keyB64: string; rfc: string; activo: boolean }>(
+      COLLECTIONS.configuracion, "sat_efirma"
+    ).then((d) => {
+      if (d?.certB64 && d?.keyB64) {
+        setSatConfig({ rfc: d.rfc, activo: d.activo, certB64: d.certB64, keyB64: d.keyB64 });
+      } else {
+        setSatConfig(null);
+      }
+    }).catch(() => setSatConfig(null))
       .finally(() => setLoadingConfig(false));
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
+
+  // Reanudar polling cuando hay contraseña + config + pendientes (incluyendo cuando historial carga por primera vez)
+  const pollingStartedRef = useRef(false);
+  useEffect(() => {
+    if (!sessionPwd || !satConfig?.certB64 || !historialRaw) return;
+    const pendientes = historial.filter(h => h.status === "pendiente");
+    if (pendientes.length === 0) { pollingStartedRef.current = false; return; }
+    if (pollingStartedRef.current) return;
+    pollingStartedRef.current = true;
+    pendientes.forEach(h => verificarConRefs(h.requestId));
+    iniciarPollingGlobal();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionPwd, satConfig?.certB64, historialRaw]);
 
   async function handleGuardarConfig() {
     if (!cerFile || !keyFile || !configPwd) return;
@@ -501,8 +529,12 @@ function DescargaSATTab() {
       if (!resp.ok) {
         setConfigMsg({ type: "err", text: data.error });
       } else {
+        // El route valida, el cliente guarda en Firestore (tiene sesión autenticada)
+        await upsertDocument(COLLECTIONS.configuracion, "sat_efirma", {
+          certB64: data.certB64, keyB64: data.keyB64, rfc: data.rfc, activo: true,
+        });
         setConfigMsg({ type: "ok", text: `e.firma configurada · RFC ${data.rfc}` });
-        setSatConfig({ rfc: data.rfc, activo: true });
+        setSatConfig({ rfc: data.rfc, activo: true, certB64: data.certB64, keyB64: data.keyB64 });
         setCerFile(null); setKeyFile(null); setConfigPwd("");
       }
     } catch {
@@ -513,19 +545,31 @@ function DescargaSATTab() {
   }
 
   async function handleSolicitar() {
-    if (!sessionPwd || !fechaInicio || !fechaFin) return;
+    if (!sessionPwd || !fechaInicio || !fechaFin || !satConfig?.certB64 || !satConfig?.keyB64) return;
     setSolicitando(true);
     setSolicitudMsg(null);
     try {
       const resp = await fetch("/api/sat/solicitar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: sessionPwd, fechaInicio, fechaFin, direccion, tipo: tipoSolicitud, tipoDocumento: tipoDoc || undefined }),
+        body: JSON.stringify({
+          password: sessionPwd,
+          certB64: satConfig.certB64,
+          keyB64: satConfig.keyB64,
+          fechaInicio, fechaFin, direccion, tipo: tipoSolicitud, tipoDocumento: tipoDoc || undefined,
+        }),
       });
       const data = await resp.json();
       if (!resp.ok) {
         setSolicitudMsg({ type: "err", text: data.error });
       } else {
+        // Guardar historial en Firestore desde el cliente (tiene sesión autenticada)
+        await upsertDocument(COLLECTIONS.descargasSAT, data.requestId, {
+          requestId: data.requestId, rfc: satConfig.rfc,
+          status: "pendiente", direccion, tipo: tipoSolicitud,
+          tipoDocumento: tipoDoc || null, fechaInicio, fechaFin,
+          packageIds: [], solicitadoEn: new Date().toISOString(),
+        });
         setSolicitudMsg({ type: "ok", text: `Solicitud enviada · ID ${data.requestId}. El SAT puede tardar 2–10 min.` });
         iniciarPolling(data.requestId);
       }
@@ -536,36 +580,67 @@ function DescargaSATTab() {
     }
   }
 
-  function iniciarPolling(requestId: string) {
-    if (pollRef.current) clearInterval(pollRef.current);
-    setVerificandoId(requestId);
-    pollRef.current = setInterval(() => verificar(requestId), 30_000);
-  }
-
-  async function verificar(requestId: string) {
-    if (!sessionPwd) return;
+  async function verificarConRefs(requestId: string) {
+    const pwd = sessionPwdRef.current;
+    const cfg = satConfigRef.current;
+    if (!pwd || !cfg?.certB64 || !cfg?.keyB64) return;
+    setVerificandoIds(prev => new Set(prev).add(requestId));
     try {
       const resp = await fetch("/api/sat/verificar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requestId, password: sessionPwd }),
+        body: JSON.stringify({ requestId, password: pwd, certB64: cfg.certB64, keyB64: cfg.keyB64 }),
       });
       const data = await resp.json();
-      if (data.status === "listo" || data.status === "error") {
-        if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-        setVerificandoId(null);
+      if (!resp.ok) {
+        setVerifyMsgs(m => ({ ...m, [requestId]: { ok: false, text: data.error ?? "Error al verificar." } }));
+        return;
       }
-    } catch { /* silent */ }
+      if (data.status) {
+        await upsertDocument(COLLECTIONS.descargasSAT, requestId, {
+          status: data.status, packageIds: data.packageIds ?? [],
+        });
+        const statusLabels: Record<string, string> = {
+          listo: "Listo — descarga disponible",
+          error: `Error SAT: ${data.mensaje ?? "solicitud rechazada"}`,
+          procesando: `En proceso — ${data.mensaje ?? "el SAT está preparando el paquete"}`,
+        };
+        setVerifyMsgs(m => ({ ...m, [requestId]: { ok: data.status !== "error", text: statusLabels[data.status] ?? data.mensaje ?? data.status } }));
+      }
+    } catch (e) {
+      setVerifyMsgs(m => ({ ...m, [requestId]: { ok: false, text: (e as Error).message ?? "Error de red." } }));
+    } finally {
+      setVerificandoIds(prev => { const s = new Set(prev); s.delete(requestId); return s; });
+    }
+  }
+
+  function iniciarPollingGlobal() {
+    if (pollRef.current) return;
+    pollRef.current = setInterval(() => {
+      const pendientes = historialRef.current.filter(h => h.status === "pendiente");
+      if (pendientes.length === 0) {
+        clearInterval(pollRef.current!); pollRef.current = null; return;
+      }
+      pendientes.forEach(h => verificarConRefs(h.requestId));
+    }, 30_000);
+  }
+
+  function iniciarPolling(_requestId: string) {
+    iniciarPollingGlobal();
+  }
+
+  async function verificar(requestId: string) {
+    await verificarConRefs(requestId);
   }
 
   async function descargarPaquete(packageId: string) {
-    if (!sessionPwd) return;
+    if (!sessionPwd || !satConfig?.certB64 || !satConfig?.keyB64) return;
     setDescargandoPkg(packageId);
     try {
       const resp = await fetch("/api/sat/descargar-paquete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ packageId, password: sessionPwd }),
+        body: JSON.stringify({ packageId, password: sessionPwd, certB64: satConfig.certB64, keyB64: satConfig.keyB64 }),
       });
       if (!resp.ok) { const e = await resp.json(); alert(e.error); return; }
       const blob = await resp.blob();
@@ -753,7 +828,7 @@ function DescargaSATTab() {
           <div className="flex justify-end">
             <button
               onClick={handleSolicitar}
-              disabled={solicitando || !sessionPwd || !fechaInicio || !fechaFin || !satConfig?.activo}
+              disabled={solicitando || !sessionPwd || !fechaInicio || !fechaFin || !satConfig?.certB64}
               className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-colors disabled:opacity-40 cursor-pointer"
             >
               {solicitando ? <Loader2 size={13} className="animate-spin" /> : <CloudDownload size={13} />}
@@ -785,10 +860,10 @@ function DescargaSATTab() {
                   {(d.status === "pendiente" || d.status === "procesando") && (
                     <button
                       onClick={() => verificar(d.requestId)}
-                      disabled={!sessionPwd || verificandoId === d.requestId}
+                      disabled={!sessionPwd || verificandoIds.has(d.requestId)}
                       className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-[#3A3A3A] text-gray-400 rounded-lg hover:border-blue-500/40 hover:text-blue-400 transition-colors disabled:opacity-40 cursor-pointer"
                     >
-                      <RefreshCw size={11} className={verificandoId === d.requestId ? "animate-spin" : ""} />
+                      <RefreshCw size={11} className={verificandoIds.has(d.requestId) ? "animate-spin" : ""} />
                       Verificar
                     </button>
                   )}
@@ -810,7 +885,14 @@ function DescargaSATTab() {
                   </div>
                 )}
 
-                <p className="text-[10px] text-gray-600">{fmtSatDate(d.solicitadoEn)}</p>
+                <div className="flex items-center gap-3">
+                  <p className="text-[10px] text-gray-600">{fmtSatDate(d.solicitadoEn)}</p>
+                  {verifyMsgs[d.requestId] && (
+                    <p className={`text-[10px] font-medium ${verifyMsgs[d.requestId].ok ? "text-emerald-400" : "text-red-400"}`}>
+                      {verifyMsgs[d.requestId].text}
+                    </p>
+                  )}
+                </div>
               </div>
             ))}
           </div>
