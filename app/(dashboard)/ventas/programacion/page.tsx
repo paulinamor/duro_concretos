@@ -217,9 +217,12 @@ function PedidoDrawer({
 
   const obrasSugeridas = useMemo(() => {
     if (!form.cliente) return [];
-    const clienteLower = form.cliente.toLowerCase();
+    // Normaliza quitando el alias después de "//" para que "MARIO CAVAZOS // AUTOLINEAS 3M"
+    // coincida con "MARIO CAVAZOS" y viceversa.
+    const normCl = (s: string) => s.split("//")[0].trim().toUpperCase().replace(/\s+/g, " ");
+    const clienteNorm = normCl(form.cliente);
     return obrasData
-      .filter((o) => o.cliente.toLowerCase() === clienteLower)
+      .filter((o) => normCl(o.cliente) === clienteNorm)
       .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
   }, [obrasData, form.cliente]);
 
@@ -966,8 +969,9 @@ export default function VentasProgramacionPage() {
 
   async function autoSaveObra(cliente: string, nombre: string, direccion: string) {
     if (!nombre.trim() || !cliente.trim()) return;
+    const normCl = (s: string) => s.split("//")[0].trim().toUpperCase().replace(/\s+/g, " ");
     const ya = obrasData.find(
-      (o) => o.cliente.toLowerCase() === cliente.toLowerCase() && o.nombre.toLowerCase() === nombre.trim().toLowerCase(),
+      (o) => normCl(o.cliente) === normCl(cliente) && o.nombre.toLowerCase() === nombre.trim().toLowerCase(),
     );
     if (ya) return;
     const id = `obra-${Date.now()}`;

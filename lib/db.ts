@@ -141,6 +141,7 @@ export const COLLECTIONS = {
   descargasSAT: "descargasSAT",
   obras: "obras",
   salidasEfectivo: "salidasEfectivo",
+  pagos: "pagos",
 } as const;
 
 export { where, orderBy, limit, startAfter, type QueryConstraint };
