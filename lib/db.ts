@@ -74,6 +74,43 @@ export interface UserProfile {
   status: "Activo" | "Inactivo";
   planta?: "Pesquería" | "Allende" | "Todas";
   createdAt: string;
+  canAuthorize?: boolean;                        // puede ver y resolver solicitudes de autorización
+  permisos?: Record<string, "r" | "w" | "rw">;  // permiso granular por módulo (default: "rw")
+}
+
+// Solicitudes de autorización para acciones sensibles
+export interface SolicitudAutorizacion {
+  id?: string;
+  tipo: "eliminar_programacion";
+  programacionId: string;
+  folio: string;
+  dia: string;
+  cliente: string;
+  motivo: string;
+  solicitanteNombre: string;
+  solicitanteEmail: string;
+  status: "pendiente" | "aprobada" | "rechazada";
+  creadoEn: string;
+  resueltoPor?: string;
+  resueltaEn?: string;
+  comentarioResolucion?: string;
+  planta?: string;
+}
+
+// Notificaciones del sistema (reales, desde Firestore)
+export interface Notificacion {
+  id?: string;
+  titulo: string;
+  detalle: string;
+  href: string;
+  tag: string;
+  tipo: "sistema" | "autorizacion" | "transporte" | "finanzas" | "operaciones" | "rrhh";
+  prioridad?: "normal" | "alta";
+  destinatarioEmail: string;   // email específico o "todos"
+  leidoPor: string[];           // array de emails que ya la leyeron
+  creadoEn: string;
+  expiraEn?: string;
+  planta?: string;
 }
 
 export async function getAllUserProfiles(): Promise<UserProfile[]> {
@@ -142,6 +179,8 @@ export const COLLECTIONS = {
   obras: "obras",
   salidasEfectivo: "salidasEfectivo",
   pagos: "pagos",
+  solicitudesAutorizacion: "solicitudesAutorizacion",
+  notificaciones: "notificaciones",
 } as const;
 
 export { where, orderBy, limit, startAfter, type QueryConstraint };

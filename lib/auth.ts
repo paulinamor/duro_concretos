@@ -9,6 +9,8 @@ export interface AppUser {
   modules?: "all" | string[];
   status?: "Activo" | "Inactivo";
   planta?: Planta;
+  canAuthorize?: boolean;
+  permisos?: Record<string, "r" | "w" | "rw">;
 }
 
 export type AuthEventType = "login_success" | "login_failed" | "password_recovery" | "role_update";
@@ -152,7 +154,7 @@ export function getStoredSession() {
   if (!raw) return null;
 
   try {
-    return JSON.parse(raw) as Pick<AppUser, "email" | "name" | "role" | "modules" | "status" | "planta"> & { plantaActiva?: Planta };
+    return JSON.parse(raw) as Pick<AppUser, "email" | "name" | "role" | "modules" | "status" | "planta" | "canAuthorize" | "permisos"> & { plantaActiva?: Planta };
   } catch {
     localStorage.removeItem(SESSION_KEY);
     return null;
@@ -169,6 +171,8 @@ export function saveSession(user: AppUser) {
       modules: user.modules ?? getDefaultModulesForRole(user.role),
       status: user.status ?? "Activo",
       planta: user.planta ?? "Todas",
+      canAuthorize: user.canAuthorize ?? false,
+      permisos: user.permisos ?? {},
     }),
   );
   window.dispatchEvent(new CustomEvent("duro:session-updated"));
@@ -262,6 +266,25 @@ export function getAllowedModuleSet(user: Pick<AppUser, "role" | "modules"> | nu
   const modules = user?.modules ?? getDefaultModulesForRole(user?.role ?? "admin");
   if (modules === "all") return new Set(moduleCatalog.map((module) => module.href));
   return new Set(modules);
+}
+
+// Permiso granular: "r" | "w" | "rw". Default "rw" si no está configurado.
+export function getModulePermiso(
+  user: Pick<AppUser, "role" | "modules" | "permisos"> | null,
+  href: string,
+): "r" | "w" | "rw" | null {
+  if (!user) return null;
+  const allowed = getAllowedModuleSet(user);
+  if (!allowed.has(href)) return null;
+  return (user.permisos?.[href] as "r" | "w" | "rw") ?? "rw";
+}
+
+export function canWrite(
+  user: Pick<AppUser, "role" | "modules" | "permisos"> | null,
+  href: string,
+): boolean {
+  const p = getModulePermiso(user, href);
+  return p === "w" || p === "rw";
 }
 
 export function getAuthEvents() {

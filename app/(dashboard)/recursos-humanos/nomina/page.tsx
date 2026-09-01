@@ -37,7 +37,7 @@ interface ReciboNomina {
   isr: number;
   subsidio: number;
   uuid: string;
-  facturApiId: string;
+  facturamaId: string;
   status: NominaStatus;
   enviado: boolean;
   desglose?: DesglosePago;
@@ -98,7 +98,7 @@ export default function NominaPage() {
     setTimbrandoId(recibo.id);
     try {
       const per = PERIODICIDADES.find((p) => p.value === recibo.periodicidad);
-      const resp = await fetch("/api/facturapi/timbrar-nomina", {
+      const resp = await fetch("/api/facturama/timbrar-nomina", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -124,7 +124,7 @@ export default function NominaPage() {
       const actualizado: ReciboNomina = {
         ...recibo,
         uuid:        data.uuid,
-        facturApiId: data.id,
+        facturamaId: data.facturamaId,
         status:      "Timbrado",
       };
       setRecibos((prev) => prev.map((r) => (r.id === recibo.id ? actualizado : r)));
@@ -219,10 +219,10 @@ export default function NominaPage() {
                           Timbrar
                         </button>
                       )}
-                      {r.facturApiId && (
+                      {r.facturamaId && (
                         <>
                           <a
-                            href={`/api/facturapi/download?id=${r.facturApiId}&format=pdf`}
+                            href={`/api/facturama/download?id=${r.facturamaId}&format=pdf`}
                             target="_blank" rel="noopener noreferrer"
                             className="p-1.5 rounded-lg bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 hover:text-white hover:border-[#CC2229] transition-colors"
                             title="Descargar PDF"
@@ -230,7 +230,7 @@ export default function NominaPage() {
                             <Download size={13} />
                           </a>
                           <a
-                            href={`/api/facturapi/download?id=${r.facturApiId}&format=xml`}
+                            href={`/api/facturama/download?id=${r.facturamaId}&format=xml`}
                             target="_blank" rel="noopener noreferrer"
                             className="p-1.5 rounded-lg bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 hover:text-white hover:border-blue-400/60 transition-colors"
                             title="Descargar XML"
@@ -343,7 +343,7 @@ function CalcularDrawer({ onClose, onGuardar }: CalcularDrawerProps) {
       isr:             desglose.isrRetenido,
       subsidio:        desglose.subsidioEmpleo,
       uuid:            "",
-      facturApiId:     "",
+      facturamaId:     "",
       status:          "Pendiente",
       enviado:         false,
       desglose,

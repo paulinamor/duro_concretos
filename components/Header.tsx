@@ -3,11 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bell, Bot, ChevronDown, CircleDollarSign, FileSpreadsheet, FileText, Fuel, LogOut, MapPin, Settings, Truck, User, UserCircle, Wallet } from "lucide-react";
+import { AlertTriangle, Bell, ChevronDown, CircleDollarSign, LogOut, MapPin, Settings, Truck, User, UserCircle, UserRound, Wallet } from "lucide-react";
 import { MobileMenuButton } from "./Sidebar";
 import { getAllowedModuleSet, getActivePlanta, getStoredSession, setActivePlanta, type Planta } from "@/lib/auth";
+import { subscribeToCollection, COLLECTIONS, orderBy, limit, type Notificacion } from "@/lib/db";
 import { signOut } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { arrayUnion, updateDoc, doc } from "firebase/firestore";
+import { auth, db } from "@/lib/firebase";
 
 interface HeaderProps {
   title: string;
@@ -24,24 +26,55 @@ export default function Header({ title, section, onMobileMenu }: HeaderProps) {
   const [plantaOpen, setPlantaOpen] = useState(false);
   const [session, setSession] = useState<ReturnType<typeof getStoredSession>>(null);
   const [plantaActiva, setPlantaActivaState] = useState<Planta>("Todas");
-  const [notifications, setNotifications] = useState([
-    { title: "Caja chica requiere reposición", detail: "Disponible bajo el punto definido", href: "/operaciones/caja-chica", read: false, icon: Wallet, tag: "Operaciones" },
-    { title: "Unidad DC-02 próxima a servicio", detail: "Restan menos de 2,000 km", href: "/transporte/mantenimiento", read: false, icon: Truck, tag: "Transporte" },
-    { title: "CxC pendiente de seguimiento", detail: "Grupo Alfa vence esta semana", href: "/finanzas/cxc", read: false, icon: CircleDollarSign, tag: "Finanzas" },
-    { title: "Rendimiento bajo de diésel", detail: "DC-07 reportó 2.8 km/L", href: "/transporte/diesel", read: false, icon: Fuel, tag: "Transporte" },
-    { title: "Automatización pausada", detail: "Timbrado de nómina requiere autorización", href: "/automatizaciones", read: false, icon: Bot, tag: "Sistema" },
-  ]);
-  const enabledNotificationModules = getAllowedModuleSet(session);
-  const visibleNotifications = notifications.filter((item) => enabledNotificationModules.has(item.href));
-  const unreadCount = visibleNotifications.filter((item) => !item.read).length;
+  const [notifications, setNotifications] = useState<Notificacion[]>([]);
 
-  function markNotificationAsRead(title: string) {
-    setNotifications((current) =>
-      current.map((item) =>
-        item.title === title ? { ...item, read: true } : item,
-      ),
-    );
+  const enabledModules = getAllowedModuleSet(session);
+  const userEmail = session?.email ?? "";
+  const now = new Date().toISOString();
+
+  const visibleNotifications = notifications.filter((n) => {
+    if (n.destinatarioEmail !== "todos" && n.destinatarioEmail !== userEmail) return false;
+    if (n.expiraEn && n.expiraEn < now) return false;
+    return true;
+  });
+
+  const unreadCount = visibleNotifications.filter((n) => !n.leidoPor.includes(userEmail)).length;
+
+  function getNotifIcon(tipo: Notificacion["tipo"]) {
+    switch (tipo) {
+      case "autorizacion": return AlertTriangle;
+      case "transporte": return Truck;
+      case "finanzas": return CircleDollarSign;
+      case "operaciones": return Wallet;
+      case "rrhh": return UserRound;
+      default: return Bell;
+    }
+  }
+
+  async function markNotificationAsRead(notifId: string) {
+    if (!notifId || !userEmail) return;
     setNotificationsOpen(false);
+    setNotifications((prev) => prev.map((n) =>
+      n.id === notifId ? { ...n, leidoPor: [...n.leidoPor, userEmail] } : n,
+    ));
+    try {
+      if (!db) return;
+      await updateDoc(doc(db, COLLECTIONS.notificaciones, notifId), { leidoPor: arrayUnion(userEmail) });
+    } catch { /* ignore */ }
+  }
+
+  async function markAllAsRead() {
+    const unread = visibleNotifications.filter((n) => !n.leidoPor.includes(userEmail));
+    setNotifications((prev) => prev.map((n) => ({
+      ...n,
+      leidoPor: unread.some((u) => u.id === n.id) ? [...n.leidoPor, userEmail] : n.leidoPor,
+    })));
+    await Promise.all(unread.map(async (n) => {
+      if (!n.id || !db) return;
+      try {
+        await updateDoc(doc(db, COLLECTIONS.notificaciones, n.id), { leidoPor: arrayUnion(userEmail) });
+      } catch { /* ignore */ }
+    }));
   }
 
   async function handleLogout() {
@@ -461,9 +494,19 @@ export default function Header({ title, section, onMobileMenu }: HeaderProps) {
   }
 
   useEffect(() => {
-    setSession(getStoredSession());
+    const s = getStoredSession();
+    setSession(s);
     setPlantaActivaState(getActivePlanta());
   }, []);
+
+  useEffect(() => {
+    if (!userEmail) return;
+    return subscribeToCollection<Notificacion>(
+      COLLECTIONS.notificaciones,
+      (docs) => setNotifications(docs),
+      [orderBy("creadoEn", "desc"), limit(60)],
+    );
+  }, [userEmail]);
 
   useEffect(() => {
     function handleSessionUpdate() {
@@ -603,48 +646,50 @@ export default function Header({ title, section, onMobileMenu }: HeaderProps) {
               </div>
             </div>
             <div className="max-h-96 overflow-y-auto p-2 space-y-2">
-              {visibleNotifications.length > 0 ? visibleNotifications.map((item) => (
-                <Link
-                  key={item.title}
-                  href={item.href}
-                  onClick={() => markNotificationAsRead(item.title)}
-                  className={`block rounded-lg border px-3 py-3 transition-colors ${
-                    item.read
-                      ? "border-slate-200 bg-slate-50 opacity-70"
-                      : "border-slate-200 bg-white hover:border-[#CC2229]"
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
-                      item.read ? "bg-slate-100 text-slate-500" : "bg-[#CC2229]/10 text-[#CC2229]"
-                    }`}>
-                      <item.icon size={17} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="text-sm font-medium text-slate-950">{item.title}</p>
-                        {!item.read && <span className="mt-1.5 h-2 w-2 rounded-full bg-[#CC2229] shrink-0" />}
+              {visibleNotifications.length > 0 ? visibleNotifications.map((item) => {
+                const isRead = item.leidoPor.includes(userEmail);
+                const Icon = getNotifIcon(item.tipo);
+                return (
+                  <Link
+                    key={item.id ?? item.titulo}
+                    href={item.href}
+                    onClick={() => { if (item.id) markNotificationAsRead(item.id); }}
+                    className={`block rounded-lg border px-3 py-3 transition-colors ${
+                      isRead
+                        ? "border-slate-200 bg-slate-50 opacity-70"
+                        : "border-slate-200 bg-white hover:border-[#CC2229]"
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                        isRead ? "bg-slate-100 text-slate-500" : "bg-[#CC2229]/10 text-[#CC2229]"
+                      }`}>
+                        <Icon size={17} />
                       </div>
-                      <p className="text-xs text-slate-500 mt-1">{item.detail}</p>
-                      <span className="mt-2 inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
-                        {item.tag}
-                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-sm font-medium text-slate-950">{item.titulo}</p>
+                          {!isRead && <span className="mt-1.5 h-2 w-2 rounded-full bg-[#CC2229] shrink-0" />}
+                        </div>
+                        <p className="text-xs text-slate-500 mt-1">{item.detalle}</p>
+                        <span className="mt-2 inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
+                          {item.tag}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                </Link>
-              )) : (
+                  </Link>
+                );
+              }) : (
                 <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-4">
-                  <p className="text-sm font-medium text-slate-950">Sin notificaciones activas</p>
-                  <p className="mt-1 text-xs text-slate-500">Las alertas de módulos bloqueados no se muestran.</p>
+                  <p className="text-sm font-medium text-slate-950">Sin notificaciones</p>
+                  <p className="mt-1 text-xs text-slate-500">No hay alertas para tu usuario en este momento.</p>
                 </div>
               )}
             </div>
             <div className="border-t border-slate-200 px-4 py-3">
               <button
-                onClick={() => setNotifications((current) => current.map((item) => (
-                  enabledNotificationModules.has(item.href) ? { ...item, read: true } : item
-                )))}
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition-colors hover:border-[#CC2229] hover:text-[#CC2229]"
+                onClick={markAllAsRead}
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition-colors hover:border-[#CC2229] hover:text-[#CC2229] cursor-pointer"
               >
                 Marcar todas como leídas
               </button>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Moon, Pencil, Plus, Search, Sun, Trash2 } from "lucide-react";
+import { CheckCircle2, Clock, Moon, Pencil, Plus, Search, Shield, Sun, Trash2, XCircle } from "lucide-react";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { authSecondary } from "@/lib/firebase";
 import {
@@ -10,8 +10,11 @@ import {
   withoutUserProfileId,
   upsertDocument,
   getCollectionDocs,
+  deleteDocument,
   COLLECTIONS,
+  orderBy,
   type UserProfile,
+  type SolicitudAutorizacion,
 } from "@/lib/db";
 import AppSelect from "@/components/AppSelect";
 import StatusBadge from "@/components/StatusBadge";
@@ -34,9 +37,11 @@ type UserDraft = {
   status: "Activo" | "Inactivo";
   modules: "all" | string[];
   planta: Planta;
+  canAuthorize: boolean;
+  permisos: Record<string, "r" | "w" | "rw">;
 };
 
-type Tab = "usuarios" | "apariencia" | "ubicaciones";
+type Tab = "usuarios" | "autorizaciones" | "apariencia" | "ubicaciones";
 
 type PlantaCoord = { lat: string; lng: string; label: string };
 
@@ -135,6 +140,8 @@ export default function ConfiguracionPage() {
       status: "Activo",
       modules: ["/dashboard"],
       planta: "Pesquería",
+      canAuthorize: false,
+      permisos: {},
     });
   }
 
@@ -148,6 +155,8 @@ export default function ConfiguracionPage() {
       status: profile.status,
       modules: profile.modules,
       planta: profile.planta ?? "Pesquería",
+      canAuthorize: profile.canAuthorize ?? false,
+      permisos: profile.permisos ?? {},
     });
   }
 
@@ -218,6 +227,8 @@ export default function ConfiguracionPage() {
         status: userDraft.status,
         planta: userDraft.planta,
         createdAt: profiles.find((p) => p.id === uid)?.createdAt ?? new Date().toISOString(),
+        canAuthorize: userDraft.canAuthorize,
+        permisos: userDraft.permisos,
       };
 
       await upsertUserProfile(uid, profileData);
@@ -236,6 +247,8 @@ export default function ConfiguracionPage() {
           modules: profileData.modules,
           status: profileData.status,
           planta: profileData.planta,
+          canAuthorize: profileData.canAuthorize,
+          permisos: profileData.permisos,
         });
         setSession(getStoredSession());
       }
@@ -277,6 +290,83 @@ export default function ConfiguracionPage() {
     }
   }
 
+  // ─── Autorizaciones ────────────────────────────────────────────────────────
+
+  const [solicitudes, setSolicitudes] = useState<SolicitudAutorizacion[]>([]);
+  const [loadingSolicitudes, setLoadingSolicitudes] = useState(false);
+  const [rechazandoId, setRechazandoId] = useState<string | null>(null);
+  const [comentarioRechazo, setComentarioRechazo] = useState("");
+  const [procesandoId, setProcesandoId] = useState<string | null>(null);
+
+  async function loadSolicitudes() {
+    setLoadingSolicitudes(true);
+    try {
+      const docs = await getCollectionDocs<SolicitudAutorizacion>(
+        COLLECTIONS.solicitudesAutorizacion,
+        [orderBy("creadoEn", "desc")],
+      );
+      setSolicitudes(docs);
+    } catch {
+      showToast("error", "Error", "No se pudieron cargar las solicitudes.");
+    } finally {
+      setLoadingSolicitudes(false);
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab === "autorizaciones") loadSolicitudes();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
+  async function aprobarSolicitud(sol: SolicitudAutorizacion) {
+    if (!sol.id) return;
+    setProcesandoId(sol.id);
+    try {
+      await deleteDocument(COLLECTIONS.programaciones, sol.programacionId);
+      await upsertDocument(COLLECTIONS.solicitudesAutorizacion, sol.id, {
+        ...sol,
+        status: "aprobada",
+        resueltoPor: session?.email ?? "",
+        resueltaEn: new Date().toISOString(),
+      });
+      setSolicitudes((prev) => prev.map((s) => s.id === sol.id ? { ...s, status: "aprobada" } : s));
+      showToast("success", "Aprobada", `Programación ${sol.folio} eliminada correctamente.`);
+    } catch {
+      showToast("error", "Error", "No se pudo procesar la aprobación.");
+    } finally {
+      setProcesandoId(null);
+    }
+  }
+
+  async function rechazarSolicitud(sol: SolicitudAutorizacion) {
+    if (!sol.id || !comentarioRechazo.trim()) return;
+    setProcesandoId(sol.id);
+    try {
+      await upsertDocument(COLLECTIONS.solicitudesAutorizacion, sol.id, {
+        ...sol,
+        status: "rechazada",
+        resueltoPor: session?.email ?? "",
+        resueltaEn: new Date().toISOString(),
+        comentarioResolucion: comentarioRechazo.trim(),
+      });
+      setSolicitudes((prev) => prev.map((s) => s.id === sol.id ? { ...s, status: "rechazada" } : s));
+      setRechazandoId(null);
+      setComentarioRechazo("");
+      showToast("success", "Rechazada", "La solicitud fue rechazada.");
+    } catch {
+      showToast("error", "Error", "No se pudo rechazar la solicitud.");
+    } finally {
+      setProcesandoId(null);
+    }
+  }
+
+  function setDraftModulePermiso(href: string, permiso: "r" | "w" | "rw") {
+    setUserDraft((current) => {
+      if (!current) return current;
+      return { ...current, permisos: { ...current.permisos, [href]: permiso } };
+    });
+  }
+
   function handleThemeSelect(theme: AppTheme) {
     setStoredTheme(theme);
     setCurrentTheme(theme);
@@ -292,8 +382,8 @@ export default function ConfiguracionPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 rounded-xl border border-[#3A3A3A] bg-[#1A1A1A] p-1 w-fit">
-        {(["usuarios", "apariencia", "ubicaciones"] as Tab[]).map((tab) => (
+      <div className="flex flex-wrap gap-1 rounded-xl border border-[#3A3A3A] bg-[#1A1A1A] p-1 w-fit">
+        {(["usuarios", "autorizaciones", "apariencia", "ubicaciones"] as Tab[]).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -303,7 +393,10 @@ export default function ConfiguracionPage() {
                 : "text-gray-400 hover:text-white"
             }`}
           >
-            {tab === "usuarios" ? "Usuarios y roles" : tab === "apariencia" ? "Apariencia" : "Ubicaciones"}
+            {tab === "usuarios" ? "Usuarios y roles"
+              : tab === "autorizaciones" ? "Autorizaciones"
+              : tab === "apariencia" ? "Apariencia"
+              : "Ubicaciones"}
           </button>
         ))}
       </div>
@@ -414,6 +507,166 @@ export default function ConfiguracionPage() {
               </tbody>
             </table>
           </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab: Autorizaciones */}
+      {activeTab === "autorizaciones" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-white font-semibold text-sm">Solicitudes de autorización</p>
+              <p className="text-gray-500 text-xs mt-0.5">Aprueba o rechaza acciones que requieren autorización de supervisor.</p>
+            </div>
+            <button
+              onClick={loadSolicitudes}
+              className="text-xs text-gray-400 hover:text-white transition-colors cursor-pointer border border-[#3A3A3A] rounded-lg px-3 py-1.5"
+            >
+              Actualizar
+            </button>
+          </div>
+
+          {loadingSolicitudes ? (
+            <div className="flex items-center justify-center gap-3 py-16">
+              <svg className="h-7 w-7 animate-spin text-[#CC2229]" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                <path className="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+              </svg>
+              <p className="text-sm text-gray-400">Cargando solicitudes…</p>
+            </div>
+          ) : solicitudes.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-20 rounded-xl border border-[#3A3A3A] bg-[#242424]">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#1A1A1A] text-gray-600">
+                <Shield size={22} />
+              </div>
+              <p className="text-sm text-gray-400">Sin solicitudes pendientes</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {solicitudes.map((sol) => {
+                const isPendiente = sol.status === "pendiente";
+                const isAprobada = sol.status === "aprobada";
+                const isRechazando = rechazandoId === sol.id;
+
+                return (
+                  <div
+                    key={sol.id}
+                    className={`rounded-xl border bg-[#242424] overflow-hidden ${
+                      isPendiente ? "border-amber-500/40" : isAprobada ? "border-emerald-500/30" : "border-red-500/20"
+                    }`}
+                  >
+                    {/* Header */}
+                    <div className="flex items-center gap-3 px-5 py-4 border-b border-[#3A3A3A]">
+                      <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                        isPendiente ? "bg-amber-500/15 text-amber-400"
+                        : isAprobada ? "bg-emerald-500/15 text-emerald-400"
+                        : "bg-red-500/15 text-red-400"
+                      }`}>
+                        {isPendiente ? <Clock size={15} /> : isAprobada ? <CheckCircle2 size={15} /> : <XCircle size={15} />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-white">
+                          Eliminar programación {sol.folio}
+                        </p>
+                        <p className="text-xs text-gray-500">{sol.cliente} · {sol.dia}</p>
+                      </div>
+                      <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${
+                        isPendiente ? "bg-amber-500/15 text-amber-400"
+                        : isAprobada ? "bg-emerald-500/15 text-emerald-400"
+                        : "bg-red-500/15 text-red-400"
+                      }`}>
+                        {sol.status}
+                      </span>
+                    </div>
+
+                    {/* Body */}
+                    <div className="px-5 py-4 space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-xs">
+                        <div>
+                          <span className="text-gray-600 uppercase tracking-widest text-[10px] font-semibold">Solicitante</span>
+                          <p className="text-gray-300 mt-0.5">{sol.solicitanteNombre}</p>
+                          <p className="text-gray-500">{sol.solicitanteEmail}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-600 uppercase tracking-widest text-[10px] font-semibold">Fecha solicitud</span>
+                          <p className="text-gray-300 mt-0.5">
+                            {new Date(sol.creadoEn).toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" })}
+                          </p>
+                        </div>
+                        <div className="sm:col-span-2">
+                          <span className="text-gray-600 uppercase tracking-widest text-[10px] font-semibold">Motivo</span>
+                          <p className="text-gray-300 mt-0.5">{sol.motivo}</p>
+                        </div>
+                        {sol.comentarioResolucion && (
+                          <div className="sm:col-span-2">
+                            <span className="text-gray-600 uppercase tracking-widest text-[10px] font-semibold">Comentario resolución</span>
+                            <p className="text-gray-300 mt-0.5">{sol.comentarioResolucion}</p>
+                          </div>
+                        )}
+                        {sol.resueltoPor && (
+                          <div>
+                            <span className="text-gray-600 uppercase tracking-widest text-[10px] font-semibold">Resuelto por</span>
+                            <p className="text-gray-300 mt-0.5">{sol.resueltoPor}</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Acciones solo si pendiente y usuario puede autorizar */}
+                      {isPendiente && (session?.canAuthorize || session?.role === "admin") && (
+                        <div className="pt-1 space-y-2">
+                          {isRechazando ? (
+                            <div className="space-y-2">
+                              <textarea
+                                value={comentarioRechazo}
+                                onChange={(e) => setComentarioRechazo(e.target.value)}
+                                placeholder="Motivo del rechazo (requerido)"
+                                rows={2}
+                                className="w-full resize-none rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-red-500"
+                              />
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => rechazarSolicitud(sol)}
+                                  disabled={!comentarioRechazo.trim() || procesandoId === sol.id}
+                                  className="flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50 cursor-pointer transition-colors"
+                                >
+                                  {procesandoId === sol.id && <span className="h-3 w-3 animate-spin rounded-full border border-white border-t-transparent" />}
+                                  Confirmar rechazo
+                                </button>
+                                <button
+                                  onClick={() => { setRechazandoId(null); setComentarioRechazo(""); }}
+                                  className="rounded-lg border border-[#3A3A3A] px-3 py-1.5 text-xs text-gray-400 hover:text-white cursor-pointer transition-colors"
+                                >
+                                  Cancelar
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => aprobarSolicitud(sol)}
+                                disabled={procesandoId === sol.id}
+                                className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 cursor-pointer transition-colors"
+                              >
+                                {procesandoId === sol.id ? <span className="h-3 w-3 animate-spin rounded-full border border-white border-t-transparent" /> : <CheckCircle2 size={13} />}
+                                Aprobar y eliminar
+                              </button>
+                              <button
+                                onClick={() => { setRechazandoId(sol.id ?? null); setComentarioRechazo(""); }}
+                                className="flex items-center gap-1.5 rounded-lg border border-red-500/40 px-3 py-1.5 text-xs font-semibold text-red-400 hover:bg-red-500/10 cursor-pointer transition-colors"
+                              >
+                                <XCircle size={13} />
+                                Rechazar
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
       )}
@@ -670,37 +923,82 @@ export default function ConfiguracionPage() {
                     <option value="all">Todos los módulos</option>
                   </AppSelect>
                 </div>
+
+                {/* canAuthorize toggle */}
+                <div className="md:col-span-2">
+                  <button
+                    type="button"
+                    onClick={() => setUserDraft({ ...userDraft, canAuthorize: !userDraft.canAuthorize })}
+                    className={`flex items-center gap-3 w-full rounded-xl border px-4 py-3 text-sm text-left transition-all cursor-pointer ${
+                      userDraft.canAuthorize
+                        ? "border-amber-500/60 bg-amber-500/10 text-amber-300"
+                        : "border-[#3A3A3A] bg-[#1A1A1A] text-gray-400 hover:border-[#3A3A3A]"
+                    }`}
+                  >
+                    <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition-all ${
+                      userDraft.canAuthorize ? "border-amber-400 bg-amber-500/30" : "border-gray-600"
+                    }`}>
+                      {userDraft.canAuthorize && (
+                        <svg viewBox="0 0 10 8" className="h-3 w-3" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M1 4l3 3 5-6" stroke="#FBBF24" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                        </svg>
+                      )}
+                    </div>
+                    <div>
+                      <p className="font-medium">Puede autorizar acciones</p>
+                      <p className="text-xs text-gray-500 mt-0.5">Ve y resuelve solicitudes de eliminación y otras acciones sensibles</p>
+                    </div>
+                  </button>
+                </div>
               </div>
 
               <div>
-                <h4 className="text-white font-semibold mb-3">Módulos permitidos</h4>
+                <h4 className="text-white font-semibold mb-1">Módulos permitidos</h4>
+                <p className="text-xs text-gray-500 mb-3">Para cada módulo activo puedes definir si el usuario puede leer, escribir o ambos.</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   {moduleCatalog.map((module) => {
-                    const checked = userDraft.modules === "all" || userDraft.modules.includes(module.href);
+                    const checked = userDraft.modules === "all" || (userDraft.modules as string[]).includes(module.href);
                     const disabled = userDraft.modules === "all";
+                    const permiso: "r" | "w" | "rw" = (userDraft.permisos[module.href] as "r" | "w" | "rw") ?? "rw";
                     return (
-                      <button
+                      <div
                         key={module.href}
-                        type="button"
-                        disabled={disabled}
-                        onClick={() => !disabled && toggleDraftModule(module.href)}
-                        className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-sm font-medium text-left transition-all cursor-pointer ${
+                        className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 transition-all ${
                           checked
-                            ? "border-[#CC2229] bg-[#CC2229] text-white shadow-md shadow-[#CC2229]/20"
-                            : "border-[#3A3A3A] bg-[#1A1A1A] text-gray-300 hover:border-[#CC2229]/50 hover:text-white"
-                        } ${disabled ? "opacity-60 cursor-not-allowed" : ""}`}
+                            ? "border-[#CC2229]/60 bg-[#CC2229]/8"
+                            : "border-[#3A3A3A] bg-[#1A1A1A]"
+                        } ${disabled ? "opacity-60" : ""}`}
                       >
-                        <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition-all ${
-                          checked ? "border-white bg-white/20" : "border-gray-500"
-                        }`}>
+                        <button
+                          type="button"
+                          disabled={disabled}
+                          onClick={() => !disabled && toggleDraftModule(module.href)}
+                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition-all cursor-pointer ${
+                            checked ? "border-[#CC2229] bg-[#CC2229]/30" : "border-gray-600"
+                          }`}
+                        >
                           {checked && (
-                            <svg viewBox="0 0 10 8" className="h-3 w-3 fill-white" xmlns="http://www.w3.org/2000/svg">
-                              <path d="M1 4l3 3 5-6" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                            <svg viewBox="0 0 10 8" className="h-3 w-3" xmlns="http://www.w3.org/2000/svg">
+                              <path d="M1 4l3 3 5-6" stroke="#CC2229" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
                             </svg>
                           )}
+                        </button>
+                        <span className={`flex-1 text-sm font-medium ${checked ? "text-white" : "text-gray-500"}`}>
+                          {module.label}
                         </span>
-                        {module.label}
-                      </button>
+                        {checked && !disabled && (
+                          <select
+                            value={permiso}
+                            onChange={(e) => setDraftModulePermiso(module.href, e.target.value as "r" | "w" | "rw")}
+                            onClick={(e) => e.stopPropagation()}
+                            className="rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-2 py-1 text-xs text-gray-300 focus:outline-none focus:ring-1 focus:ring-[#CC2229] cursor-pointer"
+                          >
+                            <option value="rw">Ver y editar</option>
+                            <option value="r">Solo ver</option>
+                            <option value="w">Solo editar</option>
+                          </select>
+                        )}
+                      </div>
                     );
                   })}
                 </div>

@@ -2,9 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  BadgeCheck, CalendarDays, CheckCircle2, ChevronDown, CloudDownload,
-  Download, Eye, EyeOff, FileDown, FileKey2, FileText, Loader2,
-  Plus, Receipt, RefreshCw, Search, Send, ShieldCheck, Trash2, Upload, X, AlertCircle,
+  AlertCircle, BadgeCheck, Building2, CalendarDays, CheckCircle2, ChevronDown,
+  CloudDownload, Download, Eye, EyeOff, FileDown, FileKey2, FileText, Loader2,
+  Plus, Receipt, RefreshCw, Search, Send, ShieldCheck, Trash2, Upload, X,
 } from "lucide-react";
 import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
@@ -63,11 +63,11 @@ const CLAVE_UNIDAD = [
 
 // Claves producto más usadas en empresa de concreto/transporte
 const CLAVE_PRODUCTO_SUGERIDAS = [
-  { clave: "44121601", desc: "Concreto premezclado" },
-  { clave: "78101800", desc: "Servicios de transporte de carga" },
-  { clave: "80141600", desc: "Servicios de construcción" },
+  { clave: "30161801", desc: "Concreto premezclado" },
+  { clave: "78102200", desc: "Servicios de transporte de carga" },
+  { clave: "72131702", desc: "Servicios de construcción" },
   { clave: "72154300", desc: "Servicios de mantenimiento de maquinaria" },
-  { clave: "95121500", desc: "Servicios de construcción de edificios" },
+  { clave: "84111506", desc: "Servicios de gestión administrativa" },
 ];
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -88,7 +88,7 @@ interface Concepto {
 interface CfdiEmitido {
   id?:           string;
   uuid:          string;
-  facturapiId:   string;
+  facturamaId:   string;
   tipo:          TipoCFDI;
   clienteNombre: string;
   clienteRfc:    string;
@@ -132,7 +132,7 @@ const STATUS_LABEL: Record<StatusCFDI | string, string> = { valid: "Vigente", ca
 
 const emptyConcepto = (): Concepto => ({
   descripcion: "", cantidad: 1, precio: 0,
-  claveProducto: "44121601", claveUnidad: "H87", tasaIVA: 0.16,
+  claveProducto: "30161801", claveUnidad: "E48", tasaIVA: 0.16,
 });
 
 // ─── Componente campo ─────────────────────────────────────────────────────────
@@ -162,6 +162,7 @@ function EmitirDrawer({
 }) {
   const [tipo, setTipo]       = useState<TipoCFDI>("I");
   const [serie, setSerie]     = useState("A");
+  const [folio, setFolio]     = useState("1");
   const [metodo, setMetodo]   = useState<MetodoPago>("PUE");
   const [forma, setForma]     = useState("03");
   const [uso, setUso]         = useState("G03");
@@ -175,6 +176,15 @@ function EmitirDrawer({
   const [conceptos, setConceptos] = useState<Concepto[]>([emptyConcepto()]);
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState("");
+  const [emisoresFm, setEmisoresFm] = useState<EmisorFm[]>([]);
+  const [emisorRfcSel, setEmisorRfcSel] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    getCollectionDocs<EmisorFm>("emisoresFm")
+      .then((docs) => setEmisoresFm(docs.filter((d) => d.activo !== false)))
+      .catch(() => {});
+  }, [open]);
 
   const subtotal  = conceptos.reduce((s, c) => s + c.cantidad * c.precio, 0);
   const totalIVA  = conceptos.reduce((s, c) => s + c.cantidad * c.precio * c.tasaIVA, 0);
@@ -186,19 +196,52 @@ function EmitirDrawer({
 
   async function handleTimbrar() {
     setError("");
+    const emisorSel = emisoresFm.find((e) => e.rfc === emisorRfcSel);
+    if (!emisorSel) { setError("Selecciona la empresa que emite la factura"); return; }
+    if (!emisorSel.cp) { setError("El emisor no tiene código postal registrado. Elimínalo y regístralo de nuevo."); return; }
     if (!rfc || !nombre || !cp) { setError("RFC, nombre y código postal son requeridos"); return; }
     if (conceptos.some((c) => !c.descripcion || c.cantidad <= 0)) { setError("Todos los conceptos deben tener descripción y cantidad"); return; }
 
     setLoading(true);
     try {
-      const resp = await fetch("/api/facturapi/timbrar", {
+      const resp = await fetch("/api/facturama/timbrar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          tipo, serie, metodoPago: metodo, formaPago: forma, usoCFDI: uso,
-          clienteRfc: rfc, clienteNombre: nombre, clienteRegimenFiscal: regimen,
-          clienteCodigoPostal: cp, clienteEmail: email || undefined,
-          conceptos,
+          emisorRfc:    emisorSel.rfc,
+          emisorNombre: emisorSel.nombre,
+          emisorRegimen: emisorSel.regimen,
+          emisorCp:     emisorSel.cp ?? "",
+          tipoComprobante: tipo,
+          serie,
+          folio,
+          metodoPago: metodo,
+          formaPago: forma,
+          usoCfdi: uso,
+          clienteRfc: rfc,
+          clienteNombre: nombre,
+          clienteRegimenFiscal: regimen,
+          clienteCp: cp,
+          clienteEmail: email || undefined,
+          moneda: "MXN",
+          conceptos: conceptos.map((c) => ({
+            claveProdServ: c.claveProducto,
+            claveUnidad:   c.claveUnidad,
+            descripcion:   c.descripcion,
+            unidad:        "Pieza",
+            cantidad:      c.cantidad,
+            precioUnitario: c.precio,
+            importe:       c.cantidad * c.precio,
+            objetoImp:     "02",
+            impuestos: c.tasaIVA > 0 ? [{
+              tipoImpuesto: "trasladado",
+              base:         c.cantidad * c.precio,
+              impuesto:     "002",
+              factor:       "Tasa",
+              tasa:         c.tasaIVA,
+              importe:      c.cantidad * c.precio * c.tasaIVA,
+            }] : [],
+          })),
         }),
       });
 
@@ -207,23 +250,21 @@ function EmitirDrawer({
 
       const nuevo: CfdiEmitido = withPlantaTag({
         uuid:          data.uuid,
-        facturapiId:   data.id,
+        facturamaId:   data.facturamaId,
         tipo,
         clienteNombre: nombre,
         clienteRfc:    rfc,
-        folio:         data.folio,
-        serie:         data.serie ?? serie,
+        folio:         data.folio ?? "",
+        serie,
         total,
         subtotal,
         impuestos:     totalIVA,
-        fechaTimbrado: data.fechaTimbrado ?? new Date().toISOString(),
+        fechaTimbrado: new Date().toISOString(),
         status:        "valid",
-        pdfUrl:        data.pdfUrl,
-        xmlUrl:        data.xmlUrl,
+        pdfUrl:        `/api/facturama/download?id=${data.facturamaId}&format=pdf`,
+        xmlUrl:        `/api/facturama/download?id=${data.facturamaId}&format=xml`,
         createdAt:     new Date().toISOString(),
       });
-
-      await upsertDocument(COLLECTIONS.cfdiEmitidos, nuevo.uuid, nuevo);
       onEmitido(nuevo);
       onClose();
     } catch (e) {
@@ -253,9 +294,9 @@ function EmitirDrawer({
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Tipo y serie */}
-          <div className="grid grid-cols-3 gap-4">
-            <Field label="Tipo de comprobante">
+          {/* Tipo, serie, folio y uso */}
+          <div className="grid grid-cols-4 gap-4">
+            <Field label="Tipo">
               <AppSelect value={tipo} onChange={(e) => setTipo(e.target.value as TipoCFDI)}>
                 <option value="I">I — Ingreso</option>
                 <option value="E">E — Egreso</option>
@@ -264,6 +305,9 @@ function EmitirDrawer({
             </Field>
             <Field label="Serie">
               <input value={serie} onChange={(e) => setSerie(e.target.value)} className={inputCls} placeholder="A" />
+            </Field>
+            <Field label="Folio">
+              <input value={folio} onChange={(e) => setFolio(e.target.value.replace(/\D/g, ""))} className={inputCls} placeholder="1" />
             </Field>
             <Field label="Uso CFDI">
               <AppSelect value={uso} onChange={(e) => setUso(e.target.value)}>
@@ -289,6 +333,26 @@ function EmitirDrawer({
                 ))}
               </AppSelect>
             </Field>
+          </div>
+
+          {/* Emisor */}
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-3">Empresa que emite</p>
+            {emisoresFm.length === 0 ? (
+              <div className="flex items-center gap-2 rounded-xl bg-amber-500/10 border border-amber-500/20 px-4 py-3 text-sm text-amber-400">
+                <AlertCircle size={14} />
+                Sin emisores registrados. Ve a la pestaña <strong className="mx-1">Emisores</strong> para registrar un CSD.
+              </div>
+            ) : (
+              <Field label="Empresa emisora *">
+                <AppSelect value={emisorRfcSel} onChange={(e) => setEmisorRfcSel(e.target.value)}>
+                  <option value="">— Seleccionar empresa —</option>
+                  {emisoresFm.map((em) => (
+                    <option key={em.rfc} value={em.rfc}>{em.rfc} — {em.nombre}</option>
+                  ))}
+                </AppSelect>
+              </Field>
+            )}
           </div>
 
           {/* Cliente */}
@@ -430,9 +494,286 @@ function EmitirDrawer({
   );
 }
 
-// ─── Tab: Descarga SAT (directo al SAT, sin BoxFactura) ──────────────────────
+// ─── Tab: Emisores Facturama ──────────────────────────────────────────────────
 
-const satInp = "w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-xl px-3.5 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-all";
+type EmisorFm = { id?: string; rfc: string; nombre: string; regimen: string; cp?: string; activo?: boolean };
+
+const satInpDark = "w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-xl px-3.5 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-all";
+const satLblDark = "block text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5";
+
+function EmisorasTab() {
+  const [emisores,     setEmisores]     = useState<EmisorFm[]>([]);
+  const [loadingList,  setLoadingList]  = useState(true);
+  const [showForm,     setShowForm]     = useState(false);
+  const [fRfc,         setFRfc]         = useState("");
+  const [fNombre,      setFNombre]      = useState("");
+  const [fRegimen,     setFRegimen]     = useState("601");
+  const [fCp,          setFCp]          = useState("");
+  const [fPwd,         setFPwd]         = useState("");
+  const [showPwd,      setShowPwd]      = useState(false);
+  const [cerFile,      setCerFile]      = useState<File | null>(null);
+  const [keyFile,      setKeyFile]      = useState<File | null>(null);
+  const cerRef = useRef<HTMLInputElement>(null);
+  const keyRef = useRef<HTMLInputElement>(null);
+  const [saving,       setSaving]       = useState(false);
+  const [deletingRfc,  setDeletingRfc]  = useState<string | null>(null);
+  const [msg,          setMsg]          = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [certInfo,     setCertInfo]     = useState<{ rfc: string; nombre: string; validTo: string; validFrom: string; expired: boolean; numeroCertificado: string } | null>(null);
+  const [verifying,    setVerifying]    = useState(false);
+
+  useEffect(() => {
+    getCollectionDocs<EmisorFm>("emisoresFm")
+      .then((docs) => setEmisores(docs.filter((d) => d.activo !== false)))
+      .finally(() => setLoadingList(false));
+  }, []);
+
+  async function fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const r = reader.result as string;
+        resolve(r.includes(",") ? r.split(",")[1] : r);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function handleCerUpload(file: File) {
+    setCerFile(file); setCertInfo(null); setMsg(null);
+    setVerifying(true);
+    try {
+      const certificate = await fileToBase64(file);
+      const resp = await fetch("/api/facturama/emisores/verificar", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ certificate }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) { setMsg({ type: "err", text: data.error ?? "Error al leer el certificado" }); return; }
+      setCertInfo(data);
+      if (data.rfc)    setFRfc(data.rfc);
+      if (data.nombre) setFNombre(data.nombre);
+    } catch {
+      setMsg({ type: "err", text: "No se pudo leer el archivo .cer" });
+    } finally { setVerifying(false); }
+  }
+
+  async function handleRegistrar() {
+    if (!fRfc || !fNombre || !fCp || !cerFile || !keyFile || !fPwd) return;
+    setSaving(true); setMsg(null);
+    try {
+      const certificate = await fileToBase64(cerFile);
+      const privateKey  = await fileToBase64(keyFile);
+      const rfcUp       = fRfc.toUpperCase();
+
+      let resp = await fetch("/api/facturama/emisores", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rfc: rfcUp, certificate, privateKey, privateKeyPassword: fPwd }),
+      });
+
+      if (!resp.ok) {
+        const d = await resp.json();
+        if (d.code === "ALREADY_EXISTS") {
+          resp = await fetch("/api/facturama/emisores", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ rfc: rfcUp, certificate, privateKey, privateKeyPassword: fPwd, actualizar: true }),
+          });
+          if (!resp.ok) { setMsg({ type: "err", text: (await resp.json()).error ?? "Error al actualizar" }); return; }
+        } else {
+          setMsg({ type: "err", text: d.error ?? "Error al registrar" }); return;
+        }
+      }
+
+      await upsertDocument("emisoresFm", rfcUp, { rfc: rfcUp, nombre: fNombre, regimen: fRegimen, cp: fCp, activo: true });
+      setEmisores((prev) => [...prev.filter((e) => e.rfc !== rfcUp), { rfc: rfcUp, nombre: fNombre, regimen: fRegimen, cp: fCp, activo: true }]);
+      setMsg({ type: "ok", text: `CSD de ${rfcUp} registrado en Facturama` });
+      setShowForm(false); setFRfc(""); setFNombre(""); setFRegimen("601"); setFCp(""); setFPwd(""); setCerFile(null); setKeyFile(null);
+    } catch (e) {
+      setMsg({ type: "err", text: e instanceof Error ? e.message : "Error inesperado" });
+    } finally { setSaving(false); }
+  }
+
+  async function handleEliminar(rfc: string) {
+    setDeletingRfc(rfc);
+    try {
+      await fetch(`/api/facturama/emisores/${rfc}`, { method: "DELETE" });
+      await upsertDocument("emisoresFm", rfc, { activo: false });
+      setEmisores((prev) => prev.filter((e) => e.rfc !== rfc));
+    } catch (e) { alert(e instanceof Error ? e.message : "Error"); }
+    finally { setDeletingRfc(null); }
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="bg-[#242424] border border-[#3A3A3A] rounded-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#3A3A3A]">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-500/10 text-blue-400">
+              <Building2 size={17} />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-white">Emisores Facturama</p>
+              <p className="text-xs text-gray-500">CSDs registrados para timbrar CFDIs</p>
+            </div>
+          </div>
+          <button onClick={() => { setShowForm(true); setMsg(null); setCertInfo(null); setFRfc(""); setFNombre(""); setFRegimen("601"); setFCp(""); setFPwd(""); setCerFile(null); setKeyFile(null); }}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-xl transition-colors cursor-pointer">
+            <Plus size={14} /> Registrar emisor
+          </button>
+        </div>
+
+        {loadingList ? (
+          <div className="px-5 py-8 flex items-center justify-center gap-2 text-gray-500">
+            <Loader2 size={16} className="animate-spin" /> Cargando…
+          </div>
+        ) : emisores.length === 0 ? (
+          <div className="px-5 py-10 text-center text-gray-600 text-sm">
+            No hay emisores registrados aún.
+          </div>
+        ) : (
+          <div className="divide-y divide-[#3A3A3A]">
+            {emisores.map((em) => (
+              <div key={em.rfc} className="flex items-center justify-between px-5 py-4 gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="h-9 w-9 rounded-xl bg-[#3A3A3A] flex items-center justify-center text-gray-400">
+                    <Building2 size={16} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-white font-mono">{em.rfc}</p>
+                    <p className="text-xs text-gray-500">{em.nombre} · Régimen {em.regimen}{em.cp ? ` · CP ${em.cp}` : ""}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="flex items-center gap-1 text-xs text-emerald-400"><CheckCircle2 size={12} /> Activo</span>
+                  <button onClick={() => handleEliminar(em.rfc)} disabled={deletingRfc === em.rfc}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-[#3A3A3A] text-gray-500 hover:text-red-400 hover:border-red-400/40 rounded-lg transition-colors disabled:opacity-40 cursor-pointer">
+                    {deletingRfc === em.rfc ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />} Eliminar
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {msg && !showForm && (
+        <div className={`flex items-center gap-2 rounded-xl px-4 py-3 text-sm border ${msg.type === "ok" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-red-500/10 text-red-400 border-red-500/20"}`}>
+          {msg.type === "ok" ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />} {msg.text}
+        </div>
+      )}
+
+      {showForm && (
+        <div className="bg-[#242424] border border-[#3A3A3A] rounded-2xl overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-[#3A3A3A]">
+            <p className="text-sm font-semibold text-white">Registrar CSD</p>
+            <button onClick={() => setShowForm(false)} className="rounded-lg p-1.5 text-gray-400 hover:text-white hover:bg-[#3A3A3A] transition-colors cursor-pointer"><X size={16} /></button>
+          </div>
+          <div className="px-5 py-4 space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={satLblDark}>RFC del emisor *</label>
+                <input value={fRfc} onChange={(e) => setFRfc(e.target.value.toUpperCase())} className={satInpDark + " font-mono uppercase"} placeholder="XAXX010101000" maxLength={13} autoComplete="off" />
+              </div>
+              <div>
+                <label className={satLblDark}>Razón social *</label>
+                <input value={fNombre} onChange={(e) => setFNombre(e.target.value)} className={satInpDark} placeholder="Empresa S.A. de C.V." autoComplete="off" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={satLblDark}>Régimen fiscal *</label>
+                <AppSelect dark value={fRegimen} onChange={(e) => setFRegimen(e.target.value)}>
+                  {REGIMEN_FISCAL.map((r) => <option key={r.clave} value={r.clave}>{r.clave} — {r.desc}</option>)}
+                </AppSelect>
+              </div>
+              <div>
+                <label className={satLblDark}>Código postal fiscal *</label>
+                <input value={fCp} onChange={(e) => setFCp(e.target.value.replace(/\D/g, "").slice(0, 5))} className={satInpDark + " font-mono"} placeholder="64000" maxLength={5} autoComplete="off" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {/* .cer con verificación automática */}
+              <div>
+                <label className={satLblDark}>Archivo .cer *</label>
+                <button onClick={() => cerRef.current?.click()}
+                  className={`w-full flex items-center gap-2 px-3.5 py-2.5 rounded-xl border text-sm transition-colors cursor-pointer ${
+                    certInfo && !certInfo.expired ? "border-emerald-500/40 text-emerald-400 bg-emerald-500/5"
+                    : certInfo?.expired ? "border-red-500/40 text-red-400 bg-red-500/5"
+                    : cerFile ? "border-amber-500/40 text-amber-400 bg-amber-500/5"
+                    : "border-[#3A3A3A] text-gray-400 hover:border-gray-500 hover:text-gray-300"
+                  }`}>
+                  {verifying ? <Loader2 size={13} className="animate-spin" /> : certInfo && !certInfo.expired ? <CheckCircle2 size={13} /> : <Upload size={13} />}
+                  <span className="truncate">{cerFile ? cerFile.name : "Seleccionar .cer"}</span>
+                </button>
+                <input ref={cerRef} type="file" accept=".cer" className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) handleCerUpload(f); }} />
+              </div>
+              {/* .key */}
+              <div>
+                <label className={satLblDark}>Archivo .key *</label>
+                <button onClick={() => keyRef.current?.click()}
+                  className={`w-full flex items-center gap-2 px-3.5 py-2.5 rounded-xl border text-sm transition-colors cursor-pointer ${keyFile ? "border-emerald-500/40 text-emerald-400 bg-emerald-500/5" : "border-[#3A3A3A] text-gray-400 hover:border-gray-500 hover:text-gray-300"}`}>
+                  {keyFile ? <CheckCircle2 size={13} /> : <Upload size={13} />}
+                  <span className="truncate">{keyFile ? keyFile.name : "Seleccionar .key"}</span>
+                </button>
+                <input ref={keyRef} type="file" accept=".key" className="hidden"
+                  onChange={(e) => setKeyFile(e.target.files?.[0] ?? null)} />
+              </div>
+            </div>
+
+            {/* Panel de verificación del .cer */}
+            {certInfo && (
+              <div className={`rounded-xl border px-4 py-3 space-y-1 text-xs ${certInfo.expired ? "border-red-500/30 bg-red-500/5" : "border-emerald-500/30 bg-emerald-500/5"}`}>
+                <div className="flex items-center gap-2">
+                  {certInfo.expired
+                    ? <><AlertCircle size={13} className="text-red-400" /><span className="font-semibold text-red-400">Certificado vencido</span></>
+                    : <><CheckCircle2 size={13} className="text-emerald-400" /><span className="font-semibold text-emerald-400">Certificado válido</span></>
+                  }
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-gray-400 mt-1">
+                  <span>RFC detectado</span><span className="font-mono text-white">{certInfo.rfc || "—"}</span>
+                  <span>Nombre</span><span className="text-white truncate">{certInfo.nombre || "—"}</span>
+                  <span>Vigente desde</span><span className="text-white">{certInfo.validFrom ? new Date(certInfo.validFrom).toLocaleDateString("es-MX") : "—"}</span>
+                  <span>Vigente hasta</span><span className={certInfo.expired ? "text-red-400 font-semibold" : "text-white"}>{certInfo.validTo ? new Date(certInfo.validTo).toLocaleDateString("es-MX") : "—"}</span>
+                  <span>No. Certificado</span><span className="font-mono text-gray-500 text-[10px]">{certInfo.numeroCertificado}</span>
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label className={satLblDark}>Contraseña del CSD *</label>
+              <div className="relative">
+                <input type={showPwd ? "text" : "password"} value={fPwd} onChange={(e) => setFPwd(e.target.value)}
+                  placeholder="Contraseña del archivo .key" className={satInpDark + " pr-10"} autoComplete="new-password" />
+                <button onClick={() => setShowPwd(!showPwd)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 cursor-pointer">
+                  {showPwd ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              </div>
+            </div>
+            {msg && (
+              <div className={`flex items-center gap-2 rounded-xl px-3.5 py-2.5 text-sm ${msg.type === "ok" ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"}`}>
+                {msg.type === "ok" ? <CheckCircle2 size={13} /> : <AlertCircle size={13} />} {msg.text}
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <button onClick={() => { setShowForm(false); setCertInfo(null); }} className="px-4 py-2 text-sm text-gray-400 border border-[#3A3A3A] rounded-xl hover:text-white transition-colors cursor-pointer">Cancelar</button>
+              <button onClick={handleRegistrar}
+                disabled={saving || !fRfc || !fNombre || !fCp || !cerFile || !keyFile || !fPwd || !certInfo || certInfo.expired || verifying}
+                className="flex items-center gap-2 px-5 py-2 text-sm font-semibold bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-xl transition-colors disabled:opacity-40 cursor-pointer">
+                {saving ? <Loader2 size={13} className="animate-spin" /> : <ShieldCheck size={13} />}
+                {saving ? "Registrando…" : "Registrar CSD"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Tab: Descarga SAT ────────────────────────────────────────────────────────
+
+const satInp ="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-xl px-3.5 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-all";
 const satLbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5";
 
 function fmtSatDate(ts?: { seconds: number } | string) {
@@ -684,9 +1025,20 @@ function DescargaSATTab() {
             <p className="text-xs text-gray-500">Sube .cer y .key una sola vez</p>
           </div>
           {!loadingConfig && satConfig?.activo && (
-            <span className="ml-auto flex items-center gap-1.5 text-xs text-emerald-400">
-              <ShieldCheck size={13} /> Configurada · {satConfig.rfc}
-            </span>
+            <div className="ml-auto flex items-center gap-3">
+              <span className="flex items-center gap-1.5 text-xs text-emerald-400">
+                <ShieldCheck size={13} /> Configurada · {satConfig.rfc}
+              </span>
+              <button
+                onClick={async () => {
+                  await upsertDocument(COLLECTIONS.configuracion, "sat_efirma", { certB64: "", keyB64: "", rfc: "", activo: false });
+                  setSatConfig(null);
+                }}
+                className="flex items-center gap-1 text-xs text-gray-500 hover:text-red-400 transition-colors cursor-pointer"
+              >
+                <X size={11} /> Quitar
+              </button>
+            </div>
           )}
         </div>
 
@@ -904,46 +1256,21 @@ function DescargaSATTab() {
 
 // ─── Página principal ─────────────────────────────────────────────────────────
 
-type Tab = "historial" | "descarga";
+type Tab = "historial" | "emisores" | "descarga";
 
 export default function FacturacionPage() {
   const [tab, setTab]               = useState<Tab>("historial");
   const [cfdiList, setCfdiList]     = useState<CfdiEmitido[]>([]);
-  const [apiList, setApiList]       = useState<CfdiEmitido[]>([]);
-  const [loadingApi, setLoadingApi] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [search, setSearch]         = useState("");
 
-  // Carga desde Firestore
   useEffect(() => {
     getCollectionDocs<CfdiEmitido>(COLLECTIONS.cfdiEmitidos).then(setCfdiList);
   }, []);
 
-  // Carga desde FacturAPI
-  async function fetchApiFacturas() {
-    setLoadingApi(true);
-    try {
-      const resp = await fetch("/api/facturapi/facturas?limit=100");
-      if (resp.ok) {
-        const data = await resp.json();
-        setApiList(data.facturas ?? []);
-      }
-    } finally {
-      setLoadingApi(false);
-    }
-  }
-
-  useEffect(() => { fetchApiFacturas(); }, []);
-
-  // Merge: FacturAPI es source of truth para status; Firestore para las que timbramos aquí
-  const merged = (() => {
-    const map = new Map<string, CfdiEmitido>();
-    apiList.forEach((f) => map.set(f.uuid, f));
-    cfdiList.forEach((f) => { if (!map.has(f.uuid)) map.set(f.uuid, f); });
-    return Array.from(map.values()).sort(
-      (a, b) => new Date(b.fechaTimbrado).getTime() - new Date(a.fechaTimbrado).getTime()
-    );
-  })();
+  const merged = [...cfdiList].sort(
+    (a, b) => new Date(b.fechaTimbrado).getTime() - new Date(a.fechaTimbrado).getTime()
+  );
 
   const filtered = merged.filter((f) => {
     const q = search.toLowerCase();
@@ -955,8 +1282,9 @@ export default function FacturacionPage() {
   const cancelados      = merged.filter((f) => f.status === "cancelled").length;
 
   const TABS: { key: Tab; label: string; icon: React.ElementType }[] = [
-    { key: "historial", label: "CFDIs Emitidos",  icon: FileText },
-    { key: "descarga",  label: "Descarga SAT",    icon: CloudDownload },
+    { key: "historial", label: "CFDIs Emitidos", icon: FileText },
+    { key: "emisores",  label: "Emisores",        icon: Building2 },
+    { key: "descarga",  label: "Descarga SAT",   icon: CloudDownload },
   ];
 
   return (
@@ -999,14 +1327,6 @@ export default function FacturacionPage() {
               />
             </div>
             <button
-              onClick={fetchApiFacturas}
-              disabled={loadingApi}
-              title="Sincronizar con FacturAPI"
-              className="rounded-xl border border-[#3A3A3A] bg-[#242424] p-2.5 text-gray-400 hover:text-white hover:bg-white/5 transition-colors disabled:opacity-50"
-            >
-              <RefreshCw size={15} className={loadingApi ? "animate-spin" : ""} />
-            </button>
-            <button
               onClick={() => setDrawerOpen(true)}
               className="flex items-center gap-2 rounded-xl bg-[#CC2229] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#a81b21] transition-colors"
             >
@@ -1032,11 +1352,7 @@ export default function FacturacionPage() {
                 {filtered.length === 0 && (
                   <tr>
                     <td colSpan={9} className="px-4 py-12 text-center text-gray-600">
-                      {loadingApi ? (
-                        <div className="flex items-center justify-center gap-2"><Loader2 size={16} className="animate-spin" /> Cargando desde FacturAPI…</div>
-                      ) : (
-                        "No hay CFDIs. Emite tu primera factura."
-                      )}
+                      No hay CFDIs. Emite tu primera factura.
                     </td>
                   </tr>
                 )}
@@ -1058,18 +1374,18 @@ export default function FacturacionPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
-                        {f.facturapiId && (
+                        {f.facturamaId && (
                           <a
-                            href={`/api/facturapi/download?id=${f.facturapiId}&format=pdf`}
+                            href={`/api/facturama/download?id=${f.facturamaId}&format=pdf`}
                             target="_blank" rel="noopener noreferrer" title="Descargar PDF"
                             className="rounded p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-900/20 transition-colors"
                           >
                             <FileText size={14} />
                           </a>
                         )}
-                        {f.facturapiId && (
+                        {f.facturamaId && (
                           <a
-                            href={`/api/facturapi/download?id=${f.facturapiId}&format=xml`}
+                            href={`/api/facturama/download?id=${f.facturamaId}&format=xml`}
                             target="_blank" rel="noopener noreferrer" title="Descargar XML"
                             className="rounded p-1.5 text-gray-500 hover:text-blue-400 hover:bg-blue-900/20 transition-colors"
                           >
@@ -1091,6 +1407,7 @@ export default function FacturacionPage() {
         </div>
       )}
 
+      {tab === "emisores" && <EmisorasTab />}
       {tab === "descarga" && <DescargaSATTab />}
 
       {/* Drawer emitir */}

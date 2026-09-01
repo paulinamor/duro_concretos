@@ -10,7 +10,7 @@ import type { ExcelProg } from "./ExcelView";
 import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
 import ClienteCombobox from "@/components/ClienteCombobox";
-import { getCollectionDocs, subscribeToCollection, upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
+import { getCollectionDocs, subscribeToCollection, upsertDocument, deleteDocument, COLLECTIONS, type SolicitudAutorizacion, type Notificacion, getAllUserProfiles } from "@/lib/db";
 import { filterByPlanta, getStoredSession, withPlantaTag } from "@/lib/auth";
 import { todayCST, localISODate } from "@/lib/dateUtils";
 import type { Operador } from "@/lib/operadores";
@@ -628,7 +628,7 @@ function FormDrawer({
   open: boolean;
   onClose: () => void;
   onSave: (p: Programacion) => Promise<void>;
-  onDelete?: (id: string) => void;
+  onDelete?: () => void;
   initial?: Programacion;
   dia: string;
   operadoresList: Pick<Operador, "id" | "nombre">[];
@@ -1443,15 +1443,10 @@ function FormDrawer({
         <div className="shrink-0 border-t border-gray-100 px-6 py-4 flex items-center gap-3">
           {onDelete && initial?.id && (
             <button
-              onClick={() => {
-                if (confirm(`¿Eliminar la programación ${initial.folio}? Esta acción no se puede deshacer.`)) {
-                  onDelete(initial.id!);
-                  onClose();
-                }
-              }}
+              onClick={() => { onDelete(); onClose(); }}
               className="px-3 py-2.5 text-sm font-medium text-red-500 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-xl transition-colors"
             >
-              Eliminar
+              Solicitar eliminación
             </button>
           )}
           {isAdminInForm && initial && (
@@ -2019,6 +2014,11 @@ export default function ProgramacionPage() {
   const plantaActiva = useMemo(() => getStoredSession()?.planta ?? "", []);
   const isAdmin = getStoredSession()?.role === "admin";
 
+  // Solicitud de autorización para eliminar
+  const [solicitudElim, setSolicitudElim] = useState<Programacion | null>(null);
+  const [motivoElim, setMotivoElim] = useState("");
+  const [enviandoSolicitud, setEnviandoSolicitud] = useState(false);
+
   const migrationRan = useRef(false);
 
   // Static data — load once
@@ -2152,7 +2152,63 @@ export default function ProgramacionPage() {
 
   }
 
-  async function handleDelete(id: string) {
+  async function handleSolicitarEliminar(prog: Programacion) {
+    setSolicitudElim(prog);
+    setMotivoElim("");
+  }
+
+  async function handleEnviarSolicitudEliminar() {
+    if (!solicitudElim || !motivoElim.trim()) return;
+    setEnviandoSolicitud(true);
+    try {
+      const session = getStoredSession();
+      const solicitudId = `elim_${solicitudElim.id}_${Date.now()}`;
+      const solicitud: Omit<SolicitudAutorizacion, "id"> = {
+        tipo: "eliminar_programacion",
+        programacionId: solicitudElim.id!,
+        folio: solicitudElim.folio ?? solicitudElim.id!,
+        dia: solicitudElim.dia,
+        cliente: solicitudElim.cliente,
+        motivo: motivoElim.trim(),
+        solicitanteNombre: session?.name ?? "Usuario",
+        solicitanteEmail: session?.email ?? "",
+        status: "pendiente",
+        creadoEn: new Date().toISOString(),
+        planta: solicitudElim.planta,
+      };
+      await upsertDocument(COLLECTIONS.solicitudesAutorizacion, solicitudId, solicitud);
+
+      // Notificar a todos los usuarios con canAuthorize
+      const allUsers = await getAllUserProfiles();
+      const autorizadores = allUsers.filter((u) => u.canAuthorize && u.status === "Activo");
+      await Promise.all(autorizadores.map((u) => {
+        const notifId = `notif_autorizacion_${solicitudId}_${u.id}`;
+        const notif: Omit<import("@/lib/db").Notificacion, "id"> = {
+          titulo: "Solicitud de eliminación pendiente",
+          detalle: `${session?.name ?? "Un usuario"} solicita eliminar prog. ${solicitudElim.folio ?? solicitudElim.id} — ${solicitudElim.cliente}`,
+          href: "/configuracion?tab=autorizaciones",
+          tag: "Autorización",
+          tipo: "autorizacion",
+          prioridad: "alta",
+          destinatarioEmail: u.email,
+          leidoPor: [],
+          creadoEn: new Date().toISOString(),
+          planta: solicitudElim.planta,
+        };
+        return upsertDocument(COLLECTIONS.notificaciones, notifId, notif);
+      }));
+
+      setSolicitudElim(null);
+      setMotivoElim("");
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", title: "Solicitud enviada", message: "Los autorizadores recibirán una notificación." } }));
+    } catch {
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al enviar la solicitud." } }));
+    } finally {
+      setEnviandoSolicitud(false);
+    }
+  }
+
+  async function handleDeleteConfirmado(id: string) {
     setProgramaciones((prev) => prev.filter((p) => p.id !== id));
     await deleteDocument(COLLECTIONS.programaciones, id);
     window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: "Programación eliminada." } }));
@@ -2601,12 +2657,9 @@ export default function ProgramacionPage() {
                   <div className="flex items-center gap-2">
                     {isAdmin && prog.id && (
                       <button
-                        onClick={() => {
-                          if (confirm(`¿Eliminar la programación ${prog.folio}? Esta acción no se puede deshacer.`))
-                            handleDelete(prog.id!)
-                        }}
+                        onClick={() => handleSolicitarEliminar(prog)}
                         className="text-xs text-red-400 hover:text-red-600 transition-colors cursor-pointer px-2 py-1 rounded hover:bg-red-50"
-                        title="Eliminar programación"
+                        title="Solicitar eliminación"
                       >
                         Eliminar
                       </button>
@@ -2717,7 +2770,7 @@ export default function ProgramacionPage() {
         open={showDrawer}
         onClose={() => setShowDrawer(false)}
         onSave={handleSave}
-        onDelete={isAdmin ? handleDelete : undefined}
+        onDelete={isAdmin && editing ? () => handleSolicitarEliminar(editing) : undefined}
         initial={editing}
         dia={diaActivo}
         operadoresList={operadoresList}
@@ -2725,6 +2778,64 @@ export default function ProgramacionPage() {
         revolveList={revolveList}
         obrasData={obrasData}
       />
+
+      {/* Modal: solicitud de autorización para eliminar */}
+      {solicitudElim && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60" onClick={() => { setSolicitudElim(null); setMotivoElim(""); }} />
+          <div className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl overflow-hidden">
+            <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-4 bg-red-50">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-100 text-red-600">
+                <AlertTriangle size={17} />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-gray-900">Solicitar eliminación</p>
+                <p className="text-xs text-gray-500">Requiere autorización de un supervisor</p>
+              </div>
+            </div>
+
+            <div className="px-6 py-5 space-y-4">
+              <div className="rounded-xl bg-gray-50 border border-gray-200 px-4 py-3 space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">Programación a eliminar</p>
+                <p className="text-sm font-semibold text-gray-900">{solicitudElim.folio ?? solicitudElim.id} — {solicitudElim.cliente}</p>
+                <p className="text-xs text-gray-500">{solicitudElim.dia} · {solicitudElim.hora}</p>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-widest text-gray-500 mb-1.5">
+                  Motivo de eliminación <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={motivoElim}
+                  onChange={(e) => setMotivoElim(e.target.value)}
+                  placeholder="Explica por qué se necesita eliminar esta programación..."
+                  rows={3}
+                  className="w-full resize-none rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-400 focus:ring-1 focus:ring-red-200 transition-colors"
+                />
+              </div>
+              <p className="text-xs text-gray-400">
+                La solicitud será enviada a los supervisores autorizados. La eliminación se ejecutará solo si es aprobada.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 border-t border-gray-100 px-6 py-4">
+              <button
+                onClick={() => { setSolicitudElim(null); setMotivoElim(""); }}
+                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 border border-gray-200 rounded-xl transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleEnviarSolicitudEliminar}
+                disabled={!motivoElim.trim() || enviandoSolicitud}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-red-600 hover:bg-red-700 text-white rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              >
+                {enviandoSolicitud ? <Clock size={14} className="animate-spin" /> : <AlertTriangle size={14} />}
+                {enviandoSolicitud ? "Enviando..." : "Enviar solicitud"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
