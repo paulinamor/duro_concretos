@@ -67,6 +67,7 @@ export interface Cuenta {
   abonos?: Abono[];
   programacionId?: string;
   planta?: string;
+  categoria?: string;
 }
 
 interface Abono {
@@ -106,6 +107,23 @@ function diasVencimiento(vencimiento: string): number {
   today.setHours(0, 0, 0, 0);
   return Math.ceil((due.getTime() - today.getTime()) / 86_400_000);
 }
+
+const CATEGORIAS_CXP = [
+  "Refacciones",
+  "Mtto Transporte",
+  "Mtto Plantas",
+  "Papelería",
+  "Gastos Varios",
+  "Casetas y Peaje",
+  "Materias Primas",
+  "Seguros y Fianzas",
+  "Combustibles",
+  "Impuestos",
+  "Uniformes",
+  "Financieras",
+  "Eq Electrónico",
+  "Mobiliario y Equipo",
+] as const;
 
 function abonosEnMes(abonos: Abono[] | undefined, mes: string): Abono[] {
   if (!abonos || mes === "todos") return abonos ?? [];
@@ -186,6 +204,7 @@ function FormDrawer({
     banco: "",
     bancoPago: "",
     notas: "",
+    categoria: "",
   });
 
   const [form, setForm] = useState(emptyForm);
@@ -214,6 +233,7 @@ function FormDrawer({
         banco: initial.banco ?? "",
         bancoPago: initial.bancoPago ?? "",
         notas: initial.notas ?? "",
+        categoria: initial.categoria ?? "",
       });
     } else {
       setForm(emptyForm());
@@ -244,7 +264,7 @@ function FormDrawer({
         concepto: form.concepto,
         subtotal: subtotalNum,
         iva: ivaNum,
-        ...(isCxp && { retenidoIVA: retenidoIVANum, retenidoISR: retenidoISRNum, ish: ishNum, bancoPago: form.bancoPago }),
+        ...(isCxp && { retenidoIVA: retenidoIVANum, retenidoISR: retenidoISRNum, ish: ishNum, bancoPago: form.bancoPago, categoria: form.categoria || "" }),
         total: totalNum,
         formaPago: form.formaPago,
         banco: form.banco,
@@ -424,6 +444,24 @@ function FormDrawer({
             <label className={lbl}>Notas</label>
             <input type="text" value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} placeholder="Opcional" className={inp} />
           </div>
+          {isCxp && (
+            <div>
+              <label className={lbl}>Categoría (Rubro)</label>
+              <input
+                type="text"
+                value={form.categoria}
+                onChange={(e) => setForm({ ...form, categoria: e.target.value })}
+                list="categorias-cxp-list"
+                placeholder="Selecciona o escribe una categoría"
+                className={inp}
+              />
+              <datalist id="categorias-cxp-list">
+                {CATEGORIAS_CXP.map((cat) => (
+                  <option key={cat} value={cat} />
+                ))}
+              </datalist>
+            </div>
+          )}
         </div>
 
         <div className="shrink-0 border-t border-gray-100 px-6 py-4 space-y-3">
@@ -1257,6 +1295,7 @@ function ExcelTable({
   onDelete,
   onDeleteAbono,
   ncYaAplicadaMap,
+  onAplicarNC,
 }: {
   filtered: Cuenta[];
   kind: SatDownloadKind;
@@ -1265,6 +1304,7 @@ function ExcelTable({
   onDelete: (c: Cuenta) => void;
   onDeleteAbono: (c: Cuenta, index: number) => void;
   ncYaAplicadaMap?: Map<string, boolean>;
+  onAplicarNC?: (c: Cuenta) => void;
 }) {
   const isCxc = kind === "cxc";
   const contraparteLabel = isCxc ? "Nombre Receptor" : "Nombre Emisor";
@@ -1293,8 +1333,8 @@ function ExcelTable({
   const rfcLabel = isCxc ? "RFC Receptor" : "RFC Emisor";
   const abonoLabel = isCxc ? "Abono" : "Pagado";
   // Columns matching original XLSX order:
-  // Estado SAT | Tipo | Fecha Emision | Serie | Folio | RFC | Nombre | SubTotal | IVA 16% | Total | FormaDePago | COSEC. TC | Abono | Saldo | Actions
-  const numCols = 15;
+  // Estado SAT | Tipo | Fecha Emision | Serie | Folio | RFC | Nombre | SubTotal | IVA 16% | Total | FormaDePago | COSEC. TC | Abono | Saldo | [Categoría (CxP only)] | Actions
+  const numCols = isCxc ? 15 : 16;
 
   return (
     <div className="bg-white border border-gray-300 rounded-xl overflow-hidden shadow-sm">
@@ -1351,6 +1391,7 @@ function ExcelTable({
                 { label: "COSEC. TC", right: false },
                 { label: abonoLabel, right: true },
                 { label: "Saldo", right: true },
+                ...(!isCxc ? [{ label: "Categoría", right: false }] : []),
                 { label: "", right: false },
               ].map(({ label, right }) => (
                 <th
@@ -1503,6 +1544,18 @@ function ExcelTable({
                             ? "✓ Liquidada"
                             : currency(saldo)}
                         </td>
+                        {/* Categoría (CxP only) */}
+                        {!isCxc && (
+                          <td className="px-2 py-1 whitespace-nowrap border-r border-black/10" onClick={(e) => e.stopPropagation()}>
+                            {c.categoria ? (
+                              <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 text-[10px] font-medium px-2 py-0.5">
+                                {c.categoria}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400 text-[10px]">—</span>
+                            )}
+                          </td>
+                        )}
                         {/* Actions */}
                         <td className="px-2 py-1" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center gap-0.5">
@@ -1522,6 +1575,16 @@ function ExcelTable({
                                 onClick={() => onDeleteAbono(c, realAbonoIdx)}
                                 title="Revertir último cobro"
                                 className="p-1 rounded text-amber-700 hover:bg-black/10 transition-colors cursor-pointer"
+                              >
+                                <RotateCcw size={12} />
+                              </button>
+                            )}
+                            {/* Aplicar NC */}
+                            {c.tipo === "Nota de Crédito" && c.uuidRelacion && onAplicarNC && !ncYaAplicadaMap?.get(c.id!) && (
+                              <button
+                                onClick={() => onAplicarNC(c)}
+                                title="Aplicar NC a factura relacionada"
+                                className="p-1 rounded text-amber-600 hover:bg-black/10 transition-colors cursor-pointer"
                               >
                                 <RotateCcw size={12} />
                               </button>
@@ -2018,6 +2081,17 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
     return map;
   }, [cuentas]);
 
+  const rubroTotals = useMemo(() => {
+    if (isCxc) return [];
+    const map = new Map<string, number>();
+    filtered.forEach((c) => {
+      if (c.estadoSAT === "Cancelado") return;
+      const cat = c.categoria || "Sin categoría";
+      map.set(cat, (map.get(cat) ?? 0) + c.total);
+    });
+    return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
+  }, [filtered, isCxc]);
+
   function handleAplicarNC(nc: Cuenta) {
     setNcTarget(nc);
   }
@@ -2125,6 +2199,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
         Vencimiento: c.vencimiento,
         "Forma de pago": c.formaPago ?? "",
         Notas: c.notas ?? "",
+        ...(kind === "cxp" && { Categoría: c.categoria ?? "" }),
         Abonos: (c.abonos ?? [])
           .map((a) => `${a.fecha} $${a.monto.toLocaleString("es-MX")}${a.referencia ? ` (${a.referencia})` : ""}`)
           .join(" | "),
@@ -2505,6 +2580,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
           onDelete={handleDelete}
           onDeleteAbono={handleDeleteAbono}
           ncYaAplicadaMap={ncYaAplicadaMap}
+          onAplicarNC={handleAplicarNC}
         />
       ) : (
         <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
@@ -2553,6 +2629,31 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Reporte por rubro (CxP only) */}
+      {!isCxc && rubroTotals.length > 0 && (
+        <div className="bg-[#1A1A1A] border border-[#3A3A3A] rounded-xl p-4 space-y-3">
+          <p className="text-[10px] font-extrabold uppercase tracking-widest text-gray-400">
+            Totales por rubro — {filtered.length} facturas en vista
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+            {rubroTotals.map(([cat, total]) => (
+              <div key={cat} className="rounded-xl bg-[#242424] border border-[#3A3A3A] px-3 py-2.5 flex flex-col gap-0.5">
+                <span className="text-[10px] font-semibold text-gray-400 truncate" title={cat}>{cat}</span>
+                <span className="text-sm font-bold text-white tabular-nums">
+                  {currency(total)}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="flex justify-end border-t border-[#3A3A3A] pt-2">
+            <span className="text-xs text-gray-400 mr-2">Total:</span>
+            <span className="text-sm font-bold text-white tabular-nums">
+              {currency(rubroTotals.reduce((s, [, v]) => s + v, 0))}
+            </span>
           </div>
         </div>
       )}

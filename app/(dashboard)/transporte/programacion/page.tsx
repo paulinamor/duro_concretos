@@ -63,6 +63,7 @@ interface Programacion {
   resistencia: string;
   color: string;
   m3Vacios: number | null;
+  precioM3Vacio: number | null;
   precioM3: number | null;
   precioM3Bomba: number | null;
   factorBomba: number | null;
@@ -126,7 +127,7 @@ interface FormState {
   hora: string; hsr: string; choferes: ChoferFormEntry[];
   tiempoExtraDescarga: string;
   extras: string; tdBom: string; resistencia: string; color: string;
-  m3Vacios: string; precioM3: string; precioM3Bomba: string;
+  m3Vacios: string; precioM3Vacio: string; precioM3: string; precioM3Bomba: string;
   factorBomba: string; aplicarFactorBomba: boolean;
   ltoAcelr: string; kiloFibra: string; m3Imper: string;
   aditivo: string; tuberiaExtra: string; permisosOC: string;
@@ -220,11 +221,12 @@ function calcTotalesProg(p: Programacion): { totalXM3: number | null; total: num
     nv(p.m3Imper) +
     nv(p.permisosOC);
   const flatExtras =
-    nv(p.m3Vacios) +
+    nv(p.precioM3Vacio) * nv(p.m3Vacios) +
     nv(p.tuberiaExtra) +
     (n(String(p.tiempoExtraDescarga ?? "")) ?? 0);
-  if (txm3 === 0 || p.m3Totales == null) return { totalXM3: null, total: null };
-  return { totalXM3: txm3, total: txm3 * p.m3Totales + flatExtras };
+  const m3Base = txm3 * nv(p.m3Totales);
+  const total = m3Base + flatExtras;
+  return { totalXM3: txm3 > 0 ? txm3 : null, total: total > 0 ? total : null };
 }
 
 function currency(v: number | null) {
@@ -252,7 +254,7 @@ function emptyForm(dia: string): FormState {
     cliente: "", telefono: "", direccion: "", paraUso: "",
     hora: "", hsr: "", choferes: [emptyChofer()],
     tiempoExtraDescarga: "",
-    extras: "", tdBom: "", resistencia: "", color: "", m3Vacios: "",
+    extras: "", tdBom: "", resistencia: "", color: "", m3Vacios: "", precioM3Vacio: "",
     precioM3: "", precioM3Bomba: "", factorBomba: "1.16", aplicarFactorBomba: false,
     ltoAcelr: "", kiloFibra: "", m3Imper: "",
     aditivo: "", tuberiaExtra: "", permisosOC: "",
@@ -301,6 +303,7 @@ function formFromProg(p: Programacion): FormState {
     tiempoExtraDescarga: p.tiempoExtraDescarga,
     extras: p.extras, tdBom: p.tdBom, resistencia: p.resistencia, color: p.color,
     m3Vacios: p.m3Vacios != null ? String(p.m3Vacios) : "",
+    precioM3Vacio: p.precioM3Vacio != null ? String(p.precioM3Vacio) : "",
     precioM3: p.precioM3 != null ? String(p.precioM3) : "",
     precioM3Bomba: p.precioM3Bomba != null ? String(p.precioM3Bomba) : "",
     factorBomba: p.factorBomba != null ? String(p.factorBomba) : "1.16",
@@ -339,7 +342,7 @@ function exportXLSX(rows: Programacion[]) {
         "HORA FINAL DESC.": c.horaFinalDescarga, "HORA SALIDA OBRA": c.horaSalidaObra,
         "TIEMPO DESC.": c.tiempoDescarga, "M3 CHOFER": c.m3 ?? "",
         "CLIENTE": r.cliente, "TELÉFONO": r.telefono, "PARA USO": r.paraUso, "DIRECCIÓN": r.direccion,
-        "M3 TOTALES": r.m3Totales ?? "", "M3 VACÍOS": r.m3Vacios ?? "",
+        "M3 TOTALES": r.m3Totales ?? "", "M3 VACÍOS": r.m3Vacios ?? "", "$ M3 VACÍO": r.precioM3Vacio ?? "",
         "T.EXTRA DESC.": r.tiempoExtraDescarga, "EXTRAS": r.extras, "T/D BOM": r.tdBom,
         "RESISTENCIA": r.resistencia, "COLOR": r.color,
         "PRECIO M3": r.precioM3 ?? "", "$ M3 BOMBA": r.precioM3Bomba ?? "", "TOTAL X M3": r.totalXM3 ?? "",
@@ -719,13 +722,14 @@ function FormDrawer({
   }, [form.precioM3, form.precioM3Bomba, form.aplicarFactorBomba, form.factorBomba, form.color, form.ltoAcelr, form.kiloFibra, form.m3Imper, form.permisosOC]);
 
   const totalAuto = useMemo(() => {
-    if (totalXM3Auto == null || m3TotalesAuto == null) return null;
     const flatExtras =
-      (n(form.m3Vacios) ?? 0) +
+      (n(form.precioM3Vacio) ?? 0) * (n(form.m3Vacios) ?? 0) +
       (n(form.tuberiaExtra) ?? 0) +
       (n(form.tiempoExtraDescarga) ?? 0);
-    return totalXM3Auto * m3TotalesAuto + flatExtras;
-  }, [totalXM3Auto, m3TotalesAuto, form.m3Vacios, form.tuberiaExtra, form.tiempoExtraDescarga]);
+    const m3Base = (totalXM3Auto ?? 0) * (m3TotalesAuto ?? 0);
+    const result = m3Base + flatExtras;
+    return result > 0 ? result : null;
+  }, [totalXM3Auto, m3TotalesAuto, form.precioM3Vacio, form.m3Vacios, form.tuberiaExtra, form.tiempoExtraDescarga]);
 
   async function handleSave() {
     if (!form.cliente.trim()) {
@@ -770,6 +774,7 @@ function FormDrawer({
         resistencia: form.resistencia.trim(),
         color: form.color.trim(),
         m3Vacios: n(form.m3Vacios),
+        precioM3Vacio: n(form.precioM3Vacio),
         precioM3: n(form.precioM3),
         precioM3Bomba: n(form.precioM3Bomba),
         factorBomba: form.aplicarFactorBomba ? (n(form.factorBomba) ?? null) : null,
@@ -815,6 +820,7 @@ function FormDrawer({
           ["m3Totales",     "M³ totales"],
           ["extras",        "Extras"],
           ["precioM3",      "Precio M³"],
+          ["precioM3Vacio", "Precio M³ Vacío"],
           ["precioM3Bomba", "Precio M³ Bomba"],
           ["total",         "Total"],
           ["pagado",        "Pagado"],
@@ -1109,6 +1115,10 @@ function FormDrawer({
               <input type="number" step="0.5" min="0" value={form.m3Vacios} onChange={(e) => set("m3Vacios", e.target.value)} placeholder="0.0" className={inp} onWheel={(e) => e.currentTarget.blur()} />
             </div>
             <div>
+              <label className={lbl}>$ M3 Vacío</label>
+              <input type="number" step="0.01" min="0" value={form.precioM3Vacio} onChange={(e) => set("precioM3Vacio", e.target.value)} placeholder="0.00" className={inp} onWheel={(e) => e.currentTarget.blur()} />
+            </div>
+            <div>
               <label className={lbl}>Resistencia</label>
               <input type="text" value={form.resistencia} onChange={(e) => set("resistencia", e.target.value)} placeholder="250, 300, 350…" className={inp} />
             </div>
@@ -1168,6 +1178,21 @@ function FormDrawer({
                 className={`${roInp} text-emerald-700`}
               />
             </div>
+            {(() => {
+              const pVacio = n(form.precioM3Vacio) ?? 0;
+              const mVacios = n(form.m3Vacios) ?? 0;
+              if (pVacio <= 0 || mVacios <= 0) return null;
+              return (
+                <div className="col-span-2 flex items-center justify-between rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
+                  <span className="text-xs text-amber-700 font-medium">
+                    + M3 Vacíos: {mVacios} × {currency(pVacio)}
+                  </span>
+                  <span className="text-sm font-bold text-amber-800 tabular-nums">
+                    {currency(pVacio * mVacios)}
+                  </span>
+                </div>
+              );
+            })()}
             <div>
               <label className={lbl}>$ Lto Acelr</label>
               <input type="number" step="0.01" min="0" value={form.ltoAcelr} onChange={(e) => set("ltoAcelr", e.target.value)} placeholder="0.00" className={inp} onWheel={(e) => e.currentTarget.blur()} />
@@ -1193,7 +1218,7 @@ function FormDrawer({
               <input type="text" value={form.aditivo} onChange={(e) => set("aditivo", e.target.value)} placeholder="—" className={inp} />
             </div>
             <div className="col-span-2">
-              <label className={lbl}>Total $ <span className="text-emerald-600 normal-case font-normal">(Total x M3 × M3 totales + extras — auto)</span></label>
+              <label className={lbl}>Total $ <span className="text-emerald-600 normal-case font-normal">(Total x M3 × M3 totales + vacíos + extras — auto)</span></label>
               <input
                 type="text"
                 value={totalAuto != null ? currency(totalAuto) : "—"}
