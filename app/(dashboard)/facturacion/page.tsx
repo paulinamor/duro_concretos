@@ -2,72 +2,214 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  AlertCircle, BadgeCheck, Building2, CalendarDays, CheckCircle2, ChevronDown,
+  Activity, AlertCircle, BadgeCheck, BarChart3, Building2, CalendarDays, CheckCircle2, ChevronDown,
   CloudDownload, Download, Eye, EyeOff, FileDown, FileKey2, FileText, Loader2,
-  Plus, Receipt, RefreshCw, Search, Send, ShieldCheck, Trash2, Upload, X,
+  Plus, Receipt, RefreshCw, Search, Send, ShieldCheck, Trash2, Upload, User, X,
 } from "lucide-react";
 import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
 import StatusBadge from "@/components/StatusBadge";
-import { getCollectionDocs, getDocument, upsertDocument, COLLECTIONS } from "@/lib/db";
+import { getCollectionDocs, getDocument, upsertDocument, deleteDocument, COLLECTIONS, orderBy, limit } from "@/lib/db";
 import { useCollectionRaw } from "@/lib/useCollection";
-import { withPlantaTag } from "@/lib/auth";
+import { withPlantaTag, getStoredSession, DEVELOPER_EMAIL } from "@/lib/auth";
 
 // ─── Catálogos SAT ────────────────────────────────────────────────────────────
 
+// ─── Catálogos SAT completos ──────────────────────────────────────────────────
+
 const USO_CFDI = [
-  { clave: "G01", desc: "Adquisición de mercancias" },
-  { clave: "G02", desc: "Devoluciones, descuentos o bonificaciones" },
-  { clave: "G03", desc: "Gastos en general" },
-  { clave: "I01", desc: "Construcciones" },
-  { clave: "I02", desc: "Mobilario y equipo de oficina" },
-  { clave: "I04", desc: "Equipo de cómputo y accesorios" },
-  { clave: "I06", desc: "Comunicaciones telefónicas" },
-  { clave: "I08", desc: "Otra maquinaria y equipo" },
-  { clave: "S01", desc: "Sin efectos fiscales" },
+  { clave: "G01",  desc: "Adquisición de mercancias" },
+  { clave: "G02",  desc: "Devoluciones, descuentos o bonificaciones" },
+  { clave: "G03",  desc: "Gastos en general" },
+  { clave: "I01",  desc: "Construcciones" },
+  { clave: "I02",  desc: "Mobilario y equipo de oficina por actividades" },
+  { clave: "I03",  desc: "Equipo de transporte" },
+  { clave: "I04",  desc: "Equipo de cómputo y accesorios" },
+  { clave: "I05",  desc: "Dados, troqueles, moldes, matrices y herramental" },
+  { clave: "I06",  desc: "Comunicaciones telefónicas" },
+  { clave: "I07",  desc: "Comunicaciones satelitales" },
+  { clave: "I08",  desc: "Otra maquinaria y equipo" },
+  { clave: "D01",  desc: "Honorarios médicos, dentales y gastos hospitalarios" },
+  { clave: "D02",  desc: "Gastos médicos por incapacidad o discapacidad" },
+  { clave: "D03",  desc: "Gastos funerales" },
+  { clave: "D04",  desc: "Donativos" },
+  { clave: "D05",  desc: "Intereses reales pagados por créditos hipotecarios (casa habitación)" },
+  { clave: "D06",  desc: "Aportaciones voluntarias al SAR" },
+  { clave: "D07",  desc: "Primas por seguros de gastos médicos" },
+  { clave: "D08",  desc: "Gastos de transportación escolar obligatoria" },
+  { clave: "D09",  desc: "Depósitos en cuentas para el ahorro, primas de pensiones" },
+  { clave: "D10",  desc: "Pagos por servicios educativos (colegiaturas)" },
+  { clave: "S01",  desc: "Sin efectos fiscales" },
   { clave: "CP01", desc: "Pagos" },
+  { clave: "CN01", desc: "Nómina" },
 ];
 
 const FORMA_PAGO = [
   { clave: "01", desc: "Efectivo" },
   { clave: "02", desc: "Cheque nominativo" },
-  { clave: "03", desc: "Transferencia electrónica" },
+  { clave: "03", desc: "Transferencia electrónica de fondos" },
   { clave: "04", desc: "Tarjeta de crédito" },
+  { clave: "05", desc: "Monedero electrónico" },
   { clave: "06", desc: "Dinero electrónico" },
+  { clave: "08", desc: "Vales de despensa" },
+  { clave: "12", desc: "Dación en pago" },
+  { clave: "13", desc: "Pago por subrogación" },
+  { clave: "14", desc: "Pago por consignación" },
+  { clave: "15", desc: "Condonación" },
+  { clave: "17", desc: "Compensación" },
+  { clave: "23", desc: "Novación" },
+  { clave: "24", desc: "Confusión" },
+  { clave: "25", desc: "Remisión de deuda" },
+  { clave: "26", desc: "Prescripción o caducidad" },
+  { clave: "27", desc: "A satisfacción del acreedor" },
   { clave: "28", desc: "Tarjeta de débito" },
+  { clave: "29", desc: "Tarjeta de servicios" },
+  { clave: "30", desc: "Aplicación de anticipos" },
+  { clave: "31", desc: "Intermediario pagos" },
   { clave: "99", desc: "Por definir" },
 ];
 
 const REGIMEN_FISCAL = [
   { clave: "601", desc: "General de Ley Personas Morales" },
-  { clave: "603", desc: "Personas Morales con fines no lucrativos" },
-  { clave: "605", desc: "Sueldos y Salarios" },
+  { clave: "603", desc: "Personas Morales con Fines no Lucrativos" },
+  { clave: "605", desc: "Sueldos y Salarios e Ingresos Asimilados a Salarios" },
   { clave: "606", desc: "Arrendamiento" },
-  { clave: "612", desc: "Personas Físicas con Actividades Empresariales" },
+  { clave: "607", desc: "Régimen de Enajenación o Adquisición de Bienes" },
+  { clave: "608", desc: "Demás ingresos" },
+  { clave: "609", desc: "Consolidación" },
+  { clave: "610", desc: "Residentes en el Extranjero sin Establecimiento Permanente en México" },
+  { clave: "611", desc: "Ingresos por Dividendos (socios y accionistas)" },
+  { clave: "612", desc: "Personas Físicas con Actividades Empresariales y Profesionales" },
+  { clave: "614", desc: "Ingresos por intereses" },
+  { clave: "615", desc: "Régimen de los ingresos por obtención de premios" },
   { clave: "616", desc: "Sin obligaciones fiscales" },
+  { clave: "620", desc: "Sociedades Cooperativas de Producción que optan por diferir sus ingresos" },
   { clave: "621", desc: "Incorporación Fiscal" },
-  { clave: "625", desc: "Actividades a través de Plataformas Tecnológicas" },
-  { clave: "626", desc: "Régimen Simplificado de Confianza" },
+  { clave: "622", desc: "Actividades Agrícolas, Ganaderas, Silvícolas y Pesqueras" },
+  { clave: "623", desc: "Opcional para Grupos de Sociedades" },
+  { clave: "624", desc: "Coordinados" },
+  { clave: "625", desc: "Régimen de las Actividades Empresariales con ingresos a través de Plataformas Tecnológicas" },
+  { clave: "626", desc: "Régimen Simplificado de Confianza (RESICO)" },
 ];
 
 const CLAVE_UNIDAD = [
-  { clave: "H87", desc: "Pieza" },
-  { clave: "E48", desc: "Unidad de servicio" },
-  { clave: "M3",  desc: "Metro cúbico" },
-  { clave: "KGM", desc: "Kilogramo" },
-  { clave: "TN",  desc: "Tonelada métrica" },
-  { clave: "MTR", desc: "Metro" },
+  // Volumen / construcción
+  { clave: "E48", desc: "Unidad de servicio (concreto)" },
+  { clave: "MTQ", desc: "Metro cúbico" },
   { clave: "LTR", desc: "Litro" },
+  { clave: "MLT", desc: "Mililitro" },
+  { clave: "XBR", desc: "Barra" },
+  { clave: "XTY", desc: "Tanque cilíndrico" },
+  { clave: "R9",  desc: "Mil metros cúbicos" },
+  // Longitud / área
+  { clave: "MTR", desc: "Metro" },
+  { clave: "CMT", desc: "Centímetro" },
+  { clave: "MMT", desc: "Milímetro" },
+  { clave: "KMT", desc: "Kilómetro" },
+  { clave: "MTK", desc: "Metro cuadrado" },
+  { clave: "CMK", desc: "Centímetro cuadrado" },
+  { clave: "HAR", desc: "Hectárea" },
+  // Masa / peso
+  { clave: "KGM", desc: "Kilogramo" },
+  { clave: "GRM", desc: "Gramo" },
+  { clave: "MGM", desc: "Miligramo" },
+  { clave: "TNE", desc: "Tonelada" },
+  { clave: "LBR", desc: "Libra" },
+  // Unidades contables
+  { clave: "H87", desc: "Pieza" },
+  { clave: "DZN", desc: "Docena" },
+  { clave: "PR",  desc: "Par" },
+  { clave: "SET", desc: "Conjunto" },
+  { clave: "XBX", desc: "Caja" },
+  { clave: "XPK", desc: "Paquete" },
+  { clave: "XBG", desc: "Bolso" },
+  { clave: "XJR", desc: "Tarro" },
+  { clave: "XKI", desc: "Kit" },
+  { clave: "XRO", desc: "Rollo" },
+  { clave: "XCE", desc: "Cesto tejido" },
+  // Tiempo / servicio
+  { clave: "HUR", desc: "Hora" },
+  { clave: "DAY", desc: "Día" },
+  { clave: "WEE", desc: "Semana" },
+  { clave: "MON", desc: "Mes" },
+  { clave: "ANN", desc: "Año" },
   { clave: "ACT", desc: "Actividad" },
+  { clave: "E51", desc: "Trabajo" },
+  // Energía / eléctrico
+  { clave: "KWH", desc: "Kilowatt hora" },
+  { clave: "WTT", desc: "Watt" },
+  { clave: "KWT", desc: "Kilowatt" },
+  { clave: "AMP", desc: "Ampere" },
+  // Otros
+  { clave: "XUN", desc: "Unidad" },
 ];
 
-// Claves producto más usadas en empresa de concreto/transporte
+const UNIDAD_NOMBRE: Record<string, string> = Object.fromEntries(
+  [
+    ["E48","Unidad de servicio"],["MTQ","Metro cúbico"],["LTR","Litro"],["MLT","Mililitro"],
+    ["XBR","Barra"],["XTY","Tanque cilíndrico"],["R9","Mil metros cúbicos"],
+    ["MTR","Metro"],["CMT","Centímetro"],["MMT","Milímetro"],["KMT","Kilómetro"],["MTK","Metro cuadrado"],["CMK","Centímetro cuadrado"],["HAR","Hectárea"],
+    ["KGM","Kilogramo"],["GRM","Gramo"],["MGM","Miligramo"],["TNE","Tonelada"],["LBR","Libra"],
+    ["H87","Pieza"],["DZN","Docena"],["PR","Par"],["SET","Conjunto"],["XBX","Caja"],["XPK","Paquete"],
+    ["XBG","Bolso"],["XJR","Tarro"],["XKI","Kit"],["XRO","Rollo"],["XCE","Cesto tejido"],
+    ["HUR","Hora"],["DAY","Día"],["WEE","Semana"],["MON","Mes"],["ANN","Año"],["ACT","Actividad"],["E51","Trabajo"],
+    ["KWH","Kilowatt hora"],["WTT","Watt"],["KWT","Kilowatt"],["AMP","Ampere"],
+    ["XUN","Unidad"],
+  ]
+);
+
+function isValidRfc(rfc: string) {
+  return /^[A-ZÑ&]{3,4}\d{6}[A-Z\d]{3}$/.test(rfc.trim().toUpperCase());
+}
+function isValidCp(cp: string) {
+  return /^\d{5}$/.test(cp.trim());
+}
+
+// Sugerencias de clave producto SAT (el campo acepta cualquier clave válida del SAT)
 const CLAVE_PRODUCTO_SUGERIDAS = [
+  // Construcción y concreto
   { clave: "30161801", desc: "Concreto premezclado" },
-  { clave: "78102200", desc: "Servicios de transporte de carga" },
+  { clave: "30161802", desc: "Concreto para pavimentos" },
+  { clave: "30161700", desc: "Mortero y cemento" },
+  { clave: "30161500", desc: "Mezclas de asfalto y alquitrán" },
+  { clave: "30101500", desc: "Materiales de construcción - madera" },
+  { clave: "30102100", desc: "Varilla y acero de construcción" },
+  { clave: "30111500", desc: "Ladrillos y tabiques" },
+  { clave: "30121500", desc: "Vidrio para construcción" },
+  { clave: "30131600", desc: "Materiales de impermeabilización" },
+  // Servicios de transporte
+  { clave: "78102200", desc: "Servicios de transporte de carga por carretera" },
+  { clave: "78101801", desc: "Servicio de transporte de materiales de construcción" },
+  { clave: "78111500", desc: "Carga y descarga" },
+  { clave: "78121500", desc: "Almacenamiento y bodega" },
+  // Servicios profesionales y construcción
   { clave: "72131702", desc: "Servicios de construcción" },
+  { clave: "72101500", desc: "Servicios de arquitectura" },
+  { clave: "72101800", desc: "Servicios de ingeniería civil" },
   { clave: "72154300", desc: "Servicios de mantenimiento de maquinaria" },
+  { clave: "72154200", desc: "Servicios de mantenimiento de equipo" },
+  // Arrendamiento y renta
+  { clave: "80131500", desc: "Arrendamiento de maquinaria y equipo" },
+  { clave: "80131501", desc: "Renta de maquinaria pesada" },
+  { clave: "80101600", desc: "Arrendamiento de inmuebles" },
+  // Administración y servicios
   { clave: "84111506", desc: "Servicios de gestión administrativa" },
+  { clave: "84131500", desc: "Servicios de contabilidad" },
+  { clave: "84121500", desc: "Servicios de recursos humanos" },
+  { clave: "43232100", desc: "Software y licencias" },
+  // Combustibles y materiales
+  { clave: "15101505", desc: "Diesel" },
+  { clave: "15101507", desc: "Gasolina" },
+  { clave: "15101512", desc: "Gas natural" },
+  { clave: "15111500", desc: "Lubricantes y aceites" },
+  // Maquinaria y herramientas
+  { clave: "22101500", desc: "Herramientas de mano" },
+  { clave: "23101500", desc: "Equipo de movimiento de tierra" },
+  { clave: "23101512", desc: "Camiones de volteo y dump trucks" },
+  { clave: "23101600", desc: "Grúas y equipo de elevación" },
+  // Alimentos y productos generales
+  { clave: "50161500", desc: "Alimentos preparados" },
+  { clave: "50192100", desc: "Agua purificada" },
 ];
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -103,6 +245,8 @@ interface CfdiEmitido {
   xmlUrl:        string;
   planta:        string;
   createdAt:     string;
+  creadoPor?:    string;
+  emisorRfc?:    string;
 }
 
 interface DescargaSAT {
@@ -155,10 +299,12 @@ function EmitirDrawer({
   open,
   onClose,
   onEmitido,
+  userEmail,
 }: {
   open: boolean;
   onClose: () => void;
   onEmitido: (cfdi: CfdiEmitido) => void;
+  userEmail: string;
 }) {
   const [tipo, setTipo]       = useState<TipoCFDI>("I");
   const [serie, setSerie]     = useState("A");
@@ -176,15 +322,44 @@ function EmitirDrawer({
   const [conceptos, setConceptos] = useState<Concepto[]>([emptyConcepto()]);
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [emisoresFm, setEmisoresFm] = useState<EmisorFm[]>([]);
   const [emisorRfcSel, setEmisorRfcSel] = useState("");
+  const [rfcLookupLoading, setRfcLookupLoading] = useState(false);
 
   useEffect(() => {
     if (!open) return;
+    setError(""); setFieldErrors({});
     getCollectionDocs<EmisorFm>("emisoresFm")
       .then((docs) => setEmisoresFm(docs.filter((d) => d.activo !== false)))
       .catch(() => {});
+    // Auto-increment folio
+    getCollectionDocs<{ folio: number | string }>(COLLECTIONS.cfdiEmitidos, [orderBy("createdAt", "desc"), limit(1)])
+      .then((docs) => {
+        if (docs.length > 0) {
+          const last = Number(docs[0].folio);
+          if (!isNaN(last) && last > 0) setFolio(String(last + 1));
+        }
+      })
+      .catch(() => {});
   }, [open]);
+
+  async function lookupRfc(rfcVal: string) {
+    const clean = rfcVal.trim().toUpperCase();
+    if (clean.length < 12) return;
+    setRfcLookupLoading(true);
+    try {
+      const clientes = await getCollectionDocs<{ rfc: string; nombre: string; regimenFiscal?: string; codigoPostal?: string }>(
+        COLLECTIONS.clientes, [],
+      );
+      const match = clientes.find((c) => c.rfc?.toUpperCase() === clean);
+      if (match) {
+        if (match.nombre)         setNombre(match.nombre);
+        if (match.regimenFiscal)  setRegimen(match.regimenFiscal);
+        if (match.codigoPostal)   setCp(match.codigoPostal);
+      }
+    } catch { /* ignore */ } finally { setRfcLookupLoading(false); }
+  }
 
   const subtotal  = conceptos.reduce((s, c) => s + c.cantidad * c.precio, 0);
   const totalIVA  = conceptos.reduce((s, c) => s + c.cantidad * c.precio * c.tasaIVA, 0);
@@ -195,12 +370,30 @@ function EmitirDrawer({
   }
 
   async function handleTimbrar() {
-    setError("");
+    setError(""); setFieldErrors({});
+    const fe: Record<string, string> = {};
+
     const emisorSel = emisoresFm.find((e) => e.rfc === emisorRfcSel);
-    if (!emisorSel) { setError("Selecciona la empresa que emite la factura"); return; }
-    if (!emisorSel.cp) { setError("El emisor no tiene código postal registrado. Elimínalo y regístralo de nuevo."); return; }
-    if (!rfc || !nombre || !cp) { setError("RFC, nombre y código postal son requeridos"); return; }
-    if (conceptos.some((c) => !c.descripcion || c.cantidad <= 0)) { setError("Todos los conceptos deben tener descripción y cantidad"); return; }
+    if (!emisorSel)         fe.emisor  = "Selecciona la empresa emisora";
+    else if (!emisorSel.cp) fe.emisor  = "El emisor no tiene CP. Elimínalo y regístralo con CP.";
+
+    if (!rfc.trim())                   fe.rfc    = "RFC requerido";
+    else if (!isValidRfc(rfc))         fe.rfc    = "Formato de RFC inválido (ej. XAXX010101000)";
+    if (!nombre.trim())                fe.nombre  = "Razón social requerida";
+    if (!isValidCp(cp))                fe.cp     = "Código postal de 5 dígitos requerido";
+    if (!folio.trim())                 fe.folio   = "Folio requerido";
+
+    conceptos.forEach((c, i) => {
+      if (!c.descripcion.trim()) fe[`desc_${i}`]   = "Descripción requerida";
+      if (c.cantidad <= 0)       fe[`cant_${i}`]   = "Cantidad > 0";
+      if (c.precio <= 0)         fe[`precio_${i}`] = "Precio > 0";
+    });
+
+    if (Object.keys(fe).length > 0) {
+      setFieldErrors(fe);
+      setError("Corrige los campos marcados antes de timbrar.");
+      return;
+    }
 
     setLoading(true);
     try {
@@ -208,38 +401,38 @@ function EmitirDrawer({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          emisorRfc:    emisorSel.rfc,
-          emisorNombre: emisorSel.nombre,
-          emisorRegimen: emisorSel.regimen,
-          emisorCp:     emisorSel.cp ?? "",
+          emisorRfc:    emisorSel!.rfc,
+          emisorNombre: emisorSel!.nombre,
+          emisorRegimen: emisorSel!.regimen,
+          emisorCp:     emisorSel!.cp ?? "",
           tipoComprobante: tipo,
           serie,
           folio,
           metodoPago: metodo,
-          formaPago: forma,
+          formaPago:  metodo === "PPD" ? "99" : forma,
           usoCfdi: uso,
-          clienteRfc: rfc,
-          clienteNombre: nombre,
+          clienteRfc:          rfc.trim().toUpperCase(),
+          clienteNombre:       nombre.trim(),
           clienteRegimenFiscal: regimen,
-          clienteCp: cp,
-          clienteEmail: email || undefined,
+          clienteCp:           cp.trim(),
+          clienteEmail:        email.trim() || undefined,
           moneda: "MXN",
           conceptos: conceptos.map((c) => ({
-            claveProdServ: c.claveProducto,
-            claveUnidad:   c.claveUnidad,
-            descripcion:   c.descripcion,
-            unidad:        "Pieza",
-            cantidad:      c.cantidad,
+            claveProdServ:  c.claveProducto,
+            claveUnidad:    c.claveUnidad,
+            descripcion:    c.descripcion.trim(),
+            unidad:         UNIDAD_NOMBRE[c.claveUnidad] ?? c.claveUnidad,
+            cantidad:       c.cantidad,
             precioUnitario: c.precio,
-            importe:       c.cantidad * c.precio,
-            objetoImp:     "02",
+            importe:        Math.round(c.cantidad * c.precio * 100) / 100,
+            objetoImp:      c.tasaIVA > 0 ? "02" : "01",
             impuestos: c.tasaIVA > 0 ? [{
               tipoImpuesto: "trasladado",
-              base:         c.cantidad * c.precio,
+              base:         Math.round(c.cantidad * c.precio * 100) / 100,
               impuesto:     "002",
               factor:       "Tasa",
               tasa:         c.tasaIVA,
-              importe:      c.cantidad * c.precio * c.tasaIVA,
+              importe:      Math.round(c.cantidad * c.precio * c.tasaIVA * 100) / 100,
             }] : [],
           })),
         }),
@@ -264,6 +457,8 @@ function EmitirDrawer({
         pdfUrl:        `/api/facturama/download?id=${data.facturamaId}&format=pdf`,
         xmlUrl:        `/api/facturama/download?id=${data.facturamaId}&format=xml`,
         createdAt:     new Date().toISOString(),
+        creadoPor:     userEmail || undefined,
+        emisorRfc:     emisorSel!.rfc,
       });
       onEmitido(nuevo);
       onClose();
@@ -306,9 +501,17 @@ function EmitirDrawer({
             <Field label="Serie">
               <input value={serie} onChange={(e) => setSerie(e.target.value)} className={inputCls} placeholder="A" />
             </Field>
-            <Field label="Folio">
-              <input value={folio} onChange={(e) => setFolio(e.target.value.replace(/\D/g, ""))} className={inputCls} placeholder="1" />
-            </Field>
+            <div>
+              <Field label="Folio *">
+                <input
+                  value={folio}
+                  onChange={(e) => { setFolio(e.target.value.replace(/\D/g, "")); setFieldErrors((p) => ({ ...p, folio: "" })); }}
+                  className={`${inputCls} ${fieldErrors.folio ? "border-red-400 ring-1 ring-red-200" : ""}`}
+                  placeholder="1"
+                />
+              </Field>
+              {fieldErrors.folio && <p className="mt-1 text-xs text-red-500 flex items-center gap-1"><AlertCircle size={11} />{fieldErrors.folio}</p>}
+            </div>
             <Field label="Uso CFDI">
               <AppSelect value={uso} onChange={(e) => setUso(e.target.value)}>
                 {USO_CFDI.map((u) => (
@@ -344,14 +547,21 @@ function EmitirDrawer({
                 Sin emisores registrados. Ve a la pestaña <strong className="mx-1">Emisores</strong> para registrar un CSD.
               </div>
             ) : (
-              <Field label="Empresa emisora *">
-                <AppSelect value={emisorRfcSel} onChange={(e) => setEmisorRfcSel(e.target.value)}>
-                  <option value="">— Seleccionar empresa —</option>
-                  {emisoresFm.map((em) => (
-                    <option key={em.rfc} value={em.rfc}>{em.rfc} — {em.nombre}</option>
-                  ))}
-                </AppSelect>
-              </Field>
+              <div>
+                <Field label="Empresa emisora *">
+                  <AppSelect
+                    value={emisorRfcSel}
+                    onChange={(e) => { setEmisorRfcSel(e.target.value); setFieldErrors((p) => ({ ...p, emisor: "" })); }}
+                    className={fieldErrors.emisor ? "border-red-400 ring-1 ring-red-200" : ""}
+                  >
+                    <option value="">— Seleccionar empresa —</option>
+                    {emisoresFm.map((em) => (
+                      <option key={em.rfc} value={em.rfc}>{em.rfc} — {em.nombre}</option>
+                    ))}
+                  </AppSelect>
+                </Field>
+                {fieldErrors.emisor && <p className="mt-1 text-xs text-red-500 flex items-center gap-1"><AlertCircle size={11} />{fieldErrors.emisor}</p>}
+              </div>
             )}
           </div>
 
@@ -359,22 +569,52 @@ function EmitirDrawer({
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-3">Datos del receptor</p>
             <div className="grid grid-cols-2 gap-4">
-              <Field label="RFC *">
-                <input value={rfc} onChange={(e) => setRfc(e.target.value.toUpperCase())} className={`${inputCls} uppercase font-mono`} placeholder="XAXX010101000" maxLength={13} />
-              </Field>
-              <Field label="Nombre / Razón social *">
-                <input value={nombre} onChange={(e) => setNombre(e.target.value)} className={inputCls} placeholder="Empresa S.A. de C.V." />
-              </Field>
-              <Field label="Régimen fiscal">
+              <div>
+                <Field label="RFC *">
+                  <div className="relative">
+                    <input
+                      value={rfc}
+                      onChange={(e) => { setRfc(e.target.value.toUpperCase()); setFieldErrors((p) => ({ ...p, rfc: "" })); }}
+                      onBlur={(e) => lookupRfc(e.target.value)}
+                      className={`${inputCls} uppercase font-mono pr-8 ${fieldErrors.rfc ? "border-red-400 ring-1 ring-red-200" : ""}`}
+                      placeholder="XAXX010101000"
+                      maxLength={13}
+                    />
+                    {rfcLookupLoading && <Loader2 size={13} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-gray-400" />}
+                  </div>
+                </Field>
+                {fieldErrors.rfc && <p className="mt-1 text-xs text-red-500 flex items-center gap-1"><AlertCircle size={11} />{fieldErrors.rfc}</p>}
+              </div>
+              <div>
+                <Field label="Nombre / Razón social *">
+                  <input
+                    value={nombre}
+                    onChange={(e) => { setNombre(e.target.value); setFieldErrors((p) => ({ ...p, nombre: "" })); }}
+                    className={`${inputCls} ${fieldErrors.nombre ? "border-red-400 ring-1 ring-red-200" : ""}`}
+                    placeholder="Empresa S.A. de C.V."
+                  />
+                </Field>
+                {fieldErrors.nombre && <p className="mt-1 text-xs text-red-500 flex items-center gap-1"><AlertCircle size={11} />{fieldErrors.nombre}</p>}
+              </div>
+              <Field label="Régimen fiscal *">
                 <AppSelect value={regimen} onChange={(e) => setRegimen(e.target.value)}>
                   {REGIMEN_FISCAL.map((r) => (
                     <option key={r.clave} value={r.clave}>{r.clave} — {r.desc}</option>
                   ))}
                 </AppSelect>
               </Field>
-              <Field label="Código postal *">
-                <input value={cp} onChange={(e) => setCp(e.target.value)} className={inputCls} placeholder="64000" maxLength={5} />
-              </Field>
+              <div>
+                <Field label="Código postal *">
+                  <input
+                    value={cp}
+                    onChange={(e) => { setCp(e.target.value.replace(/\D/g, "").slice(0, 5)); setFieldErrors((p) => ({ ...p, cp: "" })); }}
+                    className={`${inputCls} font-mono ${fieldErrors.cp ? "border-red-400 ring-1 ring-red-200" : ""}`}
+                    placeholder="64000"
+                    maxLength={5}
+                  />
+                </Field>
+                {fieldErrors.cp && <p className="mt-1 text-xs text-red-500 flex items-center gap-1"><AlertCircle size={11} />{fieldErrors.cp}</p>}
+              </div>
               <Field label="Correo (opcional)">
                 <input value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} placeholder="cliente@empresa.com" type="email" />
               </Field>
@@ -399,51 +639,71 @@ function EmitirDrawer({
                   <div className="flex items-start gap-2 mb-3">
                     <div className="flex-1">
                       <Field label="Descripción *">
-                        <input value={c.descripcion} onChange={(e) => updConcepto(i, "descripcion", e.target.value)} className={inputCls} placeholder="Suministro de concreto premezclado" />
+                        <input
+                          value={c.descripcion}
+                          onChange={(e) => { updConcepto(i, "descripcion", e.target.value); setFieldErrors((p) => ({ ...p, [`desc_${i}`]: "" })); }}
+                          className={`${inputCls} ${fieldErrors[`desc_${i}`] ? "border-red-400 ring-1 ring-red-200" : ""}`}
+                          placeholder="Suministro de concreto premezclado"
+                        />
                       </Field>
+                      {fieldErrors[`desc_${i}`] && <p className="mt-1 text-xs text-red-500 flex items-center gap-1"><AlertCircle size={11} />{fieldErrors[`desc_${i}`]}</p>}
                     </div>
                     {conceptos.length > 1 && (
-                      <button onClick={() => setConceptos((p) => p.filter((_, idx) => idx !== i))} className="mt-6 rounded p-1.5 text-gray-400 hover:text-red-500 transition-colors">
+                      <button onClick={() => setConceptos((p) => p.filter((_, idx) => idx !== i))} className="mt-6 rounded p-1.5 text-gray-400 hover:text-red-500 transition-colors cursor-pointer">
                         <Trash2 size={14} />
                       </button>
                     )}
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <Field label="Cantidad">
-                      <input type="number" value={c.cantidad} min={1} onChange={(e) => updConcepto(i, "cantidad", Number(e.target.value))} className={inputCls} />
-                    </Field>
-                    <Field label="Precio unitario">
-                      <input type="number" value={c.precio} min={0} step={0.01} onChange={(e) => updConcepto(i, "precio", Number(e.target.value))} className={inputCls} />
-                    </Field>
+                    <div>
+                      <Field label="Cantidad *">
+                        <input
+                          type="number" value={c.cantidad} min={0.01} step={0.01}
+                          onChange={(e) => { updConcepto(i, "cantidad", Number(e.target.value)); setFieldErrors((p) => ({ ...p, [`cant_${i}`]: "" })); }}
+                          className={`${inputCls} ${fieldErrors[`cant_${i}`] ? "border-red-400 ring-1 ring-red-200" : ""}`}
+                        />
+                      </Field>
+                      {fieldErrors[`cant_${i}`] && <p className="mt-1 text-xs text-red-500">{fieldErrors[`cant_${i}`]}</p>}
+                    </div>
+                    <div>
+                      <Field label="Precio unitario *">
+                        <input
+                          type="number" value={c.precio} min={0.01} step={0.01}
+                          onChange={(e) => { updConcepto(i, "precio", Number(e.target.value)); setFieldErrors((p) => ({ ...p, [`precio_${i}`]: "" })); }}
+                          className={`${inputCls} ${fieldErrors[`precio_${i}`] ? "border-red-400 ring-1 ring-red-200" : ""}`}
+                        />
+                      </Field>
+                      {fieldErrors[`precio_${i}`] && <p className="mt-1 text-xs text-red-500">{fieldErrors[`precio_${i}`]}</p>}
+                    </div>
                     <Field label="IVA (%)">
                       <AppSelect value={c.tasaIVA} onChange={(e) => updConcepto(i, "tasaIVA", Number(e.target.value))}>
                         <option value={0.16}>16%</option>
                         <option value={0.08}>8%</option>
-                        <option value={0}>0%</option>
+                        <option value={0}>0% (Exento)</option>
                       </AppSelect>
                     </Field>
                     <Field label="Subtotal">
-                      <div className="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-500">
+                      <div className="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-500 font-mono">
                         {fmt(c.cantidad * c.precio)}
                       </div>
                     </Field>
                   </div>
                   <div className="grid grid-cols-2 gap-3 mt-3">
-                    <Field label="Clave producto SAT">
+                    <Field label="Clave producto SAT *">
                       <input
                         list={`prod-list-${i}`}
                         value={c.claveProducto}
                         onChange={(e) => updConcepto(i, "claveProducto", e.target.value)}
                         className={inputCls}
-                        placeholder="44121601"
+                        placeholder="30161801"
                       />
                       <datalist id={`prod-list-${i}`}>
                         {CLAVE_PRODUCTO_SUGERIDAS.map((p) => (
-                          <option key={p.clave} value={p.clave}>{p.desc}</option>
+                          <option key={p.clave} value={p.clave}>{p.clave} — {p.desc}</option>
                         ))}
                       </datalist>
                     </Field>
-                    <Field label="Clave unidad SAT">
+                    <Field label="Clave unidad SAT *">
                       <AppSelect value={c.claveUnidad} onChange={(e) => updConcepto(i, "claveUnidad", e.target.value)}>
                         {CLAVE_UNIDAD.map((u) => (
                           <option key={u.clave} value={u.clave}>{u.clave} — {u.desc}</option>
@@ -586,7 +846,7 @@ function EmisorasTab() {
 
       await upsertDocument("emisoresFm", rfcUp, { rfc: rfcUp, nombre: fNombre, regimen: fRegimen, cp: fCp, activo: true });
       setEmisores((prev) => [...prev.filter((e) => e.rfc !== rfcUp), { rfc: rfcUp, nombre: fNombre, regimen: fRegimen, cp: fCp, activo: true }]);
-      setMsg({ type: "ok", text: `CSD de ${rfcUp} registrado en Facturama` });
+      setMsg({ type: "ok", text: `CSD de ${rfcUp} registrado exitosamente` });
       setShowForm(false); setFRfc(""); setFNombre(""); setFRegimen("601"); setFCp(""); setFPwd(""); setCerFile(null); setKeyFile(null);
     } catch (e) {
       setMsg({ type: "err", text: e instanceof Error ? e.message : "Error inesperado" });
@@ -612,7 +872,7 @@ function EmisorasTab() {
               <Building2 size={17} />
             </div>
             <div>
-              <p className="text-sm font-semibold text-white">Emisores Facturama</p>
+              <p className="text-sm font-semibold text-white">Emisores registrados</p>
               <p className="text-xs text-gray-500">CSDs registrados para timbrar CFDIs</p>
             </div>
           </div>
@@ -1254,19 +1514,419 @@ function DescargaSATTab() {
   );
 }
 
+// ─── Tab: Descarga CFDIs vía Facturama ────────────────────────────────────────
+
+interface FmListItem {
+  Id: string; Serie: string; Folio: string; Date: string;
+  CfdiType: string; Status: string; Total: number; Currency: string;
+  Issuer: { Rfc: string; Name: string };
+  Receiver: { Rfc: string; Name: string };
+  Complement?: { TaxStamp?: { Uuid: string } };
+}
+
+function DescargaFacturamaTab() {
+  const [emisores,     setEmisores]     = useState<EmisorFm[]>([]);
+  const [rfcSel,       setRfcSel]       = useState("");
+  const [fmList,       setFmList]       = useState<FmListItem[] | null>(null);
+  const [loading,      setLoading]      = useState(false);
+  const [error,        setError]        = useState("");
+
+  useEffect(() => {
+    getCollectionDocs<EmisorFm>("emisoresFm")
+      .then((d) => setEmisores(d.filter((e) => e.activo !== false)));
+  }, []);
+
+  async function buscar() {
+    if (!rfcSel) return;
+    setLoading(true); setError(""); setFmList(null);
+    try {
+      const resp = await fetch(`/api/facturama/listar?rfc=${encodeURIComponent(rfcSel)}&type=issued`);
+      const data = await resp.json();
+      if (!resp.ok) { setError(data.error ?? "Error al consultar CFDIs"); return; }
+      setFmList(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error de red");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const fmStatusTone: Record<string, string> = {
+    active:    "aprobado",
+    cancelled: "cancelado",
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* Selector emisor */}
+      <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl p-5">
+        <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+          <CloudDownload size={15} className="text-[#CC2229]" /> Consultar CFDIs por emisor
+        </h3>
+        <div className="flex items-end gap-3 flex-wrap">
+          <div className="flex-1 min-w-[200px]">
+            <label className="block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5">Emisor (RFC)</label>
+            <select
+              value={rfcSel}
+              onChange={(e) => { setRfcSel(e.target.value); setFmList(null); setError(""); }}
+              className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-[#CC2229]/60 cursor-pointer"
+            >
+              <option value="">Selecciona un emisor…</option>
+              {emisores.map((e) => (
+                <option key={e.rfc} value={e.rfc}>{e.rfc} — {e.nombre}</option>
+              ))}
+            </select>
+          </div>
+          <button
+            onClick={buscar}
+            disabled={!rfcSel || loading}
+            className="flex items-center gap-2 rounded-xl bg-[#CC2229] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#a81b21] disabled:opacity-40 transition-colors"
+          >
+            {loading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+            Consultar
+          </button>
+        </div>
+        {error && <p className="mt-3 text-xs text-red-400">{error}</p>}
+        <p className="mt-3 text-xs text-gray-600">
+          Muestra CFDIs vigentes registrados en el PAC para el RFC seleccionado. Los cancelados pueden no aparecer.
+        </p>
+      </div>
+
+      {/* Resultados */}
+      {fmList !== null && (
+        <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-[#3A3A3A]">
+            <span className="text-sm font-semibold text-white">{fmList.length} CFDI{fmList.length !== 1 ? "s" : ""} encontrados</span>
+            <span className="text-xs text-gray-500">RFC: {rfcSel}</span>
+          </div>
+          {fmList.length === 0 ? (
+            <div className="px-4 py-12 text-center text-gray-600 text-sm">
+              Sin CFDIs activos para este RFC. Los cancelados no aparecen en este listado.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[#3A3A3A] bg-[#1A1A1A]">
+                    {["Folio", "UUID", "Tipo", "Receptor", "RFC Receptor", "Total", "Fecha", "Estatus", ""].map((h) => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {fmList.map((f) => {
+                    const uuid = f.Complement?.TaxStamp?.Uuid ?? "";
+                    return (
+                      <tr key={f.Id} className="border-b border-[#2A2A2A] hover:bg-white/5 transition-colors">
+                        <td className="px-4 py-3 font-mono text-xs text-gray-400">{f.Serie}{f.Folio}</td>
+                        <td className="px-4 py-3 font-mono text-xs text-gray-500" title={uuid}>{uuid ? uuid.slice(0, 8) + "…" : "—"}</td>
+                        <td className="px-4 py-3">
+                          <span className="rounded-full bg-white/5 border border-[#3A3A3A] px-2.5 py-0.5 text-xs text-gray-300">
+                            {TIPO_LABEL[f.CfdiType as TipoCFDI] ?? f.CfdiType}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-white max-w-[160px] truncate" title={f.Receiver.Name}>{f.Receiver.Name}</td>
+                        <td className="px-4 py-3 font-mono text-xs text-gray-400">{f.Receiver.Rfc}</td>
+                        <td className="px-4 py-3 text-white font-semibold whitespace-nowrap">{fmt(f.Total)}</td>
+                        <td className="px-4 py-3 text-gray-400 whitespace-nowrap">{fmtDate(f.Date)}</td>
+                        <td className="px-4 py-3">
+                          <StatusBadge status={fmStatusTone[f.Status?.toLowerCase()] ?? "pendiente"} />
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-1">
+                            <a
+                              href={`/api/facturama/download?id=${f.Id}&format=pdf`}
+                              target="_blank" rel="noopener noreferrer" title="Descargar PDF"
+                              className="rounded p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-900/20 transition-colors"
+                            >
+                              <FileText size={14} />
+                            </a>
+                            <a
+                              href={`/api/facturama/download?id=${f.Id}&format=xml`}
+                              target="_blank" rel="noopener noreferrer" title="Descargar XML"
+                              className="rounded p-1.5 text-gray-500 hover:text-blue-400 hover:bg-blue-900/20 transition-colors"
+                            >
+                              <Download size={14} />
+                            </a>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Tab: Control de folios (solo desarrollador) ───────────────────────────────
+
+const DEV_FOLIOS_KEY = "dev_folios";
+
+function FoliosDevTab({ cfdiList }: { cfdiList: CfdiEmitido[] }) {
+  const sorted = [...cfdiList].sort(
+    (a, b) => new Date(b.fechaTimbrado).getTime() - new Date(a.fechaTimbrado).getTime()
+  );
+  const erpUsados = sorted.length;
+  const totalErogado = sorted.filter((f) => f.status === "valid").reduce((s, f) => s + f.total, 0);
+
+  // Folios disponibles — configurado manualmente desde el portal del PAC
+  const [foliosDisp, setFoliosDisp]       = useState<number | null>(null);
+  const [editando, setEditando]           = useState(false);
+  const [inputDisp, setInputDisp]         = useState("");
+  const [guardandoDisp, setGuardandoDisp] = useState(false);
+
+  useEffect(() => {
+    getDocument<{ facturas?: number }>(COLLECTIONS.configuracion, DEV_FOLIOS_KEY)
+      .then((d) => { if (d?.facturas != null) setFoliosDisp(d.facturas); })
+      .catch(() => {});
+  }, []);
+
+  async function guardarFoliosDisp() {
+    const n = parseInt(inputDisp, 10);
+    if (isNaN(n) || n < 0) return;
+    setGuardandoDisp(true);
+    await upsertDocument(COLLECTIONS.configuracion, DEV_FOLIOS_KEY, { facturas: n });
+    setFoliosDisp(n);
+    setEditando(false);
+    setGuardandoDisp(false);
+  }
+
+  // Limpieza de solicitudes SAT fallidas (BoxFactura)
+  const satHistorial = useCollectionRaw<{ id?: string; requestId: string; status: string; direccion: string; tipo: string; fechaInicio: string; fechaFin: string; solicitadoEn?: unknown }>(COLLECTIONS.descargasSAT ?? "descargasSAT");
+  const satErrores   = (satHistorial ?? []).filter((s) => s.status === "error");
+  const [borrando, setBorrando] = useState(false);
+  const [borradoMsg, setBorradoMsg] = useState("");
+
+  async function borrarErrores() {
+    if (satErrores.length === 0) return;
+    setBorrando(true);
+    setBorradoMsg("");
+    try {
+      await Promise.all(satErrores.map((s) => deleteDocument(COLLECTIONS.descargasSAT ?? "descargasSAT", s.requestId)));
+      setBorradoMsg(`${satErrores.length} registro${satErrores.length > 1 ? "s" : ""} eliminado${satErrores.length > 1 ? "s" : ""}.`);
+    } catch {
+      setBorradoMsg("Error al eliminar.");
+    } finally {
+      setBorrando(false);
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* Banner dev */}
+      <div className="flex items-center gap-2 rounded-xl bg-amber-500/10 border border-amber-500/30 px-4 py-3">
+        <Activity size={14} className="text-amber-400 shrink-0" />
+        <p className="text-xs text-amber-300">
+          Panel exclusivo para <strong>leonardo@lpsoft.mx</strong>. Control de consumo de folios del PAC.
+        </p>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {/* Folios disponibles en PAC — manual */}
+        <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl p-4">
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Disponibles en PAC</p>
+            <button onClick={() => { setEditando(true); setInputDisp(String(foliosDisp ?? "")); }} className="text-[10px] text-gray-600 hover:text-gray-400 transition-colors cursor-pointer">editar</button>
+          </div>
+          {editando ? (
+            <div className="flex items-center gap-2 mt-1">
+              <input
+                type="number" min="0" value={inputDisp}
+                onChange={(e) => setInputDisp(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && guardarFoliosDisp()}
+                className="w-20 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-2 py-1 text-sm text-white focus:outline-none focus:border-[#CC2229]"
+                autoFocus
+              />
+              <button onClick={guardarFoliosDisp} disabled={guardandoDisp} className="text-xs text-emerald-400 hover:text-emerald-300 transition-colors cursor-pointer">
+                {guardandoDisp ? "…" : "OK"}
+              </button>
+              <button onClick={() => setEditando(false)} className="text-xs text-gray-600 hover:text-gray-400 cursor-pointer">✕</button>
+            </div>
+          ) : (
+            <>
+              <p className={`text-2xl font-bold ${foliosDisp != null && foliosDisp <= 10 ? "text-red-400" : foliosDisp != null && foliosDisp <= 30 ? "text-amber-400" : "text-emerald-400"}`}>
+                {foliosDisp != null ? foliosDisp : "—"}
+              </p>
+              <p className="text-xs text-gray-600 mt-0.5">Actualiza desde el portal del PAC</p>
+            </>
+          )}
+        </div>
+
+        <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl p-4">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1">Emitidos en ERP</p>
+          <p className="text-2xl font-bold text-[#CC2229]">{erpUsados}</p>
+          <p className="text-xs text-gray-600 mt-0.5">Desde este sistema</p>
+        </div>
+        <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl p-4">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1">Total facturado</p>
+          <p className="text-xl font-bold text-white">{fmt(totalErogado)}</p>
+          <p className="text-xs text-gray-600 mt-0.5">CFDIs vigentes</p>
+        </div>
+        <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl p-4">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1">Cancelados</p>
+          <p className="text-2xl font-bold text-gray-400">{sorted.filter((f) => f.status === "cancelled").length}</p>
+          <p className="text-xs text-gray-600 mt-0.5">En este ERP</p>
+        </div>
+      </div>
+
+      {/* Tabla de consumo */}
+      <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-[#3A3A3A]">
+          <BarChart3 size={14} className="text-[#CC2229]" />
+          <span className="text-sm font-semibold text-white">Historial de consumo de folios</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-[#3A3A3A] bg-[#1A1A1A]">
+                {["#", "Folio", "UUID", "Emisor RFC", "Receptor", "Total", "Fecha", "Timbrado por", "Estatus"].map((h) => (
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="px-4 py-12 text-center text-gray-600">Sin CFDIs registrados aún.</td>
+                </tr>
+              )}
+              {sorted.map((f, i) => (
+                <tr key={f.uuid} className="border-b border-[#2A2A2A] hover:bg-white/5 transition-colors">
+                  <td className="px-4 py-3 text-xs text-gray-600">{i + 1}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-gray-400">{f.serie}{f.folio}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-gray-500" title={f.uuid}>{f.uuid ? f.uuid.slice(0, 8) + "…" : "—"}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-gray-400">{f.emisorRfc ?? "—"}</td>
+                  <td className="px-4 py-3 text-white max-w-[160px] truncate" title={f.clienteNombre}>
+                    <div>{f.clienteNombre}</div>
+                    <div className="text-[10px] text-gray-500 font-mono">{f.clienteRfc}</div>
+                  </td>
+                  <td className="px-4 py-3 text-white font-semibold whitespace-nowrap">{fmt(f.total)}</td>
+                  <td className="px-4 py-3 text-gray-400 whitespace-nowrap">{fmtDate(f.fechaTimbrado)}</td>
+                  <td className="px-4 py-3">
+                    {f.creadoPor ? (
+                      <span className="flex items-center gap-1 text-xs text-gray-400">
+                        <User size={11} className="text-gray-600" />{f.creadoPor}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-600">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <StatusBadge status={STATUS_TONE[f.status] ?? "pendiente"} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {sorted.length > 0 && (
+          <div className="border-t border-[#3A3A3A] px-4 py-2.5 text-xs text-gray-600">
+            {sorted.length} folio{sorted.length !== 1 ? "s" : ""} consumido{sorted.length !== 1 ? "s" : ""} · Los CFDIs anteriores a este ERP no se reflejan aquí.
+          </div>
+        )}
+      </div>
+
+      {/* Limpieza de solicitudes SAT fallidas */}
+      {satHistorial !== undefined && (
+        <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-[#3A3A3A]">
+            <span className="text-sm font-semibold text-white flex items-center gap-2">
+              <Trash2 size={14} className="text-red-400" /> Solicitudes SAT (BoxFactura legacy)
+            </span>
+            {satErrores.length > 0 && (
+              <button
+                onClick={borrarErrores}
+                disabled={borrando}
+                className="flex items-center gap-1.5 rounded-lg bg-red-900/30 border border-red-800/50 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-900/50 disabled:opacity-40 transition-colors"
+              >
+                {borrando ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                Borrar {satErrores.length} error{satErrores.length > 1 ? "es" : ""}
+              </button>
+            )}
+          </div>
+          {(satHistorial ?? []).length === 0 ? (
+            <p className="px-4 py-8 text-center text-xs text-gray-600">Sin registros.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[#3A3A3A] bg-[#1A1A1A]">
+                    {["Request ID", "Dirección", "Tipo", "Rango", "Fecha", "Estatus"].map((h) => (
+                      <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...(satHistorial ?? [])].sort((a, b) => {
+                    const ts = (v: unknown) => {
+                      if (!v) return 0;
+                      if (typeof v === "string") return new Date(v).getTime();
+                      if (typeof v === "object" && "seconds" in (v as Record<string,unknown>)) return ((v as {seconds:number}).seconds) * 1000;
+                      return 0;
+                    };
+                    return ts(b.solicitadoEn) - ts(a.solicitadoEn);
+                  }).map((s) => (
+                    <tr key={s.requestId} className="border-b border-[#2A2A2A] hover:bg-white/5">
+                      <td className="px-4 py-2.5 font-mono text-xs text-gray-500" title={s.requestId}>{s.requestId.slice(0, 8)}…</td>
+                      <td className="px-4 py-2.5 text-xs text-gray-400 capitalize">{s.direccion}</td>
+                      <td className="px-4 py-2.5 text-xs text-gray-400">{s.tipo}</td>
+                      <td className="px-4 py-2.5 text-xs text-gray-500">{s.fechaInicio} → {s.fechaFin}</td>
+                      <td className="px-4 py-2.5 text-xs text-gray-600">
+                        {(() => {
+                          const v = s.solicitadoEn;
+                          if (!v) return "—";
+                          if (typeof v === "string") return new Date(v).toLocaleString("es-MX");
+                          if (typeof v === "object" && "seconds" in (v as Record<string,unknown>)) return new Date(((v as {seconds:number}).seconds)*1000).toLocaleString("es-MX");
+                          return "—";
+                        })()}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                          s.status === "error"     ? "bg-red-500/10 text-red-400" :
+                          s.status === "listo"     ? "bg-emerald-500/10 text-emerald-400" :
+                          s.status === "procesando"? "bg-blue-500/10 text-blue-400" :
+                          "bg-amber-500/10 text-amber-400"
+                        }`}>{s.status}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {borradoMsg && (
+            <div className="px-4 py-2.5 text-xs text-emerald-400 border-t border-[#3A3A3A]">{borradoMsg}</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Página principal ─────────────────────────────────────────────────────────
 
-type Tab = "historial" | "emisores" | "descarga";
+type Tab = "historial" | "emisores" | "descarga" | "folios";
 
 export default function FacturacionPage() {
   const [tab, setTab]               = useState<Tab>("historial");
   const [cfdiList, setCfdiList]     = useState<CfdiEmitido[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [search, setSearch]         = useState("");
+  const [userEmail, setUserEmail]   = useState("");
 
   useEffect(() => {
     getCollectionDocs<CfdiEmitido>(COLLECTIONS.cfdiEmitidos).then(setCfdiList);
+    const s = getStoredSession();
+    if (s?.email) setUserEmail(s.email);
   }, []);
+
+  const isDev = userEmail === DEVELOPER_EMAIL;
 
   const merged = [...cfdiList].sort(
     (a, b) => new Date(b.fechaTimbrado).getTime() - new Date(a.fechaTimbrado).getTime()
@@ -1281,10 +1941,11 @@ export default function FacturacionPage() {
   const vigentes        = merged.filter((f) => f.status === "valid").length;
   const cancelados      = merged.filter((f) => f.status === "cancelled").length;
 
-  const TABS: { key: Tab; label: string; icon: React.ElementType }[] = [
+  const TABS: { key: Tab; label: string; icon: React.ElementType; devOnly?: boolean }[] = [
     { key: "historial", label: "CFDIs Emitidos", icon: FileText },
     { key: "emisores",  label: "Emisores",        icon: Building2 },
-    { key: "descarga",  label: "Descarga SAT",   icon: CloudDownload },
+    { key: "descarga",  label: "Descarga CFDI",   icon: CloudDownload },
+    { key: "folios",    label: "Folios",           icon: BarChart3, devOnly: true },
   ];
 
   return (
@@ -1300,13 +1961,13 @@ export default function FacturacionPage() {
       {/* Tabs + acción */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex gap-1 bg-[#242424] border border-[#3A3A3A] rounded-xl p-1">
-          {TABS.map(({ key, label, icon: Icon }) => (
+          {TABS.filter((t) => !t.devOnly || isDev).map(({ key, label, icon: Icon, devOnly }) => (
             <button
               key={key}
               onClick={() => setTab(key)}
               className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
                 tab === key
-                  ? "bg-[#CC2229] text-white shadow"
+                  ? devOnly ? "bg-amber-600 text-white shadow" : "bg-[#CC2229] text-white shadow"
                   : "text-gray-400 hover:text-white"
               }`}
             >
@@ -1408,13 +2069,15 @@ export default function FacturacionPage() {
       )}
 
       {tab === "emisores" && <EmisorasTab />}
-      {tab === "descarga" && <DescargaSATTab />}
+      {tab === "descarga" && <DescargaFacturamaTab />}
+      {tab === "folios"   && isDev && <FoliosDevTab cfdiList={cfdiList} />}
 
       {/* Drawer emitir */}
       <EmitirDrawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         onEmitido={(cfdi) => setCfdiList((prev) => [cfdi, ...prev])}
+        userEmail={userEmail}
       />
     </div>
   );
