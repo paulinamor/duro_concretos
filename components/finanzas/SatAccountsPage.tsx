@@ -111,7 +111,7 @@ function diasVencimiento(vencimiento: string): number {
   return Math.ceil((due.getTime() - today.getTime()) / 86_400_000);
 }
 
-const BANCOS = ["Banregio", "BBVA", "Banamex", "Santander", "HSBC", "Scotiabank", "Inbursa", "Banorte", "BANBajío", "Otro"] as const;
+const BANCOS = ["BANREGIO", "BBVA", "SANTANDER", "BANAMEX", "BANORTE", "HSBC", "SCOTIABANK", "INBURSA", "BANBAJÍO", "OTRO"] as const;
 
 const METODOS_PAGO_ABONO = ["Efectivo", "Tarjeta", "Transferencia"] as const;
 
