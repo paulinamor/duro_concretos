@@ -326,9 +326,11 @@ function EmitirDrawer({
   const [emisoresFm, setEmisoresFm] = useState<EmisorFm[]>([]);
   const [emisorRfcSel, setEmisorRfcSel] = useState("");
   const [rfcLookupLoading, setRfcLookupLoading] = useState(false);
+  const [paso, setPaso] = useState<"form" | "preview">("form");
 
   useEffect(() => {
     if (!open) return;
+    setPaso("form");
     setError(""); setFieldErrors({});
     getCollectionDocs<EmisorFm>("emisoresFm")
       .then((docs) => setEmisoresFm(docs.filter((d) => d.activo !== false)))
@@ -369,7 +371,7 @@ function EmitirDrawer({
     setConceptos((prev) => prev.map((c, idx) => idx === i ? { ...c, [field]: value } : c));
   }
 
-  async function handleTimbrar() {
+  function handleVerPrevia() {
     setError(""); setFieldErrors({});
     const fe: Record<string, string> = {};
 
@@ -377,11 +379,11 @@ function EmitirDrawer({
     if (!emisorSel)         fe.emisor  = "Selecciona la empresa emisora";
     else if (!emisorSel.cp) fe.emisor  = "El emisor no tiene CP. Elimínalo y regístralo con CP.";
 
-    if (!rfc.trim())                   fe.rfc    = "RFC requerido";
-    else if (!isValidRfc(rfc))         fe.rfc    = "Formato de RFC inválido (ej. XAXX010101000)";
-    if (!nombre.trim())                fe.nombre  = "Razón social requerida";
-    if (!isValidCp(cp))                fe.cp     = "Código postal de 5 dígitos requerido";
-    if (!folio.trim())                 fe.folio   = "Folio requerido";
+    if (!rfc.trim())           fe.rfc    = "RFC requerido";
+    else if (!isValidRfc(rfc)) fe.rfc    = "Formato de RFC inválido (ej. XAXX010101000)";
+    if (!nombre.trim())        fe.nombre = "Razón social requerida";
+    if (!isValidCp(cp))        fe.cp     = "Código postal de 5 dígitos requerido";
+    if (!folio.trim())         fe.folio  = "Folio requerido";
 
     conceptos.forEach((c, i) => {
       if (!c.descripcion.trim()) fe[`desc_${i}`]   = "Descripción requerida";
@@ -391,9 +393,16 @@ function EmitirDrawer({
 
     if (Object.keys(fe).length > 0) {
       setFieldErrors(fe);
-      setError("Corrige los campos marcados antes de timbrar.");
+      setError("Corrige los campos marcados antes de continuar.");
       return;
     }
+
+    setPaso("preview");
+  }
+
+  async function handleTimbrar() {
+    setError("");
+    const emisorSel = emisoresFm.find((e) => e.rfc === emisorRfcSel);
 
     setLoading(true);
     try {
@@ -471,6 +480,13 @@ function EmitirDrawer({
 
   if (!open) return null;
 
+  const PRow = ({ label, value, mono }: { label: string; value: string; mono?: boolean }) => (
+    <div className="flex items-baseline justify-between gap-4 text-sm">
+      <span className="text-gray-400 shrink-0">{label}</span>
+      <span className={`text-gray-800 text-right ${mono ? "font-mono text-xs" : ""}`}>{value}</span>
+    </div>
+  );
+
   return (
     <div className="fixed inset-0 z-50 flex">
       <div className="fixed inset-0 bg-black/60" onClick={onClose} />
@@ -481,13 +497,17 @@ function EmitirDrawer({
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#CC2229]/10 text-[#CC2229]">
               <Send size={17} />
             </div>
-            <h2 className="text-gray-900 font-semibold text-base">Emitir CFDI</h2>
+            <div>
+              <h2 className="text-gray-900 font-semibold text-base">Emitir CFDI</h2>
+              <p className="text-[10px] text-gray-400 mt-0.5">{paso === "form" ? "Paso 1 de 2 — Datos del comprobante" : "Paso 2 de 2 — Vista previa"}</p>
+            </div>
           </div>
           <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors">
             <X size={18} />
           </button>
         </div>
 
+        {paso === "form" ? (
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {/* Tipo, serie, folio y uso */}
           <div className="grid grid-cols-4 gap-4">
@@ -735,10 +755,115 @@ function EmitirDrawer({
             </div>
           )}
         </div>
+        ) : (
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {/* Emisor */}
+          {(() => {
+            const em = emisoresFm.find((e) => e.rfc === emisorRfcSel);
+            if (!em) return null;
+            return (
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-3">Empresa que emite</p>
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-2.5">
+                  <PRow label="RFC" value={em.rfc} mono />
+                  <PRow label="Nombre" value={em.nombre} />
+                  <PRow label="Régimen" value={`${em.regimen} — ${REGIMEN_FISCAL.find((r) => r.clave === em.regimen)?.desc ?? ""}`} />
+                  {em.cp && <PRow label="CP" value={em.cp} />}
+                </div>
+              </div>
+            );
+          })()}
 
+          {/* Receptor */}
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-3">Receptor</p>
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-2.5">
+              <PRow label="RFC" value={rfc} mono />
+              <PRow label="Nombre" value={nombre} />
+              <PRow label="Régimen" value={`${regimen} — ${REGIMEN_FISCAL.find((r) => r.clave === regimen)?.desc ?? ""}`} />
+              <PRow label="Código postal" value={cp} />
+              {email && <PRow label="Correo" value={email} />}
+            </div>
+          </div>
+
+          {/* Comprobante */}
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-3">Comprobante</p>
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-2.5">
+              <PRow label="Tipo" value={tipo === "I" ? "I — Ingreso" : tipo === "E" ? "E — Egreso" : "T — Traslado"} />
+              <PRow label="Serie / Folio" value={`${serie || "–"} / ${folio}`} />
+              <PRow label="Método pago" value={metodo === "PUE" ? "PUE — Pago en una exhibición" : "PPD — Pago en parcialidades o diferido"} />
+              {metodo !== "PPD" && <PRow label="Forma pago" value={`${forma} — ${FORMA_PAGO.find((f) => f.clave === forma)?.desc ?? ""}`} />}
+              <PRow label="Uso CFDI" value={`${uso} — ${USO_CFDI.find((u) => u.clave === uso)?.desc ?? ""}`} />
+            </div>
+          </div>
+
+          {/* Conceptos */}
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-3">Conceptos</p>
+            <div className="bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-gray-200 bg-gray-100">
+                    <th className="text-left px-4 py-2 text-gray-500 font-medium">Descripción</th>
+                    <th className="text-right px-3 py-2 text-gray-500 font-medium">Cant.</th>
+                    <th className="text-right px-3 py-2 text-gray-500 font-medium">Precio</th>
+                    <th className="text-right px-3 py-2 text-gray-500 font-medium">IVA</th>
+                    <th className="text-right px-4 py-2 text-gray-500 font-medium">Importe</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {conceptos.map((c, i) => (
+                    <tr key={i} className="border-b border-gray-100 last:border-0">
+                      <td className="px-4 py-2.5 text-gray-700 leading-tight">{c.descripcion}</td>
+                      <td className="px-3 py-2.5 text-right text-gray-600 font-mono">{c.cantidad}</td>
+                      <td className="px-3 py-2.5 text-right text-gray-600 font-mono">{fmt(c.precio)}</td>
+                      <td className="px-3 py-2.5 text-right text-gray-600">{c.tasaIVA === 0 ? "Exento" : `${(c.tasaIVA * 100).toFixed(0)}%`}</td>
+                      <td className="px-4 py-2.5 text-right font-medium text-gray-900 font-mono">{fmt(c.cantidad * c.precio * (1 + c.tasaIVA))}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Totales */}
+          <div className="bg-[#CC2229]/5 border border-[#CC2229]/20 rounded-xl p-4 space-y-2">
+            <div className="flex justify-between text-sm text-gray-500">
+              <span>Subtotal</span><span className="font-mono">{fmt(subtotal)}</span>
+            </div>
+            <div className="flex justify-between text-sm text-gray-500">
+              <span>IVA</span><span className="font-mono">{fmt(totalIVA)}</span>
+            </div>
+            <div className="flex justify-between text-base font-bold text-gray-900 border-t border-[#CC2229]/20 pt-2.5">
+              <span>Total</span><span className="font-mono text-[#CC2229]">{fmt(total)}</span>
+            </div>
+          </div>
+
+          {error && (
+            <div className="flex items-center gap-2 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">
+              <AlertCircle size={15} />{error}
+            </div>
+          )}
+        </div>
+        )}
+
+        {paso === "form" ? (
         <div className="border-t border-gray-100 px-6 py-4 flex gap-3 sticky bottom-0 bg-white">
           <button onClick={onClose} className="flex-1 rounded-xl border border-gray-200 py-2.5 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
             Cancelar
+          </button>
+          <button
+            onClick={handleVerPrevia}
+            className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-[#CC2229] py-2.5 text-sm font-semibold text-white hover:bg-[#B01E24] transition-colors shadow-lg shadow-[#CC2229]/20"
+          >
+            <Eye size={15} /> Vista previa
+          </button>
+        </div>
+        ) : (
+        <div className="border-t border-gray-100 px-6 py-4 flex gap-3 sticky bottom-0 bg-white">
+          <button onClick={() => setPaso("form")} className="flex-1 rounded-xl border border-gray-200 py-2.5 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
+            ← Editar
           </button>
           <button
             onClick={handleTimbrar}
@@ -749,6 +874,7 @@ function EmitirDrawer({
             {loading ? "Timbrando…" : "Timbrar CFDI"}
           </button>
         </div>
+        )}
       </aside>
     </div>
   );

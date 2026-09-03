@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Manrope } from "next/font/google";
 import ToastCenter from "@/components/ToastCenter";
 import ThemeSync from "@/components/ThemeSync";
+import NumberInputFix from "@/components/NumberInputFix";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
@@ -39,6 +40,7 @@ export default function RootLayout({
       <body className="min-h-full bg-background text-foreground">
         <TooltipProvider>
           <ThemeSync />
+          <NumberInputFix />
           {children}
           <ToastCenter />
         </TooltipProvider>
