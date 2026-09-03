@@ -74,6 +74,9 @@ interface Abono {
   fecha: string;
   monto: number;
   referencia?: string;
+  metodoPago?: string;
+  banco?: string;
+  uuidComplemento?: string;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -107,6 +110,10 @@ function diasVencimiento(vencimiento: string): number {
   today.setHours(0, 0, 0, 0);
   return Math.ceil((due.getTime() - today.getTime()) / 86_400_000);
 }
+
+const BANCOS = ["Banregio", "BBVA", "Banamex", "Santander", "HSBC", "Scotiabank", "Inbursa", "Banorte", "BANBajío", "Otro"] as const;
+
+const METODOS_PAGO_ABONO = ["Efectivo", "Tarjeta", "Transferencia"] as const;
 
 const CATEGORIAS_CXP = [
   "Refacciones",
@@ -679,7 +686,7 @@ function AbonoRowEdit({
 
 // ─── Abono Drawer ─────────────────────────────────────────────────────────────
 
-type ExhibicionForm = { fecha: string; monto: string; referencia: string };
+type ExhibicionForm = { fecha: string; monto: string; referencia: string; metodoPago: string; banco: string; uuidComplemento: string };
 
 function AbonoDrawer({
   cuenta,
@@ -696,13 +703,12 @@ function AbonoDrawer({
   onEditAbono: (cuenta: Cuenta, index: number, abono: Abono) => Promise<void>;
   onDeleteAbono: (cuenta: Cuenta, index: number) => void;
 }) {
-  const [exhibiciones, setExhibiciones] = useState<ExhibicionForm[]>([
-    { fecha: todayISO(), monto: "", referencia: "" },
-  ]);
+  const emptyEx = (): ExhibicionForm => ({ fecha: todayISO(), monto: "", referencia: "", metodoPago: "", banco: "", uuidComplemento: "" });
+  const [exhibiciones, setExhibiciones] = useState<ExhibicionForm[]>([emptyEx()]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (cuenta) setExhibiciones([{ fecha: todayISO(), monto: "", referencia: "" }]);
+    if (cuenta) setExhibiciones([emptyEx()]);
   }, [cuenta]);
 
   if (!cuenta || cuenta.estadoSAT === "Cancelado") return null;
@@ -724,7 +730,7 @@ function AbonoDrawer({
     setExhibiciones((prev) => prev.map((ex, idx) => (idx === i ? { ...ex, [k]: v } : ex)));
   }
   function addExhibicion() {
-    setExhibiciones((prev) => [...prev, { fecha: todayISO(), monto: "", referencia: "" }]);
+    setExhibiciones((prev) => [...prev, emptyEx()]);
   }
   function removeExhibicion(i: number) {
     if (exhibiciones.length <= 1) return;
@@ -741,7 +747,10 @@ function AbonoDrawer({
         valid.map((ex) => ({
           fecha: isoToDisplay(ex.fecha),
           monto: parseFloat(ex.monto),
-          referencia: ex.referencia,
+          referencia: ex.referencia || undefined,
+          metodoPago: ex.metodoPago || undefined,
+          banco: ex.banco || undefined,
+          uuidComplemento: ex.uuidComplemento || undefined,
         })),
       );
       onClose();
@@ -847,6 +856,28 @@ function AbonoDrawer({
                     <input type="text" value={ex.referencia} onChange={(e) => updateEx(i, "referencia", e.target.value)} placeholder="Opcional" className={inp} />
                   </div>
                 </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={lbl}>Método de pago *</label>
+                    <select value={ex.metodoPago} onChange={(e) => updateEx(i, "metodoPago", e.target.value)} className={inp}>
+                      <option value="">Seleccionar</option>
+                      {METODOS_PAGO_ABONO.map((m) => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </div>
+                  {(ex.metodoPago === "Transferencia" || ex.metodoPago === "Tarjeta") && (
+                    <div>
+                      <label className={lbl}>Banco</label>
+                      <select value={ex.banco} onChange={(e) => updateEx(i, "banco", e.target.value)} className={inp}>
+                        <option value="">Seleccionar</option>
+                        {BANCOS.map((b) => <option key={b} value={b}>{b}</option>)}
+                      </select>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label className={lbl}>UUID Complemento de pago</label>
+                  <input type="text" value={ex.uuidComplemento} onChange={(e) => updateEx(i, "uuidComplemento", e.target.value)} placeholder="UUID del CFDI complemento (opcional)" className={`${inp} font-mono text-xs`} />
+                </div>
               </div>
             ))}
           </div>
@@ -902,7 +933,7 @@ function EditAbonoDrawer({
   onSave: (cuenta: Cuenta, index: number, abono: Abono) => Promise<void>;
 }) {
   const abono = target?.cuenta.abonos?.[target.index];
-  const [form, setForm] = useState({ fecha: todayISO(), monto: "", referencia: "" });
+  const [form, setForm] = useState({ fecha: todayISO(), monto: "", referencia: "", metodoPago: "", banco: "", uuidComplemento: "" });
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -911,6 +942,9 @@ function EditAbonoDrawer({
       fecha: abono.fecha.includes("/") ? displayToISO(abono.fecha) : abono.fecha,
       monto: String(abono.monto),
       referencia: abono.referencia ?? "",
+      metodoPago: abono.metodoPago ?? "",
+      banco: abono.banco ?? "",
+      uuidComplemento: abono.uuidComplemento ?? "",
     });
   }, [target, abono]);
 
@@ -928,7 +962,10 @@ function EditAbonoDrawer({
       await onSave(cuenta, index, {
         fecha: isoToDisplay(form.fecha),
         monto: montoNum,
-        referencia: form.referencia,
+        referencia: form.referencia || undefined,
+        metodoPago: form.metodoPago || undefined,
+        banco: form.banco || undefined,
+        uuidComplemento: form.uuidComplemento || undefined,
       });
       onClose();
     } finally {
@@ -974,6 +1011,28 @@ function EditAbonoDrawer({
           <div>
             <label className={lbl}>Referencia / No. transferencia</label>
             <input type="text" value={form.referencia} onChange={(e) => setForm({ ...form, referencia: e.target.value })} placeholder="Opcional" className={inp} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={lbl}>Método de pago</label>
+              <select value={form.metodoPago} onChange={(e) => setForm({ ...form, metodoPago: e.target.value, banco: "" })} className={inp}>
+                <option value="">Seleccionar</option>
+                {METODOS_PAGO_ABONO.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+            {(form.metodoPago === "Transferencia" || form.metodoPago === "Tarjeta") && (
+              <div>
+                <label className={lbl}>Banco</label>
+                <select value={form.banco} onChange={(e) => setForm({ ...form, banco: e.target.value })} className={inp}>
+                  <option value="">Seleccionar</option>
+                  {BANCOS.map((b) => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </div>
+            )}
+          </div>
+          <div>
+            <label className={lbl}>UUID Complemento de pago</label>
+            <input type="text" value={form.uuidComplemento} onChange={(e) => setForm({ ...form, uuidComplemento: e.target.value })} placeholder="UUID del CFDI complemento (opcional)" className={`${inp} font-mono text-xs`} />
           </div>
         </div>
         <div className="border-t border-gray-100 px-6 py-4 flex gap-3 justify-end">
@@ -1785,6 +1844,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
   const [filterEstadoSAT, setFilterEstadoSAT] = useState("todos");
   const [filterContraparte, setFilterContraparte] = useState<Set<string>>(new Set());
   const [filterFormaPago, setFilterFormaPago] = useState<Set<string>>(new Set());
+  const [filterCategoria, setFilterCategoria] = useState("todos");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<"dark" | "excel">("excel");
 
@@ -1864,6 +1924,9 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
       // Filtro por forma de pago (multi)
       if (filterFormaPago.size > 0 && !filterFormaPago.has(c.formaPago ?? "")) return false;
 
+      // Filtro por categoría (solo CxP)
+      if (!isCxc && filterCategoria !== "todos" && (c.categoria ?? "") !== filterCategoria) return false;
+
       // Búsqueda de texto
       if (!q) return true;
       return (
@@ -1880,7 +1943,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
       if (byFecha !== 0) return byFecha;
       return b.folio.localeCompare(a.folio, undefined, { numeric: true });
     });
-  }, [cuentas, query, filterStatus, filterMes, filterTipo, filterEstadoSAT, filterContraparte, filterFormaPago]);
+  }, [cuentas, query, filterStatus, filterMes, filterTipo, filterEstadoSAT, filterContraparte, filterFormaPago, filterCategoria, isCxc]);
 
   // KPIs — facturas canceladas no cuentan en saldos ni conteos financieros
   const canceladas = filtered.filter((c) => c.estadoSAT === "Cancelado");
@@ -2502,6 +2565,14 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
             selected={filterFormaPago}
             onChange={setFilterFormaPago}
           />
+        )}
+
+        {/* Categoría (CxP only) */}
+        {!isCxc && (
+          <AppSelect dark compact value={filterCategoria} onChange={(e) => setFilterCategoria(e.target.value)} wrapperClassName="">
+            <option value="todos">Categoría: Todas</option>
+            {CATEGORIAS_CXP.map((c) => <option key={c} value={c}>{c}</option>)}
+          </AppSelect>
         )}
 
         {/* Search */}

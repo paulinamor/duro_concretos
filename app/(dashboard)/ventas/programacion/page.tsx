@@ -221,10 +221,23 @@ function PedidoDrawer({
     // coincida con "MARIO CAVAZOS" y viceversa.
     const normCl = (s: string) => s.split("//")[0].trim().toUpperCase().replace(/\s+/g, " ");
     const clienteNorm = normCl(form.cliente);
+    // Busca el registro del cliente para obtener razonSocial y nombreComercial, ya que
+    // clientesList puede mostrar nombreComercial ("LAUN") mientras las obras tienen razonSocial ("LAUN TECHNOLOGY DE MEXICO")
+    const clienteReg = rawClientes.find((c) => {
+      const rs = normCl(c.razonSocial ?? "");
+      const nc = normCl(c.nombreComercial ?? "");
+      return rs === clienteNorm || nc === clienteNorm;
+    });
+    const aliases = new Set<string>([clienteNorm]);
+    if (clienteReg) {
+      aliases.add(normCl(clienteReg.razonSocial ?? ""));
+      aliases.add(normCl(clienteReg.nombreComercial ?? ""));
+    }
+    aliases.delete("");
     return obrasData
-      .filter((o) => normCl(o.cliente) === clienteNorm)
+      .filter((o) => aliases.has(normCl(o.cliente)))
       .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
-  }, [obrasData, form.cliente]);
+  }, [obrasData, form.cliente, rawClientes]);
 
   const creditoAlerta = useMemo(() => {
     if (!form.cliente) return null;
@@ -878,8 +891,8 @@ export default function VentasProgramacionPage() {
 
   const clientesList = useMemo(() => {
     const fromClientes = rawClientes
-      .flatMap((c) => [c.razonSocial, c.nombreComercial].filter(Boolean))
-      .map((n) => (n as string).trim().toUpperCase().replace(/\s+/g, " "));
+      .map((c) => (c.nombreComercial?.trim() || c.razonSocial).trim().toUpperCase().replace(/\s+/g, " "))
+      .filter(Boolean);
     return Array.from(new Set(fromClientes)).sort();
   }, [rawClientes]);
 

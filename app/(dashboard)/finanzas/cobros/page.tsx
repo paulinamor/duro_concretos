@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, BadgeCheck, ChevronRight, Plus, Search, X } from "lucide-react";
-import { upsertDocument, getCollectionDocs, COLLECTIONS } from "@/lib/db";
+import { AlertTriangle, ArrowLeft, BadgeCheck, ChevronRight, Loader2, Plus, Search, Trash2, X } from "lucide-react";
+import { upsertDocument, deleteDocument, getCollectionDocs, COLLECTIONS } from "@/lib/db";
 import { filterByPlanta, withPlantaTag } from "@/lib/auth";
 import { todayCST } from "@/lib/dateUtils";
 
@@ -75,6 +75,8 @@ export default function CobrosPage() {
   const [q, setQ]                   = useState("");
   const [filterMes, setFilterMes]   = useState("");
   const [filterTipo, setFilterTipo] = useState("");
+  const [pagoAElim, setPagoAElim]   = useState<Pago | null>(null);
+  const [eliminando, setEliminando] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -108,6 +110,27 @@ export default function CobrosPage() {
     setPagos((prev) => [pago, ...prev].sort((a, b) => b.fecha.localeCompare(a.fecha)));
     setSelected(pago);
     setView("detail");
+  }
+
+  async function handleEliminar(pago: Pago) {
+    setEliminando(true);
+    try {
+      // Revertir montoPagado en cada programación afectada
+      await Promise.all(
+        pago.abonos.map(async (abono) => {
+          const prog = progs.find((p) => p.id === abono.programacionId);
+          if (!prog) return;
+          const nuevo = Math.max(0, (prog.montoPagado ?? 0) - abono.monto);
+          await upsertDocument(COLLECTIONS.programaciones, abono.programacionId, { montoPagado: nuevo });
+          setProgs((prev) => prev.map((p) => p.id === abono.programacionId ? { ...p, montoPagado: nuevo } : p));
+        })
+      );
+      await deleteDocument(COLLECTIONS.pagos, pago.id);
+      setPagos((prev) => prev.filter((p) => p.id !== pago.id));
+      setPagoAElim(null);
+    } finally {
+      setEliminando(false);
+    }
   }
 
   function onAbonosUpdated(updated: Pago, progUpdates: { id: string; montoPagado: number }[]) {
@@ -230,6 +253,10 @@ export default function CobrosPage() {
                   <td className="px-5 py-3.5 text-right">
                     <div className="flex items-center justify-end gap-1">
                       {aplicado && <BadgeCheck size={14} className="text-green-500" />}
+                      <button onClick={() => setPagoAElim(pago)}
+                        className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer">
+                        <Trash2 size={14} />
+                      </button>
                       <button onClick={() => { setSelected(pago); setView("detail"); }}
                         className="p-1.5 rounded-lg text-gray-400 hover:text-[#CC2229] hover:bg-red-50 transition-colors cursor-pointer">
                         <ChevronRight size={15} />
@@ -242,6 +269,40 @@ export default function CobrosPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Modal confirmación eliminar */}
+      {pagoAElim && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => !eliminando && setPagoAElim(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+            <div className="bg-red-50 px-6 py-5 flex items-start gap-3">
+              <AlertTriangle size={18} className="text-red-500 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-gray-900">Eliminar pago</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Pago de <strong>{pagoAElim.cliente}</strong> por <strong>{currency(pagoAElim.cantidad)}</strong> del {fmtDate(pagoAElim.fecha)}
+                </p>
+                {pagoAElim.abonos.length > 0 && (
+                  <p className="text-xs text-red-600 mt-2 font-medium">
+                    Este pago tiene {pagoAElim.abonos.length} abono{pagoAElim.abonos.length > 1 ? "s" : ""} aplicado{pagoAElim.abonos.length > 1 ? "s" : ""}. El saldo de las remisiones se revertirá automáticamente.
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="px-6 py-4 flex gap-3">
+              <button onClick={() => setPagoAElim(null)} disabled={eliminando}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 cursor-pointer transition-colors font-medium disabled:opacity-50">
+                Cancelar
+              </button>
+              <button onClick={() => handleEliminar(pagoAElim)} disabled={eliminando}
+                className="flex-1 py-2.5 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 cursor-pointer transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
+                {eliminando ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                {eliminando ? "Eliminando…" : "Eliminar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

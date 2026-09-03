@@ -623,7 +623,7 @@ function HistorialDrawer({
 // ─── FormDrawer ───────────────────────────────────────────────────────────────
 
 function FormDrawer({
-  open, onClose, onSave, onDelete, initial, dia, operadoresList, clientesList, revolveList, obrasData,
+  open, onClose, onSave, onDelete, initial, dia, operadoresList, clientesList, revolveList, obrasData, rawClientes,
 }: {
   open: boolean;
   onClose: () => void;
@@ -635,6 +635,7 @@ function FormDrawer({
   clientesList: string[];
   revolveList: string[];
   obrasData: Obra[];
+  rawClientes: Cliente[];
 }) {
   const [form, setForm] = useState<FormState>(() => emptyForm(dia));
   const [saving, setSaving] = useState(false);
@@ -676,11 +677,23 @@ function FormDrawer({
 
   const obrasSugeridas = useMemo(() => {
     if (!form.cliente) return [];
-    const cl = form.cliente.toLowerCase();
+    const normCl = (s: string) => s.split("//")[0].trim().toUpperCase().replace(/\s+/g, " ");
+    const clienteNorm = normCl(form.cliente);
+    const clienteReg = rawClientes.find((c) => {
+      const rs = normCl(c.razonSocial ?? "");
+      const nc = normCl(c.nombreComercial ?? "");
+      return rs === clienteNorm || nc === clienteNorm;
+    });
+    const aliases = new Set<string>([clienteNorm]);
+    if (clienteReg) {
+      aliases.add(normCl(clienteReg.razonSocial ?? ""));
+      aliases.add(normCl(clienteReg.nombreComercial ?? ""));
+    }
+    aliases.delete("");
     return obrasData
-      .filter((o) => o.cliente.toLowerCase() === cl)
+      .filter((o) => aliases.has(normCl(o.cliente)))
       .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
-  }, [obrasData, form.cliente]);
+  }, [obrasData, form.cliente, rawClientes]);
 
   const obrasFiltradas = useMemo(() => {
     if (!obraQuery.trim()) return obrasSugeridas;
@@ -1996,6 +2009,7 @@ export default function ProgramacionPage() {
   const [clientesList, setClientesList] = useState<string[]>([]);
   const [revolveList, setRevolveList] = useState<string[]>([]);
   const [obrasData, setObrasData] = useState<Obra[]>([]);
+  const [rawClientesTransporte, setRawClientesTransporte] = useState<Cliente[]>([]);
   const [clientesSet, setClientesSet] = useState<Set<string>>(new Set());
   const [diaActivo, setDiaActivo] = useState(todayISO);
   const [viewMode, setViewMode] = useState<ViewMode>("dia");
@@ -2040,8 +2054,9 @@ export default function ProgramacionPage() {
         .sort((a, b) => a.localeCompare(b, "es", { numeric: true }));
       setRevolveList(revolvedoras);
 
-      const fromClientes = clientes.flatMap((c) => [c.razonSocial, c.nombreComercial].filter(Boolean));
-      const existingSet = new Set(clientes.map((c) => c.razonSocial.toLowerCase().trim()));
+      setRawClientesTransporte(clientes);
+      const fromClientes = clientes.map((c) => (c.nombreComercial?.trim() || c.razonSocial).trim());
+      const existingSet = new Set(clientes.flatMap((c) => [c.razonSocial, c.nombreComercial ?? ""].map((n) => n.toLowerCase().trim())).filter(Boolean));
       setClientesSet(existingSet);
 
       // Client list gets rebuilt on each programaciones snapshot (see below),
@@ -2777,6 +2792,7 @@ export default function ProgramacionPage() {
         clientesList={clientesList}
         revolveList={revolveList}
         obrasData={obrasData}
+        rawClientes={rawClientesTransporte}
       />
 
       {/* Modal: solicitud de autorización para eliminar */}
