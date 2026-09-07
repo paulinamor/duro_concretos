@@ -747,10 +747,10 @@ function AbonoDrawer({
         valid.map((ex) => ({
           fecha: isoToDisplay(ex.fecha),
           monto: parseFloat(ex.monto),
-          referencia: ex.referencia || undefined,
-          metodoPago: ex.metodoPago || undefined,
-          banco: ex.banco || undefined,
-          uuidComplemento: ex.uuidComplemento || undefined,
+          ...(ex.referencia      ? { referencia: ex.referencia }           : {}),
+          ...(ex.metodoPago      ? { metodoPago: ex.metodoPago }           : {}),
+          ...(ex.banco           ? { banco: ex.banco }                     : {}),
+          ...(ex.uuidComplemento ? { uuidComplemento: ex.uuidComplemento } : {}),
         })),
       );
       onClose();
@@ -962,10 +962,10 @@ function EditAbonoDrawer({
       await onSave(cuenta, index, {
         fecha: isoToDisplay(form.fecha),
         monto: montoNum,
-        referencia: form.referencia || undefined,
-        metodoPago: form.metodoPago || undefined,
-        banco: form.banco || undefined,
-        uuidComplemento: form.uuidComplemento || undefined,
+        ...(form.referencia      ? { referencia: form.referencia }           : {}),
+        ...(form.metodoPago      ? { metodoPago: form.metodoPago }           : {}),
+        ...(form.banco           ? { banco: form.banco }                     : {}),
+        ...(form.uuidComplemento ? { uuidComplemento: form.uuidComplemento } : {}),
       });
       onClose();
     } finally {
