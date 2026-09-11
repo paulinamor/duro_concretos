@@ -328,7 +328,7 @@ function FormDrawer({ open, onClose, onSave, unidadesList, editing, lastKmByUnid
               <div>
                 <label className={lbl}>Rendimiento (calc.)</label>
                 <div className={ro}>{rendCalc != null ? `${rendCalc.toFixed(3)} km/L` : "—"}</div>
-                {rendCalc != null && rendCalc < 2.9 && (
+                {rendCalc != null && rendCalc < 1.3 && (
                   <p className="mt-1 flex items-center gap-1 text-xs text-orange-500">
                     <AlertTriangle size={11} /> Bajo rendimiento
                   </p>
@@ -378,7 +378,7 @@ function TableRow({ carga, onEdit, onDelete }: {
   onDelete?: (c: CargaDiesel) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const lowRend = carga.rendimiento != null && carga.rendimiento < 2.9;
+  const lowRend = carga.rendimiento != null && carga.rendimiento < 1.3;
   const precioLCalc = carga.litros > 0 ? carga.total / carga.litros : null;
   const isOutlier = precioLCalc != null && precioLCalc > 200;
 
@@ -532,7 +532,7 @@ function UnitCard({ row, maxLitros }: {
   row: { unidad: string; litros: number; costo: number; cargas: number; rendProm: number | null; promPrecio: number | null };
   maxLitros: number;
 }) {
-  const lowRend = row.rendProm != null && row.rendProm < 2.9;
+  const lowRend = row.rendProm != null && row.rendProm < 1.3;
   const barPct = maxLitros > 0 ? (row.litros / maxLitros) * 100 : 0;
 
   return (
@@ -630,7 +630,7 @@ export default function DieselPage() {
   const totalCosto = filtered.reduce((s, c) => s + (c.total ?? 0), 0);
   const rendValues = filtered.map((c) => c.rendimiento).filter((r): r is number => r != null && r > 0);
   const promRendimiento = rendValues.length > 0 ? rendValues.reduce((s, v) => s + v, 0) / rendValues.length : null;
-  const bajoRendimiento = rendValues.filter((r) => r < 2.9).length;
+  const bajoRendimiento = rendValues.filter((r) => r < 1.3).length;
   const promPrecioL = totalLitros > 0 ? totalCosto / totalLitros : null;
   const outliers = filtered.filter((c) => c.litros > 0 && c.total / c.litros > 200);
 
@@ -741,7 +741,7 @@ export default function DieselPage() {
         <KPICard title="Total litros" value={`${totalLitros.toLocaleString("es-MX", { maximumFractionDigits: 0 })} L`} icon={Fuel} iconColor="text-amber-500" iconBg="bg-amber-50" subtitle={`${filtered.length} carga${filtered.length !== 1 ? "s" : ""} registradas`} />
         <KPICard title="Costo total" value={currency(totalCosto)} icon={DollarSign} iconColor="text-[#CC2229]" iconBg="bg-red-50" subtitle={promPrecioL != null ? `$${promPrecioL.toFixed(3)}/L promedio` : undefined} />
         <KPICard title="Rendimiento promedio" value={promRendimiento != null ? `${promRendimiento.toFixed(2)} km/L` : "—"} icon={Gauge} iconColor="text-sky-500" iconBg="bg-sky-50" subtitle={`${rendValues.length} cargas con odómetro`} />
-        <KPICard title="Bajo rendimiento" value={String(bajoRendimiento)} icon={AlertTriangle} iconColor={bajoRendimiento > 0 ? "text-orange-500" : "text-gray-400"} iconBg={bajoRendimiento > 0 ? "bg-orange-50" : "bg-gray-100"} subtitle="Menor a 2.9 km/L" />
+        <KPICard title="Bajo rendimiento" value={String(bajoRendimiento)} icon={AlertTriangle} iconColor={bajoRendimiento > 0 ? "text-orange-500" : "text-gray-400"} iconBg={bajoRendimiento > 0 ? "bg-orange-50" : "bg-gray-100"} subtitle="Menor a 1.3 km/L" />
       </div>
 
       {/* Filters */}
