@@ -618,10 +618,7 @@ export default function InventarioPage() {
   // ── Fetch ────────────────────────────────────────────────────────────────────
   useEffect(() => {
     getCollectionDocs<Remision>(COLLECTIONS.remisiones).then((d) => {
-      const items = filterByPlanta(d);
-      setRemisiones(items);
-      const sorted = items.filter((r) => r.fecha?.includes("/")).map((r) => displayToISO(r.fecha)).filter(Boolean).sort().reverse();
-      if (sorted.length > 0) setPeriodo(sorted[0].slice(0, 7));
+      setRemisiones(filterByPlanta(d));
     });
     getCollectionDocs<EntradaMaterial>(COLLECTIONS.entradasMaterial).then((d) => setEntradasMaterial(filterByPlanta(d)));
     getCollectionDocs<ExistenciaInicial>(COLLECTIONS.existenciasIniciales).then((d) => setExistenciasIniciales(filterByPlanta(d)));
