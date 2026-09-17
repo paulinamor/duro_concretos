@@ -1692,16 +1692,12 @@ function DescargaFacturamaTab() {
         <div className="flex items-end gap-3 flex-wrap">
           <div className="flex-1 min-w-[200px]">
             <label className="block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5">Emisor (RFC)</label>
-            <select
-              value={rfcSel}
-              onChange={(e) => { setRfcSel(e.target.value); setFmList(null); setError(""); }}
-              className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-[#CC2229]/60 cursor-pointer"
-            >
+            <AppSelect dark value={rfcSel} onChange={(e) => { setRfcSel(e.target.value); setFmList(null); setError(""); }}>
               <option value="">Selecciona un emisor…</option>
               {emisores.map((e) => (
                 <option key={e.rfc} value={e.rfc}>{e.rfc} — {e.nombre}</option>
               ))}
-            </select>
+            </AppSelect>
           </div>
           <button
             onClick={buscar}

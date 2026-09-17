@@ -152,7 +152,7 @@ export default function CrmSeguimientoPage() {
           <div>
             <label className="block text-sm text-gray-400 mb-1">Canal</label>
             <AppSelect dark>
-              {["Llamada", "WhatsApp", "Visita", "Correo"].map((item) => <option key={item}>{item}</option>)}
+              {["Correo", "Llamada", "Visita", "WhatsApp"].map((item) => <option key={item}>{item}</option>)}
             </AppSelect>
           </div>
           <div className="sm:col-span-2">

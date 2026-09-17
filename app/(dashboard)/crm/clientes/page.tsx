@@ -198,8 +198,8 @@ function ClienteDrawer({ open, editing, onClose, onSave, errorMsg, vendedoresLis
     setForm((p) => ({ ...p, [k]: v }));
 
   const handleSave = async () => {
-    if (!form.razonSocial.trim() || !form.rfc.trim() || !form.contacto.trim()) {
-      setLocalError("Razón social, RFC y contacto son obligatorios.");
+    if (!form.razonSocial.trim() || !form.contacto.trim()) {
+      setLocalError("Razón social y contacto son obligatorios.");
       return;
     }
     setSaving(true);
@@ -229,7 +229,7 @@ function ClienteDrawer({ open, editing, onClose, onSave, errorMsg, vendedoresLis
             <h2 className="text-sm font-semibold text-gray-900">
               {editing ? `Editar — ${editing.razonSocial}` : "Nuevo cliente"}
             </h2>
-            <p className="text-xs text-gray-500">Razón social, RFC y contacto son obligatorios</p>
+            <p className="text-xs text-gray-500">Razón social y contacto son obligatorios</p>
           </div>
           <button onClick={onClose} className="ml-auto rounded-xl p-2 text-gray-400 hover:bg-gray-100 transition-colors cursor-pointer">
             <X size={16} />
@@ -261,7 +261,7 @@ function ClienteDrawer({ open, editing, onClose, onSave, errorMsg, vendedoresLis
                 <input type="text" value={form.nombreComercial} onChange={(e) => set("nombreComercial", e.target.value)} placeholder="Nombre de marca" className={inp} />
               </div>
               <div>
-                <label className={lbl}>RFC <span className="text-[#CC2229]">*</span></label>
+                <label className={lbl}>RFC <span className="text-gray-400 normal-case text-[9px] font-normal">(opcional)</span></label>
                 <input type="text" value={form.rfc} onChange={(e) => set("rfc", e.target.value.toUpperCase())} placeholder="RFC" className={`${inp} uppercase`} />
               </div>
             </div>
@@ -326,18 +326,10 @@ function ClienteDrawer({ open, editing, onClose, onSave, errorMsg, vendedoresLis
               </div>
               <div>
                 <label className={lbl}>Vendedor asignado</label>
-                <input
-                  list="vendedores-list"
-                  type="text"
-                  value={form.vendedorAsignado}
-                  onChange={(e) => set("vendedorAsignado", e.target.value)}
-                  placeholder="Nombre del vendedor"
-                  className={inp}
-                  autoComplete="off"
-                />
-                <datalist id="vendedores-list">
-                  {vendedoresList.map((v) => <option key={v} value={v} />)}
-                </datalist>
+                <AppSelect value={form.vendedorAsignado} onChange={(e) => set("vendedorAsignado", e.target.value)}>
+                  <option value="">— Sin asignar —</option>
+                  {vendedoresList.map((v) => <option key={v} value={v}>{v}</option>)}
+                </AppSelect>
               </div>
               <div>
                 <label className={lbl}>Calificación</label>
@@ -389,7 +381,7 @@ function ClienteDrawer({ open, editing, onClose, onSave, errorMsg, vendedoresLis
           </button>
           <button
             onClick={handleSave}
-            disabled={saving || !form.razonSocial.trim() || !form.rfc.trim() || !form.contacto.trim()}
+            disabled={saving || !form.razonSocial.trim() || !form.contacto.trim()}
             className="px-5 py-2.5 text-sm font-semibold bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-xl transition-colors disabled:opacity-60 shadow-lg shadow-[#CC2229]/20 cursor-pointer"
           >
             {saving ? "Guardando…" : editing ? "Guardar cambios" : "Crear cliente"}
@@ -549,10 +541,17 @@ export default function CrmClientesPage() {
       .sort((a, b) => a.razonSocial.localeCompare(b.razonSocial, "es", { sensitivity: "base" }));
   }, [clientes, query, filtroEstatus, filtroTipo, filtroVendedor]);
 
-  const vendedoresActivos = useMemo(
-    () => Array.from(new Set(clientes.map((c) => c.vendedorAsignado).filter(Boolean))).sort(),
-    [clientes],
-  );
+  // Deduplicate vendedores case-insensitively, keep uppercase canonical form
+  const vendedoresActivos = useMemo(() => {
+    const seen = new Map<string, string>();
+    clientes.forEach((c) => {
+      const raw = (c.vendedorAsignado ?? "").trim();
+      if (!raw) return;
+      const key = raw.toUpperCase();
+      if (!seen.has(key)) seen.set(key, key);
+    });
+    return Array.from(seen.values()).sort();
+  }, [clientes]);
 
   const duplicadoGroups = useMemo(() => {
     const groups = new Map<string, Cliente[]>();
@@ -651,6 +650,35 @@ export default function CrmClientesPage() {
     }
   }
 
+  async function normalizeVendedores() {
+    // Find clients whose vendedorAsignado is not already uppercase or has leading/trailing spaces
+    const toUpdate = clientes.filter((c) => {
+      const v = c.vendedorAsignado ?? "";
+      return v !== v.toUpperCase().trim() || v !== v.trim();
+    });
+    if (toUpdate.length === 0) {
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "info", message: "Todos los vendedores ya están en mayúsculas." } }));
+      return;
+    }
+    setNormalizingAll(true);
+    try {
+      for (const c of toUpdate) {
+        const normalized = (c.vendedorAsignado ?? "").toUpperCase().trim();
+        const { id, ...data } = c;
+        await upsertDocument(COLLECTIONS.clientes, id, { ...data, vendedorAsignado: normalized });
+      }
+      setClientes((curr) => curr.map((c) => ({
+        ...c,
+        vendedorAsignado: (c.vendedorAsignado ?? "").toUpperCase().trim(),
+      })));
+      window.dispatchEvent(new CustomEvent("duro:toast", {
+        detail: { type: "success", message: `${toUpdate.length} registro${toUpdate.length !== 1 ? "s" : ""} actualizado${toUpdate.length !== 1 ? "s" : ""} a mayúsculas.` },
+      }));
+    } finally {
+      setNormalizingAll(false);
+    }
+  }
+
   async function executeMerge() {
     if (!detail || !mergePartner || !mergeWinnerId) return;
     setMergingClients(true);
@@ -698,10 +726,10 @@ export default function CrmClientesPage() {
     const razonSocial = f.razonSocial.trim().toUpperCase();
     const rfc = f.rfc.trim().toUpperCase();
     const contacto = f.contacto.trim();
-    if (!razonSocial || !rfc || !contacto) return false;
+    if (!razonSocial || !contacto) return false;
 
     const isDuplicateRFC = rfc.length > 3 && clientes.some(
-      (c) => c.rfc.toUpperCase() === rfc && c.id !== editing?.id,
+      (c) => c.rfc && c.rfc.toUpperCase() === rfc && c.id !== editing?.id,
     );
     if (isDuplicateRFC) return "Ya existe un cliente con ese RFC.";
 
@@ -726,7 +754,7 @@ export default function CrmClientesPage() {
       telefono: f.telefono,
       email: f.email,
       tipoCliente: f.tipoCliente,
-      vendedorAsignado: f.vendedorAsignado,
+      vendedorAsignado: f.vendedorAsignado.toUpperCase().trim(),
       limiteCredito: Number(f.limiteCredito?.replace(/[$,]/g, "") ?? 0),
       saldoPendiente: Number(f.saldoPendiente?.replace(/[$,]/g, "") ?? 0),
       diasCredito: Number(f.diasCredito ?? 30),
@@ -792,8 +820,12 @@ export default function CrmClientesPage() {
           title="Total clientes"
           value={loading ? "—" : String(clientes.length)}
           icon={Users}
+          active={filtroEstatus === "Todos" && filtroTipo === "Todos"}
+          onClick={() => { setFiltroEstatus("Todos"); setFiltroTipo("Todos"); }}
         />
-        <KPICard title="Clientes activos" value={loading ? "—" : String(totalActivos)} icon={UserCheck} iconColor="text-green-400" iconBg="bg-green-500/10" />
+        <KPICard title="Clientes activos" value={loading ? "—" : String(totalActivos)} icon={UserCheck} iconColor="text-green-400" iconBg="bg-green-500/10"
+          active={filtroEstatus === "Activo"}
+          onClick={() => setFiltroEstatus("Activo")} />
         <KPICard
           title="Cartera anual"
           value={loading ? "—" : `$${(totalCarteraAnio / 1000000).toFixed(1)}M`}
@@ -801,7 +833,8 @@ export default function CrmClientesPage() {
           iconColor="text-[#CC2229]"
           subtitle={loading ? undefined : `$${Math.round(totalSaldoPendiente).toLocaleString()} pendiente`}
         />
-        <KPICard title="Nuevos en 2026" value={loading ? "—" : String(nuevosEsteAnio)} icon={BadgeDollarSign} iconColor="text-blue-400" iconBg="bg-blue-500/10" />
+        <KPICard title="Nuevos en 2026" value={loading ? "—" : String(nuevosEsteAnio)} icon={BadgeDollarSign} iconColor="text-blue-400" iconBg="bg-blue-500/10"
+          onClick={() => { setFiltroEstatus("Todos"); setFiltroTipo("Todos"); }} />
       </div>
 
       {/* Toolbar */}
@@ -834,7 +867,7 @@ export default function CrmClientesPage() {
           },
         ].map(({ value, onChange, options }, idx) => (
           <AppSelect key={idx} dark disabled={loading} value={value} onChange={(e) => onChange(e.target.value)}>
-            {options.map((opt) => <option key={opt}>{opt}</option>)}
+            {options.map((opt, i) => <option key={opt} value={i === 0 ? "Todos" : opt}>{opt}</option>)}
           </AppSelect>
         ))}
         <span className="text-xs text-gray-500 ml-auto">
@@ -864,6 +897,15 @@ export default function CrmClientesPage() {
           className="flex items-center gap-2 rounded-lg border border-[#3A3A3A] px-3 py-2 text-sm text-gray-400 hover:border-blue-500/40 hover:text-blue-300 transition-colors disabled:opacity-50"
         >
           {normalizingAll ? "Normalizando…" : "Normalizar todo"}
+        </button>
+        <button
+          type="button"
+          onClick={normalizeVendedores}
+          disabled={normalizingAll}
+          title="Unificar y convertir todos los nombres de vendedor a mayúsculas en todos los registros"
+          className="flex items-center gap-2 rounded-lg border border-[#3A3A3A] px-3 py-2 text-sm text-gray-400 hover:border-purple-500/40 hover:text-purple-300 transition-colors disabled:opacity-50"
+        >
+          {normalizingAll ? "Actualizando…" : "Unificar vendedores"}
         </button>
         <button
           type="button"

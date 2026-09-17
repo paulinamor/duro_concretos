@@ -987,16 +987,15 @@ export default function ConfiguracionPage() {
                           {module.label}
                         </span>
                         {checked && !disabled && (
-                          <select
-                            value={permiso}
+                          <AppSelect dark compact value={permiso}
                             onChange={(e) => setDraftModulePermiso(module.href, e.target.value as "r" | "w" | "rw")}
                             onClick={(e) => e.stopPropagation()}
-                            className="rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-2 py-1 text-xs text-gray-300 focus:outline-none focus:ring-1 focus:ring-[#CC2229] cursor-pointer"
+                            wrapperClassName="w-auto"
                           >
                             <option value="rw">Ver y editar</option>
                             <option value="r">Solo ver</option>
                             <option value="w">Solo editar</option>
-                          </select>
+                          </AppSelect>
                         )}
                       </div>
                     );

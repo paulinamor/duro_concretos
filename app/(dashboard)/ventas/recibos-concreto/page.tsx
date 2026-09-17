@@ -142,7 +142,7 @@ export default function RecibosConcretoPage() {
       return {
         ...current,
         extras,
-        ...calculateConcreteReceiptTotal({ ...current, extras }),
+        ...calculateConcreteReceiptTotal(current),
       };
     });
   }
@@ -585,13 +585,28 @@ export default function RecibosConcretoPage() {
                       <option>Bombeado</option>
                     </AppSelect>
                   </div>
-                  <div>
-                    <label className={lbl}>Servicio de bomba</label>
-                    <input
-                      value={receipt.servicioBomba}
-                      onChange={(e) => updateReceipt({ servicioBomba: e.target.value })}
-                      className={inp}
-                    />
+                  <div className="col-span-2">
+                    <label className={lbl}>Servicio de bomba <span className="normal-case font-normal text-gray-600">(opcional — se suma directo al total)</span></label>
+                    <div className="grid grid-cols-[1fr_auto] gap-2">
+                      <input
+                        value={receipt.servicioBomba}
+                        onChange={(e) => updateReceipt({ servicioBomba: e.target.value })}
+                        placeholder="Descripción (ej. Bomba 36m)"
+                        className={inp}
+                      />
+                      <input
+                        type="number"
+                        min={0}
+                        value={receipt.servicioBombaImporte ?? ""}
+                        onChange={(e) => updateReceipt({ servicioBombaImporte: e.target.value ? Number(e.target.value) : 0 })}
+                        placeholder="$0"
+                        className={`${inp} w-28 text-right`}
+                        onWheel={(e) => e.currentTarget.blur()}
+                      />
+                    </div>
+                    {(receipt.servicioBombaImporte ?? 0) > 0 && (
+                      <p className="mt-1 text-[10px] text-emerald-400">+ {money(receipt.servicioBombaImporte)} sumado al total</p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -647,35 +662,72 @@ export default function RecibosConcretoPage() {
               <div className="space-y-3">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Aditivos y extras</p>
                 <div className="rounded-xl border border-[#3A3A3A] bg-[#1A1A1A] divide-y divide-[#3A3A3A]">
-                  {receipt.extras.map((extra, index) => (
-                    <div key={extra.name} className="grid grid-cols-[auto_1fr_90px_68px] items-center gap-3 px-4 py-2.5">
-                      <input
-                        type="checkbox"
-                        checked={extra.checked}
-                        onChange={(e) => updateExtra(index, { checked: e.target.checked })}
-                        className="h-4 w-4 accent-[#CC2229] cursor-pointer"
-                      />
-                      <span className="text-sm text-gray-300">{extra.name}</span>
-                      <input
-                        type="number"
-                        value={extra.price}
-                        onChange={(e) =>
-                          updateExtra(index, {
-                            price: Number(e.target.value),
-                            checked: Number(e.target.value) > 0 || extra.checked,
-                          })
-                        }
-                        className="rounded-lg border border-[#3A3A3A] bg-[#242424] px-2 py-1.5 text-sm text-white w-full focus:outline-none focus:border-[#CC2229]/60"
-                        onWheel={(e) => e.currentTarget.blur()}
-                      />
-                      <input
-                        value={extra.quantity}
-                        onChange={(e) => updateExtra(index, { quantity: e.target.value })}
-                        placeholder={extra.unit}
-                        className="rounded-lg border border-[#3A3A3A] bg-[#242424] px-2 py-1.5 text-sm text-white w-full focus:outline-none focus:border-[#CC2229]/60"
-                      />
-                    </div>
-                  ))}
+                  {receipt.extras.map((extra, index) => {
+                    const qty = parseFloat(extra.quantity) || 0;
+                    const subtotal = extra.unit ? qty * extra.price : extra.price;
+                    return (
+                      <div key={extra.name} className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${extra.checked ? "" : "opacity-50"}`}>
+                        <input
+                          type="checkbox"
+                          checked={extra.checked}
+                          onChange={(e) => updateExtra(index, { checked: e.target.checked })}
+                          className="h-4 w-4 shrink-0 accent-[#CC2229] cursor-pointer"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-gray-200 font-medium leading-tight">{extra.name}</p>
+                          {extra.unit && <p className="text-[10px] text-gray-600">{extra.unit}</p>}
+                        </div>
+                        {extra.unit ? (
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <input
+                              type="number"
+                              min={0}
+                              step="any"
+                              value={extra.quantity}
+                              onChange={(e) => updateExtra(index, {
+                                quantity: e.target.value,
+                                checked: (parseFloat(e.target.value) > 0 && extra.price > 0) || extra.checked,
+                              })}
+                              placeholder="Cant."
+                              className="w-16 rounded-lg border border-[#3A3A3A] bg-[#242424] px-2 py-1.5 text-sm text-white text-center focus:outline-none focus:border-[#CC2229]/60"
+                              onWheel={(e) => e.currentTarget.blur()}
+                            />
+                            <span className="text-gray-600 text-xs shrink-0">×</span>
+                            <input
+                              type="number"
+                              min={0}
+                              step="any"
+                              value={extra.price}
+                              onChange={(e) => updateExtra(index, {
+                                price: Number(e.target.value),
+                                checked: Number(e.target.value) > 0 || extra.checked,
+                              })}
+                              placeholder="$/u"
+                              className="w-20 rounded-lg border border-[#3A3A3A] bg-[#242424] px-2 py-1.5 text-sm text-white text-right focus:outline-none focus:border-[#CC2229]/60"
+                              onWheel={(e) => e.currentTarget.blur()}
+                            />
+                          </div>
+                        ) : (
+                          <input
+                            type="number"
+                            min={0}
+                            step="any"
+                            value={extra.price}
+                            onChange={(e) => updateExtra(index, {
+                              price: Number(e.target.value),
+                              checked: Number(e.target.value) > 0 || extra.checked,
+                            })}
+                            placeholder="Importe"
+                            className="w-24 rounded-lg border border-[#3A3A3A] bg-[#242424] px-2 py-1.5 text-sm text-white text-right focus:outline-none focus:border-[#CC2229]/60 shrink-0"
+                            onWheel={(e) => e.currentTarget.blur()}
+                          />
+                        )}
+                        <p className={`w-20 text-sm font-bold text-right tabular-nums shrink-0 ${extra.checked && subtotal > 0 ? "text-white" : "text-gray-700"}`}>
+                          {subtotal > 0 ? money(subtotal) : "—"}
+                        </p>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 

@@ -244,7 +244,7 @@ function FormDrawer({ open, onClose, onSave, unidadesList, editing, lastKmByUnid
               <div>
                 <label className={lbl}>Tipo {req}</label>
                 <div className="flex gap-1">
-                  {(["DIESEL", "GASOLINA", "GAS"] as TipoCombustible[]).map((t) => (
+                  {(["DIESEL", "GAS", "GASOLINA"] as TipoCombustible[]).map((t) => (
                     <button key={t} type="button" onClick={() => set("combustible", t)}
                       className={`flex-1 py-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${form.combustible === t
                         ? t === "DIESEL" ? "bg-amber-100 border border-amber-400 text-amber-700"

@@ -9,8 +9,10 @@ import {
   ChevronRight,
   DollarSign,
   ImagePlus,
+  Loader2,
   Pencil,
   Plus,
+  Satellite,
   Search,
   Trash2,
   Truck,
@@ -50,6 +52,7 @@ interface EventoRaw {
   notas?: string;
   planta?: string;
   km?: number;
+  horasReparacion?: number;
   fotosFactura?: string[];
   fotosEvidencia?: string[];
 }
@@ -96,6 +99,29 @@ function diasHasta(fecha: string): number | null {
   return Math.ceil((new Date(iso).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
 }
 
+function diasDesde(fecha: string): number {
+  if (!fecha) return 0;
+  let iso = fecha;
+  if (fecha.includes("/")) {
+    const [d, m, y] = fecha.split("/");
+    iso = `${y}-${m}-${d}`;
+  }
+  return Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / (1000 * 60 * 60 * 24)));
+}
+
+type UrgenciaColor = "rojo" | "ambar" | "verde" | "neutral";
+
+function urgenciaUnidad(eventos: Evento[]): UrgenciaColor {
+  const activos = eventos.filter((e) => e.status !== "Completado" && e.status !== "Resuelta");
+  if (activos.length === 0) return "verde";
+  const tieneFallaAlta = activos.some((e) => e.tipo === "Falla" && (e.severidad === "Alta" || e.status === "Reportada"));
+  if (tieneFallaAlta) return "rojo";
+  const tieneEnProceso = activos.some((e) => e.status === "En proceso");
+  const tieneReparacionLarga = activos.some((e) => (e.tipo === "Reparación" || e.tipo === "Falla") && diasDesde(e.fecha) >= 2);
+  if (tieneEnProceso || tieneReparacionLarga) return "ambar";
+  return "neutral";
+}
+
 const TIPO_BADGE: Record<EventoTipo, string> = {
   "Mantenimiento": "bg-blue-500/15 text-blue-300 border border-blue-500/30",
   "Reparación":   "bg-orange-500/15 text-orange-300 border border-orange-500/30",
@@ -137,13 +163,17 @@ function EventoRow({
 }) {
   const isDone = ev.status === "Completado" || ev.status === "Resuelta";
   const statusBadge = STATUS_BADGE[ev.status] ?? "bg-gray-500/15 text-gray-400 border border-gray-500/30";
+  const dias = diasDesde(ev.fecha);
+  const diasLabel = dias === 0 ? "Hoy" : `${dias}d abierto`;
+  const diasColor = !isDone ? (dias > 5 ? "text-red-400" : dias > 2 ? "text-amber-400" : "text-gray-400") : "";
 
   return (
-    <div className="flex flex-wrap items-start gap-3 py-3 border-b border-[#2A2A2A] last:border-0">
-      {/* Date */}
-      <span className="text-xs text-gray-500 whitespace-nowrap w-20 shrink-0 pt-0.5 font-mono">
-        {fmtFecha(ev.fecha)}
-      </span>
+    <div className={`flex flex-wrap items-start gap-3 py-3.5 border-b border-[#2A2A2A] last:border-0 ${!isDone && ev.tipo === "Falla" && ev.severidad === "Alta" ? "bg-red-500/5 -mx-5 px-5" : ""}`}>
+      {/* Date + días */}
+      <div className="shrink-0 w-[90px]">
+        <span className="text-xs text-gray-500 font-mono block">{fmtFecha(ev.fecha)}</span>
+        {!isDone && <span className={`text-[10px] font-bold ${diasColor}`}>{diasLabel}</span>}
+      </div>
 
       {/* Type + subtipo/severidad */}
       <div className="flex flex-wrap items-center gap-1.5 shrink-0">
@@ -164,24 +194,34 @@ function EventoRow({
 
       {/* Description + details */}
       <div className="flex-1 min-w-0">
-        <p className="text-sm text-white font-medium leading-snug">{ev.descripcion}</p>
-        <div className="flex flex-wrap gap-3 mt-0.5">
+        <p className={`text-sm font-semibold leading-snug ${isDone ? "text-gray-500" : "text-white"}`}>{ev.descripcion}</p>
+        <div className="flex flex-wrap gap-x-4 gap-y-0 mt-0.5">
           {ev.causa && <span className="text-xs text-gray-500">Causa: {ev.causa}</span>}
           {ev.taller && <span className="text-xs text-gray-500">Taller: {ev.taller}</span>}
           {ev.reportadoPor && <span className="text-xs text-gray-500">Reportó: {ev.reportadoPor}</span>}
-          {ev.km != null && <span className="text-xs text-gray-500">{ev.km.toLocaleString("es-MX")} km</span>}
-          {ev.notas && <span className="text-xs text-gray-500 italic">{ev.notas}</span>}
+          {ev.notas && <span className="text-xs text-gray-600 italic">{ev.notas}</span>}
+        </div>
+        <div className="flex flex-wrap gap-1.5 mt-1.5">
+          {ev.km != null && (
+            <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-sky-500/10 border border-sky-500/20 text-sky-300">
+              {ev.km.toLocaleString("es-MX")} km
+            </span>
+          )}
+          {ev.horasReparacion != null && (
+            <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/25 text-amber-300">
+              <Wrench size={9} /> {ev.horasReparacion} h taller
+            </span>
+          )}
           {((ev.fotosFactura?.length ?? 0) + (ev.fotosEvidencia?.length ?? 0) > 0) && (
-            <span className="text-xs text-gray-500 flex items-center gap-1">
-              <Camera size={10} />
-              {(ev.fotosFactura?.length ?? 0) + (ev.fotosEvidencia?.length ?? 0)} foto{(ev.fotosFactura?.length ?? 0) + (ev.fotosEvidencia?.length ?? 0) !== 1 ? "s" : ""}
+            <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-gray-500/10 border border-gray-500/20 text-gray-500">
+              <Camera size={9} /> {(ev.fotosFactura?.length ?? 0) + (ev.fotosEvidencia?.length ?? 0)} foto{((ev.fotosFactura?.length ?? 0) + (ev.fotosEvidencia?.length ?? 0)) !== 1 ? "s" : ""}
             </span>
           )}
         </div>
       </div>
 
       {/* Cost */}
-      <span className="text-sm font-semibold text-white tabular-nums whitespace-nowrap shrink-0">
+      <span className={`text-sm font-bold tabular-nums whitespace-nowrap shrink-0 ${isDone ? "text-gray-600" : ev.costo > 0 ? "text-white" : "text-gray-600"}`}>
         {currency(ev.costo)}
       </span>
 
@@ -228,103 +268,165 @@ function UnitCard({
   const { unidad: u, eventos, costoTotal, pendientes, fallasActivas, ultimaFecha } = summary;
 
   const estatusColor =
-    u.estatus === "Activo" ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+    u.estatus === "Activo"       ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
     : u.estatus === "Mantenimiento" ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
     : "bg-gray-500/15 text-gray-400 border-gray-500/30";
 
   const dias = diasHasta(u.proximoMantenimiento);
   const diasColor =
-    dias === null ? "text-gray-500"
-    : dias < 0 ? "text-red-400"
-    : dias <= 30 ? "text-amber-400"
+    dias === null   ? "text-gray-500"
+    : dias < 0     ? "text-red-400 font-bold"
+    : dias <= 30   ? "text-amber-400 font-semibold"
     : "text-gray-400";
+  const diasLabel = dias === null
+    ? "—"
+    : dias < 0 ? `Vencido ${Math.abs(dias)}d`
+    : `${dias}d`;
+
+  // Sanitize NaN values from data
+  const anioDisplay = u.anio && !isNaN(Number(u.anio)) ? u.anio : null;
+  const capDisplay  = u.capacidadM3 != null && !isNaN(Number(u.capacidadM3)) ? `${u.capacidadM3} m³` : null;
+  const subInfo     = [anioDisplay, capDisplay].filter(Boolean).join(" · ");
+
+  const eventosActivos   = eventos.filter((e) => e.status !== "Completado" && e.status !== "Resuelta");
+  const eventosEnTaller  = eventosActivos.filter((e) => e.tipo === "Reparación" || e.tipo === "Falla" || e.status === "En proceso");
+  const diasEnTallerMax  = eventosEnTaller.length > 0 ? Math.max(...eventosEnTaller.map((e) => diasDesde(e.fecha))) : null;
+
+  const urgencia = urgenciaUnidad(eventos);
+
+  // Left urgency strip color
+  const stripColor =
+    urgencia === "rojo"  ? "bg-red-500"
+    : urgencia === "ambar" ? "bg-amber-500"
+    : urgencia === "verde" ? "bg-emerald-500/60"
+    : "bg-[#3A3A3A]";
+
+  // Card background tint
+  const cardBg =
+    urgencia === "rojo"  ? "bg-red-500/[0.04]"
+    : urgencia === "ambar" ? "bg-amber-500/[0.03]"
+    : "bg-[#242424]";
+
+  // Truck icon color based on urgency
+  const truckColor =
+    urgencia === "rojo"  ? "text-red-400"
+    : urgencia === "ambar" ? "text-amber-400"
+    : urgencia === "verde" ? "text-emerald-400"
+    : "text-[#CC2229]";
+
+  const tallerBadge = diasEnTallerMax !== null ? (
+    <span className={`flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full border whitespace-nowrap ${
+      diasEnTallerMax <= 2
+        ? "bg-amber-500/15 border-amber-500/30 text-amber-400"
+        : "bg-red-500/15 border-red-500/30 text-red-400"
+    }`}>
+      <Wrench size={9} />
+      {diasEnTallerMax === 0 ? "Hoy en taller" : `${diasEnTallerMax}d en taller`}
+    </span>
+  ) : null;
 
   return (
-    <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
-      {/* Card header */}
+    <div className={`border border-[#3A3A3A] rounded-xl overflow-hidden transition-all ${cardBg}`}>
+      {/* Clickable header row */}
       <div
-        className="flex flex-wrap items-center gap-3 px-5 py-4 cursor-pointer hover:bg-[#2A2A2A] transition-colors select-none"
+        className="flex items-center gap-0 cursor-pointer hover:bg-white/[0.02] transition-colors select-none"
         onClick={() => setExpanded((v) => !v)}
       >
-        {/* Unit icon + id */}
-        <div className="flex items-center gap-3 min-w-[140px]">
-          <div className="h-9 w-9 rounded-lg bg-[#1A1A1A] flex items-center justify-center shrink-0">
-            <Truck size={16} className="text-[#CC2229]" />
-          </div>
-          <div>
-            <p className="text-white font-bold text-sm leading-tight">{u.noEconomico}</p>
-            <p className="text-gray-500 text-xs">{u.placa}</p>
-          </div>
-        </div>
+        {/* Left urgency strip */}
+        <div className={`w-[3px] self-stretch shrink-0 ${stripColor}`} />
 
-        {/* Brand/model/year */}
-        <div className="hidden sm:block min-w-[160px]">
-          <p className="text-gray-200 text-sm font-medium">{u.marca} {u.modelo}</p>
-          <p className="text-gray-500 text-xs">{u.anio} · {u.capacidadM3} m³</p>
-        </div>
+        {/* Main content */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-4 flex-1 min-w-0">
 
-        {/* Status */}
-        <span className={`text-[10px] font-semibold px-2.5 py-0.5 rounded-full border ${estatusColor}`}>
-          {u.estatus}
-        </span>
-
-        {/* Stats */}
-        <div className="flex flex-wrap items-center gap-4 ml-auto mr-4 text-xs">
-          <div className="text-center">
-            <p className="text-gray-500 text-[10px] uppercase tracking-wider">Intervenciones</p>
-            <p className="text-white font-semibold">{eventos.length}</p>
+          {/* Unit identity */}
+          <div className="flex items-center gap-3 w-[155px] shrink-0">
+            <div className="h-10 w-10 rounded-xl bg-[#1A1A1A] flex items-center justify-center shrink-0 border border-[#2A2A2A]">
+              <Truck size={17} className={truckColor} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-white font-bold text-sm leading-tight truncate">{u.noEconomico}</p>
+              <p className="text-gray-500 text-[11px] font-mono">{u.placa || "—"}</p>
+            </div>
           </div>
-          {costoTotal > 0 && (
-            <div className="text-center">
-              <p className="text-gray-500 text-[10px] uppercase tracking-wider">Costo total</p>
-              <p className="text-white font-semibold tabular-nums">{currency(costoTotal)}</p>
+
+          {/* Make / model / year */}
+          <div className="hidden sm:block w-[175px] shrink-0 min-w-0">
+            <p className="text-gray-200 text-sm font-medium truncate">{[u.marca, u.modelo].filter(Boolean).join(" ") || "—"}</p>
+            {subInfo
+              ? <p className="text-gray-500 text-[11px]">{subInfo}</p>
+              : <p className="text-gray-600 text-[11px]">—</p>
+            }
+          </div>
+
+          {/* Status + taller */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`text-[10px] font-semibold px-2.5 py-0.5 rounded-full border ${estatusColor}`}>
+              {u.estatus}
+            </span>
+            {tallerBadge}
+            {fallasActivas > 0 && (
+              <span className="flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-red-500/15 border border-red-500/30 text-red-400 whitespace-nowrap">
+                <AlertTriangle size={9} /> {fallasActivas} falla{fallasActivas > 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+
+          {/* Stats block */}
+          <div className="flex items-stretch gap-0 ml-auto mr-2 divide-x divide-[#3A3A3A] text-center">
+            {/* Intervenciones */}
+            <div className="px-4 flex flex-col justify-center min-w-[70px]">
+              <p className="text-gray-500 text-[9px] font-bold uppercase tracking-wider mb-0.5">Interv.</p>
+              <p className="text-white font-bold text-lg leading-tight">{eventos.length}</p>
             </div>
-          )}
-          {pendientes > 0 && (
-            <div className="text-center">
-              <p className="text-amber-500/80 text-[10px] uppercase tracking-wider">Pendientes</p>
-              <p className="text-amber-400 font-semibold">{pendientes}</p>
+            {/* Costo total */}
+            {costoTotal > 0 ? (
+              <div className="px-4 flex flex-col justify-center min-w-[90px]">
+                <p className="text-gray-500 text-[9px] font-bold uppercase tracking-wider mb-0.5">Costo total</p>
+                <p className="text-white font-bold tabular-nums">{currency(costoTotal)}</p>
+              </div>
+            ) : (
+              <div className="px-4 flex flex-col justify-center min-w-[90px]">
+                <p className="text-gray-500 text-[9px] font-bold uppercase tracking-wider mb-0.5">Costo total</p>
+                <p className="text-gray-700 font-bold">—</p>
+              </div>
+            )}
+            {/* Pendientes */}
+            <div className="px-4 flex flex-col justify-center min-w-[65px]">
+              <p className={`text-[9px] font-bold uppercase tracking-wider mb-0.5 ${pendientes > 0 ? "text-amber-500/80" : "text-gray-500"}`}>Abiertos</p>
+              <p className={`font-bold text-lg leading-tight ${pendientes > 0 ? "text-amber-400" : "text-gray-700"}`}>{pendientes}</p>
             </div>
-          )}
-          {fallasActivas > 0 && (
-            <div className="text-center">
-              <p className="text-red-500/80 text-[10px] uppercase tracking-wider">Fallas</p>
-              <p className="text-red-400 font-semibold">{fallasActivas}</p>
-            </div>
-          )}
-          {u.proximoMantenimiento && u.proximoMantenimiento !== "—" && (
-            <div className="hidden md:block text-center">
-              <p className="text-gray-500 text-[10px] uppercase tracking-wider">Próx. servicio</p>
-              <p className={`font-semibold ${diasColor}`}>
-                {dias !== null && dias < 0 ? `Vencido ${Math.abs(dias)}d` : dias !== null ? `${dias}d` : fmtFecha(u.proximoMantenimiento)}
+            {/* Próximo servicio */}
+            <div className="hidden md:flex px-4 flex-col justify-center min-w-[90px]">
+              <p className="text-gray-500 text-[9px] font-bold uppercase tracking-wider mb-0.5">Próx. servicio</p>
+              <p className={`font-semibold text-sm ${u.proximoMantenimiento && u.proximoMantenimiento !== "—" ? diasColor : "text-gray-700"}`}>
+                {u.proximoMantenimiento && u.proximoMantenimiento !== "—" ? diasLabel : "—"}
               </p>
             </div>
-          )}
-          {ultimaFecha && (
-            <div className="hidden lg:block text-center">
-              <p className="text-gray-500 text-[10px] uppercase tracking-wider">Último registro</p>
-              <p className="text-gray-400">{fmtFecha(ultimaFecha)}</p>
+            {/* Último registro */}
+            <div className="hidden lg:flex px-4 flex-col justify-center min-w-[90px]">
+              <p className="text-gray-500 text-[9px] font-bold uppercase tracking-wider mb-0.5">Último reg.</p>
+              <p className="text-gray-400 font-medium text-sm">{ultimaFecha ? fmtFecha(ultimaFecha) : "—"}</p>
             </div>
-          )}
-        </div>
+          </div>
 
-        {/* Add + expand */}
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            onClick={(e) => { e.stopPropagation(); onAddEvento(u.noEconomico); }}
-            className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-[#CC2229]/10 hover:bg-[#CC2229]/20 text-[#CC2229] rounded-lg transition-colors cursor-pointer border border-[#CC2229]/20"
-          >
-            <Plus size={12} /> Registrar
-          </button>
-          {expanded
-            ? <ChevronDown size={15} className="text-gray-500" />
-            : <ChevronRight size={15} className="text-gray-500" />}
+          {/* Actions */}
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={(e) => { e.stopPropagation(); onAddEvento(u.noEconomico); }}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#CC2229]/10 hover:bg-[#CC2229]/20 text-[#CC2229] rounded-lg border border-[#CC2229]/20 transition-colors cursor-pointer"
+            >
+              <Plus size={12} /> Registrar
+            </button>
+            {expanded
+              ? <ChevronDown size={15} className="text-gray-500" />
+              : <ChevronRight size={15} className="text-gray-500" />}
+          </div>
         </div>
       </div>
 
       {/* Expanded timeline */}
       {expanded && (
-        <div className="border-t border-[#3A3A3A] px-5 py-1">
+        <div className="border-t border-[#3A3A3A] bg-[#1D1D1D] px-5 py-1">
           {eventos.length === 0 ? (
             <div className="py-8 text-center">
               <p className="text-sm text-gray-600">Sin registros para esta unidad</p>
@@ -423,6 +525,37 @@ function RegistroDrawer({
   const [fotosFactura, setFotosFactura] = useState<string[]>([]);
   const [fotosEvidencia, setFotosEvidencia] = useState<string[]>([]);
   const [uploadingCat, setUploadingCat] = useState<"factura" | "evidencia" | null>(null);
+  const [samsaraKm, setSamsaraKm] = useState<number | null>(null);
+  const [samsaraFound, setSamsaraFound] = useState<boolean | null>(null);
+  const [fetchingSamsara, setFetchingSamsara] = useState(false);
+
+  async function loadSamsaraKm(unidad: string) {
+    if (!unidad) return;
+    setFetchingSamsara(true);
+    setSamsaraKm(null);
+    setSamsaraFound(null);
+    try {
+      const [vRes, sRes] = await Promise.all([
+        fetch("/api/samsara?endpoint=%2Ffleet%2Fvehicles"),
+        fetch("/api/samsara?endpoint=%2Ffleet%2Fvehicles%2Fstats&types=obdOdometerMeters%2CgpsOdometerMeters"),
+      ]);
+      if (!vRes.ok || !sRes.ok) { setSamsaraFound(false); return; }
+      const [vData, sData] = await Promise.all([vRes.json(), sRes.json()]);
+      const match = (vData.data ?? []).find((v: { name: string }) =>
+        v.name.trim().toLowerCase() === unidad.trim().toLowerCase()
+      );
+      if (!match) { setSamsaraFound(false); return; }
+      const stat = (sData.data ?? []).find((s: { id: string }) => s.id === match.id);
+      const odom = stat?.obdOdometerMeters?.[0]?.value ?? stat?.gpsOdometerMeters?.[0]?.value;
+      if (odom == null) { setSamsaraFound(false); return; }
+      setSamsaraKm(Math.round(odom / 1000));
+      setSamsaraFound(true);
+    } catch {
+      setSamsaraFound(false);
+    } finally {
+      setFetchingSamsara(false);
+    }
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -442,6 +575,7 @@ function RegistroDrawer({
         severidad: editing.severidad ?? "Media",
         reportadoPor: editing.reportadoPor ?? "",
         km: editing.km != null ? String(editing.km) : "",
+        horasReparacion: editing.horasReparacion != null ? String(editing.horasReparacion) : "",
       });
       setFotosFactura(editing.fotosFactura ?? []);
       setFotosEvidencia(editing.fotosEvidencia ?? []);
@@ -451,6 +585,8 @@ function RegistroDrawer({
       setFotosFactura([]);
       setFotosEvidencia([]);
     }
+    setSamsaraKm(null);
+    setSamsaraFound(null);
   }, [open, preselectedUnidad, editing]);
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
@@ -495,6 +631,7 @@ function RegistroDrawer({
         status: form.status ?? "Pendiente",
         notas: form.notas ?? "",
         ...(form.km ? { km: parseFloat(form.km) } : {}),
+        ...(form.horasReparacion ? { horasReparacion: parseFloat(form.horasReparacion) } : {}),
         ...(fotosFactura.length > 0 ? { fotosFactura } : {}),
         ...(fotosEvidencia.length > 0 ? { fotosEvidencia } : {}),
       };
@@ -567,7 +704,20 @@ function RegistroDrawer({
             </div>
           </div>
           <div>
-            <label className={lbl}>{tipo === "Falla" ? "KM al momento del paro" : "KM actual"}</label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">
+                {tipo === "Falla" ? "KM al momento del paro" : "KM actual"}
+              </label>
+              {(form.unidad || preselectedUnidad) && (
+                <button type="button"
+                  onClick={() => loadSamsaraKm(form.unidad || preselectedUnidad)}
+                  disabled={fetchingSamsara}
+                  className="flex items-center gap-1 text-[10px] font-semibold text-sky-600 hover:text-sky-700 disabled:opacity-50 cursor-pointer transition-colors">
+                  {fetchingSamsara ? <Loader2 size={10} className="animate-spin" /> : <Satellite size={10} />}
+                  GPS Samsara
+                </button>
+              )}
+            </div>
             <input
               type="number"
               min={0}
@@ -576,7 +726,40 @@ function RegistroDrawer({
               placeholder="Ej. 125000"
               className={inp}
             />
+            {samsaraFound === true && samsaraKm != null && (
+              <div className="mt-1.5 flex items-center gap-2">
+                <span className="flex items-center gap-1 text-[10px] bg-sky-50 border border-sky-200 text-sky-700 rounded-full px-2.5 py-1 font-semibold">
+                  <Satellite size={9} /> {samsaraKm.toLocaleString("es-MX")} km
+                </span>
+                <button type="button" onClick={() => set("km", String(samsaraKm))}
+                  className="text-[10px] font-semibold text-[#CC2229] hover:underline cursor-pointer">
+                  Usar
+                </button>
+              </div>
+            )}
+            {samsaraFound === false && (
+              <p className="mt-1 text-[10px] text-gray-400 flex items-center gap-1">
+                <Satellite size={9} /> No encontrada en Samsara
+              </p>
+            )}
           </div>
+
+          {/* Horas en taller — solo para Reparación y Falla */}
+          {(tipo === "Reparación" || tipo === "Falla") && (
+            <div>
+              <label className={lbl}>Horas en taller</label>
+              <input
+                type="number"
+                min={0}
+                step={0.5}
+                value={form.horasReparacion ?? ""}
+                onChange={(e) => set("horasReparacion", e.target.value)}
+                placeholder="Ej. 8"
+                className={inp}
+              />
+              <p className="mt-1 text-[10px] text-gray-400">Tiempo total que lleva o llevó la unidad fuera de operación</p>
+            </div>
+          )}
 
           {/* Tipo-specific fields */}
           {tipo === "Mantenimiento" && (
@@ -716,6 +899,7 @@ export default function MantenimientoPage() {
   const [showDrawer, setShowDrawer] = useState(false);
   const [preselectedUnidad, setPreselectedUnidad] = useState("");
   const [viewMode, setViewMode] = useState<"unidades" | "cronologico">("unidades");
+  const [quickFilter, setQuickFilter] = useState<"all" | "open" | "fallas">("all");
   const [editingEvento, setEditingEvento] = useState<Evento | null>(null);
   const [confirmDeleteEvento, setConfirmDeleteEvento] = useState<Evento | null>(null);
 
@@ -800,15 +984,19 @@ export default function MantenimientoPage() {
   }, [unitSummaries, query]);
 
   const filteredEventos = useMemo(() => {
+    let list = eventos;
+    // Quick filter from KPI cards
+    if (quickFilter === "open") list = list.filter((e) => !["Completado", "Resuelta"].includes(e.status));
+    else if (quickFilter === "fallas") list = list.filter((e) => e.tipo === "Falla" && e.status !== "Resuelta");
     const q = query.toLowerCase();
-    if (!q) return eventos;
-    return eventos.filter((e) =>
+    if (!q) return list;
+    return list.filter((e) =>
       e.unidad.toLowerCase().includes(q) ||
       e.descripcion.toLowerCase().includes(q) ||
       (e.causa ?? "").toLowerCase().includes(q) ||
       (e.taller ?? "").toLowerCase().includes(q)
     );
-  }, [eventos, query]);
+  }, [eventos, query, quickFilter]);
 
   // KPIs
   const costoTotal = useMemo(() => eventos.reduce((s, e) => s + (e.costo ?? 0), 0), [eventos]);
@@ -868,18 +1056,24 @@ export default function MantenimientoPage() {
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
         <KPICard title="Total intervenciones" value={String(eventos.length)} icon={Wrench}
           iconColor="text-blue-400" iconBg="bg-blue-500/10"
-          subtitle={`${unidades.length} unidades en flota`} />
+          subtitle={`${unidades.length} unidades en flota`}
+          active={quickFilter === "all" && viewMode === "cronologico"}
+          onClick={() => { setViewMode("cronologico"); setQuickFilter("all"); }} />
         <KPICard title="Costo total acumulado" value={costoTotal > 0 ? `$${Math.round(costoTotal).toLocaleString("es-MX")}` : "—"} icon={DollarSign}
           iconColor="text-[#CC2229]" iconBg="bg-[#CC2229]/10"
           subtitle="Mantenimientos + reparaciones" />
         <KPICard title="Trabajos abiertos" value={String(pendientes)} icon={CheckCircle2}
           iconColor={pendientes > 0 ? "text-amber-400" : "text-gray-500"}
           iconBg={pendientes > 0 ? "bg-amber-500/10" : "bg-gray-500/10"}
-          subtitle="Pendientes o en proceso" />
+          subtitle="Pendientes o en proceso"
+          active={quickFilter === "open"}
+          onClick={() => { setViewMode("cronologico"); setQuickFilter("open"); }} />
         <KPICard title="Fallas activas" value={String(fallasActivas)} icon={AlertTriangle}
           iconColor={fallasActivas > 0 ? "text-red-400" : "text-gray-500"}
           iconBg={fallasActivas > 0 ? "bg-red-500/10" : "bg-gray-500/10"}
-          subtitle={fallasActivas > 0 ? "Sin resolver" : "Sin fallas activas"} />
+          subtitle={fallasActivas > 0 ? "Sin resolver" : "Sin fallas activas"}
+          active={quickFilter === "fallas"}
+          onClick={() => { setViewMode("cronologico"); setQuickFilter("fallas"); }} />
       </div>
 
       {/* Toolbar */}
@@ -895,6 +1089,16 @@ export default function MantenimientoPage() {
             Cronológico
           </button>
         </div>
+
+        {/* Quick filter chip */}
+        {quickFilter !== "all" && (
+          <div className="flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-full border text-xs font-semibold bg-[#CC2229]/10 border-[#CC2229]/40 text-[#CC2229]">
+            {quickFilter === "open" ? "Trabajos abiertos" : "Fallas activas"}
+            <button onClick={() => setQuickFilter("all")} className="p-0.5 rounded-full hover:bg-[#CC2229]/20 cursor-pointer transition-colors">
+              <X size={11} />
+            </button>
+          </div>
+        )}
 
         {/* Search */}
         <div className="relative flex-1 min-w-[200px] max-w-sm">
@@ -961,71 +1165,119 @@ export default function MantenimientoPage() {
       {/* Cronológico view */}
       {!loading && viewMode === "cronologico" && (
         <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
-          <div className="px-5 py-3 border-b border-[#3A3A3A] flex items-center justify-between">
+          <div className="px-5 py-3 border-b border-[#3A3A3A] flex flex-wrap items-center gap-3">
             <p className="text-sm font-semibold text-white">{filteredEventos.length} registro{filteredEventos.length !== 1 ? "s" : ""}</p>
-            <div className="flex items-center gap-3 text-xs text-gray-500">
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-blue-400" />Mantenimiento</span>
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-orange-400" />Reparación</span>
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-400" />Falla</span>
+            <div className="flex items-center gap-3 text-xs text-gray-500 ml-auto">
+              <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-blue-400" />Mantenimiento</span>
+              <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-orange-400" />Reparación</span>
+              <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-red-400" />Falla</span>
             </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-[#1A1A1A]">
-                  {["Fecha", "Unidad", "Tipo", "Descripción", "Costo", "Taller / Info", "Status", ""].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                  {[
+                    { h: "Fecha reporte",  cls: "w-[110px]" },
+                    { h: "Unidad",         cls: "w-[90px]" },
+                    { h: "Tipo",           cls: "w-[130px]" },
+                    { h: "Descripción",    cls: "" },
+                    { h: "Días abierto",   cls: "w-[100px] text-center" },
+                    { h: "KM",             cls: "w-[90px] text-right" },
+                    { h: "Importe",        cls: "w-[100px] text-right" },
+                    { h: "Status",         cls: "w-[110px]" },
+                    { h: "",               cls: "w-[110px]" },
+                  ].map(({ h, cls }) => (
+                    <th key={h} className={`px-4 py-3 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap ${cls}`}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#2A2A2A]">
                 {filteredEventos.length === 0 ? (
-                  <tr><td colSpan={8} className="px-4 py-14 text-center text-sm text-gray-600">Sin registros</td></tr>
+                  <tr><td colSpan={9} className="px-4 py-14 text-center text-sm text-gray-600">Sin registros</td></tr>
                 ) : filteredEventos.map((ev) => {
                   const isDone = ev.status === "Completado" || ev.status === "Resuelta";
+                  const dias = diasDesde(ev.fecha);
+                  const diasLabel = dias === 0 ? "Hoy" : `${dias} día${dias !== 1 ? "s" : ""}`;
+                  const diasColor = !isDone ? (dias > 5 ? "text-red-400 font-bold" : dias > 2 ? "text-amber-400 font-semibold" : "text-gray-400") : "text-gray-700";
+                  // Row highlight for urgent open events
+                  const rowBg = !isDone && ev.tipo === "Falla" && ev.severidad === "Alta"
+                    ? "bg-red-500/8 hover:bg-red-500/12"
+                    : !isDone && (ev.status === "En proceso" || (ev.tipo === "Reparación" && dias > 1))
+                    ? "bg-amber-500/5 hover:bg-amber-500/8"
+                    : "hover:bg-[#2A2A2A]";
+
                   return (
-                    <tr key={ev.id} className="hover:bg-[#2A2A2A] transition-colors">
-                      <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap font-mono">{fmtFecha(ev.fecha)}</td>
-                      <td className="px-4 py-3 text-white font-semibold whitespace-nowrap">{ev.unidad}</td>
-                      <td className="px-4 py-3 whitespace-nowrap">
+                    <tr key={ev.id} className={`transition-colors ${rowBg} ${isDone ? "opacity-60" : ""}`}>
+                      {/* Fecha */}
+                      <td className="px-4 py-3.5 whitespace-nowrap">
+                        <p className="text-xs text-gray-300 font-mono">{fmtFecha(ev.fecha)}</p>
+                        {ev.taller && <p className="text-[10px] text-gray-600 mt-0.5 truncate max-w-[100px]">{ev.taller}</p>}
+                        {ev.reportadoPor && <p className="text-[10px] text-gray-600 mt-0.5">Reportó: {ev.reportadoPor}</p>}
+                      </td>
+                      {/* Unidad */}
+                      <td className="px-4 py-3.5 whitespace-nowrap">
+                        <p className="text-white font-bold text-sm">{ev.unidad}</p>
+                      </td>
+                      {/* Tipo */}
+                      <td className="px-4 py-3.5 whitespace-nowrap">
                         <div className="flex flex-col gap-1">
                           <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border w-fit ${TIPO_BADGE[ev.tipo]}`}>{ev.tipo}</span>
                           {ev.subtipo && <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border w-fit ${SUBTIPO_BADGE[ev.subtipo] ?? ""}`}>{ev.subtipo}</span>}
                           {ev.severidad && <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border w-fit ${SEV_BADGE[ev.severidad] ?? ""}`}>{ev.severidad}</span>}
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-gray-200 max-w-[240px]">
-                        <p className="truncate">{ev.descripcion}</p>
-                        {ev.causa && <p className="text-xs text-gray-500 truncate">{ev.causa}</p>}
-                        {ev.km != null && <p className="text-xs text-gray-500">{ev.km.toLocaleString("es-MX")} km</p>}
-                      </td>
-                      <td className="px-4 py-3 text-white font-semibold tabular-nums whitespace-nowrap">{currency(ev.costo)}</td>
-                      <td className="px-4 py-3 text-gray-400 text-xs max-w-[140px]">
-                        <p className="truncate">{ev.taller || ev.reportadoPor || "—"}</p>
+                      {/* Descripción */}
+                      <td className="px-4 py-3.5 max-w-[220px]">
+                        <p className={`text-sm font-medium leading-snug ${isDone ? "text-gray-500" : "text-gray-100"}`}>{ev.descripcion}</p>
+                        {ev.causa && <p className="text-[10px] text-gray-500 mt-0.5">Causa: {ev.causa}</p>}
+                        {ev.notas && <p className="text-[10px] text-gray-600 mt-0.5 italic">{ev.notas}</p>}
                         {((ev.fotosFactura?.length ?? 0) + (ev.fotosEvidencia?.length ?? 0) > 0) && (
-                          <p className="flex items-center gap-1 text-gray-600 mt-0.5">
-                            <Camera size={9} />
-                            {(ev.fotosFactura?.length ?? 0) + (ev.fotosEvidencia?.length ?? 0)} foto{(ev.fotosFactura?.length ?? 0) + (ev.fotosEvidencia?.length ?? 0) !== 1 ? "s" : ""}
-                          </p>
+                          <span className="flex items-center gap-1 text-[10px] text-gray-600 mt-0.5">
+                            <Camera size={9} /> {(ev.fotosFactura?.length ?? 0) + (ev.fotosEvidencia?.length ?? 0)} foto{((ev.fotosFactura?.length ?? 0) + (ev.fotosEvidencia?.length ?? 0)) !== 1 ? "s" : ""}
+                          </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${STATUS_BADGE[ev.status] ?? "bg-gray-500/15 text-gray-400 border-gray-500/30"}`}>
+                      {/* Días abierto */}
+                      <td className="px-4 py-3.5 text-center whitespace-nowrap">
+                        {!isDone
+                          ? <span className={`text-sm ${diasColor}`}>{diasLabel}</span>
+                          : <span className="text-gray-700 text-xs">—</span>}
+                        {ev.horasReparacion != null && (
+                          <p className="text-[10px] text-amber-400 mt-0.5 font-semibold">{ev.horasReparacion}h taller</p>
+                        )}
+                      </td>
+                      {/* KM */}
+                      <td className="px-4 py-3.5 text-right whitespace-nowrap">
+                        {ev.km != null
+                          ? <span className="text-sm text-sky-300 font-mono font-semibold">{ev.km.toLocaleString("es-MX")}</span>
+                          : <span className="text-gray-700">—</span>}
+                      </td>
+                      {/* Importe */}
+                      <td className="px-4 py-3.5 text-right whitespace-nowrap">
+                        <span className={`text-sm font-bold tabular-nums ${ev.costo > 0 ? (isDone ? "text-gray-500" : "text-white") : "text-gray-700"}`}>
+                          {currency(ev.costo)}
+                        </span>
+                      </td>
+                      {/* Status */}
+                      <td className="px-4 py-3.5 whitespace-nowrap">
+                        <span className={`text-[10px] font-semibold px-2.5 py-1 rounded-full border ${STATUS_BADGE[ev.status] ?? "bg-gray-500/15 text-gray-400 border-gray-500/30"}`}>
                           {ev.status}
                         </span>
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
+                      {/* Actions */}
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center gap-1.5">
                           {!isDone && (
                             <button onClick={() => handleComplete(ev)}
-                              className="text-xs text-emerald-400 hover:text-emerald-300 transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1">
-                              <CheckCircle2 size={13} /> Cerrar
+                              className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-semibold text-emerald-400 border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 rounded-lg transition-colors cursor-pointer whitespace-nowrap">
+                              <CheckCircle2 size={11} /> Cerrar
                             </button>
                           )}
-                          <button onClick={() => openEdit(ev)} className="p-1 text-gray-600 hover:text-blue-400 transition-colors cursor-pointer" aria-label="Editar">
+                          <button onClick={() => openEdit(ev)} className="p-1.5 text-gray-600 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors cursor-pointer" aria-label="Editar">
                             <Pencil size={12} />
                           </button>
-                          <button onClick={() => setConfirmDeleteEvento(ev)} className="p-1 text-gray-600 hover:text-red-400 transition-colors cursor-pointer" aria-label="Eliminar">
+                          <button onClick={() => setConfirmDeleteEvento(ev)} className="p-1.5 text-gray-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer" aria-label="Eliminar">
                             <Trash2 size={12} />
                           </button>
                         </div>
@@ -1038,8 +1290,8 @@ export default function MantenimientoPage() {
           </div>
           {filteredEventos.length > 0 && (
             <div className="px-5 py-3 border-t border-[#3A3A3A] flex items-center justify-between text-xs text-gray-600">
-              <span>{filteredEventos.length} intervención{filteredEventos.length !== 1 ? "es" : ""}</span>
-              <span className="font-semibold text-white">Total: {currency(filteredEventos.reduce((s, e) => s + (e.costo ?? 0), 0))}</span>
+              <span>{filteredEventos.filter((e) => !["Completado","Resuelta"].includes(e.status)).length} abiertos · {filteredEventos.filter((e) => ["Completado","Resuelta"].includes(e.status)).length} cerrados</span>
+              <span className="font-semibold text-white">Total acumulado: {currency(filteredEventos.reduce((s, e) => s + (e.costo ?? 0), 0))}</span>
             </div>
           )}
         </div>
@@ -1047,7 +1299,7 @@ export default function MantenimientoPage() {
 
       <RegistroDrawer
         open={showDrawer}
-        unidadesList={unidades.filter((u) => u.estatus !== "Baja").map((u) => u.noEconomico)}
+        unidadesList={unidades.filter((u) => u.estatus !== "Baja").map((u) => u.noEconomico).sort((a, b) => a.localeCompare(b, "es"))}
         preselectedUnidad={preselectedUnidad}
         onClose={() => { setShowDrawer(false); setPreselectedUnidad(""); setEditingEvento(null); }}
         onSave={handleSave}
@@ -1057,16 +1309,16 @@ export default function MantenimientoPage() {
       {confirmDeleteEvento && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center">
           <button className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setConfirmDeleteEvento(null)} />
-          <div className="relative bg-[#1A1A1A] border border-[#3A3A3A] rounded-2xl p-6 w-full max-w-sm shadow-2xl">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-500/10 mb-4">
-              <Trash2 size={20} className="text-red-400" />
+          <div className="relative bg-white border border-gray-200 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-50 mb-4">
+              <Trash2 size={20} className="text-red-500" />
             </div>
-            <h3 className="text-sm font-semibold text-white mb-1">Eliminar registro</h3>
+            <h3 className="text-sm font-semibold text-gray-900 mb-1">Eliminar registro</h3>
             <p className="text-xs text-gray-500 mb-5">
-              ¿Eliminar <span className="text-gray-300 font-medium">{confirmDeleteEvento.descripcion}</span> de {confirmDeleteEvento.unidad}? Esta acción no se puede deshacer.
+              ¿Eliminar <span className="text-gray-800 font-medium">{confirmDeleteEvento.descripcion}</span> de {confirmDeleteEvento.unidad}? Esta acción no se puede deshacer.
             </p>
             <div className="flex gap-3">
-              <button onClick={() => setConfirmDeleteEvento(null)} className="flex-1 px-4 py-2.5 text-sm text-gray-400 border border-[#3A3A3A] rounded-xl hover:border-gray-500 transition-colors">
+              <button onClick={() => setConfirmDeleteEvento(null)} className="flex-1 px-4 py-2.5 text-sm text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
                 Cancelar
               </button>
               <button onClick={() => handleDelete(confirmDeleteEvento)} className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors">

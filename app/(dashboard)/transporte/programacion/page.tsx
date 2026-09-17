@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle, CalendarDays, ChevronDown, ChevronLeft, ChevronRight,
-  Clock, Download, Expand, ExternalLink, History, MapPin, MessageSquare, Navigation, Palette, Plus, Search, Shrink, UserRound, X,
+  Clock, Download, Expand, ExternalLink, History, Loader2, MapPin, MessageSquare, Navigation, Palette, Plus, Search, Send, Shrink, UserRound, Wifi, X,
 } from "lucide-react";
 import ExcelView from "./ExcelView";
 import type { ExcelProg } from "./ExcelView";
@@ -11,7 +11,8 @@ import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
 import ClienteCombobox from "@/components/ClienteCombobox";
 import { getCollectionDocs, subscribeToCollection, upsertDocument, deleteDocument, COLLECTIONS, type SolicitudAutorizacion, type Notificacion, getAllUserProfiles } from "@/lib/db";
-import { filterByPlanta, getStoredSession, withPlantaTag } from "@/lib/auth";
+import { filterByPlanta, getStoredSession, withPlantaTag, getCapturePlanta } from "@/lib/auth";
+import { tdBomToBombeo } from "@/lib/sgp";
 import { todayCST, localISODate } from "@/lib/dateUtils";
 import type { Operador } from "@/lib/operadores";
 import type { Cliente } from "@/lib/crmClientes";
@@ -98,6 +99,11 @@ interface Programacion {
   vehiculoSamsaraId?: string;
   rowColor?: string;
   nombreObra?: string;
+  // SGP — dosificadora
+  sgpSerie?: string;
+  sgpNumero?: string;
+  sgpStatus?: "enviado" | "error" | "pendiente";
+  sgpError?: string;
 }
 
 interface Obra {
@@ -640,6 +646,10 @@ function FormDrawer({
   const [form, setForm] = useState<FormState>(() => emptyForm(dia));
   const [saving, setSaving] = useState(false);
   const [showHistorial, setShowHistorial] = useState(false);
+  const [sgpTestando, setSgpTestando] = useState(false);
+  const [sgpTestResult, setSgpTestResult] = useState<{ ok: boolean; serie?: string | null; numero?: string | null; error?: string; rawXml?: string } | null>(null);
+  const [sgpCancelando, setSgpCancelando] = useState(false);
+  const [sgpCancelResult, setSgpCancelResult] = useState<{ ok: boolean; error?: string } | null>(null);
 
   // Obra selector state
   const [obraOpen, setObraOpen] = useState(false);
@@ -671,6 +681,7 @@ function FormDrawer({
     if (!open) return;
     setForm(initial ? formFromProg(initial) : emptyForm(dia));
     setShowHistorial(false);
+    setSgpTestResult(null);
     setObraOpen(false); setObraQuery(""); setObraNewOpen(false);
     setObraNewNombre(""); setObraNewDireccion("");
   }, [open, initial, dia]);
@@ -743,6 +754,58 @@ function FormDrawer({
     const result = m3Base + flatExtras;
     return result > 0 ? result : null;
   }, [totalXM3Auto, m3TotalesAuto, form.precioM3Vacio, form.m3Vacios, form.tuberiaExtra, form.tiempoExtraDescarga]);
+
+  async function handleProbarSGP() {
+    setSgpTestando(true);
+    setSgpTestResult(null);
+    const planta = getCapturePlanta();
+    const prog = {
+      serieErp: "ERP",
+      numeroErp: String(Date.now() % 2000000000),
+      producto: form.resistencia || "FC200",
+      productoDescripcion: form.resistencia || "Concreto - PRUEBA",
+      cantidadSolicitada: 7,
+      metrosPorUnidad: 7,
+      fechaSuministro: todayISO(),
+      horaEnObra: form.hora || "08:00:00",
+      clienteRazonSocial: form.cliente || "CLIENTE PRUEBA",
+      obraDescripcion: form.obraNombre || form.paraUso || "Obra de prueba",
+      obraDireccion: isUrl(form.direccion) ? "" : (form.direccion || ""),
+      planta,
+      ...tdBomToBombeo(form.tdBom || ""),
+    };
+    try {
+      const res = await fetch("/api/sgp/crear-pedido", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prog }),
+      }).then((r) => r.json()) as { ok: boolean; sgpSerie?: string | null; sgpNumero?: string | null; error?: string; _rawXml?: string };
+      setSgpTestResult({ ok: res.ok, serie: res.sgpSerie, numero: res.sgpNumero, error: res.error, rawXml: res._rawXml });
+    } catch {
+      setSgpTestResult({ ok: false, error: "Error de red" });
+    } finally {
+      setSgpTestando(false);
+    }
+  }
+
+  async function handleCancelarSGP() {
+    if (!sgpTestResult?.serie || !sgpTestResult?.numero) return;
+    setSgpCancelando(true);
+    setSgpCancelResult(null);
+    try {
+      const res = await fetch("/api/sgp/cancelar-pedido", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ serie: sgpTestResult.serie, numero: sgpTestResult.numero, planta: getCapturePlanta() }),
+      }).then((r) => r.json()) as { ok: boolean; error?: string };
+      setSgpCancelResult({ ok: res.ok, error: res.error });
+      if (res.ok) setSgpTestResult(null);
+    } catch {
+      setSgpCancelResult({ ok: false, error: "Error de red" });
+    } finally {
+      setSgpCancelando(false);
+    }
+  }
 
   async function handleSave() {
     if (!form.cliente.trim()) {
@@ -1310,7 +1373,7 @@ function FormDrawer({
                   <label className={lbl}>Método</label>
                   <AppSelect value={form.metodoPago} onChange={(e) => set("metodoPago", e.target.value)}>
                     <option value="">—</option>
-                    {["Efectivo", "Transferencia", "Cheque", "Crédito", "Por definir"].map((m) => (
+                    {["Cheque", "Crédito", "Efectivo", "Por definir", "Transferencia"].map((m) => (
                       <option key={m} value={m}>{m}</option>
                     ))}
                   </AppSelect>
@@ -1331,7 +1394,7 @@ function FormDrawer({
                       <label className={lbl}>Método</label>
                       <AppSelect value={form.metodoPago} onChange={(e) => set("metodoPago", e.target.value)}>
                         <option value="">—</option>
-                        {["Efectivo", "Transferencia", "Cheque", "Crédito", "Por definir"].map((m) => (
+                        {["Cheque", "Crédito", "Efectivo", "Por definir", "Transferencia"].map((m) => (
                           <option key={m} value={m}>{m}</option>
                         ))}
                       </AppSelect>
@@ -1360,7 +1423,7 @@ function FormDrawer({
                         <label className={lbl}>Método</label>
                         <AppSelect value={form.metodoPago2} onChange={(e) => set("metodoPago2", e.target.value)}>
                           <option value="">—</option>
-                          {["Efectivo", "Transferencia", "Cheque", "Crédito", "Por definir"].map((m) => (
+                          {["Cheque", "Crédito", "Efectivo", "Por definir", "Transferencia"].map((m) => (
                             <option key={m} value={m}>{m}</option>
                           ))}
                         </AppSelect>
@@ -1452,6 +1515,68 @@ function FormDrawer({
           </div>
         )}
 
+        {/* SGP — panel de prueba */}
+        <div className="shrink-0 border-t border-violet-100 bg-violet-50/40 px-6 py-4">
+          <div className="flex items-center justify-between mb-2.5">
+            <label className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-violet-500">
+              <Wifi size={11} />
+              Dosificadora SGP
+            </label>
+            {initial?.sgpStatus === "enviado" && (
+              <span className="text-xs font-medium text-emerald-600">
+                Pedido {initial.sgpSerie}-{initial.sgpNumero}
+              </span>
+            )}
+            {initial?.sgpStatus === "error" && (
+              <span className="text-xs font-medium text-red-500" title={initial.sgpError ?? ""}>
+                Error al enviar
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={handleProbarSGP}
+            disabled={sgpTestando}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium border border-violet-200 text-violet-700 hover:bg-violet-100 rounded-xl transition-colors disabled:opacity-60 cursor-pointer"
+          >
+            {sgpTestando ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+            {sgpTestando ? "Enviando prueba…" : "Probar envío a SGP"}
+          </button>
+          {sgpTestResult && (
+            <div className={`mt-2.5 rounded-xl px-3 py-2.5 text-xs border ${sgpTestResult.ok ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-red-50 text-red-600 border-red-200"}`}>
+              {sgpTestResult.ok
+                ? (sgpTestResult.serie
+                    ? `Pedido creado en SGP: serie ${sgpTestResult.serie} · nº ${sgpTestResult.numero}`
+                    : "SGP respondió OK — revisa la dosificadora si el pedido apareció")
+                : `Error: ${sgpTestResult.error ?? "Desconocido"}`}
+              {sgpTestResult.ok && sgpTestResult.serie && (
+                <div className="mt-2 flex items-center gap-2">
+                  <button
+                    onClick={handleCancelarSGP}
+                    disabled={sgpCancelando}
+                    className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50 cursor-pointer"
+                  >
+                    {sgpCancelando ? <Loader2 size={11} className="animate-spin" /> : <X size={11} />}
+                    Cancelar pedido en SGP
+                  </button>
+                  {sgpCancelResult && !sgpCancelResult.ok && (
+                    <span className="text-red-600 text-[10px]">{sgpCancelResult.error}</span>
+                  )}
+                </div>
+              )}
+              {sgpTestResult.ok && !sgpTestResult.serie && (
+                <p className="mt-1 text-emerald-600/70">No dosifica automáticamente.</p>
+              )}
+              {sgpTestResult.rawXml && (
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-xs opacity-60 hover:opacity-100">Ver respuesta del SGP</summary>
+                  <pre className="mt-1 text-[10px] opacity-70 whitespace-pre-wrap break-all">{sgpTestResult.rawXml}</pre>
+                </details>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* Footer */}
         <div className="shrink-0 border-t border-gray-100 px-6 py-4 flex items-center gap-3">
           {onDelete && initial?.id && (
@@ -1509,6 +1634,7 @@ function TrackingModal({
   onClose: () => void;
 }) {
   const [destCoords, setDestCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [destPlaceName, setDestPlaceName] = useState<string | null>(null);
   const [resolvingDest, setResolvingDest] = useState(false);
   const [showCierre, setShowCierre] = useState(false);
   const [cierreNotas, setCierreNotas] = useState("");
@@ -1525,21 +1651,26 @@ function TrackingModal({
 
   useEffect(() => {
     const url = prog.direccion;
-    if (!url || !isUrl(url)) { setDestCoords(null); return; }
+    if (!url || !isUrl(url)) { setDestCoords(null); setDestPlaceName(null); return; }
     const direct = extractCoordsFromUrl(url);
     if (direct) { setDestCoords(direct); return; }
     setResolvingDest(true);
     let cancelled = false;
     fetch(`/api/maps/resolve?url=${encodeURIComponent(url)}`)
       .then((r) => r.json())
-      .then((d) => { if (!cancelled && d.coords) setDestCoords(d.coords); })
+      .then((d) => {
+        if (cancelled) return;
+        if (d.coords) setDestCoords(d.coords);
+        if (d.placeName) setDestPlaceName(d.placeName);
+      })
       .catch(() => {})
       .finally(() => { if (!cancelled) setResolvingDest(false); });
     return () => { cancelled = true; };
   }, [prog.direccion]);
 
   const choferes = (prog.choferes ?? []) as ChoferEntry[];
-  const plantaCoords = PLANT_COORDS[plantaActiva] ?? null;
+  // Use the record's own planta first (most accurate), then session planta, then Allende as legacy default
+  const plantaCoords = PLANT_COORDS[prog.planta as string] ?? PLANT_COORDS[plantaActiva] ?? PLANT_COORDS["Allende"];
 
   async function handleEntregado() {
     if (!prog.id) return;
@@ -1627,13 +1758,31 @@ function TrackingModal({
     ? prog.direccion
     : null;
 
-  const mapEmbedUrl = destCoords
-    ? (() => {
-        const { lat, lng } = destCoords;
-        const delta = 0.006;
-        return `https://www.openstreetmap.org/export/embed.html?bbox=${lng - delta},${lat - delta},${lng + delta},${lat + delta}&layer=mapnik&marker=${lat},${lng}`;
-      })()
-    : null;
+  const gmKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
+  const mapEmbedUrl = (() => {
+    const dest = destCoords ? `${destCoords.lat},${destCoords.lng}` : destPlaceName ?? null;
+    if (dest && plantaCoords) {
+      if (gmKey) {
+        return `https://www.google.com/maps/embed/v1/directions?key=${gmKey}&origin=${plantaCoords.lat},${plantaCoords.lng}&destination=${encodeURIComponent(dest)}&mode=driving&language=es`;
+      }
+      if (destCoords) {
+        return `https://maps.google.com/maps?saddr=${plantaCoords.lat},${plantaCoords.lng}&daddr=${destCoords.lat},${destCoords.lng}&output=embed`;
+      }
+    }
+    if (dest && !plantaCoords && gmKey) {
+      return `https://www.google.com/maps/embed/v1/place?key=${gmKey}&q=${encodeURIComponent(dest)}&language=es`;
+    }
+    if (destCoords && !plantaCoords) {
+      return `https://maps.google.com/maps?q=${destCoords.lat},${destCoords.lng}&output=embed`;
+    }
+    // Fallback: show plant while destination resolves (OSM — no API key needed)
+    if (plantaCoords) {
+      const { lat, lng } = plantaCoords;
+      const d = 0.018;
+      return `https://www.openstreetmap.org/export/embed.html?bbox=${lng - d},${lat - d},${lng + d},${lat + d}&layer=mapnik&marker=${lat},${lng}`;
+    }
+    return null;
+  })();
 
   // Theme-aware inline styles — bypasses global CSS overrides and respects duro-theme-light
   const S = isLight ? {
@@ -1782,29 +1931,41 @@ function TrackingModal({
               )}
             </div>
 
-            {resolvingDest && !mapEmbedUrl && (
-              <div className="flex h-32 items-center justify-center gap-2 rounded-xl" style={S.card}>
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-t-red-500" style={{ borderColor: tm, borderTopColor: "#E32636" }} />
-                <span style={{ color: tm, fontSize: 12 }}>Obteniendo ubicación…</span>
-              </div>
-            )}
-
             {mapEmbedUrl && (
-              <div className="relative overflow-hidden rounded-xl" style={{ height: 180, border: divB }}>
+              <div className="relative overflow-hidden rounded-xl" style={{ height: 200, border: divB }}>
                 <iframe src={mapEmbedUrl} width="100%" height="100%" className="h-full w-full border-0 grayscale" title="Ubicación" loading="lazy" />
-                {plantaCoords && (
-                  <div className="absolute bottom-2 left-2 rounded-lg px-2.5 py-1.5" style={{ backgroundColor: S.labelBg, border: divB, fontSize: 9, color: ts }}>
-                    <span style={{ color: "#E32636", fontWeight: 600 }}>{plantaCoords.label}</span> → Obra
-                  </div>
-                )}
+                {/* Overlay label */}
+                <div className="absolute bottom-2 left-2 rounded-lg px-2.5 py-1.5" style={{ backgroundColor: S.labelBg, border: divB, fontSize: 9, color: ts }}>
+                  {destCoords && plantaCoords ? (
+                    <><span style={{ color: "#E32636", fontWeight: 600 }}>{plantaCoords.label}</span> → Obra</>
+                  ) : resolvingDest ? (
+                    <span style={{ color: tm }}>Obteniendo destino…</span>
+                  ) : plantaCoords ? (
+                    <><span style={{ color: "#E32636", fontWeight: 600 }}>{plantaCoords.label}</span></>
+                  ) : null}
+                </div>
               </div>
             )}
 
-            {!resolvingDest && !mapEmbedUrl && isUrl(prog.direccion) && (
-              <div className="flex h-24 flex-col items-center justify-center gap-2 rounded-xl" style={S.card}>
-                <MapPin size={16} style={{ color: tm }} />
-                <p style={{ color: ts, fontSize: 12 }}>No se pudieron obtener coordenadas.</p>
-                <a href={prog.direccion} target="_blank" rel="noopener noreferrer" style={{ color: tm, fontSize: 11, textDecoration: "underline" }}>Abrir en Maps</a>
+            {/* Link de Maps guardado — visible como fila secundaria cuando no hay coords de destino */}
+            {!destCoords && isUrl(prog.direccion) && (
+              <div className="flex items-center justify-between gap-3 rounded-xl px-4 py-3" style={S.card}>
+                <div className="flex items-center gap-2 min-w-0">
+                  <MapPin size={14} style={{ color: "#E32636", flexShrink: 0 }} />
+                  <span style={{ color: tm, fontSize: 12 }}>
+                    {resolvingDest ? "Obteniendo coordenadas del destino…" : "Abrir destino en Maps para ver la ruta completa"}
+                  </span>
+                </div>
+                {!resolvingDest && (
+                  <a href={routeUrl ?? prog.direccion} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 shrink-0 transition-colors"
+                    style={{ fontSize: 11, fontWeight: 600, color: ts, border: divB }}>
+                    <ExternalLink size={11} /> Abrir
+                  </a>
+                )}
+                {resolvingDest && (
+                  <div className="h-3.5 w-3.5 animate-spin rounded-full border-2" style={{ borderColor: tm, borderTopColor: "#E32636" }} />
+                )}
               </div>
             )}
 
@@ -2157,6 +2318,9 @@ export default function ProgramacionPage() {
 
   async function handleSave(p: Programacion) {
     const id = p.id!;
+    const existing = programaciones.find((x) => x.id === id);
+    const isNew = !existing;
+
     const { id: _id, ...data } = p;
     await upsertDocument(COLLECTIONS.programaciones, id, withPlantaTag(data));
     setProgramaciones((prev) => {
@@ -2165,6 +2329,65 @@ export default function ProgramacionPage() {
       return idx >= 0 ? prev.map((x, i) => (i === idx ? updated : x)) : [updated, ...prev];
     });
 
+    // SGP — fire and forget, no bloquea el guardado
+    const planta = p.planta ?? getCapturePlanta();
+    if (p.resistencia && p.m3Totales && p.hora) {
+      if (isNew) {
+        const numCamiones = Math.max(p.choferes?.filter((c) => c.cr?.trim()).length ?? 1, 1);
+        const sgpProg = {
+          serieErp: "ERP",
+          numeroErp: String(parseInt(id.replace(/\D/g, "").slice(-9)) % 2000000000),
+          producto: p.resistencia,
+          productoDescripcion: p.resistencia,
+          cantidadSolicitada: p.m3Totales,
+          metrosPorUnidad: Math.ceil((p.m3Totales ?? 7) / numCamiones),
+          fechaSuministro: p.dia,
+          horaEnObra: p.hora,
+          clienteRazonSocial: p.cliente,
+          obraDescripcion: p.nombreObra ?? p.paraUso ?? p.cliente,
+          obraDireccion: isUrl(p.direccion) ? "" : (p.direccion ?? ""),
+          planta,
+          ...tdBomToBombeo(p.tdBom ?? ""),
+        };
+        fetch("/api/sgp/crear-pedido", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prog: sgpProg }),
+        })
+          .then((r) => r.json())
+          .then((res: { ok: boolean; sgpSerie?: string; sgpNumero?: string; error?: string }) => {
+            const update = res.ok
+              ? { sgpSerie: res.sgpSerie ?? "", sgpNumero: res.sgpNumero ?? "", sgpStatus: "enviado" as const }
+              : { sgpStatus: "error" as const, sgpError: res.error ?? "Error desconocido" };
+            const { id: _id2, ...rest } = p;
+            upsertDocument(COLLECTIONS.programaciones, id, withPlantaTag({ ...rest, ...update })).catch(() => {});
+            setProgramaciones((prev) => prev.map((x) => x.id === id ? { ...x, ...update } : x));
+            if (res.ok) {
+              window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", title: "SGP", message: `Pedido ${res.sgpSerie}-${res.sgpNumero} registrado en dosificadora.` } }));
+            } else if (res.error !== "SGP_NOT_CONFIGURED" && res.error !== "SGP_NO_PLANTA_CLAVE") {
+              window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", title: "SGP", message: res.error ?? "Error al enviar a dosificadora." } }));
+            }
+          })
+          .catch(() => {});
+      } else if (existing?.sgpSerie) {
+        const fechaCambio = existing.dia !== p.dia || existing.hora !== p.hora;
+        const m3Cambio = existing.m3Totales !== p.m3Totales;
+        if (fechaCambio) {
+          fetch("/api/sgp/reprogramar-pedido", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ serie: existing.sgpSerie, numero: existing.sgpNumero, planta, fecha: p.dia, hora: p.hora }),
+          }).catch(() => {});
+        }
+        if (m3Cambio && !fechaCambio) {
+          fetch("/api/sgp/ajustar-pedido", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ serie: existing.sgpSerie, numero: existing.sgpNumero, planta, cantidad: p.m3Totales }),
+          }).catch(() => {});
+        }
+      }
+    }
   }
 
   async function handleSolicitarEliminar(prog: Programacion) {
@@ -2243,6 +2466,15 @@ export default function ProgramacionPage() {
       });
       setMarkingId(null);
       setMarkingNotas("");
+      // Cerrar pedido en SGP
+      if (prog.sgpSerie && prog.sgpNumero) {
+        const planta = prog.planta ?? getCapturePlanta();
+        fetch("/api/sgp/cerrar-pedido", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ serie: prog.sgpSerie, numero: prog.sgpNumero, planta }),
+        }).catch(() => {});
+      }
     } finally {
       setSavingId(null);
     }
@@ -2560,6 +2792,21 @@ export default function ProgramacionPage() {
                         {prog.notasAcceso && (
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-medium border border-amber-200 bg-amber-50 text-amber-700">
                             Acceso especial
+                          </span>
+                        )}
+                        {prog.sgpStatus === "enviado" && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold border border-emerald-200 bg-emerald-50 text-emerald-700" title={`SGP ${prog.sgpSerie}-${prog.sgpNumero}`}>
+                            SGP ✓
+                          </span>
+                        )}
+                        {prog.sgpStatus === "error" && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold border border-red-200 bg-red-50 text-red-600" title={prog.sgpError ?? "Error SGP"}>
+                            SGP ✗
+                          </span>
+                        )}
+                        {prog.sgpStatus === "pendiente" && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold border border-gray-200 bg-gray-50 text-gray-400">
+                            SGP…
                           </span>
                         )}
                       </div>

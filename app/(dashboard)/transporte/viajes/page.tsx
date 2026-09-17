@@ -11,7 +11,7 @@ import { COLLECTIONS, getCollectionDocs, upsertDocument } from "@/lib/db";
 import { unidadesDisponibilidad } from "@/lib/disponibilidadCargas";
 import AppSelect from "@/components/AppSelect";
 
-const estados = ["Todos", "Completado", "En ruta", "Cancelado", "Pendiente"];
+const estados = ["Todos", "Cancelado", "Completado", "En ruta", "Pendiente"];
 
 function formatDate(date: string) {
   if (!date) return "20/05/2026";
@@ -144,9 +144,10 @@ export default function ViajesPage() {
                 <div>
                   <label className={lbl}>Estado</label>
                   <AppSelect>
-                    <option>Pendiente</option>
-                    <option>En ruta</option>
+                    <option>Cancelado</option>
                     <option>Completado</option>
+                    <option>En ruta</option>
+                    <option>Pendiente</option>
                   </AppSelect>
                 </div>
               </FormSection>

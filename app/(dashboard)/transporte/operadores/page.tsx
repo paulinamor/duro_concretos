@@ -9,6 +9,7 @@ import {
   Pencil,
   Plus,
   Search,
+  Settings2,
   Trash2,
   UserCheck,
   UserMinus,
@@ -19,9 +20,22 @@ import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
 import PlantaRequired from "@/components/PlantaRequired";
 import { diasDesdeIngreso, docsProximos, operadoresActivos, type Operador } from "@/lib/operadores";
-import { COLLECTIONS, deleteDocument, subscribeToCollection, upsertDocument } from "@/lib/db";
+import { COLLECTIONS, deleteDocument, getDocument, subscribeToCollection, upsertDocument } from "@/lib/db";
 
-const TIPOS_LICENCIA = ["E", "D", "C", "A", "B"];
+const TIPOS_LICENCIA = ["A", "B", "C", "D", "E"];
+
+const DEFAULT_PUESTOS = [
+  "AUX. CONTABLE",
+  "AYUDANTE GENERAL",
+  "AUXILIAR DE LOGISTICA Y OPERACIONES",
+  "JEFE DE PLANTA",
+  "MAQUINISTA",
+  "MECANICO",
+  "OPERADOR DE BOMBA",
+  "OPERADOR DE REVOLVEDORA",
+  "OPERADOR TR",
+  "OTRO",
+];
 
 function vencimientoColor(fecha: string) {
   if (!fecha) return "text-gray-500";
@@ -83,9 +97,10 @@ function SectionDivider({ label }: { label: string }) {
   );
 }
 
-function EmpleadoDrawer({ open, editing, onClose, onSave }: {
+function EmpleadoDrawer({ open, editing, onClose, onSave, puestosList }: {
   open: boolean; editing: Operador | null;
   onClose: () => void; onSave: (f: FormState) => Promise<void>;
+  puestosList: string[];
 }) {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
@@ -168,7 +183,12 @@ function EmpleadoDrawer({ open, editing, onClose, onSave }: {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={lbl}>Puesto</label>
-                <input type="text" value={form.puesto} onChange={(e) => set("puesto", e.target.value)} placeholder="Ej. Operador" className={inp} />
+                <AppSelect value={form.puesto} onChange={(e) => set("puesto", e.target.value)}>
+                  <option value="">Seleccionar puesto</option>
+                  {puestosList.map((p) => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                </AppSelect>
               </div>
               <div>
                 <label className={lbl}>Fecha de ingreso</label>
@@ -245,10 +265,59 @@ export default function EmpleadosPage() {
   const [loading, setLoading] = useState(true);
   const [loadingLong, setLoadingLong] = useState(false);
   const [query, setQuery] = useState("");
-  const [filtro, setFiltro] = useState<"Todos" | "Activos" | "Baja">("Todos");
+  const [filtro, setFiltro] = useState<"Todos" | "Activos" | "Baja" | "DocsVencer">("Activos");
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Operador | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Operador | null>(null);
+
+  // Catálogo de puestos — se carga de Firestore y se puede gestionar sin tocar código
+  const [puestosList, setPuestosList] = useState<string[]>(DEFAULT_PUESTOS);
+  const [showPuestosModal, setShowPuestosModal] = useState(false);
+  const [puestosListDraft, setPuestosListDraft] = useState<string[]>([]);
+  const [nuevoPuesto, setNuevoPuesto] = useState("");
+  const [savingPuestos, setSavingPuestos] = useState(false);
+
+  useEffect(() => {
+    getDocument<{ lista: string[] }>(COLLECTIONS.configuracion, "puestos").then((doc) => {
+      if (doc?.lista?.length) setPuestosList(doc.lista);
+    });
+  }, []);
+
+  function openPuestosModal() {
+    setPuestosListDraft([...puestosList]);
+    setNuevoPuesto("");
+    setShowPuestosModal(true);
+  }
+
+  function addPuesto() {
+    const val = nuevoPuesto.trim().toUpperCase();
+    if (!val || puestosListDraft.includes(val)) return;
+    setPuestosListDraft((prev) => [...prev, val].sort());
+    setNuevoPuesto("");
+  }
+
+  async function savePuestos() {
+    // Auto-add any text still pending in the input field
+    const pendingVal = nuevoPuesto.trim().toUpperCase();
+    const base = (pendingVal && !puestosListDraft.includes(pendingVal))
+      ? [...puestosListDraft, pendingVal].sort()
+      : puestosListDraft;
+
+    setSavingPuestos(true);
+    try {
+      await upsertDocument(COLLECTIONS.configuracion, "puestos", { lista: base });
+      setPuestosList(base);
+      setPuestosListDraft(base);
+      setNuevoPuesto("");
+      setShowPuestosModal(false);
+    } catch {
+      window.dispatchEvent(new CustomEvent("duro:toast", {
+        detail: { type: "error", message: "No se pudo guardar el catálogo de puestos." },
+      }));
+    } finally {
+      setSavingPuestos(false);
+    }
+  }
 
   useEffect(() => {
     if (!loading) { setLoadingLong(false); return; }
@@ -274,7 +343,11 @@ export default function EmpleadosPage() {
         (op.rfc ?? "").toLowerCase().includes(term) ||
         (op.curp ?? "").toLowerCase().includes(term) ||
         (op.noSeguroSocial ?? "").toLowerCase().includes(term);
-      const matchFiltro = filtro === "Todos" || (filtro === "Activos" && !op.baja) || (filtro === "Baja" && !!op.baja);
+      const limite90 = Date.now() + 90 * 24 * 60 * 60 * 1000;
+      const tieneDocVencer = !op.baja && [op.vencimientoLicencia, op.vencimientoCredencial, op.vencimientoContrato].some(
+        (f) => f && new Date(f).getTime() <= limite90
+      );
+      const matchFiltro = filtro === "Todos" || (filtro === "Activos" && !op.baja) || (filtro === "Baja" && !!op.baja) || (filtro === "DocsVencer" && tieneDocVencer);
       return matchQuery && matchFiltro;
     });
   }, [operadores, query, filtro]);
@@ -366,15 +439,23 @@ export default function EmpleadosPage() {
     <div className="space-y-6">
       {/* KPIs */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        <KPICard title="Total empleados" value={String(operadores.length)} icon={Users} />
+        <KPICard title="Total empleados" value={String(operadores.length)} icon={Users}
+          active={filtro === "Todos"}
+          onClick={() => setFiltro("Todos")} />
         <KPICard title="Activos" value={String(totalActivos)} icon={UserCheck}
-          iconColor="text-green-400" iconBg="bg-green-500/10" />
+          iconColor="text-green-400" iconBg="bg-green-500/10"
+          active={filtro === "Activos"}
+          onClick={() => setFiltro("Activos")} />
         <KPICard title="Dados de baja" value={String(totalBaja)} icon={UserMinus}
-          iconColor="text-red-400" iconBg="bg-red-500/10" />
+          iconColor="text-red-400" iconBg="bg-red-500/10"
+          active={filtro === "Baja"}
+          onClick={() => setFiltro("Baja")} />
         <KPICard title="Docs por vencer" value={String(porVencer)} icon={AlertCircle}
           iconColor={porVencer > 0 ? "text-amber-400" : "text-green-400"}
           iconBg={porVencer > 0 ? "bg-amber-500/10" : "bg-green-500/10"}
-          subtitle="Licencia, credencial o contrato" />
+          subtitle="Licencia, credencial o contrato"
+          active={filtro === "DocsVencer"}
+          onClick={() => setFiltro("DocsVencer")} />
       </div>
 
       {/* Toolbar */}
@@ -389,9 +470,15 @@ export default function EmpleadosPage() {
           <option value="Todos">Todos</option>
           <option value="Activos">Activos</option>
           <option value="Baja">Dados de baja</option>
+          <option value="DocsVencer">Docs por vencer</option>
         </AppSelect>
         <span className="text-xs text-gray-500">{filtered.length} empleados</span>
         <div className="ml-auto flex items-center gap-2">
+          <button type="button" onClick={openPuestosModal}
+            title="Gestionar catálogo de puestos"
+            className="flex items-center gap-2 rounded-lg border border-[#3A3A3A] px-3 py-2 text-sm text-gray-300 hover:border-[#CC2229]/60 hover:text-white transition-colors cursor-pointer">
+            <Settings2 size={15} /> Puestos
+          </button>
           <button type="button" onClick={exportExcel}
             className="flex items-center gap-2 rounded-lg border border-[#3A3A3A] px-3 py-2 text-sm text-gray-300 hover:border-green-500/50 hover:text-green-300 transition-colors cursor-pointer">
             <FileSpreadsheet size={15} /> Excel
@@ -508,7 +595,49 @@ export default function EmpleadosPage() {
       </div>
 
       {/* Drawer */}
-      <EmpleadoDrawer open={showForm} editing={editing} onClose={() => { setShowForm(false); setEditing(null); }} onSave={handleSave} />
+      {showPuestosModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+              <h2 className="text-sm font-semibold text-gray-900">Catálogo de puestos</h2>
+              <button onClick={() => setShowPuestosModal(false)} className="text-gray-400 hover:text-gray-600 cursor-pointer"><X size={16} /></button>
+            </div>
+            <div className="px-5 py-4 space-y-2 max-h-72 overflow-y-auto">
+              {puestosListDraft.map((p) => (
+                <div key={p} className="flex items-center justify-between gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                  <span className="text-sm text-gray-800 font-mono">{p}</span>
+                  <button onClick={() => setPuestosListDraft((prev) => prev.filter((x) => x !== p))}
+                    className="text-gray-400 hover:text-red-500 cursor-pointer transition-colors shrink-0">
+                    <X size={13} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="px-5 pb-4 flex gap-2">
+              <input
+                type="text"
+                value={nuevoPuesto}
+                onChange={(e) => setNuevoPuesto(e.target.value.toUpperCase())}
+                onKeyDown={(e) => e.key === "Enter" && addPuesto()}
+                placeholder="Nuevo puesto…"
+                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 uppercase focus:outline-none focus:ring-1 focus:ring-[#CC2229]/40 focus:border-[#CC2229]/60"
+              />
+              <button onClick={addPuesto} className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600 cursor-pointer transition-colors">
+                <Plus size={15} />
+              </button>
+            </div>
+            <div className="px-5 pb-4 flex justify-end gap-2 border-t border-gray-100 pt-3">
+              <button onClick={() => setShowPuestosModal(false)} className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">Cancelar</button>
+              <button onClick={() => void savePuestos()} disabled={savingPuestos}
+                className="px-4 py-2 text-sm font-medium bg-[#CC2229] text-white rounded-lg hover:bg-[#B01E24] disabled:opacity-50 cursor-pointer transition-colors">
+                {savingPuestos ? "Guardando…" : "Guardar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <EmpleadoDrawer open={showForm} editing={editing} onClose={() => { setShowForm(false); setEditing(null); }} onSave={handleSave} puestosList={puestosList} />
 
       {/* Confirm Delete Dialog */}
       {confirmDelete && (

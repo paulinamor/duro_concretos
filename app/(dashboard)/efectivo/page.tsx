@@ -9,6 +9,7 @@ import {
 import { deleteDocument, getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
 import { filterByPlanta, withPlantaTag } from "@/lib/auth";
 import { todayCST } from "@/lib/dateUtils";
+import AppSelect from "@/components/AppSelect";
 import ClienteCombobox from "@/components/ClienteCombobox";
 import KPICard from "@/components/KPICard";
 import PlantaRequired from "@/components/PlantaRequired";
@@ -369,9 +370,9 @@ function SalidaDrawer({ open, onClose, onSave, initial, nextFolio }: {
             </div>
             <div>
               <label className={lbl}>Rubro</label>
-              <select value={form.rubro} onChange={(e) => set("rubro", e.target.value)} className={sel}>
+              <AppSelect value={form.rubro} onChange={(e) => set("rubro", e.target.value)}>
                 {RUBROS_EFECTIVO.map((r) => <option key={r} value={r}>{r}</option>)}
-              </select>
+              </AppSelect>
             </div>
           </div>
 
@@ -619,11 +620,10 @@ function SalidasTab({ formOpen, onFormClose }: { formOpen: boolean; onFormClose:
         </div>
 
         {/* Rubro */}
-        <select value={filtroRubro} onChange={(e) => setFiltroRubro(e.target.value)}
-          className="bg-[#1A1A1A] border border-[#3A3A3A] text-sm text-white rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#CC2229] cursor-pointer">
+        <AppSelect dark value={filtroRubro} onChange={(e) => setFiltroRubro(e.target.value)} wrapperClassName="w-auto">
           <option value="Todos">Todos los rubros</option>
           {RUBROS_EFECTIVO.map((r) => <option key={r} value={r}>{r}</option>)}
-        </select>
+        </AppSelect>
 
         {/* Período */}
         <div className="flex items-center gap-1.5 bg-[#2A2A2A] rounded-xl p-1">

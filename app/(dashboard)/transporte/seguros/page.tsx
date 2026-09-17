@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle, CheckCircle2, Clock, Download, Eye, File, FileText,
-  FolderOpen, Image, Plus, Search, Shield, ShieldOff, Trash2, Upload,
-  X, XCircle,
+  FolderOpen, Image, Loader2, Plus, Satellite, Search, Shield, ShieldOff,
+  Trash2, Upload, X, XCircle,
 } from "lucide-react";
 import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
@@ -104,8 +104,8 @@ type VigenciaStatus = "vigente" | "por_vencer" | "vencido" | "sin_registro";
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const TIPOS_UNIDAD = [
-  "Revolvedora", "Bomba", "Tractocamión", "Volteo", "Vehículo",
-  "Maquinaria", "Remolque", "Plataforma", "Otro",
+  "Bomba", "Maquinaria", "Otro", "Plataforma", "Remolque",
+  "Revolvedora", "Tractocamión", "Vehículo", "Volteo",
 ];
 
 const RUBROS: { tipo: string; label: string }[] = [
@@ -126,8 +126,8 @@ function naturalCmp(a: string, b: string) {
 }
 
 const STATUS_POLIZA_OPTS: StatusPoliza[] = [
-  "Condicionada", "Indefinida", "Renovada", "Con financiera",
-  "Sin seguro", "Cotizar", "Cancelada",
+  "Cancelada", "Condicionada", "Con financiera", "Cotizar",
+  "Indefinida", "Renovada", "Sin seguro",
 ];
 
 const ESTADOS_MX = [
@@ -596,6 +596,51 @@ function FormDrawer({
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
 
+  type SamsaraVehicleData = {
+    placa?: string; marca?: string; modelo?: string; anio?: number;
+    kmActual?: number; conductor?: string;
+  };
+  const [samsaraData, setSamsaraData] = useState<SamsaraVehicleData | null>(null);
+  const [samsaraError, setSamsaraError] = useState("");
+  const [fetchingSamsara, setFetchingSamsara] = useState(false);
+
+  async function loadSamsaraData() {
+    const name = form.noEconomico.trim();
+    if (!name) return;
+    setFetchingSamsara(true);
+    setSamsaraData(null);
+    setSamsaraError("");
+    try {
+      const [vRes, sRes, aRes] = await Promise.all([
+        fetch("/api/samsara?endpoint=%2Ffleet%2Fvehicles"),
+        fetch("/api/samsara?endpoint=%2Ffleet%2Fvehicles%2Fstats&types=obdOdometerMeters%2CgpsOdometerMeters"),
+        fetch("/api/samsara?endpoint=%2Ffleet%2Fvehicles%2Fdriver-assignments"),
+      ]);
+      const [vData, sData, aData] = await Promise.all([
+        vRes.json(), sRes.json(), aRes.ok ? aRes.json() : { data: [] },
+      ]);
+      const match = (vData.data ?? []).find((v: { name: string; id: string }) =>
+        v.name.trim().toLowerCase() === name.toLowerCase()
+      );
+      if (!match) { setSamsaraError("No encontrada en Samsara"); return; }
+      const stat  = (sData.data ?? []).find((s: { id: string }) => s.id === match.id);
+      const asgn  = (aData.data ?? []).find((a: { id: string }) => a.id === match.id);
+      const odom  = stat?.obdOdometerMeters?.[0]?.value ?? stat?.gpsOdometerMeters?.[0]?.value;
+      setSamsaraData({
+        placa:     match.licensePlate,
+        marca:     match.make,
+        modelo:    match.model,
+        anio:      match.year,
+        kmActual:  odom != null ? Math.round(odom / 1000) : undefined,
+        conductor: asgn?.driver?.name,
+      });
+    } catch {
+      setSamsaraError("Error al conectar con Samsara");
+    } finally {
+      setFetchingSamsara(false);
+    }
+  }
+
   useEffect(() => {
     if (!open) return;
     setForm(existing ? formFromRecord(existing, unidad ?? undefined) : emptyForm(unidad ?? undefined));
@@ -793,6 +838,77 @@ function FormDrawer({
               <label className={lbl}>Verificación</label>
               <input type="date" value={form.verificacion} onChange={(e) => set("verificacion", e.target.value)} className={inp} />
             </div>
+          </div>
+
+          {/* ── Comparativo Samsara ─────────────────────────────────────── */}
+          <div className="rounded-xl border border-sky-100 bg-sky-50/50 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Satellite size={13} className="text-sky-600" />
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-sky-700">Comparar con Samsara</span>
+              </div>
+              <button
+                type="button"
+                onClick={loadSamsaraData}
+                disabled={fetchingSamsara || !form.noEconomico}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold bg-sky-600 hover:bg-sky-700 text-white rounded-lg disabled:opacity-40 cursor-pointer transition-colors"
+              >
+                {fetchingSamsara ? <Loader2 size={11} className="animate-spin" /> : <Satellite size={11} />}
+                {fetchingSamsara ? "Consultando…" : "Consultar"}
+              </button>
+            </div>
+
+            {samsaraError && (
+              <p className="text-[11px] text-slate-500 flex items-center gap-1.5">
+                <Satellite size={11} /> {samsaraError}
+              </p>
+            )}
+
+            {samsaraData && (
+              <div className="overflow-hidden rounded-lg border border-sky-200 bg-white">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-sky-50 border-b border-sky-100">
+                      <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-widest text-sky-700 w-28">Campo</th>
+                      <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-widest text-slate-500">ERP</th>
+                      <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-widest text-sky-600">Samsara</th>
+                      <th className="px-3 py-2 w-20"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {([
+                      { label: "Placa",     erpVal: form.placa,               sVal: samsaraData.placa,               field: "placa" as keyof FormState },
+                      { label: "Marca",     erpVal: form.marca,               sVal: samsaraData.marca,               field: "marca" as keyof FormState },
+                      { label: "Modelo",    erpVal: form.modelo,              sVal: samsaraData.modelo,              field: "modelo" as keyof FormState },
+                      { label: "Año",       erpVal: form.anio,                sVal: samsaraData.anio != null ? String(samsaraData.anio) : undefined, field: "anio" as keyof FormState },
+                      { label: "Km actual", erpVal: form.kmActual,            sVal: samsaraData.kmActual != null ? samsaraData.kmActual.toLocaleString("es-MX") : undefined, field: "kmActual" as keyof FormState, rawVal: samsaraData.kmActual != null ? String(samsaraData.kmActual) : undefined },
+                      { label: "Conductor", erpVal: form.choferAsignado,      sVal: samsaraData.conductor,           field: "choferAsignado" as keyof FormState },
+                    ] as { label: string; erpVal: string; sVal?: string; field: keyof FormState; rawVal?: string }[])
+                      .filter((r) => r.sVal)
+                      .map((r) => {
+                        const match = r.erpVal?.trim().toLowerCase() === r.sVal?.trim().toLowerCase();
+                        return (
+                          <tr key={r.label} className={match ? "" : "bg-amber-50/40"}>
+                            <td className="px-3 py-2 text-slate-500 font-medium">{r.label}</td>
+                            <td className="px-3 py-2 text-slate-700 font-mono">{r.erpVal || <span className="text-slate-300">—</span>}</td>
+                            <td className="px-3 py-2 text-sky-700 font-mono font-semibold">{r.sVal}</td>
+                            <td className="px-3 py-2 text-right">
+                              {match
+                                ? <span className="text-[10px] text-emerald-600 font-semibold">✓ Igual</span>
+                                : <button type="button"
+                                    onClick={() => set(r.field, r.rawVal ?? r.sVal ?? "")}
+                                    className="text-[10px] font-semibold text-[#CC2229] hover:underline cursor-pointer whitespace-nowrap">
+                                    Usar Samsara
+                                  </button>
+                              }
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           {/* Tarjeta de Circulación */}

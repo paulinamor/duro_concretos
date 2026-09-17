@@ -624,8 +624,8 @@ export default function ReportesPage() {
           <div className="flex items-center gap-2">
             <AppSelect dark compact value={sortBy} onChange={(e) => setSortBy(e.target.value as "fecha" | "total" | "m3")} wrapperClassName="">
               <option value="fecha">Por fecha</option>
-              <option value="total">Por total</option>
               <option value="m3">Por m³</option>
+              <option value="total">Por total</option>
             </AppSelect>
             <div className="relative">
               <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />

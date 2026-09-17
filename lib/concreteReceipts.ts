@@ -21,6 +21,7 @@ export interface ConcreteReceipt {
   resistencia: string;
   supplyType: ConcreteSupplyType;
   servicioBomba: string;
+  servicioBombaImporte?: number;
   metrosVaciosCantidad: number;
   metrosVaciosPrecio: number;
   precioPorM3: number;
@@ -65,13 +66,14 @@ export function calculateConcreteReceiptTotal({
   precioPorM3,
   metrosVaciosCantidad,
   metrosVaciosPrecio,
-  extras,
   anticipo,
-}: Pick<ConcreteReceipt, "m3" | "precioPorM3" | "metrosVaciosCantidad" | "metrosVaciosPrecio" | "extras" | "anticipo">) {
+  servicioBombaImporte,
+}: Pick<ConcreteReceipt, "m3" | "precioPorM3" | "metrosVaciosCantidad" | "metrosVaciosPrecio" | "anticipo" | "servicioBombaImporte">) {
   const concreteTotal = m3 * precioPorM3;
   const emptyMetersTotal = metrosVaciosCantidad * metrosVaciosPrecio;
-  const extrasTotal = extras.reduce((sum, extra) => sum + (extra.checked ? extra.price : 0), 0);
-  const total = concreteTotal + emptyMetersTotal + extrasTotal;
+  // Bomba: flat amount, not multiplied. Extras are NOT included in total (shown for reference only).
+  const bombaTotal = servicioBombaImporte ?? 0;
+  const total = concreteTotal + emptyMetersTotal + bombaTotal;
 
   return {
     total,

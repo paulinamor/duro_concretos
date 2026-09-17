@@ -210,7 +210,7 @@ export default function CajaChicaPage() {
             <div>
               <label className="block text-sm text-gray-400 mb-1">Categoría</label>
               <AppSelect dark>
-                {["Oficina", "Consumibles", "Transporte", "Mantenimiento", "Representación", "Seguridad"].map(c => <option key={c}>{c}</option>)}
+                {["Consumibles", "Mantenimiento", "Oficina", "Representación", "Seguridad", "Transporte"].map(c => <option key={c}>{c}</option>)}
               </AppSelect>
             </div>
             <div>
@@ -222,7 +222,7 @@ export default function CajaChicaPage() {
             <div>
               <label className="block text-sm text-gray-400 mb-1">No. Comprobante</label>
               <AppSelect dark>
-                {["Ticket", "Factura", "Nota de venta", "Recibo interno"].map((comprobante) => <option key={comprobante}>{comprobante}</option>)}
+                {["Factura", "Nota de venta", "Recibo interno", "Ticket"].map((comprobante) => <option key={comprobante}>{comprobante}</option>)}
               </AppSelect>
             </div>
             <div>

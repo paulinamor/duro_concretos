@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ArrowLeft, BadgeCheck, ChevronRight, Loader2, Plus, Search, Trash2, X } from "lucide-react";
+import AppSelect from "@/components/AppSelect";
 import { upsertDocument, deleteDocument, getCollectionDocs, COLLECTIONS } from "@/lib/db";
 import { filterByPlanta, withPlantaTag } from "@/lib/auth";
 import { todayCST } from "@/lib/dateUtils";
@@ -58,8 +59,8 @@ function saldoPendiente(p: Prog) {
   return Math.max(0, (p.total ?? 0) - (p.montoPagado ?? 0));
 }
 
-const METODOS = ["Efectivo", "Transferencia", "Cheque", "Tarjeta"] as const;
-const BANCOS  = ["Banregio", "BBVA", "Santander", "HSBC", "Banamex", "Otro"] as const;
+const METODOS = ["Cheque", "Efectivo", "Tarjeta", "Transferencia"] as const;
+const BANCOS  = ["Banamex", "Banregio", "BBVA", "HSBC", "Otro", "Santander"] as const;
 
 type View = "list" | "new" | "detail";
 
@@ -197,11 +198,10 @@ export default function CobrosPage() {
         </div>
         <input type="month" value={filterMes} onChange={(e) => setFilterMes(e.target.value)}
           className="px-3 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none text-gray-600" />
-        <select value={filterTipo} onChange={(e) => setFilterTipo(e.target.value)}
-          className="px-3 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none text-gray-600 cursor-pointer">
+        <AppSelect value={filterTipo} onChange={(e) => setFilterTipo(e.target.value)} compact wrapperClassName="w-auto">
           <option value="">Tipo de pago</option>
           {METODOS.map((m) => <option key={m}>{m}</option>)}
-        </select>
+        </AppSelect>
         {(q || filterMes || filterTipo) && (
           <button onClick={() => { setQ(""); setFilterMes(""); setFilterTipo(""); }}
             className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-50 cursor-pointer transition-colors">
@@ -455,23 +455,20 @@ function NuevoPagoView({ clientes, progs, onBack, onCreated }: {
           {/* Tipo */}
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1.5">Tipo de transacción <span className="text-[#CC2229]">*</span></label>
-            <select value={tipoPago}
-              onChange={(e) => { setTipoPago(e.target.value); if (e.target.value === "Efectivo" || e.target.value === "Tarjeta") setBanco(""); }}
-              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none focus:border-[#CC2229]/60 cursor-pointer">
+            <AppSelect value={tipoPago} onChange={(e) => { setTipoPago(e.target.value); if (e.target.value === "Efectivo" || e.target.value === "Tarjeta") setBanco(""); }}>
               <option value="">Seleccionar…</option>
               {METODOS.map((m) => <option key={m}>{m}</option>)}
-            </select>
+            </AppSelect>
           </div>
           {/* Banco */}
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1.5">
               Cuenta bancaria {needsBanco && <span className="text-[#CC2229]">*</span>}
             </label>
-            <select value={banco} onChange={(e) => setBanco(e.target.value)} disabled={!needsBanco}
-              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none focus:border-[#CC2229]/60 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
+            <AppSelect value={banco} onChange={(e) => setBanco(e.target.value)} disabled={!needsBanco}>
               <option value="">Seleccionar…</option>
               {BANCOS.map((b) => <option key={b}>{b}</option>)}
-            </select>
+            </AppSelect>
           </div>
         </div>
 
@@ -637,15 +634,14 @@ function DetallePagoView({ pago, progs, onBack, onUpdated }: {
             {/* Remisión */}
             <div>
               <label className="block text-xs font-medium text-gray-400 mb-1.5">Remisión</label>
-              <select value={selectedProgId} onChange={(e) => handleSelectProg(e.target.value)}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none focus:border-[#CC2229]/60 cursor-pointer">
+              <AppSelect value={selectedProgId} onChange={(e) => handleSelectProg(e.target.value)}>
                 <option value="">Seleccionar…</option>
                 {pendientes.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.folio || p.id.slice(-6)} · {fmtDate(p.dia)} · {currency(saldoPendiente(p))}
                   </option>
                 ))}
-              </select>
+              </AppSelect>
             </div>
             {/* Saldo remisión */}
             <div>

@@ -702,7 +702,7 @@ function PedidoDrawer({
           <div>
             <label className={lbl}>T / D / BOM <span className="text-[#CC2229]">*</span></label>
             <div className="flex gap-2">
-              {["Trompo", "Directo", "Bomba"].map((opt) => (
+              {["Bomba", "Directo", "Maquila"].map((opt) => (
                 <button key={opt} type="button" onClick={() => set("tdBom", form.tdBom === opt ? "" : opt)}
                   className={`flex-1 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${form.tdBom === opt ? "bg-[#CC2229] border-[#CC2229] text-white" : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"}`}>
                   {opt}
@@ -1615,6 +1615,7 @@ export default function VentasProgramacionPage() {
         onSaveCliente={handleSaveCliente}
         onSaveObra={(cliente, nombre, direccion) => void autoSaveObra(cliente, nombre, direccion)}
       />
+
     </div>
   );
 }
