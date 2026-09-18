@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import {
-  FileText, Info, Link as LinkIcon, Plus, Search, X,
+  Download, FileText, Info, Link as LinkIcon, Printer, Save, Search, Settings, X,
 } from "lucide-react";
 import Link from "next/link";
 import KPICard from "@/components/KPICard";
 import AppSelect from "@/components/AppSelect";
-import { getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
+import { getCollectionDocs, getDocument, upsertDocument, COLLECTIONS } from "@/lib/db";
 import { filterByPlanta, getActivePlanta, withPlantaTag } from "@/lib/auth";
 import { todayCST, currentMonthCST } from "@/lib/dateUtils";
 import type { Cliente } from "@/lib/crmClientes";
@@ -18,12 +19,14 @@ import type { Operador } from "@/lib/operadores";
 export interface RemisionDespacho {
   id?: string;
   tipo: "despacho";
+  status?: "pendiente" | "creada";
   noRemision: string;
   fecha: string;
   cliente: string;
   obra: string;
   m3: number;
   mezcla: string;
+  descripcion?: string;
   planta: "Allende" | "Pesquería";
   horaSalidaPlanta: string;
   operador: string;
@@ -34,6 +37,22 @@ export interface RemisionDespacho {
   programacionFolio?: string;
   creadoEn: string;
 }
+
+interface EmpresaInfo {
+  nombre: string;
+  direccion: string;
+  cp: string;
+  telefono: string;
+  email: string;
+}
+
+const EMPRESA_DEFAULT: EmpresaInfo = {
+  nombre: "DURO CONCRETOS",
+  direccion: "LAZARO CARDENAS 2225 PISO3INT-B DEL VALLE ORIENTE",
+  cp: "66260",
+  telefono: "8120000852",
+  email: "Ofertas@duroconcretos.com",
+};
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
@@ -63,6 +82,141 @@ function monthLabel(p: string) {
   return new Date(parseInt(y), parseInt(m) - 1).toLocaleDateString("es-MX", { month: "long", year: "numeric" });
 }
 
+function fechaLarga(fecha: string) {
+  const [d, mo, y] = fecha.split("/");
+  if (!d || !mo || !y) return fecha;
+  return new Date(Number(y), Number(mo) - 1, Number(d))
+    .toLocaleDateString("es-MX", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
+}
+
+function RemisionPDFContent({ r, emp }: { r: RemisionDespacho; emp: EmpresaInfo }) {
+  return (
+    <div className="font-sans text-[11px] leading-tight bg-white p-8">
+      {/* Header empresa */}
+      <div className="flex items-center justify-between pb-3 mb-4 border-b-2 border-gray-800">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/DC_LOGO-removebg-preview.png" alt={emp.nombre} style={{ height: 64, objectFit: "contain" }} />
+        <div className="text-right leading-relaxed">
+          <p style={{ fontWeight: 900, fontSize: 14, letterSpacing: "0.05em" }}>{emp.nombre}</p>
+          <p className="text-gray-600">{emp.direccion}</p>
+          <p className="text-gray-600">C.P. {emp.cp}</p>
+          <p className="text-gray-600">Tel. {emp.telefono}</p>
+          <p className="text-gray-600">{emp.email}</p>
+        </div>
+      </div>
+
+      {/* Título + número */}
+      <div className="flex items-center justify-between mb-3">
+        <p style={{ fontSize: 13, fontWeight: 900, letterSpacing: "0.1em", textTransform: "uppercase", color: "#374151" }}>
+          Remisión
+        </p>
+        <div style={{ border: "2px solid #1f2937", padding: "4px 16px", textAlign: "center" }}>
+          <p style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#6b7280" }}>No. Remisión</p>
+          <p style={{ fontSize: 20, fontWeight: 900, color: "#CC2229", lineHeight: 1 }}>{r.noRemision}</p>
+        </div>
+      </div>
+
+      {/* Info general */}
+      <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #1f2937" }}>
+        <tbody>
+          <tr>
+            <td style={{ border: "1px solid #1f2937", padding: "6px 10px", width: "55%" }}>
+              <span style={{ fontWeight: 700, textTransform: "uppercase", fontSize: 9, color: "#6b7280" }}>Cliente</span><br />
+              <span style={{ fontWeight: 600, fontSize: 12 }}>{r.cliente}</span>
+            </td>
+            <td style={{ border: "1px solid #1f2937", padding: "6px 10px" }}>
+              <span style={{ fontWeight: 700, textTransform: "uppercase", fontSize: 9, color: "#6b7280" }}>Fecha</span><br />
+              <span style={{ fontWeight: 600, textTransform: "capitalize" }}>{fechaLarga(r.fecha)}</span>
+            </td>
+          </tr>
+          <tr>
+            <td style={{ border: "1px solid #1f2937", padding: "6px 10px" }} colSpan={2}>
+              <span style={{ fontWeight: 700, textTransform: "uppercase", fontSize: 9, color: "#6b7280" }}>Obra / Destino</span><br />
+              <span style={{ fontWeight: 600, fontSize: 12 }}>{r.obra || "—"}</span>
+            </td>
+          </tr>
+          <tr>
+            <td style={{ border: "1px solid #1f2937", padding: "6px 10px" }}>
+              <span style={{ fontWeight: 700, textTransform: "uppercase", fontSize: 9, color: "#6b7280" }}>m³ pedidos</span><br />
+              <span>—</span>
+            </td>
+            <td style={{ border: "1px solid #1f2937", padding: "6px 10px" }}>
+              <span style={{ fontWeight: 700, textTransform: "uppercase", fontSize: 9, color: "#6b7280" }}>m³ entregados</span><br />
+              <span style={{ fontWeight: 700, fontSize: 13 }}>{r.m3}</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      {/* Producto */}
+      <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #1f2937", borderTop: "none" }}>
+        <thead>
+          <tr style={{ backgroundColor: "#f3f4f6" }}>
+            <th style={{ border: "1px solid #1f2937", padding: "6px 10px", textAlign: "left", fontWeight: 700, textTransform: "uppercase", fontSize: 9, width: 80 }}>Cantidad</th>
+            <th style={{ border: "1px solid #1f2937", padding: "6px 10px", textAlign: "left", fontWeight: 700, textTransform: "uppercase", fontSize: 9, width: 150 }}>Código</th>
+            <th style={{ border: "1px solid #1f2937", padding: "6px 10px", textAlign: "left", fontWeight: 700, textTransform: "uppercase", fontSize: 9 }}>Descripción</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style={{ border: "1px solid #1f2937", padding: "10px", fontWeight: 600 }}>{r.m3} m³</td>
+            <td style={{ border: "1px solid #1f2937", padding: "10px", fontFamily: "monospace" }}>{r.mezcla || "—"}</td>
+            <td style={{ border: "1px solid #1f2937", padding: "10px" }}>
+              {r.descripcion || (r.mezcla ? `Concreto premezclado ${r.mezcla}` : "—")}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      {/* Datos operativos */}
+      <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #1f2937", borderTop: "none" }}>
+        <tbody>
+          <tr>
+            <td style={{ border: "1px solid #1f2937", padding: "6px 10px", width: "50%" }}>
+              <span style={{ fontWeight: 700, textTransform: "uppercase", fontSize: 9, color: "#6b7280" }}>Planta</span><br />
+              <span style={{ fontWeight: 600 }}>{r.planta?.toUpperCase()}</span>
+            </td>
+            <td style={{ border: "1px solid #1f2937", padding: "6px 10px" }}>
+              <span style={{ fontWeight: 700, textTransform: "uppercase", fontSize: 9, color: "#6b7280" }}>Hora salida de planta</span><br />
+              <span style={{ fontWeight: 600 }}>{r.horaSalidaPlanta || "—"}</span>
+            </td>
+          </tr>
+          <tr>
+            <td style={{ border: "1px solid #1f2937", padding: "6px 10px" }}>
+              <span style={{ fontWeight: 700, textTransform: "uppercase", fontSize: 9, color: "#6b7280" }}>Operador</span><br />
+              <span style={{ fontWeight: 600 }}>{r.operador || "—"}</span>
+            </td>
+            <td style={{ border: "1px solid #1f2937", padding: "6px 10px" }}>
+              <span style={{ fontWeight: 700, textTransform: "uppercase", fontSize: 9, color: "#6b7280" }}>Unidad / CR</span><br />
+              <span style={{ fontWeight: 600 }}>{r.cr || "—"}</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      {/* Firmas */}
+      <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #1f2937", borderTop: "none" }}>
+        <tbody>
+          <tr>
+            <td style={{ border: "1px solid #1f2937", padding: "8px 10px 40px", width: "50%" }}>
+              <span style={{ fontWeight: 700, textTransform: "uppercase", fontSize: 9, color: "#6b7280" }}>Entregó</span><br />
+              <span style={{ fontWeight: 600 }}>{r.operador || "—"}</span>
+              <div style={{ marginTop: 48, borderTop: "1px solid #9ca3af", width: 160 }} />
+              <p style={{ fontSize: 9, color: "#9ca3af", marginTop: 2 }}>Firma</p>
+            </td>
+            <td style={{ border: "1px solid #1f2937", padding: "8px 10px 40px" }}>
+              <span style={{ fontWeight: 700, textTransform: "uppercase", fontSize: 9, color: "#6b7280" }}>Recibió</span><br />
+              <span style={{ fontWeight: 600 }}>{r.recibidoPor || r.cliente}</span>
+              <div style={{ marginTop: 48, borderTop: "1px solid #9ca3af", width: 160 }} />
+              <p style={{ fontSize: 9, color: "#9ca3af", marginTop: 2 }}>Firma</p>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function adjMonth(p: string, delta: number): string {
   const [y, m] = p.split("-").map(Number);
   const d = new Date(y, m - 1 + delta, 1);
@@ -76,6 +230,7 @@ interface DrawerProps {
   onClose: () => void;
   onSave: (r: RemisionDespacho) => Promise<void>;
   initial?: RemisionDespacho;
+  completar?: boolean;
   clientes: Pick<Cliente, "id" | "razonSocial" | "nombreComercial">[];
   operadores: Pick<Operador, "id" | "nombre">[];
   crOptions: string[];
@@ -90,16 +245,16 @@ interface FormState {
   obra: string;
   m3: string;
   mezcla: string;
+  descripcion: string;
   planta: "Allende" | "Pesquería";
   horaSalidaPlanta: string;
   operador: string;
   cr: string;
-  unidad: string;
   recibidoPor: string;
 }
 
 function RemisionDrawer({
-  open, onClose, onSave, initial, clientes, operadores, crOptions, nextNoRemision, defaultPlanta,
+  open, onClose, onSave, initial, completar, clientes, operadores, crOptions, nextNoRemision, defaultPlanta,
 }: DrawerProps) {
   const empty = (): FormState => ({
     noRemision: nextNoRemision,
@@ -108,11 +263,11 @@ function RemisionDrawer({
     obra: "",
     m3: "",
     mezcla: "",
+    descripcion: "",
     planta: defaultPlanta,
     horaSalidaPlanta: "",
     operador: "",
     cr: "",
-    unidad: "",
     recibidoPor: "",
   });
 
@@ -131,11 +286,11 @@ function RemisionDrawer({
         obra: initial.obra,
         m3: String(initial.m3),
         mezcla: initial.mezcla,
+        descripcion: initial.descripcion ?? "",
         planta: initial.planta,
         horaSalidaPlanta: initial.horaSalidaPlanta,
         operador: initial.operador,
         cr: initial.cr,
-        unidad: initial.unidad,
         recibidoPor: initial.recibidoPor,
       });
     } else {
@@ -153,17 +308,19 @@ function RemisionDrawer({
       await onSave({
         id: initial?.id,
         tipo: "despacho",
+        status: completar ? "creada" : (initial?.status ?? "creada"),
         noRemision: form.noRemision.trim(),
         fecha: isoToDisplay(form.fecha),
         cliente: form.cliente.trim(),
         obra: form.obra.trim(),
         m3: parseFloat(form.m3) || 0,
         mezcla: form.mezcla.trim(),
+        descripcion: form.descripcion.trim(),
         planta: form.planta,
         horaSalidaPlanta: form.horaSalidaPlanta,
         operador: form.operador,
         cr: form.cr,
-        unidad: form.unidad.trim(),
+        unidad: form.cr,
         recibidoPor: form.recibidoPor.trim(),
         programacionId: initial?.programacionId,
         programacionFolio: initial?.programacionFolio,
@@ -186,7 +343,7 @@ function RemisionDrawer({
           </div>
           <div>
             <h2 className="text-sm font-semibold text-gray-900">
-              {initial ? "Editar remisión" : "Nueva remisión de despacho"}
+              {completar ? "Completar remisión" : initial ? "Editar remisión" : "Nueva remisión"}
             </h2>
             <p className="text-xs text-gray-500">Planta {form.planta}</p>
           </div>
@@ -216,7 +373,7 @@ function RemisionDrawer({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={lbl}>No. Remisión <span className="text-[#CC2229]">*</span></label>
-              <input type="text" value={form.noRemision} onChange={(e) => set("noRemision", e.target.value)} placeholder="20806" className={inp} />
+              <input type="text" inputMode="numeric" value={form.noRemision} onChange={(e) => set("noRemision", e.target.value.replace(/\D/g, ""))} placeholder="20806" className={inp} />
             </div>
             <div>
               <label className={lbl}>Fecha</label>
@@ -254,6 +411,17 @@ function RemisionDrawer({
           </div>
 
           <div>
+            <label className={lbl}>Descripción</label>
+            <textarea
+              rows={2}
+              value={form.descripcion}
+              onChange={(e) => set("descripcion", e.target.value)}
+
+              className={inp + " resize-none"}
+            />
+          </div>
+
+          <div>
             <label className={lbl}>Hora de salida de planta</label>
             <input type="time" value={form.horaSalidaPlanta} onChange={(e) => set("horaSalidaPlanta", e.target.value)} className={inp} />
           </div>
@@ -283,15 +451,9 @@ function RemisionDrawer({
             </AppSelect>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={lbl}>Unidad / No. Económico</label>
-              <input type="text" value={form.unidad} onChange={(e) => set("unidad", e.target.value)} placeholder="DR 112" className={inp} />
-            </div>
-            <div>
-              <label className={lbl}>Recibido por</label>
-              <input type="text" value={form.recibidoPor} onChange={(e) => set("recibidoPor", e.target.value)} placeholder="Nombre" className={inp} />
-            </div>
+          <div>
+            <label className={lbl}>Recibido por</label>
+            <input type="text" value={form.recibidoPor} onChange={(e) => set("recibidoPor", e.target.value)} placeholder="Nombre" className={inp} />
           </div>
 
           {initial?.programacionId && (
@@ -313,7 +475,7 @@ function RemisionDrawer({
             disabled={saving || !form.noRemision.trim() || !form.m3}
             className="px-5 py-2.5 text-sm font-semibold bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-xl transition-colors disabled:opacity-60 shadow-lg shadow-[#CC2229]/20 cursor-pointer"
           >
-            {saving ? "Guardando…" : initial ? "Guardar cambios" : "Crear remisión"}
+            {saving ? "Guardando…" : completar ? "Completar remisión" : initial ? "Guardar cambios" : "Crear remisión"}
           </button>
         </div>
       </div>
@@ -335,6 +497,16 @@ export default function RemisionesPage() {
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<RemisionDespacho | undefined>(undefined);
+  const [completarMode, setCompletarMode] = useState(false);
+  const [printTarget, setPrintTarget] = useState<RemisionDespacho | null>(null);
+  const printRef = useRef<HTMLDivElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [generatingPDF, setGeneratingPDF] = useState(false);
+  const [empresa, setEmpresa] = useState<EmpresaInfo>(EMPRESA_DEFAULT);
+  const [empresaModal, setEmpresaModal] = useState(false);
+  const [empresaForm, setEmpresaForm] = useState<EmpresaInfo>(EMPRESA_DEFAULT);
+  const [savingEmpresa, setSavingEmpresa] = useState(false);
 
   const defaultPlanta = useMemo((): "Allende" | "Pesquería" => {
     const ap = getActivePlanta();
@@ -352,11 +524,16 @@ export default function RemisionesPage() {
     getCollectionDocs<Operador>(COLLECTIONS.operadores).then((docs) =>
       setOperadores(docs.filter((o) => !o.baja).map((o) => ({ id: o.id, nombre: o.nombre })))
     );
-    getCollectionDocs<{ id?: string; choferes?: { cr: string }[] }>(COLLECTIONS.programaciones).then((docs) => {
+    getCollectionDocs<{ noEconomico?: string; tipoUnidad?: string }>(COLLECTIONS.seguros).then((docs) => {
       const crs = new Set<string>();
-      docs.forEach((p) => p.choferes?.forEach((c) => { if (c.cr) crs.add(c.cr); }));
+      docs
+        .filter((d) => d.tipoUnidad === "Revolvedora" && d.noEconomico)
+        .forEach((d) => crs.add(d.noEconomico!));
       setCrOptions([...crs].sort());
     });
+    getDocument<EmpresaInfo>(COLLECTIONS.configuracion, "empresa-remisiones").then((doc) => {
+      if (doc) { setEmpresa(doc); setEmpresaForm(doc); }
+    }).catch(() => {});
   }, []);
 
   const nextNoRemision = useMemo(() => {
@@ -379,9 +556,58 @@ export default function RemisionesPage() {
     return [...rows].sort((a, b) => b.noRemision.localeCompare(a.noRemision, undefined, { numeric: true }));
   }, [remisiones, month, search, plantaFilter]);
 
-  const totalM3 = useMemo(() => filtered.reduce((s, r) => s + (r.m3 || 0), 0), [filtered]);
-  const vinculadas = useMemo(() => filtered.filter((r) => r.programacionId).length, [filtered]);
-  const sinVincular = filtered.length - vinculadas;
+  const totalM3 = useMemo(() => filtered.reduce((s, r) => s + (Number(r.m3) || 0), 0), [filtered]);
+  const creadas = useMemo(() => filtered.filter((r) => r.status === "creada").length, [filtered]);
+  const pendientes = filtered.length - creadas;
+
+  function openPreview(r: RemisionDespacho) {
+    setPrintTarget(r);
+    setPreviewOpen(true);
+  }
+
+  function doPrint() {
+    setPreviewOpen(false);
+    setTimeout(() => window.print(), 80);
+  }
+
+  async function downloadPDF() {
+    if (!previewRef.current || !printTarget) return;
+    setGeneratingPDF(true);
+    try {
+      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+        import("html2canvas"),
+        import("jspdf"),
+      ]);
+      const canvas = await html2canvas(previewRef.current, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        logging: false,
+      });
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "letter" });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const imgW = pageW;
+      const imgH = (canvas.height / canvas.width) * imgW;
+      pdf.addImage(imgData, "PNG", 0, 0, imgW, imgH > pageH ? pageH : imgH);
+      pdf.save(`remision-${printTarget.noRemision}.pdf`);
+    } finally {
+      setGeneratingPDF(false);
+    }
+  }
+
+  async function saveEmpresa() {
+    setSavingEmpresa(true);
+    try {
+      await upsertDocument(COLLECTIONS.configuracion, "empresa-remisiones", empresaForm as Parameters<typeof upsertDocument>[2]);
+      setEmpresa(empresaForm);
+      setEmpresaModal(false);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: "Datos de empresa actualizados." } }));
+    } finally {
+      setSavingEmpresa(false);
+    }
+  }
 
   const handleSave = async (r: RemisionDespacho) => {
     const id = r.id ?? `rem-desp-${r.noRemision}-${Date.now()}`;
@@ -398,6 +624,22 @@ export default function RemisionesPage() {
 
   return (
     <div className="space-y-5">
+      <style jsx global>{`
+        @media print {
+          body * { visibility: hidden !important; }
+          #printable-remision, #printable-remision * { visibility: visible !important; }
+          #printable-remision {
+            position: fixed !important;
+            inset: 0 !important;
+            width: 100vw !important;
+            min-height: 100vh !important;
+            background: white !important;
+            padding: 0.4in !important;
+            color: black !important;
+          }
+          @page { size: letter portrait; margin: 0; }
+        }
+      `}</style>
 
       {/* ── Header ─────────────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-3">
@@ -418,12 +660,13 @@ export default function RemisionesPage() {
           ))}
         </div>
 
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
           <button
-            onClick={() => { setEditing(undefined); setDrawerOpen(true); }}
-            className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#B01E24] text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors shadow-lg shadow-[#CC2229]/20 cursor-pointer"
+            onClick={() => { setEmpresaForm(empresa); setEmpresaModal(true); }}
+            title="Datos de empresa para PDF"
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-500 bg-white border border-gray-200 rounded-lg hover:border-gray-300 hover:text-gray-700 transition-colors cursor-pointer"
           >
-            <Plus size={15} /> Nueva Remisión
+            <Settings size={14} /> Empresa
           </button>
         </div>
       </div>
@@ -432,8 +675,8 @@ export default function RemisionesPage() {
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
         <KPICard title="Total remisiones" value={String(filtered.length)} icon={FileText} iconColor="text-[#CC2229]" subtitle={monthLabel(month)} />
         <KPICard title="M³ totales" value={totalM3.toFixed(1)} icon={FileText} iconColor="text-sky-500" iconBg="bg-sky-500/10" subtitle={`Promedio ${filtered.length ? (totalM3 / filtered.length).toFixed(1) : "0"} m³`} />
-        <KPICard title="Vinculadas" value={String(vinculadas)} icon={FileText} iconColor="text-emerald-500" iconBg="bg-emerald-500/10" subtitle="Con programación asignada" />
-        <KPICard title="Sin vincular" value={String(sinVincular)} icon={FileText} iconColor={sinVincular > 0 ? "text-amber-500" : "text-gray-400"} iconBg={sinVincular > 0 ? "bg-amber-500/10" : "bg-gray-500/10"} subtitle="Sin programación asignada" />
+        <KPICard title="Creadas" value={String(creadas)} icon={FileText} iconColor="text-emerald-500" iconBg="bg-emerald-500/10" subtitle="Remisiones completadas" />
+        <KPICard title="Pendientes" value={String(pendientes)} icon={FileText} iconColor={pendientes > 0 ? "text-amber-500" : "text-gray-400"} iconBg={pendientes > 0 ? "bg-amber-500/10" : "bg-gray-500/10"} subtitle="Pendientes de completar" />
       </div>
 
       {/* ── Table ──────────────────────────────────────────────────────────────── */}
@@ -462,7 +705,7 @@ export default function RemisionesPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100">
-                {["Fecha", "No. Remisión", "Cliente", "Obra", "M³", "Mezcla", "Operador", "CR", "Vinculada", ""].map((h) => (
+                {["Fecha", "No. Remisión", "Cliente", "Obra", "M³", "Mezcla", "Operador", "CR", "Estado", ""].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -474,10 +717,7 @@ export default function RemisionesPage() {
                     <div className="flex flex-col items-center gap-3">
                       <FileText size={32} className="text-gray-300" />
                       <p className="text-sm text-gray-500">Sin remisiones para este período</p>
-                      <button onClick={() => { setEditing(undefined); setDrawerOpen(true); }}
-                        className="flex items-center gap-1.5 text-xs font-semibold text-[#CC2229] hover:text-[#B01E24] cursor-pointer transition-colors">
-                        <Plus size={13} /> Crear primera remisión
-                      </button>
+                      <p className="text-xs text-gray-400">Las remisiones se generan automáticamente desde Programación</p>
                     </div>
                   </td>
                 </tr>
@@ -497,17 +737,34 @@ export default function RemisionesPage() {
                     <td className="px-4 py-3 text-gray-500 text-sm truncate max-w-[120px]">{r.operador || <span className="text-gray-400">—</span>}</td>
                     <td className="px-4 py-3 text-gray-500 text-xs font-mono">{r.cr || <span className="text-gray-400">—</span>}</td>
                     <td className="px-4 py-3">
-                      {r.programacionId
-                        ? <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 border border-emerald-200 text-emerald-700">Vinculada</span>
-                        : <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 border border-amber-200 text-amber-700">Sin vincular</span>}
+                      {r.status === "creada"
+                        ? <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 border border-emerald-200 text-emerald-700">Creada</span>
+                        : <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 border border-amber-200 text-amber-700">Pendiente</span>}
                     </td>
                     <td className="px-4 py-3">
-                      <button
-                        onClick={() => { setEditing(r); setDrawerOpen(true); }}
-                        className="px-3 py-1.5 text-xs font-medium text-gray-500 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
-                      >
-                        Editar
-                      </button>
+                      <div className="flex items-center gap-2">
+                        {r.status !== "creada" && (
+                          <button
+                            onClick={() => { setEditing(r); setCompletarMode(true); setDrawerOpen(true); }}
+                            className="px-3 py-1.5 text-xs font-semibold text-white bg-[#CC2229] hover:bg-[#B01E24] rounded-lg transition-colors cursor-pointer"
+                          >
+                            Completar
+                          </button>
+                        )}
+                        <button
+                          onClick={() => { setEditing(r); setCompletarMode(false); setDrawerOpen(true); }}
+                          className="px-3 py-1.5 text-xs font-medium text-gray-500 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          onClick={() => openPreview(r)}
+                          title="Vista previa / PDF"
+                          className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
+                        >
+                          <Printer size={15} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -529,15 +786,123 @@ export default function RemisionesPage() {
 
       <RemisionDrawer
         open={drawerOpen}
-        onClose={() => { setDrawerOpen(false); setEditing(undefined); }}
+        onClose={() => { setDrawerOpen(false); setEditing(undefined); setCompletarMode(false); }}
         onSave={handleSave}
         initial={editing}
+        completar={completarMode}
         clientes={clientes}
         operadores={operadores}
         crOptions={crOptions}
         nextNoRemision={nextNoRemision}
         defaultPlanta={defaultPlanta}
       />
+
+      {/* ── Empresa modal ────────────────────────────────────────────────────── */}
+      {empresaModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center">
+          <button className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setEmpresaModal(false)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+            <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#CC2229]/10">
+                <Settings size={17} className="text-[#CC2229]" />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">Datos de empresa</h2>
+                <p className="text-xs text-gray-500">Se usan en el encabezado del PDF de remisión</p>
+              </div>
+              <button onClick={() => setEmpresaModal(false)} className="ml-auto p-2 rounded-xl text-gray-400 hover:bg-gray-100 cursor-pointer">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              {([
+                ["nombre", "Nombre de empresa"],
+                ["direccion", "Dirección"],
+                ["cp", "Código postal"],
+                ["telefono", "Teléfono"],
+                ["email", "Correo electrónico"],
+              ] as [keyof EmpresaInfo, string][]).map(([field, label]) => (
+                <div key={field}>
+                  <label className={lbl}>{label}</label>
+                  <input
+                    type="text"
+                    value={empresaForm[field]}
+                    onChange={(e) => setEmpresaForm((p) => ({ ...p, [field]: e.target.value }))}
+                    className={inp}
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-gray-100 bg-gray-50">
+              <button onClick={() => setEmpresaModal(false)} className="px-4 py-2 text-sm text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors cursor-pointer">
+                Cancelar
+              </button>
+              <button
+                onClick={saveEmpresa}
+                disabled={savingEmpresa}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-[#CC2229] hover:bg-[#B01E24] rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <Save size={14} />
+                {savingEmpresa ? "Guardando…" : "Guardar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Vista previa + descarga PDF ─────────────────────────────────────── */}
+      {previewOpen && printTarget && (
+        <div className="fixed inset-0 z-[300] flex flex-col print:hidden">
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setPreviewOpen(false)} />
+
+          {/* Toolbar */}
+          <div className="relative z-10 flex items-center justify-between px-6 py-3 bg-[#1A1A1A] border-b border-[#3A3A3A] shrink-0">
+            <p className="text-sm font-semibold text-white">
+              Vista previa — Remisión <span className="text-[#CC2229]">{printTarget.noRemision}</span>
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={doPrint}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-[#2A2A2A] border border-[#3A3A3A] rounded-lg hover:border-gray-500 transition-colors cursor-pointer"
+              >
+                <Printer size={14} /> Imprimir
+              </button>
+              <button
+                onClick={downloadPDF}
+                disabled={generatingPDF}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-[#CC2229] hover:bg-[#B01E24] rounded-lg transition-colors cursor-pointer disabled:opacity-60"
+              >
+                <Download size={14} />
+                {generatingPDF ? "Generando…" : "Descargar PDF"}
+              </button>
+              <button onClick={() => setPreviewOpen(false)} className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-[#2A2A2A] transition-colors cursor-pointer">
+                <X size={16} />
+              </button>
+            </div>
+          </div>
+
+          {/* Paper preview */}
+          <div className="relative z-10 flex-1 overflow-y-auto py-8 flex justify-center">
+            <div
+              ref={previewRef}
+              className="w-[780px] shadow-2xl"
+              style={{ background: "white" }}
+            >
+              <RemisionPDFContent r={printTarget} emp={empresa} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Hidden div for window.print() ────────────────────────────────────── */}
+      <div
+        id="printable-remision"
+        ref={printRef}
+        className="fixed -left-[9999px] top-0 w-[780px] bg-white text-black print:static print:left-auto print:top-auto print:w-auto"
+      >
+        {printTarget && <RemisionPDFContent r={printTarget} emp={empresa} />}
+      </div>
     </div>
   );
 }

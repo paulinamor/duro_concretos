@@ -6,7 +6,6 @@ import {
   MapPin, Package, Phone, Plus, Search, Truck, Users, X,
 } from "lucide-react";
 import AppSelect from "@/components/AppSelect";
-import ClienteCombobox from "@/components/ClienteCombobox";
 import PlantaRequired from "@/components/PlantaRequired";
 import { upsertDocument, getCollectionDocs, COLLECTIONS, orderBy, limit } from "@/lib/db";
 import { withPlantaTag, getStoredSession, getActivePlanta } from "@/lib/auth";
@@ -409,14 +408,19 @@ function PedidoDrawer({
           </div>
 
           {/* Cliente */}
-          <ClienteCombobox
-            label="Cliente" required value={form.cliente}
-            onChange={(v) => {
-              const norm = v.trim().toUpperCase().replace(/\s+/g, " ");
-              setForm((f) => ({ ...f, cliente: norm, obraNombre: norm !== f.cliente ? "" : f.obraNombre, direccion: norm !== f.cliente ? "" : f.direccion }));
-            }}
-            options={clientesList} placeholder="Buscar cliente registrado…"
-          />
+          <div>
+            <label className={lbl}>Cliente <span className="text-[#CC2229]">*</span></label>
+            <AppSelect
+              value={form.cliente}
+              onChange={(e) => {
+                const norm = e.target.value.trim().toUpperCase().replace(/\s+/g, " ");
+                setForm((f) => ({ ...f, cliente: norm, obraNombre: norm !== f.cliente ? "" : f.obraNombre, direccion: norm !== f.cliente ? "" : f.direccion }));
+              }}
+            >
+              <option value="">Seleccionar cliente…</option>
+              {clientesList.map((c) => <option key={c} value={c}>{c}</option>)}
+            </AppSelect>
+          </div>
           {creditoAlerta && (
             <div className={`flex items-start gap-2 rounded-xl px-3.5 py-2.5 border ${
               creditoAlerta.tipo === "excedido"
@@ -576,7 +580,7 @@ function PedidoDrawer({
           {/* Teléfono */}
           <div>
             <label className={lbl}>Teléfono <span className="text-[#CC2229]">*</span></label>
-            <input type="tel" value={form.telefono} onChange={(e) => set("telefono", e.target.value)} placeholder="81 0000 0000" className={inp} />
+            <input type="tel" inputMode="numeric" value={form.telefono} onChange={(e) => set("telefono", e.target.value.replace(/\D/g, "").slice(0, 10))} placeholder="8100000000" className={inp} maxLength={10} />
           </div>
 
           {/* Dirección / Maps */}
@@ -797,7 +801,7 @@ function PedidoDrawer({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className={lbl}>Teléfono</label>
-                  <input type="tel" value={nuevoForm.telefono} onChange={(e) => setNuevo("telefono", e.target.value)} placeholder="81 0000 0000" className={inp} />
+                  <input type="tel" inputMode="numeric" value={nuevoForm.telefono} onChange={(e) => setNuevo("telefono", e.target.value.replace(/\D/g, "").slice(0, 10))} placeholder="8100000000" className={inp} maxLength={10} />
                 </div>
                 <div>
                   <label className={lbl}>Vendedor asignado</label>

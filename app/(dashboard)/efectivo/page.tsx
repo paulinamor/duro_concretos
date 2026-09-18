@@ -10,7 +10,6 @@ import { deleteDocument, getCollectionDocs, upsertDocument, COLLECTIONS } from "
 import { filterByPlanta, withPlantaTag } from "@/lib/auth";
 import { todayCST } from "@/lib/dateUtils";
 import AppSelect from "@/components/AppSelect";
-import ClienteCombobox from "@/components/ClienteCombobox";
 import KPICard from "@/components/KPICard";
 import PlantaRequired from "@/components/PlantaRequired";
 import type { Cliente } from "@/lib/crmClientes";
@@ -229,7 +228,13 @@ function FormDrawer({ open, onClose, onSave, initial, nextFolio, clientesList }:
         <form onSubmit={handleSave} className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
-              <ClienteCombobox label="Cliente" value={form.cliente} onChange={(v) => set("cliente", v)} options={clientesList} placeholder="Buscar cliente…" />
+              <div>
+                <label className={lbl}>Cliente</label>
+                <AppSelect value={form.cliente} onChange={(e) => set("cliente", e.target.value)}>
+                  <option value="">Seleccionar cliente…</option>
+                  {clientesList.map((c) => <option key={c} value={c}>{c}</option>)}
+                </AppSelect>
+              </div>
             </div>
             <div className="col-span-2">
               <label className={lbl}>Fecha</label>

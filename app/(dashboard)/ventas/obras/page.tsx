@@ -576,16 +576,10 @@ export default function CatalogoObrasPage() {
             <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
               <div>
                 <label className={lbl}>Cliente <span className="text-[#CC2229]">*</span></label>
-                <input
-                  list="obras-clientes-list"
-                  value={form.cliente}
-                  onChange={(e) => setForm((f) => ({ ...f, cliente: e.target.value }))}
-                  placeholder="Nombre del cliente"
-                  className={inp}
-                />
-                <datalist id="obras-clientes-list">
-                  {clientesDisponibles.map((c) => <option key={c} value={c} />)}
-                </datalist>
+                <AppSelect value={form.cliente} onChange={(e) => setForm((f) => ({ ...f, cliente: e.target.value }))}>
+                  <option value="">Seleccionar cliente…</option>
+                  {clientesDisponibles.map((c) => <option key={c} value={c}>{c}</option>)}
+                </AppSelect>
               </div>
               <div>
                 <label className={lbl}>Nombre de la obra <span className="text-[#CC2229]">*</span></label>

@@ -20,7 +20,6 @@ import {
   ConcreteExtra,
   ConcreteReceipt,
   ConcreteSupplyType,
-  concreteReceiptObras,
   concreteReceiptResistencias,
   defaultConcreteExtras,
   formatReceiptDate,
@@ -264,9 +263,9 @@ export default function RecibosConcretoPage() {
   }
 
   // ─── Shared input class ───────────────────────────────────────────────────────
-  const lbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5";
+  const lbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5";
   const inp =
-    "w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-xl px-3.5 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-all";
+    "w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-900 text-sm placeholder-gray-400 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors";
 
   return (
     <div className="space-y-6">
@@ -473,23 +472,26 @@ export default function RecibosConcretoPage() {
             onClick={resetToNew}
             aria-label="Cerrar"
           />
-          <div className="relative ml-auto flex h-full w-full max-w-2xl flex-col bg-[#242424] border-l border-[#3A3A3A] shadow-2xl overflow-hidden">
+          <div className="relative ml-auto flex h-full w-full max-w-lg flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden">
             {/* Drawer header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-[#3A3A3A] shrink-0">
+            <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-4 shrink-0">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#CC2229]/10 text-[#CC2229]">
+                <ReceiptText size={18} />
+              </div>
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">
-                  {loading ? "Cargando…" : `Recibo #${String(effectiveReceiptNumber).padStart(4, "0")}`}
-                </p>
-                <h2 className="text-base font-bold text-white mt-0.5">
+                <h2 className="text-sm font-semibold text-gray-900">
                   {isLoadedReceipt ? "Editar recibo" : "Nuevo recibo"}
                 </h2>
+                <p className="text-xs text-gray-500">
+                  {loading ? "Cargando…" : `Recibo #${String(effectiveReceiptNumber).padStart(4, "0")}`}
+                </p>
               </div>
               <button
                 type="button"
                 onClick={resetToNew}
-                className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+                className="ml-auto rounded-xl p-2 text-gray-400 hover:bg-gray-100 transition-colors cursor-pointer"
               >
-                <X size={18} />
+                <X size={16} />
               </button>
             </div>
 
@@ -498,7 +500,7 @@ export default function RecibosConcretoPage() {
 
               {/* Sección: Datos generales */}
               <div className="space-y-3">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Datos generales</p>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 border-b border-gray-100 pb-1.5">Datos generales</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={lbl}>No. recibo</label>
@@ -507,7 +509,7 @@ export default function RecibosConcretoPage() {
                       value={loading ? "" : effectiveReceiptNumber}
                       readOnly
                       placeholder={loading ? "Cargando…" : ""}
-                      className={`${inp} cursor-not-allowed opacity-60`}
+                      className={`${inp} cursor-not-allowed opacity-50`}
                     />
                   </div>
                   <div>
@@ -522,35 +524,34 @@ export default function RecibosConcretoPage() {
                 </div>
                 <div>
                   <label className={lbl}>Nombre del cliente</label>
-                  <input
-                    list="concrete-clients"
+                  <AppSelect
                     value={receipt.cliente}
                     onChange={(e) => updateReceipt({ cliente: e.target.value })}
-                    placeholder="Nombre o razón social"
-                    className={inp}
-                  />
-                  <datalist id="concrete-clients">
-                    {clienteSuggestions.map((c) => <option key={c} value={c} />)}
-                  </datalist>
+                  >
+                    <option value="">Seleccionar cliente…</option>
+                    {clienteSuggestions.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                    {receipt.cliente && !clienteSuggestions.includes(receipt.cliente) && (
+                      <option value={receipt.cliente}>{receipt.cliente}</option>
+                    )}
+                  </AppSelect>
                 </div>
                 <div>
                   <label className={lbl}>Dirección de la obra</label>
                   <input
-                    list="concrete-obras"
+                    type="text"
                     value={receipt.direccionObra}
                     onChange={(e) => updateReceipt({ direccionObra: e.target.value })}
                     placeholder="Calle, número, colonia…"
                     className={inp}
                   />
-                  <datalist id="concrete-obras">
-                    {concreteReceiptObras.map((o) => <option key={o} value={o} />)}
-                  </datalist>
                 </div>
               </div>
 
               {/* Sección: Concreto */}
               <div className="space-y-3">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Concreto</p>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 border-b border-gray-100 pb-1.5">Concreto</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={lbl}>M³</label>
@@ -564,16 +565,18 @@ export default function RecibosConcretoPage() {
                   </div>
                   <div>
                     <label className={lbl}>Resistencia</label>
-                    <input
-                      list="concrete-resistencias"
+                    <AppSelect
                       value={receipt.resistencia}
                       onChange={(e) => updateReceipt({ resistencia: e.target.value })}
-                      placeholder="F'C 250-20-14…"
-                      className={inp}
-                    />
-                    <datalist id="concrete-resistencias">
-                      {concreteReceiptResistencias.map((r) => <option key={r} value={r} />)}
-                    </datalist>
+                    >
+                      <option value="">Seleccionar…</option>
+                      {concreteReceiptResistencias.map((r) => (
+                        <option key={r} value={r}>{r}</option>
+                      ))}
+                      {receipt.resistencia && !concreteReceiptResistencias.includes(receipt.resistencia) && (
+                        <option value={receipt.resistencia}>{receipt.resistencia}</option>
+                      )}
+                    </AppSelect>
                   </div>
                   <div>
                     <label className={lbl}>Tipo de suministro</label>
@@ -605,7 +608,7 @@ export default function RecibosConcretoPage() {
                       />
                     </div>
                     {(receipt.servicioBombaImporte ?? 0) > 0 && (
-                      <p className="mt-1 text-[10px] text-emerald-400">+ {money(receipt.servicioBombaImporte)} sumado al total</p>
+                      <p className="mt-1 text-[10px] text-emerald-600">+ {money(receipt.servicioBombaImporte)} sumado al total</p>
                     )}
                   </div>
                 </div>
@@ -613,7 +616,7 @@ export default function RecibosConcretoPage() {
 
               {/* Sección: Precios */}
               <div className="space-y-3">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Precios</p>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 border-b border-gray-100 pb-1.5">Precios</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={lbl}>Metros vacíos</label>
@@ -660,8 +663,8 @@ export default function RecibosConcretoPage() {
 
               {/* Sección: Aditivos y extras */}
               <div className="space-y-3">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Aditivos y extras</p>
-                <div className="rounded-xl border border-[#3A3A3A] bg-[#1A1A1A] divide-y divide-[#3A3A3A]">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 border-b border-gray-100 pb-1.5">Aditivos y extras</p>
+                <div className="rounded-xl border border-gray-200 bg-gray-50 divide-y divide-gray-100">
                   {receipt.extras.map((extra, index) => {
                     const qty = parseFloat(extra.quantity) || 0;
                     const subtotal = extra.unit ? qty * extra.price : extra.price;
@@ -674,8 +677,8 @@ export default function RecibosConcretoPage() {
                           className="h-4 w-4 shrink-0 accent-[#CC2229] cursor-pointer"
                         />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm text-gray-200 font-medium leading-tight">{extra.name}</p>
-                          {extra.unit && <p className="text-[10px] text-gray-600">{extra.unit}</p>}
+                          <p className="text-sm text-gray-800 font-medium leading-tight">{extra.name}</p>
+                          {extra.unit && <p className="text-[10px] text-gray-400">{extra.unit}</p>}
                         </div>
                         {extra.unit ? (
                           <div className="flex items-center gap-1.5 shrink-0">
@@ -689,7 +692,7 @@ export default function RecibosConcretoPage() {
                                 checked: (parseFloat(e.target.value) > 0 && extra.price > 0) || extra.checked,
                               })}
                               placeholder="Cant."
-                              className="w-16 rounded-lg border border-[#3A3A3A] bg-[#242424] px-2 py-1.5 text-sm text-white text-center focus:outline-none focus:border-[#CC2229]/60"
+                              className="w-16 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-900 text-center focus:outline-none focus:border-[#CC2229]/60"
                               onWheel={(e) => e.currentTarget.blur()}
                             />
                             <span className="text-gray-600 text-xs shrink-0">×</span>
@@ -703,7 +706,7 @@ export default function RecibosConcretoPage() {
                                 checked: Number(e.target.value) > 0 || extra.checked,
                               })}
                               placeholder="$/u"
-                              className="w-20 rounded-lg border border-[#3A3A3A] bg-[#242424] px-2 py-1.5 text-sm text-white text-right focus:outline-none focus:border-[#CC2229]/60"
+                              className="w-20 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-900 text-right focus:outline-none focus:border-[#CC2229]/60"
                               onWheel={(e) => e.currentTarget.blur()}
                             />
                           </div>
@@ -718,11 +721,11 @@ export default function RecibosConcretoPage() {
                               checked: Number(e.target.value) > 0 || extra.checked,
                             })}
                             placeholder="Importe"
-                            className="w-24 rounded-lg border border-[#3A3A3A] bg-[#242424] px-2 py-1.5 text-sm text-white text-right focus:outline-none focus:border-[#CC2229]/60 shrink-0"
+                            className="w-24 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-900 text-right focus:outline-none focus:border-[#CC2229]/60 shrink-0"
                             onWheel={(e) => e.currentTarget.blur()}
                           />
                         )}
-                        <p className={`w-20 text-sm font-bold text-right tabular-nums shrink-0 ${extra.checked && subtotal > 0 ? "text-white" : "text-gray-700"}`}>
+                        <p className={`w-20 text-sm font-bold text-right tabular-nums shrink-0 ${extra.checked && subtotal > 0 ? "text-gray-900" : "text-gray-300"}`}>
                           {subtotal > 0 ? money(subtotal) : "—"}
                         </p>
                       </div>
@@ -733,7 +736,7 @@ export default function RecibosConcretoPage() {
 
               {/* Sección: Nota y firma */}
               <div className="space-y-3">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Nota y firma</p>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 border-b border-gray-100 pb-1.5">Nota y firma</p>
                 <div>
                   <label className={lbl}>Nota</label>
                   <textarea
@@ -765,24 +768,24 @@ export default function RecibosConcretoPage() {
             </div>
 
             {/* Totals bar */}
-            <div className="grid grid-cols-2 gap-4 px-6 py-3 border-t border-[#3A3A3A] bg-[#1A1A1A] shrink-0">
+            <div className="grid grid-cols-2 gap-4 px-6 py-3 border-t border-gray-100 bg-gray-50 shrink-0">
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Total</p>
-                <p className="text-xl font-bold text-white">{money(realTotal)}</p>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Total</p>
+                <p className="text-xl font-bold text-gray-900">{money(realTotal)}</p>
               </div>
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Resta</p>
-                <p className="text-xl font-bold text-gray-300">{money(realResta)}</p>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Resta</p>
+                <p className="text-xl font-bold text-gray-600">{money(realResta)}</p>
               </div>
             </div>
 
             {/* Drawer footer */}
-            <div className="flex items-center gap-3 border-t border-[#3A3A3A] px-6 py-4 bg-[#242424] shrink-0">
+            <div className="shrink-0 border-t border-gray-100 px-6 py-4 flex items-center gap-3">
               <button
                 type="button"
                 onClick={() => sendWhatsApp()}
                 disabled={saving || loading}
-                className="flex items-center gap-2 rounded-xl border border-[#3A3A3A] px-4 py-2.5 text-sm font-medium text-gray-300 hover:border-green-500/60 hover:text-green-400 transition-colors disabled:opacity-40 cursor-pointer"
+                className="flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-600 hover:border-green-500/60 hover:text-green-600 transition-colors disabled:opacity-40 cursor-pointer"
               >
                 <MessageCircle size={15} />
                 WhatsApp
@@ -792,7 +795,7 @@ export default function RecibosConcretoPage() {
                   type="button"
                   onClick={saveReceipt}
                   disabled={saving || loading}
-                  className="flex items-center gap-2 rounded-xl border border-[#3A3A3A] px-4 py-2.5 text-sm font-medium text-gray-300 hover:border-[#CC2229]/60 hover:text-white transition-colors disabled:opacity-40 cursor-pointer"
+                  className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 border border-gray-200 rounded-xl transition-colors cursor-pointer disabled:opacity-40"
                 >
                   <Save size={15} />
                   {saving ? "Guardando…" : "Guardar"}
@@ -801,7 +804,7 @@ export default function RecibosConcretoPage() {
                   type="button"
                   onClick={printReceipt}
                   disabled={loading || saving}
-                  className="flex items-center gap-2 rounded-xl bg-[#CC2229] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#B01E24] transition-colors shadow-md shadow-[#CC2229]/20 disabled:opacity-40 cursor-pointer"
+                  className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-xl transition-colors disabled:opacity-60 shadow-lg shadow-[#CC2229]/20 cursor-pointer"
                 >
                   <Printer size={15} />
                   Imprimir

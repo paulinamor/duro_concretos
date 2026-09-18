@@ -710,18 +710,15 @@ function EmitirDrawer({
                   </div>
                   <div className="grid grid-cols-2 gap-3 mt-3">
                     <Field label="Clave producto SAT *">
-                      <input
-                        list={`prod-list-${i}`}
-                        value={c.claveProducto}
-                        onChange={(e) => updConcepto(i, "claveProducto", e.target.value)}
-                        className={inputCls}
-                        placeholder="30161801"
-                      />
-                      <datalist id={`prod-list-${i}`}>
+                      <AppSelect value={c.claveProducto} onChange={(e) => updConcepto(i, "claveProducto", e.target.value)}>
+                        <option value="">Seleccionar clave…</option>
                         {CLAVE_PRODUCTO_SUGERIDAS.map((p) => (
                           <option key={p.clave} value={p.clave}>{p.clave} — {p.desc}</option>
                         ))}
-                      </datalist>
+                        {c.claveProducto && !CLAVE_PRODUCTO_SUGERIDAS.some((p) => p.clave === c.claveProducto) && (
+                          <option value={c.claveProducto}>{c.claveProducto}</option>
+                        )}
+                      </AppSelect>
                     </Field>
                     <Field label="Clave unidad SAT *">
                       <AppSelect value={c.claveUnidad} onChange={(e) => updConcepto(i, "claveUnidad", e.target.value)}>

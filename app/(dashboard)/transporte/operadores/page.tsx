@@ -160,7 +160,7 @@ function EmpleadoDrawer({ open, editing, onClose, onSave, puestosList }: {
               </div>
               <div>
                 <label className={lbl}>Nº Seguro Social</label>
-                <input type="text" value={form.noSeguroSocial} onChange={(e) => set("noSeguroSocial", e.target.value)} placeholder="IMSS" className={inp} />
+                <input type="text" inputMode="numeric" value={form.noSeguroSocial} onChange={(e) => set("noSeguroSocial", e.target.value.replace(/\D/g, ""))} placeholder="12345678901" className={inp} maxLength={11} />
               </div>
               <div>
                 <label className={lbl}>CURP</label>
@@ -200,7 +200,7 @@ function EmpleadoDrawer({ open, editing, onClose, onSave, puestosList }: {
               </div>
               <div>
                 <label className={lbl}>Cuenta BBVA</label>
-                <input type="text" value={form.cuentaBBVA} onChange={(e) => set("cuentaBBVA", e.target.value)} placeholder="Nº de cuenta" className={inp} />
+                <input type="text" inputMode="numeric" value={form.cuentaBBVA} onChange={(e) => set("cuentaBBVA", e.target.value.replace(/\D/g, ""))} placeholder="Nº de cuenta" className={inp} maxLength={18} />
               </div>
               <div>
                 <label className={lbl}>Venc. contrato</label>

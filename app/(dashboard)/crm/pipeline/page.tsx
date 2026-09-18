@@ -114,7 +114,7 @@ function OppDrawer({ open, onClose, onSave, editing }: {
             </div>
             <div>
               <label className={lbl}>Teléfono</label>
-              <input type="text" value={form.telefono} onChange={(e) => set("telefono", e.target.value)} placeholder="81 xxxx xxxx" className={inp} />
+              <input type="tel" inputMode="numeric" value={form.telefono} onChange={(e) => set("telefono", e.target.value.replace(/\D/g, "").slice(0, 10))} placeholder="8100000000" className={inp} maxLength={10} />
             </div>
             <div>
               <label className={lbl}>Valor estimado $</label>

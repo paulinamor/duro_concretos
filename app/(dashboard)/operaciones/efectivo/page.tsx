@@ -5,7 +5,7 @@ import { Check, ChevronLeft, ChevronRight, ClipboardList, DollarSign, Pencil, Pl
 import { deleteDocument, getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
 import { filterByPlanta, withPlantaTag } from "@/lib/auth";
 import { todayCST } from "@/lib/dateUtils";
-import ClienteCombobox from "@/components/ClienteCombobox";
+import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
 import PlantaRequired from "@/components/PlantaRequired";
 import type { Cliente } from "@/lib/crmClientes";
@@ -179,13 +179,13 @@ function FormDrawer({ open, onClose, onSave, initial, nextFolio, clientesList }:
           {/* Cliente + Fecha */}
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
-              <ClienteCombobox
-                label="Cliente"
-                value={form.cliente}
-                onChange={(v) => set("cliente", v)}
-                options={clientesList}
-                placeholder="Buscar cliente…"
-              />
+              <div>
+                <label className={lbl}>Cliente</label>
+                <AppSelect value={form.cliente} onChange={(e) => set("cliente", e.target.value)}>
+                  <option value="">Seleccionar cliente…</option>
+                  {clientesList.map((c) => <option key={c} value={c}>{c}</option>)}
+                </AppSelect>
+              </div>
             </div>
             <div className="col-span-2">
               <label className={lbl}>Fecha</label>

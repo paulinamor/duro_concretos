@@ -432,15 +432,15 @@ function CalcularDrawer({ onClose, onGuardar, operadoresList }: CalcularDrawerPr
               </div>
               <div>
                 <label className={lbl}>RFC</label>
-                <input className={`${inp} uppercase font-mono`} value={form.rfc} onChange={(e) => set("rfc", e.target.value)} placeholder="GALJ900101ABC" maxLength={13} />
+                <input className={`${inp} uppercase font-mono`} value={form.rfc} onChange={(e) => set("rfc", e.target.value.toUpperCase())} placeholder="GALJ900101ABC" maxLength={13} />
               </div>
               <div>
                 <label className={lbl}>CURP</label>
-                <input className={`${inp} uppercase font-mono`} value={form.curp} onChange={(e) => set("curp", e.target.value)} placeholder="GALJ900101HNLRPN00" maxLength={18} />
+                <input className={`${inp} uppercase font-mono`} value={form.curp} onChange={(e) => set("curp", e.target.value.toUpperCase())} placeholder="GALJ900101HNLRPN00" maxLength={18} />
               </div>
               <div>
                 <label className={lbl}>NSS (IMSS)</label>
-                <input className={inp} value={form.nss} onChange={(e) => set("nss", e.target.value)} placeholder="12345678901" maxLength={11} />
+                <input className={inp} inputMode="numeric" value={form.nss} onChange={(e) => set("nss", e.target.value.replace(/\D/g, ""))} placeholder="12345678901" maxLength={11} />
               </div>
               <div>
                 <label className={lbl}>Puesto</label>
@@ -448,7 +448,7 @@ function CalcularDrawer({ onClose, onGuardar, operadoresList }: CalcularDrawerPr
               </div>
               <div>
                 <label className={lbl}>Código Postal fiscal</label>
-                <input className={inp} value={form.codigoPostal} onChange={(e) => set("codigoPostal", e.target.value)} placeholder="66600" maxLength={5} />
+                <input className={inp} inputMode="numeric" value={form.codigoPostal} onChange={(e) => set("codigoPostal", e.target.value.replace(/\D/g, "").slice(0, 5))} placeholder="66600" maxLength={5} />
               </div>
             </div>
           </div>

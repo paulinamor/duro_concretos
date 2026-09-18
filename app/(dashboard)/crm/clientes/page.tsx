@@ -288,7 +288,7 @@ function ClienteDrawer({ open, editing, onClose, onSave, errorMsg, vendedoresLis
               </div>
               <div>
                 <label className={lbl}>C.P.</label>
-                <input type="text" value={form.cp} onChange={(e) => set("cp", e.target.value)} placeholder="Código postal" className={inp} />
+                <input type="text" inputMode="numeric" value={form.cp} onChange={(e) => set("cp", e.target.value.replace(/\D/g, "").slice(0, 5))} placeholder="64000" className={inp} maxLength={5} />
               </div>
             </div>
           </div>
@@ -306,7 +306,7 @@ function ClienteDrawer({ open, editing, onClose, onSave, errorMsg, vendedoresLis
               </div>
               <div>
                 <label className={lbl}>Teléfono</label>
-                <input type="text" value={form.telefono} onChange={(e) => set("telefono", e.target.value)} placeholder="81 1234 5678" className={inp} />
+                <input type="tel" inputMode="numeric" value={form.telefono} onChange={(e) => set("telefono", e.target.value.replace(/\D/g, "").slice(0, 10))} placeholder="8112345678" className={inp} maxLength={10} />
               </div>
               <div>
                 <label className={lbl}>Correo electrónico</label>

@@ -9,8 +9,7 @@ import ExcelView from "./ExcelView";
 import type { ExcelProg } from "./ExcelView";
 import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
-import ClienteCombobox from "@/components/ClienteCombobox";
-import { getCollectionDocs, subscribeToCollection, upsertDocument, deleteDocument, COLLECTIONS, type SolicitudAutorizacion, type Notificacion, getAllUserProfiles } from "@/lib/db";
+import { getCollectionDocs, getDocument, subscribeToCollection, upsertDocument, deleteDocument, COLLECTIONS, type SolicitudAutorizacion, type Notificacion, getAllUserProfiles } from "@/lib/db";
 import { filterByPlanta, getStoredSession, withPlantaTag, getCapturePlanta } from "@/lib/auth";
 import { tdBomToBombeo } from "@/lib/sgp";
 import { todayCST, localISODate } from "@/lib/dateUtils";
@@ -400,18 +399,10 @@ function Sec({ title }: { title: string }) {
 
 // ─── ChoferCard ───────────────────────────────────────────────────────────────
 
-interface RemisionDisponible {
-  id: string;
-  noRemision: string;
-  cliente: string;
-  m3: number;
-  programacionId?: string;
-}
-
 function ChoferCard({
   entry, index, total,
   onChange, onRemove,
-  operadoresList, revolveList, remisionesDisponibles,
+  operadoresList, revolveList,
 }: {
   entry: ChoferFormEntry;
   index: number;
@@ -420,7 +411,6 @@ function ChoferCard({
   onRemove: () => void;
   operadoresList: Pick<Operador, "id" | "nombre">[];
   revolveList: string[];
-  remisionesDisponibles: RemisionDisponible[];
 }) {
   const set = (k: keyof ChoferFormEntry, v: string) => onChange({ ...entry, [k]: v });
   const tiempoAuto = calcTiempoDescarga(entry.horaInicioDescarga, entry.horaFinalDescarga);
@@ -478,24 +468,7 @@ function ChoferCard({
         </div>
         <div>
           <label className={lbl}>Remisión</label>
-          {remisionesDisponibles.length > 0 ? (
-            <AppSelect
-              value={entry.remision}
-              onChange={(e) => set("remision", e.target.value)}
-            >
-              <option value="">Sin remisión</option>
-              {remisionesDisponibles.map((r) => (
-                <option key={r.id} value={r.noRemision}>
-                  {r.noRemision} · {r.cliente || "Sin cliente"} · {r.m3} m³
-                </option>
-              ))}
-              {entry.remision && !remisionesDisponibles.some((r) => r.noRemision === entry.remision) && (
-                <option value={entry.remision}>{entry.remision}</option>
-              )}
-            </AppSelect>
-          ) : (
-            <input type="text" value={entry.remision} onChange={(e) => set("remision", e.target.value)} placeholder="18945" className={inp} />
-          )}
+          <input type="text" inputMode="numeric" value={entry.remision} onChange={(e) => set("remision", e.target.value.replace(/\D/g, ""))} placeholder="18945" className={inp} />
         </div>
         <div>
           <label className={lbl}>Num. de sello</label>
@@ -672,7 +645,6 @@ function FormDrawer({
   const [form, setForm] = useState<FormState>(() => emptyForm(dia));
   const [saving, setSaving] = useState(false);
   const [showHistorial, setShowHistorial] = useState(false);
-  const [remisionesDisponibles, setRemisionesDisponibles] = useState<RemisionDisponible[]>([]);
   const [sgpTestando, setSgpTestando] = useState(false);
   const [sgpTestResult, setSgpTestResult] = useState<{ ok: boolean; serie?: string | null; numero?: string | null; error?: string; rawXml?: string } | null>(null);
   const [sgpCancelando, setSgpCancelando] = useState(false);
@@ -711,16 +683,6 @@ function FormDrawer({
     setSgpTestResult(null);
     setObraOpen(false); setObraQuery(""); setObraNewOpen(false);
     setObraNewNombre(""); setObraNewDireccion("");
-    // Load available (unlinked) remisiones de despacho
-    getCollectionDocs<{ id?: string; tipo?: string; noRemision: string; cliente: string; m3: number; programacionId?: string }>(
-      COLLECTIONS.remisiones
-    ).then((docs) => {
-      const progId = initial?.id;
-      const available = docs.filter(
-        (r) => r.tipo === "despacho" && (!r.programacionId || r.programacionId === progId)
-      ).map((r) => ({ id: r.id ?? r.noRemision, noRemision: r.noRemision, cliente: r.cliente, m3: r.m3, programacionId: r.programacionId }));
-      setRemisionesDisponibles(available);
-    }).catch(() => {});
   }, [open, initial, dia]);
 
   const obrasSugeridas = useMemo(() => {
@@ -961,21 +923,37 @@ function FormDrawer({
 
       await onSave(newProg);
 
-      // Link remisiones to this programación
-      const remisionesSeleccionadas = form.choferes
-        .map((c) => c.remision.trim())
-        .filter(Boolean);
-      if (remisionesSeleccionadas.length > 0) {
+      // Auto-create RemisionDespacho pendiente for each chofer with a remision number
+      const choferesCon = form.choferes.filter((c) => c.remision.trim());
+      if (choferesCon.length > 0) {
         const folio = newProg.folio ?? id;
+        const planta: "Allende" | "Pesquería" = (newProg.planta ?? getCapturePlanta() ?? "Allende") as "Allende" | "Pesquería";
         await Promise.all(
-          remisionesDisponibles
-            .filter((r) => remisionesSeleccionadas.includes(r.noRemision) && !r.programacionId)
-            .map((r) =>
-              upsertDocument(COLLECTIONS.remisiones, r.id, {
-                programacionId: id,
-                programacionFolio: folio,
-              })
-            )
+          choferesCon.map(async (c) => {
+            const noRemision = c.remision.trim();
+            const docId = `rem-despacho-${noRemision}`;
+            const existing = await getDocument<{ status?: string }>(COLLECTIONS.remisiones, docId).catch(() => null);
+            if (existing?.status === "creada") return;
+            await upsertDocument(COLLECTIONS.remisiones, docId, {
+              tipo: "despacho",
+              status: "pendiente",
+              noRemision,
+              fecha: newProg.dia,
+              cliente: newProg.cliente,
+              obra: newProg.nombreObra ?? newProg.paraUso ?? "",
+              m3: c.m3 ?? 0,
+              mezcla: newProg.resistencia ?? "",
+              planta,
+              horaSalidaPlanta: c.horaSalida,
+              operador: c.chofer,
+              cr: c.cr,
+              unidad: "",
+              recibidoPor: "",
+              programacionId: id,
+              programacionFolio: folio,
+              creadoEn: new Date().toISOString(),
+            });
+          })
         ).catch(() => {});
       }
 
@@ -1060,18 +1038,17 @@ function FormDrawer({
           <Sec title="Cliente" />
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
-              <ClienteCombobox
-                label="Cliente"
-                required
-                value={form.cliente}
-                onChange={(v) => set("cliente", v)}
-                options={clientesList}
-                placeholder="Buscar o escribir cliente…"
-              />
+              <div>
+                <label className={lbl}>Cliente <span className="text-[#CC2229]">*</span></label>
+                <AppSelect value={form.cliente} onChange={(e) => set("cliente", e.target.value)}>
+                  <option value="">Seleccionar cliente…</option>
+                  {clientesList.map((c) => <option key={c} value={c}>{c}</option>)}
+                </AppSelect>
+              </div>
             </div>
             <div>
               <label className={lbl}>Num. de teléfono</label>
-              <input type="tel" value={form.telefono} onChange={(e) => set("telefono", e.target.value)} placeholder="81 0000 0000" className={inp} />
+              <input type="tel" inputMode="numeric" value={form.telefono} onChange={(e) => set("telefono", e.target.value.replace(/\D/g, "").slice(0, 10))} placeholder="8100000000" className={inp} maxLength={10} />
             </div>
             <div>
               <label className={lbl}>Para uso</label>
@@ -1219,7 +1196,6 @@ function FormDrawer({
                 onRemove={() => removeChofer(i)}
                 operadoresList={operadoresList}
                 revolveList={revolveList}
-                remisionesDisponibles={remisionesDisponibles}
               />
             ))}
             <button
@@ -2261,7 +2237,11 @@ export default function ProgramacionPage() {
       getCollectionDocs<{ tipoUnidad: string; noEconomico: string; unidadId: string }>(COLLECTIONS.seguros),
       getCollectionDocs<Unidad>(COLLECTIONS.unidades),
     ]).then(([ops, clientes, segs, unis]) => {
-      setOperadoresList(ops.filter((o) => !o.baja).map((o) => ({ id: o.id, nombre: o.nombre })));
+      setOperadoresList(
+        ops
+          .filter((o) => !o.baja && o.puesto?.toUpperCase().includes("OPERADOR"))
+          .map((o) => ({ id: o.id, nombre: o.nombre }))
+      );
 
       const unitEstatusMap = new Map(unis.map((u) => [u.id, u.estatus]));
       const revolvedoras = segs

@@ -5,7 +5,7 @@
 
 const SGP_ENDPOINT =
   process.env.SGP_ENDPOINT ??
-  "http://sybil.com.mx:9000/SgpWebService/SgpWebService.asmx";
+  "http://100.115.105.16:9000/SgpWebService/SgpWebService.asmx";
 const SGP_USUARIO = process.env.SGP_USUARIO ?? "";
 const SGP_PLANTA_CLAVES: Record<string, string> = {
   Allende: process.env.SGP_PLANTA_CLAVE_ALLENDE ?? "",
@@ -112,15 +112,31 @@ export interface SgpProgramacion {
   clienteNumeroErp?: string;
   clienteFisicaMoral?: "S" | "N";
   clienteRazonSocial: string;
+  clienteApellidoPaterno?: string;
+  clienteApellidoMaterno?: string;
+  clienteNombres?: string;
+  clienteNumeroInterior?: string;
+  clienteNumeroExterior?: string;
+  clienteCalle?: string;
+  clienteColonia?: string;
+  clienteMunicipio?: string;
+  clienteEstado?: string;
+  clienteCodigoPostal?: string;
   clienteTelefono?: string;
   // Obra
   obraNumeroErp?: string;
   obraDescripcion: string;
+  obraNumeroInterior?: string;
+  obraNumeroExterior?: string;
   obraDireccion?: string;
+  obraColonia?: string;
   obraMunicipio?: string;
   obraEstado?: string;
+  obraCodigoPostal?: string;
+  obraTelefono?: string;
   obraEncargado?: string;
   // Frente
+  frenteNumeroErp?: string;
   frenteDescripcion?: string;
   // Planta
   planta: string;
@@ -144,41 +160,42 @@ export function buildCrearPedidoXml(p: SgpProgramacion): string {
 <metros_por_unidad>${p.metrosPorUnidad ?? ""}</metros_por_unidad>\
 <fecha_suministro>${escapeXml(p.fechaSuministro)}</fecha_suministro>\
 <hora_en_obra>${escapeXml(hora)}</hora_en_obra>\
-<nivel_a_colar>${escapeXml(p.nivelAColar ?? "")}</nivel_a_colar>\
+<hora_envio>${escapeXml(hora)}</hora_envio>\
+<nivel_a_colar>${escapeXml(p.nivelAColar ?? "0")}</nivel_a_colar>\
 <bombeo_propio>${p.bombeoPropio ?? "N"}</bombeo_propio>\
 <bombeo_cliente>${p.bombeoCliente ?? "N"}</bombeo_cliente>\
-<intervalo_carga>${p.intervaloCarga ?? ""}</intervalo_carga>\
+<intervalo_carga>${p.intervaloCarga ? `00:${String(p.intervaloCarga).padStart(2,"0")}:00` : "00:30:00"}</intervalo_carga>\
 <cliente>\
-<numero_erp>${escapeXml(p.clienteNumeroErp ?? "")}</numero_erp>\
+<numero_erp>${escapeXml(p.clienteNumeroErp || "1")}</numero_erp>\
 <fisica_moral>${p.clienteFisicaMoral ?? "S"}</fisica_moral>\
 <razon_social>${escapeXml(p.clienteRazonSocial)}</razon_social>\
-<apellido_paterno></apellido_paterno>\
-<apellido_materno></apellido_materno>\
-<nombres></nombres>\
-<numero_interior></numero_interior>\
-<numero_exterior></numero_exterior>\
-<calle></calle>\
-<colonia></colonia>\
-<municipio></municipio>\
-<estado></estado>\
-<codigo_postal></codigo_postal>\
-<telefono>${escapeXml(p.clienteTelefono ?? "")}</telefono>\
+<apellido_paterno>${escapeXml(p.clienteApellidoPaterno ?? "N/A")}</apellido_paterno>\
+<apellido_materno>${escapeXml(p.clienteApellidoMaterno ?? "N/A")}</apellido_materno>\
+<nombres>${escapeXml(p.clienteNombres ?? "N/A")}</nombres>\
+<numero_interior>${escapeXml(p.clienteNumeroInterior ?? "S/N")}</numero_interior>\
+<numero_exterior>${escapeXml(p.clienteNumeroExterior ?? "S/N")}</numero_exterior>\
+<calle>${escapeXml(p.clienteCalle ?? "N/A")}</calle>\
+<colonia>${escapeXml(p.clienteColonia ?? "N/A")}</colonia>\
+<municipio>${escapeXml(p.clienteMunicipio ?? "N/A")}</municipio>\
+<estado>${escapeXml(p.clienteEstado ?? "Nuevo León")}</estado>\
+<codigo_postal>${escapeXml(p.clienteCodigoPostal ?? "00000")}</codigo_postal>\
+<telefono>${escapeXml(p.clienteTelefono ?? "0000000000")}</telefono>\
 </cliente>\
 <obra>\
-<numero_erp>${escapeXml(p.obraNumeroErp ?? "")}</numero_erp>\
-<descripcion>${escapeXml(p.obraDescripcion)}</descripcion>\
-<numero_interior></numero_interior>\
-<numero_exterior></numero_exterior>\
-<calle>${escapeXml(p.obraDireccion ?? "")}</calle>\
-<colonia></colonia>\
-<municipio>${escapeXml(p.obraMunicipio ?? "")}</municipio>\
-<estado>${escapeXml(p.obraEstado ?? "")}</estado>\
-<codigo_postal></codigo_postal>\
-<telefono></telefono>\
-<encargado>${escapeXml(p.obraEncargado ?? "")}</encargado>\
+<numero_erp>${escapeXml(p.obraNumeroErp || "1")}</numero_erp>\
+<descripcion>${escapeXml(p.obraDescripcion || "N/A")}</descripcion>\
+<numero_interior>${escapeXml(p.obraNumeroInterior ?? "S/N")}</numero_interior>\
+<numero_exterior>${escapeXml(p.obraNumeroExterior ?? "S/N")}</numero_exterior>\
+<calle>${escapeXml(p.obraDireccion || "N/A")}</calle>\
+<colonia>${escapeXml(p.obraColonia ?? "N/A")}</colonia>\
+<municipio>${escapeXml(p.obraMunicipio ?? "N/A")}</municipio>\
+<estado>${escapeXml(p.obraEstado ?? "Nuevo León")}</estado>\
+<codigo_postal>${escapeXml(p.obraCodigoPostal ?? "00000")}</codigo_postal>\
+<telefono>${escapeXml(p.obraTelefono ?? "0000000000")}</telefono>\
+<encargado>${escapeXml(p.obraEncargado ?? "N/A")}</encargado>\
 </obra>\
 <frente>\
-<numero_erp></numero_erp>\
+<numero_erp>${escapeXml(p.frenteNumeroErp || "1")}</numero_erp>\
 <descripcion>${escapeXml(p.frenteDescripcion ?? "")}</descripcion>\
 <telefono></telefono>\
 <encargado></encargado>\

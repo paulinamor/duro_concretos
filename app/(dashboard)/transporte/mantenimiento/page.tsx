@@ -7,11 +7,14 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  Download,
   DollarSign,
+  FileSpreadsheet,
   ImagePlus,
   Loader2,
   Pencil,
   Plus,
+  Printer,
   Satellite,
   Search,
   Trash2,
@@ -36,6 +39,11 @@ type EventoTipo = "Mantenimiento" | "Reparación" | "Falla";
 type SubtipoMant = "Preventivo" | "Correctivo" | "Inspección";
 type SeveridadFalla = "Alta" | "Media" | "Baja";
 
+interface Concepto {
+  concepto: string;
+  costo: number;
+}
+
 interface EventoRaw {
   id?: string;
   tipo: EventoTipo;
@@ -47,6 +55,7 @@ interface EventoRaw {
   severidad?: SeveridadFalla;
   reportadoPor?: string;
   costo: number;
+  conceptos?: Concepto[];
   taller?: string;
   status: string;
   notas?: string;
@@ -525,6 +534,9 @@ function RegistroDrawer({
   const [fotosFactura, setFotosFactura] = useState<string[]>([]);
   const [fotosEvidencia, setFotosEvidencia] = useState<string[]>([]);
   const [uploadingCat, setUploadingCat] = useState<"factura" | "evidencia" | null>(null);
+  const [conceptos, setConceptos] = useState<Concepto[]>([]);
+
+  const totalConceptos = conceptos.reduce((s, c) => s + (c.costo || 0), 0);
   const [samsaraKm, setSamsaraKm] = useState<number | null>(null);
   const [samsaraFound, setSamsaraFound] = useState<boolean | null>(null);
   const [fetchingSamsara, setFetchingSamsara] = useState(false);
@@ -577,11 +589,13 @@ function RegistroDrawer({
         km: editing.km != null ? String(editing.km) : "",
         horasReparacion: editing.horasReparacion != null ? String(editing.horasReparacion) : "",
       });
+      setConceptos(editing.conceptos ?? []);
       setFotosFactura(editing.fotosFactura ?? []);
       setFotosEvidencia(editing.fotosEvidencia ?? []);
     } else {
       setTipo("Mantenimiento");
       setForm({ fecha: todayISO(), unidad: preselectedUnidad, status: "Pendiente", km: "" });
+      setConceptos([]);
       setFotosFactura([]);
       setFotosEvidencia([]);
     }
@@ -620,13 +634,17 @@ function RegistroDrawer({
     if (!form.unidad || !form.descripcion) return;
     setSaving(true);
     try {
+      const costoFinal = conceptos.length > 0
+        ? totalConceptos
+        : parseFloat((form.costo ?? "0").replace(/[$,\s]/g, "")) || 0;
       const base: EventoRaw = {
         ...(editing?.id ? { id: editing.id } : {}),
         tipo,
         unidad: form.unidad,
         fecha: form.fecha ?? todayISO(),
         descripcion: form.descripcion ?? "",
-        costo: parseFloat((form.costo ?? "0").replace(/[$,\s]/g, "")) || 0,
+        costo: costoFinal,
+        ...(conceptos.length > 0 ? { conceptos } : {}),
         taller: form.taller ?? "",
         status: form.status ?? "Pendiente",
         notas: form.notas ?? "",
@@ -695,7 +713,7 @@ function RegistroDrawer({
               <label className={lbl}>Unidad</label>
               <AppSelect value={form.unidad ?? ""} onChange={(e) => set("unidad", e.target.value)}>
                 <option value="">Seleccionar…</option>
-                {unidadesList.map((u) => <option key={u}>{u}</option>)}
+                {unidadesList.map((u, i) => <option key={`${u}-${i}`}>{u}</option>)}
               </AppSelect>
             </div>
             <div>
@@ -829,20 +847,81 @@ function RegistroDrawer({
               className={inp} />
           </div>
 
-          {/* Costo + Taller */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={lbl}>Costo ($)</label>
-              <input type="text" value={form.costo ?? ""} onChange={(e) => set("costo", e.target.value)} placeholder="0.00" className={inp} />
+          {/* Taller */}
+          <div>
+            <label className={lbl}>{tipo === "Falla" ? "Reportado por" : "Taller / Proveedor"}</label>
+            <input type="text"
+              value={tipo === "Falla" ? (form.reportadoPor ?? "") : (form.taller ?? "")}
+              onChange={(e) => set(tipo === "Falla" ? "reportadoPor" : "taller", e.target.value)}
+              placeholder={tipo === "Falla" ? "Nombre del operador" : "Nombre del taller"}
+              className={inp} />
+          </div>
+
+          {/* Conceptos + costo */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className={lbl}>Conceptos y costos</label>
+              {conceptos.length > 0 && (
+                <span className="text-xs font-bold text-[#CC2229]">
+                  Total: ${totalConceptos.toLocaleString("es-MX", { minimumFractionDigits: 2 })}
+                </span>
+              )}
             </div>
-            <div>
-              <label className={lbl}>{tipo === "Falla" ? "Reportado por" : "Taller / Proveedor"}</label>
-              <input type="text"
-                value={tipo === "Falla" ? (form.reportadoPor ?? "") : (form.taller ?? "")}
-                onChange={(e) => set(tipo === "Falla" ? "reportadoPor" : "taller", e.target.value)}
-                placeholder={tipo === "Falla" ? "Nombre del operador" : "Nombre del taller"}
-                className={inp} />
-            </div>
+
+            {conceptos.length > 0 && (
+              <div className="rounded-xl border border-gray-200 overflow-hidden mb-2">
+                {/* Header */}
+                <div className="grid grid-cols-[1fr_100px_32px] gap-0 bg-gray-50 border-b border-gray-200 px-3 py-1.5">
+                  <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Concepto</span>
+                  <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 text-right pr-1">Costo ($)</span>
+                  <span />
+                </div>
+                {/* Rows */}
+                {conceptos.map((c, i) => (
+                  <div key={i} className="grid grid-cols-[1fr_100px_32px] gap-0 items-center border-b border-gray-100 last:border-0">
+                    <input
+                      type="text"
+                      value={c.concepto}
+                      onChange={(e) => setConceptos((p) => p.map((x, j) => j === i ? { ...x, concepto: e.target.value } : x))}
+                      placeholder="Descripción"
+                      className="w-full px-3 py-2.5 text-sm text-gray-900 placeholder-gray-400 bg-white focus:outline-none focus:bg-gray-50 border-r border-gray-100"
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      value={c.costo || ""}
+                      onChange={(e) => setConceptos((p) => p.map((x, j) => j === i ? { ...x, costo: parseFloat(e.target.value) || 0 } : x))}
+                      placeholder="0.00"
+                      className="w-full px-3 py-2.5 text-sm text-gray-900 placeholder-gray-400 bg-white focus:outline-none focus:bg-gray-50 text-right border-r border-gray-100"
+                    />
+                    <button type="button" onClick={() => setConceptos((p) => p.filter((_, j) => j !== i))}
+                      className="flex items-center justify-center h-full text-gray-300 hover:text-red-400 transition-colors cursor-pointer">
+                      <X size={13} />
+                    </button>
+                  </div>
+                ))}
+                {/* Total row */}
+                <div className="grid grid-cols-[1fr_100px_32px] gap-0 bg-gray-50 border-t border-gray-200">
+                  <span className="px-3 py-2 text-xs font-bold text-gray-500">Total</span>
+                  <span className="px-3 py-2 text-sm font-bold text-[#CC2229] text-right">${totalConceptos.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</span>
+                  <span />
+                </div>
+              </div>
+            )}
+
+            <button type="button"
+              onClick={() => setConceptos((p) => [...p, { concepto: "", costo: 0 }])}
+              className="flex items-center gap-1.5 text-xs font-semibold text-[#CC2229] hover:text-[#B01E24] transition-colors cursor-pointer mb-1">
+              <Plus size={13} /> Agregar concepto
+            </button>
+
+            {conceptos.length === 0 && (
+              <div className="mt-2">
+                <label className={lbl}>Costo total ($)</label>
+                <input type="text" value={form.costo ?? ""} onChange={(e) => set("costo", e.target.value)} placeholder="0.00" className={inp} />
+              </div>
+            )}
           </div>
 
           {/* Notas */}
@@ -902,6 +981,8 @@ export default function MantenimientoPage() {
   const [quickFilter, setQuickFilter] = useState<"all" | "open" | "fallas">("all");
   const [editingEvento, setEditingEvento] = useState<Evento | null>(null);
   const [confirmDeleteEvento, setConfirmDeleteEvento] = useState<Evento | null>(null);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   useEffect(() => {
     if (!loading) { setLoadingLong(false); return; }
@@ -984,10 +1065,16 @@ export default function MantenimientoPage() {
   }, [unitSummaries, query]);
 
   const filteredEventos = useMemo(() => {
+    const toISO = (f: string) => {
+      if (!f) return "";
+      if (f.includes("/")) { const [d, m, y] = f.split("/"); return `${y}-${m}-${d}`; }
+      return f;
+    };
     let list = eventos;
-    // Quick filter from KPI cards
     if (quickFilter === "open") list = list.filter((e) => !["Completado", "Resuelta"].includes(e.status));
     else if (quickFilter === "fallas") list = list.filter((e) => e.tipo === "Falla" && e.status !== "Resuelta");
+    if (dateFrom) list = list.filter((e) => toISO(e.fecha) >= dateFrom);
+    if (dateTo)   list = list.filter((e) => toISO(e.fecha) <= dateTo);
     const q = query.toLowerCase();
     if (!q) return list;
     return list.filter((e) =>
@@ -996,7 +1083,7 @@ export default function MantenimientoPage() {
       (e.causa ?? "").toLowerCase().includes(q) ||
       (e.taller ?? "").toLowerCase().includes(q)
     );
-  }, [eventos, query, quickFilter]);
+  }, [eventos, query, quickFilter, dateFrom, dateTo]);
 
   // KPIs
   const costoTotal = useMemo(() => eventos.reduce((s, e) => s + (e.costo ?? 0), 0), [eventos]);
@@ -1038,6 +1125,40 @@ export default function MantenimientoPage() {
     window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `${ev.tipo} de ${ev.unidad} cerrada.` } }));
   }
 
+  function setThisWeek() {
+    const now = new Date();
+    const day = now.getDay(); // 0=Sun
+    const diff = day === 0 ? 6 : day - 1; // Monday
+    const mon = new Date(now); mon.setDate(now.getDate() - diff);
+    const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+    const fmt = (d: Date) => d.toISOString().split("T")[0];
+    setDateFrom(fmt(mon));
+    setDateTo(fmt(sun));
+  }
+
+  function exportExcel() {
+    const XLSX = require("xlsx");
+    const data = filteredEventos.map((e) => ({
+      Fecha: fmtFecha(e.fecha),
+      Unidad: e.unidad,
+      Tipo: e.tipo,
+      Subtipo: e.subtipo ?? e.severidad ?? "—",
+      Descripción: e.descripcion,
+      "Taller/Proveedor": e.taller ?? e.reportadoPor ?? "—",
+      KM: e.km ?? "—",
+      "Horas taller": e.horasReparacion ?? "—",
+      "Costo ($)": e.costo ?? 0,
+      Status: e.status,
+      Conceptos: (e.conceptos ?? []).map((c) => `${c.concepto}: $${c.costo}`).join(" | ") || "—",
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    ws["!cols"] = [{ wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 35 }, { wch: 20 }, { wch: 10 }, { wch: 13 }, { wch: 12 }, { wch: 12 }, { wch: 40 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Mantenimiento");
+    const label = dateFrom && dateTo ? `${dateFrom}_${dateTo}` : "todos";
+    XLSX.writeFile(wb, `mantenimiento-${label}.xlsx`);
+  }
+
   function openDrawer(unidad = "") {
     setPreselectedUnidad(unidad);
     setEditingEvento(null);
@@ -1076,7 +1197,7 @@ export default function MantenimientoPage() {
           onClick={() => { setViewMode("cronologico"); setQuickFilter("fallas"); }} />
       </div>
 
-      {/* Toolbar */}
+      {/* Toolbar row 1 */}
       <div className="flex flex-wrap items-center gap-3">
         {/* View toggle */}
         <div className="flex gap-1 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg p-1">
@@ -1125,6 +1246,36 @@ export default function MantenimientoPage() {
             </button>
           )}
         </PlantaRequired>
+      </div>
+
+      {/* Toolbar row 2 — fecha + exportar */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs text-gray-500 font-semibold uppercase tracking-widest shrink-0">Periodo:</span>
+        <input
+          type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
+          className="bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-[#CC2229]/60 cursor-pointer"
+        />
+        <span className="text-gray-600 text-xs">—</span>
+        <input
+          type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
+          className="bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-[#CC2229]/60 cursor-pointer"
+        />
+        <button onClick={setThisWeek}
+          className="px-3 py-1.5 text-xs font-semibold text-gray-300 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg hover:border-gray-500 hover:text-white transition-colors cursor-pointer">
+          Esta semana
+        </button>
+        {(dateFrom || dateTo) && (
+          <button onClick={() => { setDateFrom(""); setDateTo(""); }}
+            className="flex items-center gap-1 px-2 py-1.5 text-xs text-gray-500 hover:text-gray-300 transition-colors cursor-pointer">
+            <X size={11} /> Limpiar
+          </button>
+        )}
+        <div className="ml-auto flex items-center gap-2">
+          <button onClick={exportExcel} disabled={filteredEventos.length === 0}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-300 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg hover:border-gray-500 transition-colors cursor-pointer disabled:opacity-40">
+            <FileSpreadsheet size={13} /> Excel
+          </button>
+        </div>
       </div>
 
       {/* Loading */}
@@ -1299,7 +1450,7 @@ export default function MantenimientoPage() {
 
       <RegistroDrawer
         open={showDrawer}
-        unidadesList={unidades.filter((u) => u.estatus !== "Baja").map((u) => u.noEconomico).sort((a, b) => a.localeCompare(b, "es"))}
+        unidadesList={[...new Set(unidades.filter((u) => u.estatus !== "Baja").map((u) => u.noEconomico))].sort((a, b) => a.localeCompare(b, "es"))}
         preselectedUnidad={preselectedUnidad}
         onClose={() => { setShowDrawer(false); setPreselectedUnidad(""); setEditingEvento(null); }}
         onSave={handleSave}
