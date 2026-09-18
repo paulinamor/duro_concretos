@@ -41,6 +41,7 @@ export const moduleCatalog = [
   { href: "/ventas/programacion", label: "Programación Ventas" },
   { href: "/ventas/recibos-concreto", label: "Recibos de Concreto" },
   { href: "/ventas/obras", label: "Catálogo de Obras" },
+  { href: "/ventas/remisiones", label: "Remisiones de Despacho" },
   { href: "/finanzas/cxc", label: "Cuentas por Cobrar" },
   { href: "/finanzas/cxp", label: "Cuentas por Pagar" },
   { href: "/finanzas/cobros", label: "Cobros" },
@@ -57,6 +58,9 @@ export const moduleCatalog = [
 export const DEV_ONLY_ROUTES = new Set([
   "/recursos-humanos/nomina",
   "/configuracion/sat-descarga",
+  "/transporte/samsara-test",
+  "/transporte/flota-en-vivo",
+  "/transporte/programacion-live",
 ]);
 
 // Email con acceso completo a herramientas de desarrollo en el sidebar
@@ -253,6 +257,7 @@ export function getDefaultModulesForRole(role: UserRole) {
     "/ventas/programacion",
     "/ventas/recibos-concreto",
     "/ventas/obras",
+    "/ventas/remisiones",
     "/finanzas/cxc",
     "/finanzas/cxp",
     "/finanzas/cobros",

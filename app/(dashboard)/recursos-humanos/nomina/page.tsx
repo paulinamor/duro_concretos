@@ -10,6 +10,7 @@ import AppSelect from "@/components/AppSelect";
 import StatusBadge from "@/components/StatusBadge";
 import { getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
 import type { DesglosePago, Periodicidad } from "@/lib/nomina/calcular";
+import type { Operador } from "@/lib/operadores";
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -62,13 +63,20 @@ const fmt = (n: number) =>
 // ─── Página principal ─────────────────────────────────────────────────────────
 
 export default function NominaPage() {
-  const [recibos, setRecibos]       = useState<ReciboNomina[]>([]);
-  const [query, setQuery]           = useState("");
-  const [showDrawer, setShowDrawer] = useState(false);
-  const [timbrandoId, setTimbrandoId] = useState<string | null>(null);
+  const [recibos, setRecibos]           = useState<ReciboNomina[]>([]);
+  const [operadoresList, setOperadoresList] = useState<Operador[]>([]);
+  const [query, setQuery]               = useState("");
+  const [showDrawer, setShowDrawer]     = useState(false);
+  const [timbrandoId, setTimbrandoId]   = useState<string | null>(null);
 
   useEffect(() => {
-    getCollectionDocs<ReciboNomina>(COLLECTIONS.nomina).then(setRecibos);
+    Promise.all([
+      getCollectionDocs<ReciboNomina>(COLLECTIONS.nomina),
+      getCollectionDocs<Operador>(COLLECTIONS.operadores),
+    ]).then(([rec, ops]) => {
+      setRecibos(rec);
+      setOperadoresList(ops.filter((o) => !o.baja));
+    });
   }, []);
 
   const totalEmpleados = recibos.length;
@@ -250,7 +258,7 @@ export default function NominaPage() {
 
       {/* Drawer calcular + guardar */}
       {showDrawer && (
-        <CalcularDrawer onClose={() => setShowDrawer(false)} onGuardar={handleGuardar} />
+        <CalcularDrawer onClose={() => setShowDrawer(false)} onGuardar={handleGuardar} operadoresList={operadoresList} />
       )}
     </div>
   );
@@ -261,11 +269,13 @@ export default function NominaPage() {
 interface CalcularDrawerProps {
   onClose: () => void;
   onGuardar: (r: ReciboNomina) => void;
+  operadoresList: Operador[];
 }
 
-function CalcularDrawer({ onClose, onGuardar }: CalcularDrawerProps) {
+function CalcularDrawer({ onClose, onGuardar, operadoresList }: CalcularDrawerProps) {
   const today = new Date().toISOString().slice(0, 10);
 
+  const [selectedOpId, setSelectedOpId] = useState("");
   const [form, setForm] = useState({
     empleado:      "",
     rfc:           "",
@@ -282,6 +292,26 @@ function CalcularDrawer({ onClose, onGuardar }: CalcularDrawerProps) {
     percGravadasExtra: "0",
     percExentasExtra:  "0",
   });
+
+  function handleSelectOperador(id: string) {
+    setSelectedOpId(id);
+    if (!id) return;
+    const op = operadoresList.find((o) => o.id === id);
+    if (!op) return;
+    const salarioDiario = op.sueldoBase > 0
+      ? (op.sueldoBase / 30).toFixed(2)
+      : "";
+    setForm((f) => ({
+      ...f,
+      empleado:      op.nombre,
+      rfc:           op.rfc ?? "",
+      curp:          op.curp ?? "",
+      nss:           op.noSeguroSocial ?? "",
+      puesto:        op.puesto ?? "",
+      salarioDiario,
+    }));
+    setDesglose(null);
+  }
 
   const [desglose, setDesglose]   = useState<DesglosePago | null>(null);
   const [calculando, setCalculando] = useState(false);
@@ -376,6 +406,22 @@ function CalcularDrawer({ onClose, onGuardar }: CalcularDrawerProps) {
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+          {/* Selector de empleado del catálogo */}
+          {operadoresList.length > 0 && (
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-3">Empleado del catálogo</p>
+              <AppSelect value={selectedOpId} onChange={(e) => handleSelectOperador(e.target.value)}>
+                <option value="">Seleccionar empleado…</option>
+                {operadoresList.map((o) => (
+                  <option key={o.id} value={o.id}>{o.nombre} · {o.puesto}</option>
+                ))}
+              </AppSelect>
+              {selectedOpId && (
+                <p className="text-[11px] text-gray-400 mt-1.5">Campos pre-llenados. Ajusta lo que sea necesario antes de calcular.</p>
+              )}
+            </div>
+          )}
+
           {/* Datos del empleado */}
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-3">Empleado</p>

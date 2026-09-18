@@ -38,11 +38,15 @@ const pageTitles: Record<string, string> = {
   "/ventas/programacion":              "Programación Ventas",
   "/ventas/recibos-concreto":          "Recibos de Concreto",
   "/ventas/obras":                     "Catálogo de Obras",
+  "/ventas/remisiones":               "Remisiones de Despacho",
   "/finanzas/cxc":                     "Cuentas por Cobrar",
   "/finanzas/cxp":                     "Cuentas por Pagar",
   "/finanzas/estado-cuenta-clientes":  "Estados de Cuenta",
   "/recursos-humanos/nomina":          "Nómina",
   "/facturacion":                      "Facturación",
+  "/transporte/samsara-test":          "Samsara — Prueba API",
+  "/transporte/flota-en-vivo":         "Flota en vivo",
+  "/transporte/programacion-live":     "Programación en tiempo real · BETA",
 };
 
 const pageSections: Record<string, string> = {
@@ -63,6 +67,7 @@ const pageSections: Record<string, string> = {
   "/ventas/programacion":              "Ventas",
   "/ventas/recibos-concreto":          "Ventas",
   "/ventas/obras":                     "Ventas",
+  "/ventas/remisiones":               "Ventas",
   "/finanzas/cxc":                     "Finanzas",
   "/finanzas/cxp":                     "Finanzas",
   "/finanzas/estado-cuenta-clientes":  "Finanzas",

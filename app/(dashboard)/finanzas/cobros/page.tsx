@@ -9,10 +9,16 @@ import { todayCST } from "@/lib/dateUtils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+interface ClienteDoc {
+  id: string;
+  razonSocial: string;
+}
+
 interface Pago {
   id: string;
   fecha: string;
   cliente: string;
+  clienteId?: string;
   cantidad: number;
   tipoPago: string;
   banco: string;
@@ -67,11 +73,12 @@ type View = "list" | "new" | "detail";
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function CobrosPage() {
-  const [pagos, setPagos]       = useState<Pago[]>([]);
-  const [progs, setProgs]       = useState<Prog[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [view, setView]         = useState<View>("list");
-  const [selected, setSelected] = useState<Pago | null>(null);
+  const [pagos, setPagos]           = useState<Pago[]>([]);
+  const [progs, setProgs]           = useState<Prog[]>([]);
+  const [clientesList, setClientesList] = useState<ClienteDoc[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [view, setView]             = useState<View>("list");
+  const [selected, setSelected]     = useState<Pago | null>(null);
 
   const [q, setQ]                   = useState("");
   const [filterMes, setFilterMes]   = useState("");
@@ -81,20 +88,17 @@ export default function CobrosPage() {
 
   useEffect(() => {
     (async () => {
-      const [p, pr] = await Promise.all([
+      const [p, pr, cl] = await Promise.all([
         getCollectionDocs<Pago>(COLLECTIONS.pagos),
         getCollectionDocs<Prog>(COLLECTIONS.programaciones),
+        getCollectionDocs<ClienteDoc>(COLLECTIONS.clientes),
       ]);
       setPagos(filterByPlanta(p).sort((a, b) => b.fecha.localeCompare(a.fecha)));
       setProgs(filterByPlanta(pr));
+      setClientesList(cl.sort((a, b) => a.razonSocial.localeCompare(b.razonSocial, "es")));
       setLoading(false);
     })();
   }, []);
-
-  const clientes = useMemo(
-    () => [...new Set(progs.map((p) => norm(p.cliente)).filter(Boolean))].sort(),
-    [progs],
-  );
 
   const pagosFiltrados = useMemo(() => pagos.filter((p) => {
     if (q && !norm(p.cliente).includes(norm(q))) return false;
@@ -152,7 +156,7 @@ export default function CobrosPage() {
   );
 
   if (view === "new") return (
-    <NuevoPagoView clientes={clientes} progs={progs} onBack={() => setView("list")} onCreated={onPagoCreated} />
+    <NuevoPagoView clientesList={clientesList} progs={progs} onBack={() => setView("list")} onCreated={onPagoCreated} />
   );
 
   if (view === "detail" && selected) return (
@@ -309,13 +313,14 @@ export default function CobrosPage() {
 
 // ─── Nuevo Pago ───────────────────────────────────────────────────────────────
 
-function NuevoPagoView({ clientes, progs, onBack, onCreated }: {
-  clientes: string[];
+function NuevoPagoView({ clientesList, progs, onBack, onCreated }: {
+  clientesList: ClienteDoc[];
   progs: Prog[];
   onBack: () => void;
   onCreated: (pago: Pago) => void;
 }) {
   const [fecha, setFecha]               = useState(todayCST());
+  const [clienteId, setClienteId]       = useState("");
   const [cliente, setCliente]           = useState("");
   const [cantidad, setCantidad]         = useState("");
   const [tipoPago, setTipoPago]         = useState("");
@@ -335,16 +340,17 @@ function NuevoPagoView({ clientes, progs, onBack, onCreated }: {
 
   const totalPendiente = progsCliente.reduce((s, p) => s + saldoPendiente(p), 0);
 
-  // Auto-sugerir el total pendiente cuando se selecciona un cliente
-  function handleClienteChange(v: string) {
-    setCliente(v);
-    setCantidad(""); // reset para que el usuario vea el resumen y decida
+  function handleClienteChange(id: string) {
+    setClienteId(id);
+    const found = clientesList.find((c) => c.id === id);
+    setCliente(found ? norm(found.razonSocial) : "");
+    setCantidad("");
   }
 
   const needsBanco = tipoPago === "Transferencia" || tipoPago === "Cheque";
 
   async function handleSave() {
-    if (!fecha || !cliente.trim() || !cantidad || parseFloat(cantidad) <= 0 || !tipoPago) {
+    if (!fecha || !clienteId || !cantidad || parseFloat(cantidad) <= 0 || !tipoPago) {
       setErr("Completa los campos requeridos: cliente, cantidad y tipo de pago.");
       return;
     }
@@ -357,6 +363,7 @@ function NuevoPagoView({ clientes, progs, onBack, onCreated }: {
         id,
         fecha,
         cliente: norm(cliente),
+        ...(clienteId ? { clienteId } : {}),
         cantidad: parseFloat(cantidad),
         tipoPago,
         banco: banco || "",
@@ -402,14 +409,12 @@ function NuevoPagoView({ clientes, progs, onBack, onCreated }: {
           {/* Cliente */}
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1.5">Cliente <span className="text-[#CC2229]">*</span></label>
-            <input
-              list="cl-list"
-              value={cliente}
-              onChange={(e) => handleClienteChange(e.target.value)}
-              placeholder="Seleccionar cliente…"
-              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20"
-            />
-            <datalist id="cl-list">{clientes.map((c) => <option key={c} value={c} />)}</datalist>
+            <AppSelect value={clienteId} onChange={(e) => handleClienteChange(e.target.value)}>
+              <option value="">Seleccionar cliente…</option>
+              {clientesList.map((c) => (
+                <option key={c.id} value={c.id}>{c.razonSocial}</option>
+              ))}
+            </AppSelect>
           </div>
         </div>
 

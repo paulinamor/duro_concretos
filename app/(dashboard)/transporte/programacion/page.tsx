@@ -400,10 +400,18 @@ function Sec({ title }: { title: string }) {
 
 // ─── ChoferCard ───────────────────────────────────────────────────────────────
 
+interface RemisionDisponible {
+  id: string;
+  noRemision: string;
+  cliente: string;
+  m3: number;
+  programacionId?: string;
+}
+
 function ChoferCard({
   entry, index, total,
   onChange, onRemove,
-  operadoresList, revolveList,
+  operadoresList, revolveList, remisionesDisponibles,
 }: {
   entry: ChoferFormEntry;
   index: number;
@@ -412,6 +420,7 @@ function ChoferCard({
   onRemove: () => void;
   operadoresList: Pick<Operador, "id" | "nombre">[];
   revolveList: string[];
+  remisionesDisponibles: RemisionDisponible[];
 }) {
   const set = (k: keyof ChoferFormEntry, v: string) => onChange({ ...entry, [k]: v });
   const tiempoAuto = calcTiempoDescarga(entry.horaInicioDescarga, entry.horaFinalDescarga);
@@ -469,7 +478,24 @@ function ChoferCard({
         </div>
         <div>
           <label className={lbl}>Remisión</label>
-          <input type="text" value={entry.remision} onChange={(e) => set("remision", e.target.value)} placeholder="18945" className={inp} />
+          {remisionesDisponibles.length > 0 ? (
+            <AppSelect
+              value={entry.remision}
+              onChange={(e) => set("remision", e.target.value)}
+            >
+              <option value="">Sin remisión</option>
+              {remisionesDisponibles.map((r) => (
+                <option key={r.id} value={r.noRemision}>
+                  {r.noRemision} · {r.cliente || "Sin cliente"} · {r.m3} m³
+                </option>
+              ))}
+              {entry.remision && !remisionesDisponibles.some((r) => r.noRemision === entry.remision) && (
+                <option value={entry.remision}>{entry.remision}</option>
+              )}
+            </AppSelect>
+          ) : (
+            <input type="text" value={entry.remision} onChange={(e) => set("remision", e.target.value)} placeholder="18945" className={inp} />
+          )}
         </div>
         <div>
           <label className={lbl}>Num. de sello</label>
@@ -646,6 +672,7 @@ function FormDrawer({
   const [form, setForm] = useState<FormState>(() => emptyForm(dia));
   const [saving, setSaving] = useState(false);
   const [showHistorial, setShowHistorial] = useState(false);
+  const [remisionesDisponibles, setRemisionesDisponibles] = useState<RemisionDisponible[]>([]);
   const [sgpTestando, setSgpTestando] = useState(false);
   const [sgpTestResult, setSgpTestResult] = useState<{ ok: boolean; serie?: string | null; numero?: string | null; error?: string; rawXml?: string } | null>(null);
   const [sgpCancelando, setSgpCancelando] = useState(false);
@@ -684,6 +711,16 @@ function FormDrawer({
     setSgpTestResult(null);
     setObraOpen(false); setObraQuery(""); setObraNewOpen(false);
     setObraNewNombre(""); setObraNewDireccion("");
+    // Load available (unlinked) remisiones de despacho
+    getCollectionDocs<{ id?: string; tipo?: string; noRemision: string; cliente: string; m3: number; programacionId?: string }>(
+      COLLECTIONS.remisiones
+    ).then((docs) => {
+      const progId = initial?.id;
+      const available = docs.filter(
+        (r) => r.tipo === "despacho" && (!r.programacionId || r.programacionId === progId)
+      ).map((r) => ({ id: r.id ?? r.noRemision, noRemision: r.noRemision, cliente: r.cliente, m3: r.m3, programacionId: r.programacionId }));
+      setRemisionesDisponibles(available);
+    }).catch(() => {});
   }, [open, initial, dia]);
 
   const obrasSugeridas = useMemo(() => {
@@ -923,6 +960,25 @@ function FormDrawer({
       newProg.historial = hist;
 
       await onSave(newProg);
+
+      // Link remisiones to this programación
+      const remisionesSeleccionadas = form.choferes
+        .map((c) => c.remision.trim())
+        .filter(Boolean);
+      if (remisionesSeleccionadas.length > 0) {
+        const folio = newProg.folio ?? id;
+        await Promise.all(
+          remisionesDisponibles
+            .filter((r) => remisionesSeleccionadas.includes(r.noRemision) && !r.programacionId)
+            .map((r) =>
+              upsertDocument(COLLECTIONS.remisiones, r.id, {
+                programacionId: id,
+                programacionFolio: folio,
+              })
+            )
+        ).catch(() => {});
+      }
+
       onClose();
     } catch (err) {
       console.error("Error al guardar programación:", err);
@@ -1163,6 +1219,7 @@ function FormDrawer({
                 onRemove={() => removeChofer(i)}
                 operadoresList={operadoresList}
                 revolveList={revolveList}
+                remisionesDisponibles={remisionesDisponibles}
               />
             ))}
             <button
