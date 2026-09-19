@@ -591,6 +591,7 @@ export default function DieselPage() {
   const [filtroPeriodo, setFiltroPeriodo] = useState<"todo" | "mes">("mes");
   const [mes, setMes] = useState(() => currentMonth());
   const [query, setQuery] = useState("");
+  const [filterBajoRendimiento, setFilterBajoRendimiento] = useState(false);
 
   const cargas = useCollectionRaw<CargaDiesel>(COLLECTIONS.diesel);
   const unidades = useCollectionRaw<Unidad>(COLLECTIONS.unidades);
@@ -621,10 +622,11 @@ export default function DieselPage() {
         const matchFecha = filtroPeriodo === "todo" || inMes(c.fecha);
         const q = query.toLowerCase();
         const matchQ = !q || c.unidad.toLowerCase().includes(q) || c.recibo.toLowerCase().includes(q) || (c.lugar || "").toLowerCase().includes(q);
-        return matchUnidad && matchComb && matchFecha && matchQ;
+        const matchBajo = !filterBajoRendimiento || (c.rendimiento != null && c.rendimiento < 1.3);
+        return matchUnidad && matchComb && matchFecha && matchQ && matchBajo;
       })
       .sort((a, b) => toMs(b.fecha) - toMs(a.fecha));
-  }, [cargas, filterUnidad, filterCombustible, filtroPeriodo, mes, query]);
+  }, [cargas, filterUnidad, filterCombustible, filtroPeriodo, mes, query, filterBajoRendimiento]);
 
   const totalLitros = filtered.reduce((s, c) => s + (c.litros ?? 0), 0);
   const totalCosto = filtered.reduce((s, c) => s + (c.total ?? 0), 0);
@@ -738,10 +740,10 @@ export default function DieselPage() {
 
       {/* KPIs */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        <KPICard title="Total litros" value={`${totalLitros.toLocaleString("es-MX", { maximumFractionDigits: 0 })} L`} icon={Fuel} iconColor="text-amber-500" iconBg="bg-amber-50" subtitle={`${filtered.length} carga${filtered.length !== 1 ? "s" : ""} registradas`} />
-        <KPICard title="Costo total" value={currency(totalCosto)} icon={DollarSign} iconColor="text-[#CC2229]" iconBg="bg-red-50" subtitle={promPrecioL != null ? `$${promPrecioL.toFixed(3)}/L promedio` : undefined} />
-        <KPICard title="Rendimiento promedio" value={promRendimiento != null ? `${promRendimiento.toFixed(2)} km/L` : "—"} icon={Gauge} iconColor="text-sky-500" iconBg="bg-sky-50" subtitle={`${rendValues.length} cargas con odómetro`} />
-        <KPICard title="Bajo rendimiento" value={String(bajoRendimiento)} icon={AlertTriangle} iconColor={bajoRendimiento > 0 ? "text-orange-500" : "text-gray-400"} iconBg={bajoRendimiento > 0 ? "bg-orange-50" : "bg-gray-100"} subtitle="Menor a 1.3 km/L" />
+        <KPICard title="Total litros" value={`${totalLitros.toLocaleString("es-MX", { maximumFractionDigits: 0 })} L`} icon={Fuel} iconColor="text-amber-500" iconBg="bg-amber-50" subtitle={`${filtered.length} carga${filtered.length !== 1 ? "s" : ""} registradas`} active={!filterBajoRendimiento} onClick={() => { setFilterBajoRendimiento(false); setFilterUnidad("Todas"); setFilterCombustible("Todos"); }} />
+        <KPICard title="Costo total" value={currency(totalCosto)} icon={DollarSign} iconColor="text-[#CC2229]" iconBg="bg-red-50" subtitle={promPrecioL != null ? `$${promPrecioL.toFixed(3)}/L promedio` : undefined} active={!filterBajoRendimiento} onClick={() => { setFilterBajoRendimiento(false); setFilterUnidad("Todas"); setFilterCombustible("Todos"); }} />
+        <KPICard title="Rendimiento promedio" value={promRendimiento != null ? `${promRendimiento.toFixed(2)} km/L` : "—"} icon={Gauge} iconColor="text-sky-500" iconBg="bg-sky-50" subtitle={`${rendValues.length} cargas con odómetro`} active={!filterBajoRendimiento} onClick={() => setFilterBajoRendimiento(false)} />
+        <KPICard title="Bajo rendimiento" value={String(bajoRendimiento)} icon={AlertTriangle} iconColor={bajoRendimiento > 0 ? "text-orange-500" : "text-gray-400"} iconBg={bajoRendimiento > 0 ? "bg-orange-50" : "bg-gray-100"} subtitle="Menor a 1.3 km/L" active={filterBajoRendimiento} onClick={() => setFilterBajoRendimiento(true)} />
       </div>
 
       {/* Filters */}

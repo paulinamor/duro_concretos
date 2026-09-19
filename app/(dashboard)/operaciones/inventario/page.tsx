@@ -648,10 +648,10 @@ export default function InventarioPage() {
 
       {/* ── KPIs ───────────────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        <KPICard title="M³ despachados" value={`${totalM3.toFixed(1)}`} icon={BarChart2} iconColor="text-[#CC2229]" subtitle={`${remisionesPeriodo.length} remisiones · ${localPlanta}`} />
-        <KPICard title="Promedio por remisión" value={`${(totalM3 / Math.max(remisionesPeriodo.length, 1)).toFixed(1)} m³`} icon={BarChart2} iconColor="text-sky-400" iconBg="bg-sky-500/10" subtitle={`${diasConProduccion} día${diasConProduccion !== 1 ? "s" : ""} con actividad`} />
-        <KPICard title="Alertas de stock" value={String(materialesConAlerta)} icon={AlertTriangle} iconColor={materialesConAlerta > 0 ? "text-amber-400" : "text-gray-500"} iconBg={materialesConAlerta > 0 ? "bg-amber-500/10" : "bg-gray-500/10"} subtitle={materialesConAlerta > 0 ? "Materiales en déficit o bajo" : "Todos los materiales OK"} />
-        <KPICard title="Existencia inicial" value={existenciaInicial ? "Cargada" : "Faltante"} icon={Layers} iconColor={existenciaInicial ? "text-emerald-400" : "text-amber-400"} iconBg={existenciaInicial ? "bg-emerald-500/10" : "bg-amber-500/10"} subtitle={existenciaInicial ? `${localPlanta} · ${periodLabel(periodo)}` : "Ingresa el inventario inicial"} />
+        <KPICard title="M³ despachados" value={`${totalM3.toFixed(1)}`} icon={BarChart2} iconColor="text-[#CC2229]" subtitle={`${remisionesPeriodo.length} remisiones · ${localPlanta}`} active={tab === "remisiones"} onClick={() => setTab("remisiones")} />
+        <KPICard title="Promedio por remisión" value={`${(totalM3 / Math.max(remisionesPeriodo.length, 1)).toFixed(1)} m³`} icon={BarChart2} iconColor="text-sky-400" iconBg="bg-sky-500/10" subtitle={`${diasConProduccion} día${diasConProduccion !== 1 ? "s" : ""} con actividad`} active={tab === "remisiones"} onClick={() => setTab("remisiones")} />
+        <KPICard title="Alertas de stock" value={String(materialesConAlerta)} icon={AlertTriangle} iconColor={materialesConAlerta > 0 ? "text-amber-400" : "text-gray-500"} iconBg={materialesConAlerta > 0 ? "bg-amber-500/10" : "bg-gray-500/10"} subtitle={materialesConAlerta > 0 ? "Materiales en déficit o bajo" : "Todos los materiales OK"} active={tab === "stock"} onClick={() => setTab("stock")} />
+        <KPICard title="Existencia inicial" value={existenciaInicial ? "Cargada" : "Faltante"} icon={Layers} iconColor={existenciaInicial ? "text-emerald-400" : "text-amber-400"} iconBg={existenciaInicial ? "bg-emerald-500/10" : "bg-amber-500/10"} subtitle={existenciaInicial ? `${localPlanta} · ${periodLabel(periodo)}` : "Ingresa el inventario inicial"} active={tab === "stock"} onClick={() => setTab("stock")} />
       </div>
 
       {/* ── Tabs ───────────────────────────────────────────────────────────────── */}

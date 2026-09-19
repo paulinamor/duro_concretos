@@ -95,10 +95,10 @@ export default function ClientesPorVendedorPage() {
 
       {/* KPI cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <KPICard title="Clientes filtrados" value={String(filtered.length)} icon={UsersRound} iconColor="text-[#CC2229]" />
-        <KPICard title="Venta anual" value={currency(totalVentaAnio)} icon={CircleDollarSign} iconColor="text-green-400" iconBg="bg-green-500/10" />
-        <KPICard title="m³ acumulados" value={`${totalM3.toLocaleString("es-MX")} m³`} icon={Target} iconColor="text-blue-400" iconBg="bg-blue-500/10" />
-        <KPICard title="En riesgo" value={String(clientesBloqueados)} icon={UserRound} iconColor="text-orange-400" iconBg="bg-orange-500/10" subtitle="Bloqueados o sobre límite" />
+        <KPICard title="Clientes filtrados" value={String(filtered.length)} icon={UsersRound} iconColor="text-[#CC2229]" active={seller === "Todos" && status === "Todos"} onClick={() => { setSeller("Todos"); setStatus("Todos"); }} />
+        <KPICard title="Venta anual" value={currency(totalVentaAnio)} icon={CircleDollarSign} iconColor="text-green-400" iconBg="bg-green-500/10" active={seller === "Todos" && status === "Todos"} onClick={() => { setSeller("Todos"); setStatus("Todos"); }} />
+        <KPICard title="m³ acumulados" value={`${totalM3.toLocaleString("es-MX")} m³`} icon={Target} iconColor="text-blue-400" iconBg="bg-blue-500/10" active={seller === "Todos" && status === "Todos"} onClick={() => { setSeller("Todos"); setStatus("Todos"); }} />
+        <KPICard title="En riesgo" value={String(clientesBloqueados)} icon={UserRound} iconColor="text-orange-400" iconBg="bg-orange-500/10" subtitle="Bloqueados o sobre límite" active={status === "Bloqueado"} onClick={() => setStatus("Bloqueado")} />
       </div>
 
       {/* Search + filter toolbar */}

@@ -210,6 +210,7 @@ export default function DashboardPage() {
           iconColor="text-amber-400"
           iconBg="bg-amber-500/10"
           subtitle={`${progsDelMes.length} programaciones`}
+          onClick={() => router.push("/transporte/programacion")}
         />
         <KPICard
           title={`Ventas ${MES_LABELS[now.getMonth()]}`}
@@ -218,6 +219,7 @@ export default function DashboardPage() {
           iconColor="text-emerald-400"
           iconBg="bg-emerald-500/10"
           subtitle={m3Mes > 0 ? `${currency(ventasMes / m3Mes)} / m³ prom.` : "—"}
+          onClick={() => router.push("/facturacion")}
         />
         <KPICard
           title="Por cobrar"
@@ -226,6 +228,7 @@ export default function DashboardPage() {
           iconColor="text-blue-400"
           iconBg="bg-blue-500/10"
           subtitle={`${cxc.filter((c) => c.status !== "Pagado").length} docs pendientes`}
+          onClick={() => router.push("/finanzas/estado-cuenta-clientes")}
         />
         <KPICard
           title="Por pagar"
@@ -234,6 +237,7 @@ export default function DashboardPage() {
           iconColor="text-[#CC2229]"
           iconBg="bg-red-500/10"
           subtitle={`${cxp.filter((c) => c.status !== "Pagado").length} docs pendientes`}
+          onClick={() => router.push("/efectivo")}
         />
       </div>
 

@@ -494,6 +494,7 @@ export default function RemisionesPage() {
   const [month, setMonth] = useState(currentMonth());
   const [search, setSearch] = useState("");
   const [plantaFilter, setPlantaFilter] = useState<"Todas" | "Allende" | "Pesquería">("Todas");
+  const [filterStatus, setFilterStatus] = useState<"" | "creada" | "pendiente">("");
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<RemisionDespacho | undefined>(undefined);
@@ -544,6 +545,8 @@ export default function RemisionesPage() {
   const filtered = useMemo(() => {
     let rows = remisiones.filter((r) => inMonth(r.fecha, month));
     if (plantaFilter !== "Todas") rows = rows.filter((r) => r.planta === plantaFilter);
+    if (filterStatus === "creada") rows = rows.filter((r) => r.status === "creada");
+    else if (filterStatus === "pendiente") rows = rows.filter((r) => r.status !== "creada");
     if (search) {
       const q = search.toLowerCase();
       rows = rows.filter((r) =>
@@ -554,7 +557,7 @@ export default function RemisionesPage() {
       );
     }
     return [...rows].sort((a, b) => b.noRemision.localeCompare(a.noRemision, undefined, { numeric: true }));
-  }, [remisiones, month, search, plantaFilter]);
+  }, [remisiones, month, search, plantaFilter, filterStatus]);
 
   const totalM3 = useMemo(() => filtered.reduce((s, r) => s + (Number(r.m3) || 0), 0), [filtered]);
   const creadas = useMemo(() => filtered.filter((r) => r.status === "creada").length, [filtered]);
@@ -673,10 +676,10 @@ export default function RemisionesPage() {
 
       {/* ── KPIs ───────────────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        <KPICard title="Total remisiones" value={String(filtered.length)} icon={FileText} iconColor="text-[#CC2229]" subtitle={monthLabel(month)} />
-        <KPICard title="M³ totales" value={totalM3.toFixed(1)} icon={FileText} iconColor="text-sky-500" iconBg="bg-sky-500/10" subtitle={`Promedio ${filtered.length ? (totalM3 / filtered.length).toFixed(1) : "0"} m³`} />
-        <KPICard title="Creadas" value={String(creadas)} icon={FileText} iconColor="text-emerald-500" iconBg="bg-emerald-500/10" subtitle="Remisiones completadas" />
-        <KPICard title="Pendientes" value={String(pendientes)} icon={FileText} iconColor={pendientes > 0 ? "text-amber-500" : "text-gray-400"} iconBg={pendientes > 0 ? "bg-amber-500/10" : "bg-gray-500/10"} subtitle="Pendientes de completar" />
+        <KPICard title="Total remisiones" value={String(filtered.length)} icon={FileText} iconColor="text-[#CC2229]" subtitle={monthLabel(month)} active={filterStatus === ""} onClick={() => setFilterStatus("")} />
+        <KPICard title="M³ totales" value={totalM3.toFixed(1)} icon={FileText} iconColor="text-sky-500" iconBg="bg-sky-500/10" subtitle={`Promedio ${filtered.length ? (totalM3 / filtered.length).toFixed(1) : "0"} m³`} active={filterStatus === ""} onClick={() => setFilterStatus("")} />
+        <KPICard title="Creadas" value={String(creadas)} icon={FileText} iconColor="text-emerald-500" iconBg="bg-emerald-500/10" subtitle="Remisiones completadas" active={filterStatus === "creada"} onClick={() => setFilterStatus("creada")} />
+        <KPICard title="Pendientes" value={String(pendientes)} icon={FileText} iconColor={pendientes > 0 ? "text-amber-500" : "text-gray-400"} iconBg={pendientes > 0 ? "bg-amber-500/10" : "bg-gray-500/10"} subtitle="Pendientes de completar" active={filterStatus === "pendiente"} onClick={() => setFilterStatus("pendiente")} />
       </div>
 
       {/* ── Table ──────────────────────────────────────────────────────────────── */}

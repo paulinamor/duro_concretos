@@ -36,21 +36,24 @@ export default function AutomatizacionesPage() {
   const [rules, setRules] = useState<AutomationRule[]>(automationRules);
   const [query, setQuery] = useState("");
   const [area, setArea] = useState<"Todas" | AutomationArea>("Todas");
+  const [filterStatus, setFilterStatus] = useState<"" | "Activa" | "Pausada" | "Error">("");
   const [runningId, setRunningId] = useState("");
 
   const filtered = useMemo(() => {
     const term = query.toLowerCase();
     return rules.filter((rule) => {
-      return (
-        (area === "Todas" || rule.area === area) &&
-        (
+      if (area !== "Todas" && rule.area !== area) return false;
+      if (filterStatus && rule.status !== filterStatus) return false;
+      if (term) {
+        return (
           rule.name.toLowerCase().includes(term) ||
           rule.description.toLowerCase().includes(term) ||
           rule.area.toLowerCase().includes(term)
-        )
-      );
+        );
+      }
+      return true;
     });
-  }, [rules, query, area]);
+  }, [rules, query, area, filterStatus]);
 
   const activas = rules.filter((rule) => rule.status === "Activa").length;
   const pausadas = rules.filter((rule) => rule.status === "Pausada").length;
@@ -89,10 +92,10 @@ export default function AutomatizacionesPage() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <KPICard title="Reglas activas" value={String(activas)} icon={Zap} iconColor="text-green-400" />
-        <KPICard title="Reglas pausadas" value={String(pausadas)} icon={PauseCircle} iconColor="text-orange-400" />
-        <KPICard title="Errores" value={String(errores)} icon={RefreshCw} iconColor="text-red-400" />
-        <KPICard title="Procesos cubiertos" value={String(rules.length)} icon={Bot} iconColor="text-[#CC2229]" />
+        <KPICard title="Reglas activas" value={String(activas)} icon={Zap} iconColor="text-green-400" active={filterStatus === "Activa"} onClick={() => setFilterStatus("Activa")} />
+        <KPICard title="Reglas pausadas" value={String(pausadas)} icon={PauseCircle} iconColor="text-orange-400" active={filterStatus === "Pausada"} onClick={() => setFilterStatus("Pausada")} />
+        <KPICard title="Errores" value={String(errores)} icon={RefreshCw} iconColor="text-red-400" active={filterStatus === "Error"} onClick={() => setFilterStatus("Error")} />
+        <KPICard title="Procesos cubiertos" value={String(rules.length)} icon={Bot} iconColor="text-[#CC2229]" active={filterStatus === ""} onClick={() => setFilterStatus("")} />
       </div>
 
       <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl p-4 flex flex-wrap gap-3 items-center">

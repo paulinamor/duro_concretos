@@ -61,6 +61,7 @@ interface EventoRaw {
   notas?: string;
   planta?: string;
   km?: number;
+  horometro?: number;
   horasReparacion?: number;
   fotosFactura?: string[];
   fotosEvidencia?: string[];
@@ -171,31 +172,53 @@ function EventoRow({
   onDelete: (ev: Evento) => void;
 }) {
   const isDone = ev.status === "Completado" || ev.status === "Resuelta";
-  const statusBadge = STATUS_BADGE[ev.status] ?? "bg-gray-500/15 text-gray-400 border border-gray-500/30";
   const dias = diasDesde(ev.fecha);
   const diasLabel = dias === 0 ? "Hoy" : `${dias}d abierto`;
-  const diasColor = !isDone ? (dias > 5 ? "text-red-400" : dias > 2 ? "text-amber-400" : "text-gray-400") : "";
+  const diasColor = !isDone ? (dias > 5 ? "text-red-500" : dias > 2 ? "text-amber-500" : "text-gray-400") : "";
+
+  const tipoBadge: Record<EventoTipo, string> = {
+    "Mantenimiento": "bg-blue-50 text-blue-600 border-blue-200",
+    "Reparación":   "bg-orange-50 text-orange-600 border-orange-200",
+    "Falla":        "bg-red-50 text-red-600 border-red-200",
+  };
+  const subtipoBadge: Record<string, string> = {
+    "Preventivo": "bg-emerald-50 text-emerald-700 border-emerald-200",
+    "Correctivo": "bg-orange-50 text-orange-600 border-orange-200",
+    "Inspección": "bg-blue-50 text-blue-600 border-blue-200",
+  };
+  const sevBadge: Record<string, string> = {
+    "Alta":  "bg-red-50 text-red-600 border-red-200",
+    "Media": "bg-amber-50 text-amber-600 border-amber-200",
+    "Baja":  "bg-blue-50 text-blue-600 border-blue-200",
+  };
+  const statusBadge: Record<string, string> = {
+    "Completado": "bg-emerald-50 text-emerald-700 border-emerald-200",
+    "Resuelta":   "bg-emerald-50 text-emerald-700 border-emerald-200",
+    "En proceso": "bg-amber-50 text-amber-700 border-amber-200",
+    "Pendiente":  "bg-gray-100 text-gray-500 border-gray-200",
+    "Reportada":  "bg-red-50 text-red-600 border-red-200",
+  };
 
   return (
-    <div className={`flex flex-wrap items-start gap-3 py-3.5 border-b border-[#2A2A2A] last:border-0 ${!isDone && ev.tipo === "Falla" && ev.severidad === "Alta" ? "bg-red-500/5 -mx-5 px-5" : ""}`}>
+    <div className={`flex flex-wrap items-start gap-3 py-3.5 border-b border-gray-100 last:border-0 ${!isDone && ev.tipo === "Falla" && ev.severidad === "Alta" ? "bg-red-50 -mx-5 px-5" : ""}`}>
       {/* Date + días */}
       <div className="shrink-0 w-[90px]">
-        <span className="text-xs text-gray-500 font-mono block">{fmtFecha(ev.fecha)}</span>
+        <span className="text-xs text-gray-400 font-mono block">{fmtFecha(ev.fecha)}</span>
         {!isDone && <span className={`text-[10px] font-bold ${diasColor}`}>{diasLabel}</span>}
       </div>
 
       {/* Type + subtipo/severidad */}
       <div className="flex flex-wrap items-center gap-1.5 shrink-0">
-        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${TIPO_BADGE[ev.tipo]}`}>
+        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${tipoBadge[ev.tipo]}`}>
           {ev.tipo}
         </span>
         {ev.subtipo && (
-          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${SUBTIPO_BADGE[ev.subtipo] ?? ""}`}>
+          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${subtipoBadge[ev.subtipo] ?? ""}`}>
             {ev.subtipo}
           </span>
         )}
         {ev.severidad && (
-          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${SEV_BADGE[ev.severidad] ?? ""}`}>
+          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${sevBadge[ev.severidad] ?? ""}`}>
             {ev.severidad}
           </span>
         )}
@@ -203,26 +226,31 @@ function EventoRow({
 
       {/* Description + details */}
       <div className="flex-1 min-w-0">
-        <p className={`text-sm font-semibold leading-snug ${isDone ? "text-gray-500" : "text-white"}`}>{ev.descripcion}</p>
+        <p className={`text-sm font-semibold leading-snug ${isDone ? "text-gray-400" : "text-gray-900"}`}>{ev.descripcion}</p>
         <div className="flex flex-wrap gap-x-4 gap-y-0 mt-0.5">
           {ev.causa && <span className="text-xs text-gray-500">Causa: {ev.causa}</span>}
           {ev.taller && <span className="text-xs text-gray-500">Taller: {ev.taller}</span>}
           {ev.reportadoPor && <span className="text-xs text-gray-500">Reportó: {ev.reportadoPor}</span>}
-          {ev.notas && <span className="text-xs text-gray-600 italic">{ev.notas}</span>}
+          {ev.notas && <span className="text-xs text-gray-400 italic">{ev.notas}</span>}
         </div>
         <div className="flex flex-wrap gap-1.5 mt-1.5">
           {ev.km != null && (
-            <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-sky-500/10 border border-sky-500/20 text-sky-300">
+            <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-sky-50 border border-sky-200 text-sky-700">
               {ev.km.toLocaleString("es-MX")} km
             </span>
           )}
+          {ev.horometro != null && (
+            <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-violet-50 border border-violet-200 text-violet-700">
+              {ev.horometro.toLocaleString("es-MX")} h
+            </span>
+          )}
           {ev.horasReparacion != null && (
-            <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/25 text-amber-300">
+            <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700">
               <Wrench size={9} /> {ev.horasReparacion} h taller
             </span>
           )}
           {((ev.fotosFactura?.length ?? 0) + (ev.fotosEvidencia?.length ?? 0) > 0) && (
-            <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-gray-500/10 border border-gray-500/20 text-gray-500">
+            <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-gray-100 border border-gray-200 text-gray-500">
               <Camera size={9} /> {(ev.fotosFactura?.length ?? 0) + (ev.fotosEvidencia?.length ?? 0)} foto{((ev.fotosFactura?.length ?? 0) + (ev.fotosEvidencia?.length ?? 0)) !== 1 ? "s" : ""}
             </span>
           )}
@@ -230,27 +258,27 @@ function EventoRow({
       </div>
 
       {/* Cost */}
-      <span className={`text-sm font-bold tabular-nums whitespace-nowrap shrink-0 ${isDone ? "text-gray-600" : ev.costo > 0 ? "text-white" : "text-gray-600"}`}>
+      <span className={`text-sm font-bold tabular-nums whitespace-nowrap shrink-0 ${isDone ? "text-gray-400" : ev.costo > 0 ? "text-gray-900" : "text-gray-400"}`}>
         {currency(ev.costo)}
       </span>
 
       {/* Status + actions */}
       <div className="flex items-center gap-2 shrink-0">
-        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${statusBadge}`}>
+        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${statusBadge[ev.status] ?? "bg-gray-100 text-gray-500 border-gray-200"}`}>
           {ev.status}
         </span>
         {!isDone && (
           <button
             onClick={() => onComplete(ev)}
-            className="text-[10px] font-medium text-emerald-400 hover:text-emerald-300 transition-colors cursor-pointer whitespace-nowrap"
+            className="text-[10px] font-medium text-emerald-600 hover:text-emerald-700 transition-colors cursor-pointer whitespace-nowrap"
           >
             ✓ Cerrar
           </button>
         )}
-        <button onClick={() => onEdit(ev)} className="p-1 text-gray-600 hover:text-blue-400 transition-colors cursor-pointer" aria-label="Editar">
+        <button onClick={() => onEdit(ev)} className="p-1 text-gray-400 hover:text-blue-600 transition-colors cursor-pointer" aria-label="Editar">
           <Pencil size={11} />
         </button>
-        <button onClick={() => onDelete(ev)} className="p-1 text-gray-600 hover:text-red-400 transition-colors cursor-pointer" aria-label="Eliminar">
+        <button onClick={() => onDelete(ev)} className="p-1 text-gray-400 hover:text-red-500 transition-colors cursor-pointer" aria-label="Eliminar">
           <Trash2 size={11} />
         </button>
       </div>
@@ -435,10 +463,10 @@ function UnitCard({
 
       {/* Expanded timeline */}
       {expanded && (
-        <div className="border-t border-[#3A3A3A] bg-[#1D1D1D] px-5 py-1">
+        <div className="border-t border-gray-100 bg-white px-5 py-1">
           {eventos.length === 0 ? (
             <div className="py-8 text-center">
-              <p className="text-sm text-gray-600">Sin registros para esta unidad</p>
+              <p className="text-sm text-gray-400">Sin registros para esta unidad</p>
               <button
                 onClick={() => onAddEvento(u.noEconomico)}
                 className="mt-2 text-xs text-[#CC2229] hover:underline cursor-pointer"
@@ -587,6 +615,7 @@ function RegistroDrawer({
         severidad: editing.severidad ?? "Media",
         reportadoPor: editing.reportadoPor ?? "",
         km: editing.km != null ? String(editing.km) : "",
+        horometro: editing.horometro != null ? String(editing.horometro) : "",
         horasReparacion: editing.horasReparacion != null ? String(editing.horasReparacion) : "",
       });
       setConceptos(editing.conceptos ?? []);
@@ -594,7 +623,7 @@ function RegistroDrawer({
       setFotosEvidencia(editing.fotosEvidencia ?? []);
     } else {
       setTipo("Mantenimiento");
-      setForm({ fecha: todayISO(), unidad: preselectedUnidad, status: "Pendiente", km: "" });
+      setForm({ fecha: todayISO(), unidad: preselectedUnidad, status: "Pendiente", km: "", horometro: "" });
       setConceptos([]);
       setFotosFactura([]);
       setFotosEvidencia([]);
@@ -649,6 +678,7 @@ function RegistroDrawer({
         status: form.status ?? "Pendiente",
         notas: form.notas ?? "",
         ...(form.km ? { km: parseFloat(form.km) } : {}),
+        ...(form.horometro ? { horometro: parseFloat(form.horometro) } : {}),
         ...(form.horasReparacion ? { horasReparacion: parseFloat(form.horasReparacion) } : {}),
         ...(fotosFactura.length > 0 ? { fotosFactura } : {}),
         ...(fotosEvidencia.length > 0 ? { fotosEvidencia } : {}),
@@ -707,7 +737,7 @@ function RegistroDrawer({
             </div>
           </div>
 
-          {/* Unidad + Fecha + KM */}
+          {/* Unidad + Fecha + KM + Horómetro */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={lbl}>Unidad</label>
@@ -721,45 +751,60 @@ function RegistroDrawer({
               <input type="date" value={form.fecha ?? todayISO()} onChange={(e) => set("fecha", e.target.value)} className={inp} />
             </div>
           </div>
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">
-                {tipo === "Falla" ? "KM al momento del paro" : "KM actual"}
-              </label>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">
+                  {tipo === "Falla" ? "KM al paro" : "KM actual"}
+                </label>
               {(form.unidad || preselectedUnidad) && (
-                <button type="button"
-                  onClick={() => loadSamsaraKm(form.unidad || preselectedUnidad)}
-                  disabled={fetchingSamsara}
-                  className="flex items-center gap-1 text-[10px] font-semibold text-sky-600 hover:text-sky-700 disabled:opacity-50 cursor-pointer transition-colors">
-                  {fetchingSamsara ? <Loader2 size={10} className="animate-spin" /> : <Satellite size={10} />}
-                  GPS Samsara
-                </button>
+                  <button type="button"
+                    onClick={() => loadSamsaraKm(form.unidad || preselectedUnidad)}
+                    disabled={fetchingSamsara}
+                    className="flex items-center gap-1 text-[10px] font-semibold text-sky-600 hover:text-sky-700 disabled:opacity-50 cursor-pointer transition-colors">
+                    {fetchingSamsara ? <Loader2 size={10} className="animate-spin" /> : <Satellite size={10} />}
+                    GPS
+                  </button>
+                )}
+              </div>
+              <input
+                type="number"
+                min={0}
+                value={form.km ?? ""}
+                onChange={(e) => set("km", e.target.value)}
+                placeholder="Ej. 125000"
+                className={inp}
+              />
+              {samsaraFound === true && samsaraKm != null && (
+                <div className="mt-1.5 flex items-center gap-2">
+                  <span className="flex items-center gap-1 text-[10px] bg-sky-50 border border-sky-200 text-sky-700 rounded-full px-2.5 py-1 font-semibold">
+                    <Satellite size={9} /> {samsaraKm.toLocaleString("es-MX")} km
+                  </span>
+                  <button type="button" onClick={() => set("km", String(samsaraKm))}
+                    className="text-[10px] font-semibold text-[#CC2229] hover:underline cursor-pointer">
+                    Usar
+                  </button>
+                </div>
+              )}
+              {samsaraFound === false && (
+                <p className="mt-1 text-[10px] text-gray-400 flex items-center gap-1">
+                  <Satellite size={9} /> No en Samsara
+                </p>
               )}
             </div>
-            <input
-              type="number"
-              min={0}
-              value={form.km ?? ""}
-              onChange={(e) => set("km", e.target.value)}
-              placeholder="Ej. 125000"
-              className={inp}
-            />
-            {samsaraFound === true && samsaraKm != null && (
-              <div className="mt-1.5 flex items-center gap-2">
-                <span className="flex items-center gap-1 text-[10px] bg-sky-50 border border-sky-200 text-sky-700 rounded-full px-2.5 py-1 font-semibold">
-                  <Satellite size={9} /> {samsaraKm.toLocaleString("es-MX")} km
-                </span>
-                <button type="button" onClick={() => set("km", String(samsaraKm))}
-                  className="text-[10px] font-semibold text-[#CC2229] hover:underline cursor-pointer">
-                  Usar
-                </button>
-              </div>
-            )}
-            {samsaraFound === false && (
-              <p className="mt-1 text-[10px] text-gray-400 flex items-center gap-1">
-                <Satellite size={9} /> No encontrada en Samsara
-              </p>
-            )}
+            {/* Horómetro */}
+            <div>
+              <label className={lbl}>Horómetro (h)</label>
+              <input
+                type="number"
+                min={0}
+                step={0.1}
+                value={form.horometro ?? ""}
+                onChange={(e) => set("horometro", e.target.value)}
+                placeholder="Ej. 4500"
+                className={inp}
+              />
+            </div>
           </div>
 
           {/* Horas en taller — solo para Reparación y Falla */}
@@ -1146,13 +1191,14 @@ export default function MantenimientoPage() {
       Descripción: e.descripcion,
       "Taller/Proveedor": e.taller ?? e.reportadoPor ?? "—",
       KM: e.km ?? "—",
+      "Horómetro (h)": e.horometro ?? "—",
       "Horas taller": e.horasReparacion ?? "—",
       "Costo ($)": e.costo ?? 0,
       Status: e.status,
       Conceptos: (e.conceptos ?? []).map((c) => `${c.concepto}: $${c.costo}`).join(" | ") || "—",
     }));
     const ws = XLSX.utils.json_to_sheet(data);
-    ws["!cols"] = [{ wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 35 }, { wch: 20 }, { wch: 10 }, { wch: 13 }, { wch: 12 }, { wch: 12 }, { wch: 40 }];
+    ws["!cols"] = [{ wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 35 }, { wch: 20 }, { wch: 10 }, { wch: 14 }, { wch: 13 }, { wch: 12 }, { wch: 12 }, { wch: 40 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Mantenimiento");
     const label = dateFrom && dateTo ? `${dateFrom}_${dateTo}` : "todos";
@@ -1182,7 +1228,9 @@ export default function MantenimientoPage() {
           onClick={() => { setViewMode("cronologico"); setQuickFilter("all"); }} />
         <KPICard title="Costo total acumulado" value={costoTotal > 0 ? `$${Math.round(costoTotal).toLocaleString("es-MX")}` : "—"} icon={DollarSign}
           iconColor="text-[#CC2229]" iconBg="bg-[#CC2229]/10"
-          subtitle="Mantenimientos + reparaciones" />
+          subtitle="Mantenimientos + reparaciones"
+          active={quickFilter === "all" && viewMode === "cronologico"}
+          onClick={() => { setViewMode("cronologico"); setQuickFilter("all"); }} />
         <KPICard title="Trabajos abiertos" value={String(pendientes)} icon={CheckCircle2}
           iconColor={pendientes > 0 ? "text-amber-400" : "text-gray-500"}
           iconBg={pendientes > 0 ? "bg-amber-500/10" : "bg-gray-500/10"}
@@ -1335,6 +1383,7 @@ export default function MantenimientoPage() {
                     { h: "Descripción",    cls: "" },
                     { h: "Días abierto",   cls: "w-[100px] text-center" },
                     { h: "KM",             cls: "w-[90px] text-right" },
+                    { h: "Horómetro",      cls: "w-[90px] text-right" },
                     { h: "Importe",        cls: "w-[100px] text-right" },
                     { h: "Status",         cls: "w-[110px]" },
                     { h: "",               cls: "w-[110px]" },
@@ -1345,7 +1394,7 @@ export default function MantenimientoPage() {
               </thead>
               <tbody className="divide-y divide-[#2A2A2A]">
                 {filteredEventos.length === 0 ? (
-                  <tr><td colSpan={9} className="px-4 py-14 text-center text-sm text-gray-600">Sin registros</td></tr>
+                  <tr><td colSpan={10} className="px-4 py-14 text-center text-sm text-gray-600">Sin registros</td></tr>
                 ) : filteredEventos.map((ev) => {
                   const isDone = ev.status === "Completado" || ev.status === "Resuelta";
                   const dias = diasDesde(ev.fecha);
@@ -1402,6 +1451,12 @@ export default function MantenimientoPage() {
                       <td className="px-4 py-3.5 text-right whitespace-nowrap">
                         {ev.km != null
                           ? <span className="text-sm text-sky-300 font-mono font-semibold">{ev.km.toLocaleString("es-MX")}</span>
+                          : <span className="text-gray-700">—</span>}
+                      </td>
+                      {/* Horómetro */}
+                      <td className="px-4 py-3.5 text-right whitespace-nowrap">
+                        {ev.horometro != null
+                          ? <span className="text-sm text-violet-300 font-mono font-semibold">{ev.horometro.toLocaleString("es-MX")} h</span>
                           : <span className="text-gray-700">—</span>}
                       </td>
                       {/* Importe */}

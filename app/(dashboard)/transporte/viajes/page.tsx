@@ -26,6 +26,7 @@ export default function ViajesPage() {
   const [showForm, setShowForm] = useState(false);
   const [filterEstado, setFilterEstado] = useState("Todos");
   const [filterOperador, setFilterOperador] = useState("Todos");
+  const [filterHoy, setFilterHoy] = useState(false);
 
   useEffect(() => {
     if (!loading) { setLoadingLong(false); return; }
@@ -46,7 +47,8 @@ export default function ViajesPage() {
   const filtered = viajes.filter((v) => {
     return (
       (filterEstado === "Todos" || v.estado === filterEstado) &&
-      (filterOperador === "Todos" || v.operador === filterOperador)
+      (filterOperador === "Todos" || v.operador === filterOperador) &&
+      (!filterHoy || v.fecha === todayStr)
     );
   });
 
@@ -98,9 +100,9 @@ export default function ViajesPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <KPICard title="Total viajes del mes" value={String(viajes.length)} icon={Truck} iconColor="text-[#CC2229]" />
-        <KPICard title="M3 entregados" value={`${totalM3} m³`} icon={Package} iconColor="text-blue-400" />
-        <KPICard title="Viajes hoy" value={String(hoy)} icon={Calendar} iconColor="text-green-400" />
+        <KPICard title="Total viajes del mes" value={String(viajes.length)} icon={Truck} iconColor="text-[#CC2229]" active={!filterHoy && filterEstado === "Todos"} onClick={() => { setFilterHoy(false); setFilterEstado("Todos"); }} />
+        <KPICard title="M3 entregados" value={`${totalM3} m³`} icon={Package} iconColor="text-blue-400" active={!filterHoy && filterEstado === "Completado"} onClick={() => { setFilterHoy(false); setFilterEstado("Completado"); }} />
+        <KPICard title="Viajes hoy" value={String(hoy)} icon={Calendar} iconColor="text-green-400" active={filterHoy} onClick={() => { setFilterHoy(true); setFilterEstado("Todos"); }} />
       </div>
 
       <FormModal

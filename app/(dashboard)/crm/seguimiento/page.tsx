@@ -20,23 +20,27 @@ export default function CrmSeguimientoPage() {
   const [seguimientos, setSeguimientos] = useState(crmFollowUps);
   const [query, setQuery] = useState("");
   const [responsable, setResponsable] = useState("Todos");
+  const [quickFilter, setQuickFilter] = useState<"" | "alta" | "riesgo">("");
   const [showForm, setShowForm] = useState(false);
 
   const responsables = ["Todos", ...Array.from(new Set(seguimientos.map((item) => item.responsable)))];
   const filtered = useMemo(() => {
     const term = query.toLowerCase();
     return seguimientos.filter((item) => {
-      return (
-        (responsable === "Todos" || item.responsable === responsable) &&
-        (
+      if (responsable !== "Todos" && item.responsable !== responsable) return false;
+      if (quickFilter === "alta" && item.prioridad !== "Alta") return false;
+      if (quickFilter === "riesgo" && item.estadoCliente !== "En riesgo") return false;
+      if (term) {
+        return (
           item.cliente.toLowerCase().includes(term) ||
           item.contacto.toLowerCase().includes(term) ||
           item.oportunidad.toLowerCase().includes(term) ||
           item.proximaAccion.toLowerCase().includes(term)
-        )
-      );
+        );
+      }
+      return true;
     });
-  }, [query, responsable, seguimientos]);
+  }, [query, responsable, quickFilter, seguimientos]);
 
   const accionesHoy = seguimientos.filter((item) => item.fecha === "2026-05-25").length;
   const altaPrioridad = seguimientos.filter((item) => item.prioridad === "Alta").length;
@@ -80,10 +84,10 @@ export default function CrmSeguimientoPage() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <KPICard title="Seguimientos abiertos" value={String(seguimientos.length)} icon={MessageSquare} iconColor="text-[#CC2229]" />
-        <KPICard title="Acciones para hoy" value={String(accionesHoy)} icon={CalendarDays} iconColor="text-orange-400" />
-        <KPICard title="Alta prioridad" value={String(altaPrioridad)} icon={Target} iconColor="text-red-400" />
-        <KPICard title="Clientes en riesgo" value={String(clientesRiesgo)} icon={UserRound} iconColor="text-blue-400" />
+        <KPICard title="Seguimientos abiertos" value={String(seguimientos.length)} icon={MessageSquare} iconColor="text-[#CC2229]" active={quickFilter === ""} onClick={() => { setQuickFilter(""); setResponsable("Todos"); }} />
+        <KPICard title="Acciones para hoy" value={String(accionesHoy)} icon={CalendarDays} iconColor="text-orange-400" onClick={() => { setQuickFilter(""); setResponsable("Todos"); }} />
+        <KPICard title="Alta prioridad" value={String(altaPrioridad)} icon={Target} iconColor="text-red-400" active={quickFilter === "alta"} onClick={() => setQuickFilter("alta")} />
+        <KPICard title="Clientes en riesgo" value={String(clientesRiesgo)} icon={UserRound} iconColor="text-blue-400" active={quickFilter === "riesgo"} onClick={() => setQuickFilter("riesgo")} />
       </div>
 
       <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl p-4 flex flex-wrap gap-3 items-center">

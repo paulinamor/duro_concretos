@@ -1179,10 +1179,10 @@ export default function SegurosPage() {
 
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KPICard title="Unidades registradas" value={String(total)} icon={Shield} iconColor="text-blue-400" />
-        <KPICard title="Pólizas vigentes" value={String(vigentes)} icon={CheckCircle2} iconColor="text-emerald-400" iconBg="bg-emerald-500/10" />
-        <KPICard title="Por vencer ≤30 días" value={String(porVencer)} icon={Clock} iconColor="text-amber-400" iconBg="bg-amber-500/10" />
-        <KPICard title="Sin cobertura activa" value={String(sinCob)} icon={ShieldOff} iconColor="text-red-400" iconBg="bg-red-500/10" />
+        <KPICard title="Unidades registradas" value={String(total)} icon={Shield} iconColor="text-blue-400" active={filterStatus === "todos"} onClick={() => setFilterStatus("todos")} />
+        <KPICard title="Pólizas vigentes" value={String(vigentes)} icon={CheckCircle2} iconColor="text-emerald-400" iconBg="bg-emerald-500/10" active={filterStatus === "vigente"} onClick={() => setFilterStatus("vigente")} />
+        <KPICard title="Por vencer ≤30 días" value={String(porVencer)} icon={Clock} iconColor="text-amber-400" iconBg="bg-amber-500/10" active={filterStatus === "por_vencer"} onClick={() => setFilterStatus("por_vencer")} />
+        <KPICard title="Sin cobertura activa" value={String(sinCob)} icon={ShieldOff} iconColor="text-red-400" iconBg="bg-red-500/10" active={filterStatus === "vencido"} onClick={() => setFilterStatus("vencido")} />
       </div>
 
       {/* Table */}

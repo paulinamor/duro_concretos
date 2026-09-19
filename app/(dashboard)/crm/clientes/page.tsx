@@ -832,6 +832,8 @@ export default function CrmClientesPage() {
           icon={TrendingUp}
           iconColor="text-[#CC2229]"
           subtitle={loading ? undefined : `$${Math.round(totalSaldoPendiente).toLocaleString()} pendiente`}
+          active={filtroEstatus === "Todos" && filtroTipo === "Todos"}
+          onClick={() => { setFiltroEstatus("Todos"); setFiltroTipo("Todos"); }}
         />
         <KPICard title="Nuevos en 2026" value={loading ? "—" : String(nuevosEsteAnio)} icon={BadgeDollarSign} iconColor="text-blue-400" iconBg="bg-blue-500/10"
           onClick={() => { setFiltroEstatus("Todos"); setFiltroTipo("Todos"); }} />

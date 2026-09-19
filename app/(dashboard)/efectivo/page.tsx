@@ -860,10 +860,10 @@ export default function EfectivoPage() {
       {mainTab === "recibos" && (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <KPICard title="Total recibos" value={String(filtered.length)} icon={ClipboardList} iconColor="text-[#CC2229]" iconBg="bg-[#CC2229]/10" />
-            <KPICard title="Total m³" value={`${totalM3.toLocaleString("es-MX", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} m³`} icon={Package} iconColor="text-blue-400" iconBg="bg-blue-500/10" />
-            <KPICard title="Total importe" value={currency(totalImporte)} icon={DollarSign} iconColor="text-emerald-400" iconBg="bg-emerald-500/10" />
-            <KPICard title="Pendientes entrega" value={String(pendientes)} icon={AlertTriangle} iconColor={pendientes > 0 ? "text-amber-400" : "text-emerald-400"} iconBg={pendientes > 0 ? "bg-amber-500/10" : "bg-emerald-500/10"} />
+            <KPICard title="Total recibos" value={String(filtered.length)} icon={ClipboardList} iconColor="text-[#CC2229]" iconBg="bg-[#CC2229]/10" active={filterEntregado === "todos"} onClick={() => setFilterEntregado("todos")} />
+            <KPICard title="Total m³" value={`${totalM3.toLocaleString("es-MX", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} m³`} icon={Package} iconColor="text-blue-400" iconBg="bg-blue-500/10" active={filterEntregado === "todos"} onClick={() => setFilterEntregado("todos")} />
+            <KPICard title="Total importe" value={currency(totalImporte)} icon={DollarSign} iconColor="text-emerald-400" iconBg="bg-emerald-500/10" active={filterEntregado === "entregado"} onClick={() => setFilterEntregado("entregado")} />
+            <KPICard title="Pendientes entrega" value={String(pendientes)} icon={AlertTriangle} iconColor={pendientes > 0 ? "text-amber-400" : "text-emerald-400"} iconBg={pendientes > 0 ? "bg-amber-500/10" : "bg-emerald-500/10"} active={filterEntregado === "pendiente"} onClick={() => setFilterEntregado("pendiente")} />
           </div>
 
           <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl p-4 flex flex-wrap items-center gap-3">

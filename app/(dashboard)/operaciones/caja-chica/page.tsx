@@ -184,10 +184,10 @@ export default function CajaChicaPage() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <KPICard title="Gastos en revisión" value={String(gastosRevision)} icon={Clock} iconColor="text-orange-400" subtitle={`$${montoRevision.toLocaleString()} pendientes`} />
-        <KPICard title="Comprobantes pendientes" value={String(comprobantesPendientes)} icon={FileText} iconColor="text-yellow-400" />
-        <KPICard title="Gastos aprobados" value={String(gastos.filter(g => g.estado === "Aprobado").length)} icon={CheckCircle2} iconColor="text-green-400" />
-        <KPICard title="Arqueo del fondo" value="$5,000" icon={ShieldCheck} iconColor="text-blue-400" subtitle="Sin diferencias registradas" />
+        <KPICard title="Gastos en revisión" value={String(gastosRevision)} icon={Clock} iconColor="text-orange-400" subtitle={`$${montoRevision.toLocaleString()} pendientes`} active={filterEstado === "Revision"} onClick={() => setFilterEstado("Revision")} />
+        <KPICard title="Comprobantes pendientes" value={String(comprobantesPendientes)} icon={FileText} iconColor="text-yellow-400" active={filterEstado === "Revision"} onClick={() => setFilterEstado("Revision")} />
+        <KPICard title="Gastos aprobados" value={String(gastos.filter(g => g.estado === "Aprobado").length)} icon={CheckCircle2} iconColor="text-green-400" active={filterEstado === "Aprobado"} onClick={() => setFilterEstado("Aprobado")} />
+        <KPICard title="Arqueo del fondo" value="$5,000" icon={ShieldCheck} iconColor="text-blue-400" subtitle="Sin diferencias registradas" active={filterEstado === "Todos"} onClick={() => setFilterEstado("Todos")} />
       </div>
 
       <FormModal

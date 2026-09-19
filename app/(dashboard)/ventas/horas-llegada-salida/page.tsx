@@ -103,10 +103,10 @@ export default function HorasLlegadaSalidaPage() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <KPICard title="Documentos del día" value={String(entregas.length)} icon={FileText} iconColor="text-blue-400" />
-        <KPICard title="Enlazados con GPS" value={`${conGps}/${entregas.length}`} icon={MapPin} iconColor="text-green-400" />
-        <KPICard title="Validados" value={String(validados)} icon={Clock} iconColor="text-[#CC2229]" />
-        <KPICard title="Con diferencia" value={String(diferencias)} icon={RefreshCw} iconColor="text-orange-400" />
+        <KPICard title="Documentos del día" value={String(entregas.length)} icon={FileText} iconColor="text-blue-400" active={filterEstado === "Todos"} onClick={() => setFilterEstado("Todos")} />
+        <KPICard title="Enlazados con GPS" value={`${conGps}/${entregas.length}`} icon={MapPin} iconColor="text-green-400" onClick={() => setFilterEstado("Todos")} />
+        <KPICard title="Validados" value={String(validados)} icon={Clock} iconColor="text-[#CC2229]" active={filterEstado === "Validado"} onClick={() => setFilterEstado("Validado")} />
+        <KPICard title="Con diferencia" value={String(diferencias)} icon={RefreshCw} iconColor="text-orange-400" active={filterEstado === "Diferencia"} onClick={() => setFilterEstado("Diferencia")} />
       </div>
 
       <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl p-4 flex flex-wrap gap-3 items-center">

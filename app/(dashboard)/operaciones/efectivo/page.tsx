@@ -409,6 +409,8 @@ export default function EfectivoPage() {
           icon={ClipboardList}
           iconColor="text-[#CC2229]"
           iconBg="bg-[#CC2229]/10"
+          active={filterEntregado === "todos"}
+          onClick={() => setFilterEntregado("todos")}
         />
         <KPICard
           title="Total m³"
@@ -416,6 +418,8 @@ export default function EfectivoPage() {
           icon={Package}
           iconColor="text-blue-400"
           iconBg="bg-blue-500/10"
+          active={filterEntregado === "todos"}
+          onClick={() => setFilterEntregado("todos")}
         />
         <KPICard
           title="Total importe"
@@ -423,6 +427,8 @@ export default function EfectivoPage() {
           icon={DollarSign}
           iconColor="text-emerald-400"
           iconBg="bg-emerald-500/10"
+          active={filterEntregado === "entregado"}
+          onClick={() => setFilterEntregado("entregado")}
         />
         <KPICard
           title="Pendientes entrega"
@@ -430,6 +436,8 @@ export default function EfectivoPage() {
           icon={AlertTriangle}
           iconColor={pendientes > 0 ? "text-amber-400" : "text-emerald-400"}
           iconBg={pendientes > 0 ? "bg-amber-500/10" : "bg-emerald-500/10"}
+          active={filterEntregado === "pendiente"}
+          onClick={() => setFilterEntregado("pendiente")}
         />
       </div>
 

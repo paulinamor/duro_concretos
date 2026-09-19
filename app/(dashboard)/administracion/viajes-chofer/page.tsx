@@ -47,10 +47,10 @@ export default function ViajesChoferPage() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <KPICard title="Viajes totales" value={String(viajesTotales)} icon={Truck} iconColor="text-[#CC2229]" />
-        <KPICard title="Viajes completados" value={String(viajesCompletados)} icon={CalendarDays} iconColor="text-green-400" />
-        <KPICard title="M3 entregados" value={`${m3Entregados.toFixed(1)} m3`} icon={Truck} iconColor="text-blue-400" />
-        <KPICard title="Total generado" value={`$${totalGenerado.toLocaleString()}`} icon={UserRound} iconColor="text-orange-400" />
+        <KPICard title="Viajes totales" value={String(viajesTotales)} icon={Truck} iconColor="text-[#CC2229]" active={operador === "Todos"} onClick={() => setOperador("Todos")} />
+        <KPICard title="Viajes completados" value={String(viajesCompletados)} icon={CalendarDays} iconColor="text-green-400" active={operador === "Todos"} onClick={() => setOperador("Todos")} />
+        <KPICard title="M3 entregados" value={`${m3Entregados.toFixed(1)} m3`} icon={Truck} iconColor="text-blue-400" active={operador === "Todos"} onClick={() => setOperador("Todos")} />
+        <KPICard title="Total generado" value={`$${totalGenerado.toLocaleString()}`} icon={UserRound} iconColor="text-orange-400" active={operador === "Todos"} onClick={() => setOperador("Todos")} />
       </div>
 
       <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl p-4 flex flex-wrap gap-3 items-center">

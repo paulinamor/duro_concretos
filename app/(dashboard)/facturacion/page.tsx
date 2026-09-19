@@ -2037,6 +2037,7 @@ export default function FacturacionPage() {
   const [cfdiList, setCfdiList]     = useState<CfdiEmitido[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [search, setSearch]         = useState("");
+  const [filterCfdiStatus, setFilterCfdiStatus] = useState<"" | "valid" | "cancelled">("");
   const [userEmail, setUserEmail]   = useState("");
 
   useEffect(() => {
@@ -2053,7 +2054,9 @@ export default function FacturacionPage() {
 
   const filtered = merged.filter((f) => {
     const q = search.toLowerCase();
-    return !q || f.clienteNombre.toLowerCase().includes(q) || f.clienteRfc.toLowerCase().includes(q) || f.uuid.includes(q);
+    const matchSearch = !q || f.clienteNombre.toLowerCase().includes(q) || f.clienteRfc.toLowerCase().includes(q) || f.uuid.includes(q);
+    const matchStatus = !filterCfdiStatus || f.status === filterCfdiStatus;
+    return matchSearch && matchStatus;
   });
 
   const totalFacturado  = merged.filter((f) => f.status === "valid").reduce((s, f) => s + f.total, 0);
@@ -2071,10 +2074,10 @@ export default function FacturacionPage() {
     <div className="space-y-5">
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KPICard title="Total facturado"   value={fmt(totalFacturado)}     icon={Receipt}      iconColor="text-[#CC2229]" />
-        <KPICard title="CFDIs vigentes"    value={String(vigentes)}         icon={BadgeCheck}   iconColor="text-green-400" />
-        <KPICard title="CFDIs cancelados"  value={String(cancelados)}       icon={AlertCircle}  iconColor="text-red-400" />
-        <KPICard title="Total emitidos"    value={String(merged.length)}    icon={FileDown}     iconColor="text-blue-400" />
+        <KPICard title="Total facturado"   value={fmt(totalFacturado)}     icon={Receipt}      iconColor="text-[#CC2229]" active={filterCfdiStatus === "valid"} onClick={() => { setFilterCfdiStatus("valid"); setTab("historial"); }} />
+        <KPICard title="CFDIs vigentes"    value={String(vigentes)}         icon={BadgeCheck}   iconColor="text-green-400" active={filterCfdiStatus === "valid"} onClick={() => { setFilterCfdiStatus("valid"); setTab("historial"); }} />
+        <KPICard title="CFDIs cancelados"  value={String(cancelados)}       icon={AlertCircle}  iconColor="text-red-400" active={filterCfdiStatus === "cancelled"} onClick={() => { setFilterCfdiStatus("cancelled"); setTab("historial"); }} />
+        <KPICard title="Total emitidos"    value={String(merged.length)}    icon={FileDown}     iconColor="text-blue-400" active={filterCfdiStatus === ""} onClick={() => { setFilterCfdiStatus(""); setTab("historial"); }} />
       </div>
 
       {/* Tabs + acción */}
