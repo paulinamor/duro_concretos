@@ -241,8 +241,8 @@ function EntradaDrawer({ open, onClose, onSave, remisionesDespacho }: {
         tipo: form.tipo, proveedor: form.proveedor.trim(),
         noFactura: form.noFactura.trim(), observaciones: form.observaciones.trim(),
         categoria: form.categoria,
-        remisionId: selectedRemision?.id,
-        noRemisionRef: selectedRemision?.noRemision,
+        ...(selectedRemision?.id       ? { remisionId:    selectedRemision.id }          : {}),
+        ...(selectedRemision?.noRemision ? { noRemisionRef: selectedRemision.noRemision } : {}),
       });
       onClose();
     } finally { setSaving(false); }
