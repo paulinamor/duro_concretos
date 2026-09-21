@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  CalendarDays, Check, ChevronLeft, ChevronRight, Clock,
-  Download, Loader2, Moon, ShieldOff, Stethoscope, Umbrella,
-  UserCheck, UserMinus, Users, X,
+  AlertTriangle, CalendarDays, Check, ChevronLeft, ChevronRight, Clock,
+  Download, Loader2, Moon, Pencil, ShieldOff, Stethoscope, Umbrella,
+  UserCheck, UserMinus, Users, X, BarChart3, ListChecks,
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
 import { getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
@@ -14,12 +14,8 @@ import type { Operador } from "@/lib/operadores";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type EstadoAsistencia =
-  | "presente"
-  | "ausente"
-  | "justificada"
-  | "vacaciones"
-  | "permiso"
-  | "incapacidad";
+  | "presente" | "ausente" | "justificada"
+  | "vacaciones" | "permiso" | "incapacidad";
 
 interface Asistencia {
   id?: string;
@@ -34,31 +30,27 @@ interface Asistencia {
   planta?: string;
 }
 
+type ViewMode = "pase" | "semana" | "mes" | "resumen";
+
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const ESTADOS: {
-  value: EstadoAsistencia;
-  label: string;
-  short: string;
-  color: string;
-  bg: string;
-  icon: React.ElementType;
+  value: EstadoAsistencia; label: string; short: string;
+  color: string; bg: string; ring: string; icon: React.ElementType;
 }[] = [
-  { value: "presente",    label: "Presente",     short: "P",  color: "text-emerald-400", bg: "bg-emerald-500/15 border-emerald-500/30", icon: Check        },
-  { value: "ausente",     label: "Ausente",      short: "A",  color: "text-red-400",     bg: "bg-red-500/15 border-red-500/30",         icon: X            },
-  { value: "justificada", label: "Just. falta",  short: "JF", color: "text-amber-400",   bg: "bg-amber-500/15 border-amber-500/30",     icon: ShieldOff    },
-  { value: "vacaciones",  label: "Vacaciones",   short: "V",  color: "text-blue-400",    bg: "bg-blue-500/15 border-blue-500/30",       icon: Umbrella     },
-  { value: "permiso",     label: "Permiso",      short: "PE", color: "text-purple-400",  bg: "bg-purple-500/15 border-purple-500/30",   icon: Moon         },
-  { value: "incapacidad", label: "IMSS/Incap.",  short: "I",  color: "text-orange-400",  bg: "bg-orange-500/15 border-orange-500/30",   icon: Stethoscope  },
+  { value: "presente",    label: "Presente",    short: "P",  color: "text-emerald-400", bg: "bg-emerald-500/15", ring: "ring-emerald-500/40", icon: Check       },
+  { value: "ausente",     label: "Ausente",      short: "A",  color: "text-red-400",    bg: "bg-red-500/15",     ring: "ring-red-500/40",     icon: X           },
+  { value: "justificada", label: "Just.",        short: "JF", color: "text-amber-400",  bg: "bg-amber-500/15",   ring: "ring-amber-500/40",   icon: ShieldOff   },
+  { value: "vacaciones",  label: "Vacaciones",   short: "V",  color: "text-blue-400",   bg: "bg-blue-500/15",    ring: "ring-blue-500/40",    icon: Umbrella    },
+  { value: "permiso",     label: "Permiso",      short: "PE", color: "text-purple-400", bg: "bg-purple-500/15",  ring: "ring-purple-500/40",  icon: Moon        },
+  { value: "incapacidad", label: "Incap.",       short: "I",  color: "text-orange-400", bg: "bg-orange-500/15",  ring: "ring-orange-500/40",  icon: Stethoscope },
 ];
 
-const DIAS_SEMANA = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+const DIAS = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function toISO(d: Date) {
-  return d.toISOString().slice(0, 10);
-}
+const toISO = (d: Date) => d.toISOString().slice(0, 10);
 
 function addDays(iso: string, n: number) {
   const d = new Date(iso + "T12:00:00");
@@ -73,25 +65,22 @@ function weekStart(iso: string) {
   return toISO(d);
 }
 
-function weekDays(startIso: string): string[] {
-  return Array.from({ length: 7 }, (_, i) => addDays(startIso, i));
-}
+const weekDays = (s: string) => Array.from({ length: 7 }, (_, i) => addDays(s, i));
 
-function isoToLabel(iso: string) {
-  const d = new Date(iso + "T12:00:00");
-  return d.toLocaleDateString("es-MX", { day: "2-digit", month: "short" });
+function isoToLabel(iso: string, opts?: Intl.DateTimeFormatOptions) {
+  return new Date(iso + "T12:00:00").toLocaleDateString("es-MX", opts ?? { day: "2-digit", month: "short" });
 }
 
 function monthLabel(iso: string) {
-  const d = new Date(iso + "T12:00:00");
-  return d.toLocaleDateString("es-MX", { month: "long", year: "numeric" });
+  return new Date(iso + "T12:00:00").toLocaleDateString("es-MX", { month: "long", year: "numeric" });
 }
 
 function monthRange(iso: string): [string, string] {
   const d = new Date(iso + "T12:00:00");
-  const start = new Date(d.getFullYear(), d.getMonth(), 1);
-  const end   = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-  return [toISO(start), toISO(end)];
+  return [
+    toISO(new Date(d.getFullYear(), d.getMonth(), 1)),
+    toISO(new Date(d.getFullYear(), d.getMonth() + 1, 0)),
+  ];
 }
 
 function addMonths(iso: string, n: number) {
@@ -100,15 +89,8 @@ function addMonths(iso: string, n: number) {
   return toISO(d);
 }
 
-function asistenciaId(empleadoId: string, fecha: string) {
-  return `${empleadoId}_${fecha}`;
-}
-
-function getEstado(cfg: typeof ESTADOS[number]) { return cfg; }
-
-function estadoCfg(estado?: EstadoAsistencia) {
-  return ESTADOS.find((e) => e.value === estado);
-}
+const attId = (eid: string, fecha: string) => `${eid}_${fecha}`;
+const eCfg  = (e?: EstadoAsistencia) => ESTADOS.find((s) => s.value === e);
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -118,132 +100,167 @@ export default function AsistenciaPage() {
   const [operadores, setOperadores] = useState<Operador[]>([]);
   const [asistencias, setAsistencias] = useState<Asistencia[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState<string | null>(null);
+  const [saving, setSaving] = useState<Set<string>>(new Set());
+  const [bulkSaving, setBulkSaving] = useState(false);
 
-  const [view, setView] = useState<"semana" | "mes">("semana");
-  const [anchorDay, setAnchorDay] = useState(today);
-  const [selectedEmpleado, setSelectedEmpleado] = useState<Operador | null>(null);
-  const [detailDay, setDetailDay] = useState<string>(today);
-  const [horaEntrada, setHoraEntrada] = useState("");
-  const [horaSalida, setHoraSalida] = useState("");
-  const [notas, setNotas] = useState("");
+  const [view, setView]         = useState<ViewMode>("pase");
+  const [anchor, setAnchor]     = useState(today);
+  const [paseDate, setPaseDate] = useState(today);
+  const [search, setSearch]     = useState("");
+
+  // Detail modal
+  const [detailKey, setDetailKey] = useState<{ op: Operador; fecha: string } | null>(null);
+  const [dHoraE, setDHoraE]     = useState("");
+  const [dHoraS, setDHoraS]     = useState("");
+  const [dNotas, setDNotas]     = useState("");
+
+  const savingRef = useRef(saving);
+  savingRef.current = saving;
 
   useEffect(() => {
     Promise.all([
       getCollectionDocs<Operador>(COLLECTIONS.operadores),
       getCollectionDocs<Asistencia>(COLLECTIONS.asistencias),
     ]).then(([ops, att]) => {
-      const activos = filterByPlanta(ops.filter((o) => !o.baja));
-      setOperadores(activos);
+      setOperadores(filterByPlanta(ops.filter((o) => !o.baja)));
       setAsistencias(att);
     }).finally(() => setLoading(false));
   }, []);
 
-  // ── Lookup map ────────────────────────────────────────────────────────────
+  // ── Map ───────────────────────────────────────────────────────────────────
   const attMap = useMemo(() => {
     const m = new Map<string, Asistencia>();
-    asistencias.forEach((a) => m.set(asistenciaId(a.empleadoId, a.fecha), a));
+    asistencias.forEach((a) => m.set(attId(a.empleadoId, a.fecha), a));
     return m;
   }, [asistencias]);
 
-  // ── Week / month context ──────────────────────────────────────────────────
-  const wStart = useMemo(() => weekStart(anchorDay), [anchorDay]);
-  const days   = useMemo(() => weekDays(wStart), [wStart]);
-  const [mStart, mEnd] = useMemo(() => monthRange(anchorDay), [anchorDay]);
-
+  // ── Ranges ────────────────────────────────────────────────────────────────
+  const wStart    = useMemo(() => weekStart(anchor), [anchor]);
+  const days      = useMemo(() => weekDays(wStart), [wStart]);
+  const [mS, mE]  = useMemo(() => monthRange(anchor), [anchor]);
   const monthDays = useMemo(() => {
-    const result: string[] = [];
-    let cur = mStart;
-    while (cur <= mEnd) { result.push(cur); cur = addDays(cur, 1); }
-    return result;
-  }, [mStart, mEnd]);
+    const r: string[] = []; let c = mS;
+    while (c <= mE) { r.push(c); c = addDays(c, 1); }
+    return r;
+  }, [mS, mE]);
 
-  // ── KPIs (current month) ──────────────────────────────────────────────────
+  // ── KPIs ──────────────────────────────────────────────────────────────────
   const kpis = useMemo(() => {
-    const monthAtt = asistencias.filter((a) => a.fecha >= mStart && a.fecha <= mEnd);
-    const hoy = asistencias.filter((a) => a.fecha === today);
-    const presentesHoy  = hoy.filter((a) => a.estado === "presente").length;
-    const ausentesHoy   = operadores.length - presentesHoy;
-    const totalPresente = monthAtt.filter((a) => a.estado === "presente").length;
-    const totalFaltas   = monthAtt.filter((a) => a.estado === "ausente").length;
-    const totalRegistros = monthAtt.length;
-    const puntualidad = totalRegistros > 0
-      ? Math.round((totalPresente / totalRegistros) * 100) : 0;
-    return { presentesHoy, ausentesHoy, totalPresente, totalFaltas, puntualidad };
-  }, [asistencias, mStart, mEnd, today, operadores.length]);
+    const [ms, me] = monthRange(today);
+    const mAtt   = asistencias.filter((a) => a.fecha >= ms && a.fecha <= me);
+    const hoy    = asistencias.filter((a) => a.fecha === today);
+    const presH  = hoy.filter((a) => a.estado === "presente").length;
+    const presM  = mAtt.filter((a) => a.estado === "presente").length;
+    const faltaM = mAtt.filter((a) => a.estado === "ausente").length;
+    const recM   = mAtt.length;
+    return { presH, ausH: operadores.length - presH, presM, faltaM, pct: recM > 0 ? Math.round((presM / recM) * 100) : 0 };
+  }, [asistencias, today, operadores.length]);
 
-  // ── Save attendance ───────────────────────────────────────────────────────
-  async function marcar(empleado: Operador, fecha: string, estado: EstadoAsistencia, extra?: { horaEntrada?: string; horaSalida?: string; notas?: string }) {
-    const id = asistenciaId(empleado.id, fecha);
-    setSaving(id);
+  // ── Per-employee stats for Resumen ────────────────────────────────────────
+  const resumen = useMemo(() => {
+    const [ms, me] = monthRange(anchor);
+    return operadores.map((op) => {
+      const att = asistencias.filter((a) => a.empleadoId === op.id && a.fecha >= ms && a.fecha <= me);
+      const cnts = { presente: 0, ausente: 0, justificada: 0, vacaciones: 0, permiso: 0, incapacidad: 0 };
+      att.forEach((a) => { if (a.estado in cnts) cnts[a.estado as keyof typeof cnts]++; });
+      const diasH = monthDays.filter((d) => { const n = new Date(d + "T12:00:00").getDay(); return n !== 0 && n !== 6; });
+      const pct = diasH.length > 0 ? Math.round((cnts.presente / diasH.length) * 100) : null;
+      return { op, ...cnts, pct, totalRec: att.length };
+    }).sort((a, b) => (a.pct ?? 101) - (b.pct ?? 101));
+  }, [operadores, asistencias, anchor, monthDays]);
+
+  // ── Filtered employees for pase ───────────────────────────────────────────
+  const filteredOps = useMemo(() => {
+    const q = search.toLowerCase();
+    return q ? operadores.filter((o) => o.nombre.toLowerCase().includes(q) || o.puesto.toLowerCase().includes(q)) : operadores;
+  }, [operadores, search]);
+
+  // ── Save one ──────────────────────────────────────────────────────────────
+  async function marcar(op: Operador, fecha: string, estado: EstadoAsistencia, extra?: { horaEntrada?: string; horaSalida?: string; notas?: string }) {
+    const id = attId(op.id, fecha);
+    setSaving((s) => new Set(s).add(id));
     const doc: Asistencia = {
-      empleadoId: empleado.id,
-      nombre: empleado.nombre,
-      puesto: empleado.puesto,
-      fecha,
-      estado,
+      empleadoId: op.id, nombre: op.nombre, puesto: op.puesto, fecha, estado,
       ...(extra?.horaEntrada ? { horaEntrada: extra.horaEntrada } : {}),
-      ...(extra?.horaSalida  ? { horaSalida:  extra.horaSalida  } : {}),
-      ...(extra?.notas       ? { notas:       extra.notas       } : {}),
+      ...(extra?.horaSalida  ? { horaSalida: extra.horaSalida } : {}),
+      ...(extra?.notas       ? { notas: extra.notas } : {}),
     };
     try {
       await upsertDocument(COLLECTIONS.asistencias, id, doc);
-      setAsistencias((prev) => {
-        const filtered = prev.filter((a) => asistenciaId(a.empleadoId, a.fecha) !== id);
-        return [...filtered, { ...doc, id }];
-      });
+      setAsistencias((prev) => [...prev.filter((a) => attId(a.empleadoId, a.fecha) !== id), { ...doc, id }]);
     } catch {
-      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al guardar asistencia." } }));
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al guardar." } }));
     } finally {
-      setSaving(null);
+      setSaving((s) => { const n = new Set(s); n.delete(id); return n; });
     }
   }
 
-  // ── Detail panel save ─────────────────────────────────────────────────────
-  async function saveDetail(estado: EstadoAsistencia) {
-    if (!selectedEmpleado) return;
-    await marcar(selectedEmpleado, detailDay, estado, { horaEntrada, horaSalida, notas });
-    setSelectedEmpleado(null);
-    setHoraEntrada(""); setHoraSalida(""); setNotas("");
+  // ── Bulk: mark all employees for a date ──────────────────────────────────
+  async function marcarTodos(fecha: string, estado: EstadoAsistencia) {
+    setBulkSaving(true);
+    await Promise.all(
+      operadores
+        .filter((op) => !attMap.has(attId(op.id, fecha)) || attMap.get(attId(op.id, fecha))?.estado !== estado)
+        .map((op) => marcar(op, fecha, estado))
+    );
+    setBulkSaving(false);
   }
 
-  // ── Export Excel ──────────────────────────────────────────────────────────
+  // ── Cycle cell (semana/mes click) ─────────────────────────────────────────
+  function cycleEstado(op: Operador, fecha: string) {
+    const cur = attMap.get(attId(op.id, fecha))?.estado;
+    const next: EstadoAsistencia = cur === "presente" ? "ausente" : "presente";
+    marcar(op, fecha, next);
+  }
+
+  // ── Detail modal ──────────────────────────────────────────────────────────
+  function openDetail(op: Operador, fecha: string) {
+    const att = attMap.get(attId(op.id, fecha));
+    setDetailKey({ op, fecha });
+    setDHoraE(att?.horaEntrada ?? "");
+    setDHoraS(att?.horaSalida ?? "");
+    setDNotas(att?.notas ?? "");
+  }
+
+  async function saveDetail(estado: EstadoAsistencia) {
+    if (!detailKey) return;
+    await marcar(detailKey.op, detailKey.fecha, estado, { horaEntrada: dHoraE, horaSalida: dHoraS, notas: dNotas });
+    setDetailKey(null);
+  }
+
+  // ── Nav ───────────────────────────────────────────────────────────────────
+  function prev() { view === "semana" ? setAnchor((d) => addDays(d, -7)) : setAnchor((d) => addMonths(d, -1)); }
+  function next() { view === "semana" ? setAnchor((d) => addDays(d, 7))  : setAnchor((d) => addMonths(d, 1)); }
+
+  // ── Export ────────────────────────────────────────────────────────────────
   function exportXLSX() {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const XLSX = require("xlsx");
+    const wb = XLSX.utils.book_new();
     const rows = operadores.flatMap((op) =>
       monthDays.map((fecha) => {
-        const a = attMap.get(asistenciaId(op.id, fecha));
-        return {
-          Empleado: op.nombre,
-          Puesto: op.puesto,
-          Fecha: fecha,
-          Estado: estadoCfg(a?.estado)?.label ?? "Sin registro",
-          Entrada: a?.horaEntrada ?? "",
-          Salida: a?.horaSalida ?? "",
-          Notas: a?.notas ?? "",
-        };
+        const a = attMap.get(attId(op.id, fecha));
+        return { Empleado: op.nombre, Puesto: op.puesto, Fecha: fecha, Estado: eCfg(a?.estado)?.label ?? "Sin registro", Entrada: a?.horaEntrada ?? "", Salida: a?.horaSalida ?? "", Notas: a?.notas ?? "" };
       })
     );
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Asistencia");
-    XLSX.writeFile(wb, `asistencia-${anchorDay.slice(0, 7)}.xlsx`);
-  }
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Asistencia");
 
-  // ── Nav helpers ───────────────────────────────────────────────────────────
-  function prevPeriod() {
-    if (view === "semana") setAnchorDay((d) => addDays(d, -7));
-    else setAnchorDay((d) => addMonths(d, -1));
-  }
-  function nextPeriod() {
-    if (view === "semana") setAnchorDay((d) => addDays(d, 7));
-    else setAnchorDay((d) => addMonths(d, 1));
+    const resSheet = resumen.map((r) => ({
+      Empleado: r.op.nombre, Puesto: r.op.puesto,
+      Presentes: r.presente, Ausentes: r.ausente, Justificadas: r.justificada,
+      Vacaciones: r.vacaciones, Permisos: r.permiso, Incapacidades: r.incapacidad,
+      "% Asistencia": r.pct !== null ? `${r.pct}%` : "—",
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resSheet), "Resumen empleados");
+
+    XLSX.writeFile(wb, `asistencia-${anchor.slice(0, 7)}.xlsx`);
   }
 
   const periodLabel = view === "semana"
     ? `${isoToLabel(days[0])} – ${isoToLabel(days[6])}`
-    : monthLabel(anchorDay);
+    : monthLabel(anchor);
+
+  const hasNavPeriod = view === "semana" || view === "mes" || view === "resumen";
 
   if (loading) {
     return (
@@ -255,106 +272,227 @@ export default function AsistenciaPage() {
 
   return (
     <div className="space-y-6">
+
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-gray-500">Control de asistencia por empleado</p>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={exportXLSX}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-300 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg hover:border-[#CC2229]/60 transition-colors"
-          >
-            <Download size={13} /> Exportar mes
-          </button>
-        </div>
+        <p className="text-sm text-gray-500">Control de asistencia · {operadores.length} empleados activos</p>
+        <button onClick={exportXLSX} className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-300 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg hover:border-[#CC2229]/60 transition-colors cursor-pointer">
+          <Download size={13} /> Exportar mes
+        </button>
       </div>
 
       {/* KPIs */}
       <div className="grid grid-cols-2 xl:grid-cols-5 gap-4">
-        <KPICard title="Empleados activos"  value={String(operadores.length)}    icon={Users}      iconColor="text-blue-400" />
-        <KPICard title="Presentes hoy"      value={String(kpis.presentesHoy)}    icon={UserCheck}  iconColor="text-emerald-400" />
-        <KPICard title="Ausentes hoy"       value={String(kpis.ausentesHoy)}     icon={UserMinus}  iconColor="text-red-400" />
-        <KPICard title="Faltas en el mes"   value={String(kpis.totalFaltas)}     icon={CalendarDays} iconColor="text-orange-400" />
-        <KPICard title="Puntualidad mes"    value={`${kpis.puntualidad}%`}       icon={Clock}      iconColor="text-[#CC2229]" />
+        <KPICard title="Empleados activos" value={String(operadores.length)}     icon={Users}        iconColor="text-blue-400" />
+        <KPICard title="Presentes hoy"     value={String(kpis.presH)}            icon={UserCheck}    iconColor="text-emerald-400" />
+        <KPICard title="Ausentes hoy"      value={String(kpis.ausH)}             icon={UserMinus}    iconColor="text-red-400" />
+        <KPICard title="Faltas en el mes"  value={String(kpis.faltaM)}           icon={CalendarDays} iconColor="text-orange-400" />
+        <KPICard title="Puntualidad mes"   value={`${kpis.pct}%`}                icon={Clock}        iconColor="text-[#CC2229]" />
       </div>
 
-      {/* View controls */}
+      {/* Tab bar */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-1 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg p-1">
-          {(["semana", "mes"] as const).map((v) => (
-            <button
-              key={v}
-              onClick={() => setView(v)}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer ${view === v ? "bg-[#CC2229] text-white" : "text-gray-400 hover:text-white"}`}
-            >
-              {v === "semana" ? "Semana" : "Mes"}
+          {([
+            { key: "pase",    label: "Pase de lista", icon: ListChecks  },
+            { key: "semana",  label: "Semana",        icon: CalendarDays },
+            { key: "mes",     label: "Mes",           icon: CalendarDays },
+            { key: "resumen", label: "Resumen",       icon: BarChart3   },
+          ] as { key: ViewMode; label: string; icon: React.ElementType }[]).map(({ key, label, icon: Icon }) => (
+            <button key={key} onClick={() => setView(key)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer ${view === key ? "bg-[#CC2229] text-white" : "text-gray-400 hover:text-white"}`}>
+              <Icon size={12} />{label}
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={prevPeriod} className="rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] p-2 text-gray-400 hover:border-[#CC2229]/60 hover:text-white transition-colors cursor-pointer">
-            <ChevronLeft size={15} />
-          </button>
-          <span className="text-sm text-white font-medium px-1 capitalize min-w-40 text-center">{periodLabel}</span>
-          <button onClick={nextPeriod} className="rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] p-2 text-gray-400 hover:border-[#CC2229]/60 hover:text-white transition-colors cursor-pointer">
-            <ChevronRight size={15} />
-          </button>
-          <button onClick={() => setAnchorDay(today)} className="rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-3 py-2 text-xs text-gray-400 hover:border-[#CC2229]/60 hover:text-white transition-colors cursor-pointer">
-            Hoy
-          </button>
-        </div>
+
+        {/* Period nav (semana/mes/resumen) */}
+        {hasNavPeriod && (
+          <div className="flex items-center gap-2">
+            <button onClick={prev} className="rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] p-2 text-gray-400 hover:text-white hover:border-[#CC2229]/60 transition-colors cursor-pointer"><ChevronLeft size={14} /></button>
+            <span className="text-sm text-white font-medium px-1 min-w-44 text-center capitalize">{view === "resumen" ? monthLabel(anchor) : periodLabel}</span>
+            <button onClick={next} className="rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] p-2 text-gray-400 hover:text-white hover:border-[#CC2229]/60 transition-colors cursor-pointer"><ChevronRight size={14} /></button>
+            <button onClick={() => setAnchor(today)} className="text-xs text-gray-400 hover:text-white bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 hover:border-[#CC2229]/60 transition-colors cursor-pointer">Hoy</button>
+          </div>
+        )}
       </div>
 
-      {/* ── VISTA SEMANA ─────────────────────────────────────────────────── */}
+      {/* ══ PASE DE LISTA ════════════════════════════════════════════════════ */}
+      {view === "pase" && (
+        <div className="space-y-3">
+          {/* Barra superior del pase */}
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-[#242424] border border-[#3A3A3A] rounded-xl">
+            <div className="flex items-center gap-3">
+              <input type="date" value={paseDate} max={today}
+                onChange={(e) => setPaseDate(e.target.value)}
+                className="bg-[#1A1A1A] border border-[#3A3A3A] text-gray-200 text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:border-[#CC2229]/60 [color-scheme:dark]" />
+              <button onClick={() => setPaseDate(addDays(paseDate, -1))} disabled={addDays(paseDate, -1) < addDays(today, -60)}
+                className="p-1.5 text-gray-500 hover:text-white border border-[#3A3A3A] rounded-lg hover:border-[#CC2229]/60 transition-colors cursor-pointer disabled:opacity-30">
+                <ChevronLeft size={14} />
+              </button>
+              <button onClick={() => setPaseDate(addDays(paseDate, 1))} disabled={paseDate >= today}
+                className="p-1.5 text-gray-500 hover:text-white border border-[#3A3A3A] rounded-lg hover:border-[#CC2229]/60 transition-colors cursor-pointer disabled:opacity-30">
+                <ChevronRight size={14} />
+              </button>
+              <span className="text-xs text-gray-500 capitalize">{isoToLabel(paseDate, { weekday: "long", day: "2-digit", month: "long" })}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-600">
+                {operadores.filter((o) => attMap.has(attId(o.id, paseDate))).length}/{operadores.length} marcados
+              </span>
+              <button onClick={() => marcarTodos(paseDate, "presente")} disabled={bulkSaving}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600/80 hover:bg-emerald-600 rounded-lg transition-colors disabled:opacity-50 cursor-pointer">
+                {bulkSaving ? <Loader2 size={11} className="animate-spin" /> : <Check size={12} />}
+                Todos presentes
+              </button>
+              <button onClick={() => marcarTodos(paseDate, "ausente")} disabled={bulkSaving}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-red-600/80 hover:bg-red-600 rounded-lg transition-colors disabled:opacity-50 cursor-pointer">
+                <X size={12} /> Todos ausentes
+              </button>
+            </div>
+          </div>
+
+          {/* Search */}
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar empleado…"
+            className="w-full bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:border-[#CC2229]/60 placeholder-gray-600" />
+
+          {/* Employee rows */}
+          <div className="space-y-2">
+            {filteredOps.length === 0 && (
+              <p className="text-center py-10 text-sm text-gray-600">{search ? "Sin resultados." : "Sin empleados activos."}</p>
+            )}
+            {filteredOps.map((op) => {
+              const key    = attId(op.id, paseDate);
+              const att    = attMap.get(key);
+              const cfg    = eCfg(att?.estado);
+              const isSav  = saving.has(key);
+              return (
+                <div key={op.id} className={`flex items-center gap-3 px-4 py-3 bg-[#242424] border rounded-xl transition-colors ${cfg ? `border-l-2 ${
+                  att?.estado === "presente" ? "border-l-emerald-500 border-[#3A3A3A]" :
+                  att?.estado === "ausente"  ? "border-l-red-500 border-[#3A3A3A]" :
+                  "border-l-amber-500 border-[#3A3A3A]"
+                }` : "border-[#3A3A3A]"}`}>
+
+                  {/* Avatar + nombre */}
+                  <div className="shrink-0 w-9 h-9 rounded-full bg-[#1A1A1A] border border-[#3A3A3A] flex items-center justify-center text-xs font-bold text-gray-400">
+                    {op.nombre.split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white font-medium text-sm leading-tight truncate">{op.nombre}</p>
+                    <p className="text-gray-500 text-xs mt-0.5">{op.puesto}</p>
+                  </div>
+
+                  {/* Estado actual badge */}
+                  {cfg && (
+                    <span className={`hidden sm:inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${cfg.bg} ${cfg.color}`}>
+                      {cfg.short} {cfg.label}
+                    </span>
+                  )}
+                  {att?.horaEntrada && (
+                    <span className="hidden md:flex items-center gap-1 text-[10px] text-gray-500">
+                      <Clock size={10} /> {att.horaEntrada}
+                      {att.horaSalida && ` – ${att.horaSalida}`}
+                    </span>
+                  )}
+
+                  {/* Quick buttons */}
+                  {isSav ? (
+                    <Loader2 size={16} className="animate-spin text-gray-500 shrink-0" />
+                  ) : (
+                    <div className="flex items-center gap-1 shrink-0">
+                      {ESTADOS.map((e) => {
+                        const Icon = e.icon;
+                        const active = att?.estado === e.value;
+                        return (
+                          <button key={e.value} title={e.label}
+                            onClick={() => marcar(op, paseDate, e.value)}
+                            className={`w-8 h-8 rounded-lg border text-[10px] font-bold flex items-center justify-center transition-all cursor-pointer ${
+                              active ? `${e.bg} ${e.color} ring-1 ${e.ring} border-transparent scale-110` : "border-[#3A3A3A] text-gray-600 hover:border-gray-500 hover:text-gray-300"
+                            }`}>
+                            <Icon size={13} />
+                          </button>
+                        );
+                      })}
+                      <button title="Horario y notas" onClick={() => openDetail(op, paseDate)}
+                        className="w-8 h-8 ml-1 rounded-lg border border-[#3A3A3A] text-gray-600 hover:text-gray-300 hover:border-gray-500 flex items-center justify-center transition-colors cursor-pointer">
+                        <Pencil size={12} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Leyenda */}
+          <div className="flex flex-wrap gap-3 pt-1">
+            {ESTADOS.map((e) => (
+              <span key={e.value} className="flex items-center gap-1 text-[11px] text-gray-500">
+                <span className={`w-4 h-4 rounded flex items-center justify-center text-[8px] font-bold ${e.bg} ${e.color}`}>{e.short}</span>
+                {e.label}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ══ VISTA SEMANA ═════════════════════════════════════════════════════ */}
       {view === "semana" && (
         <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-[#3A3A3A] flex items-center gap-2 text-xs text-gray-500">
+            <span>Click en celda = cicla P→A. Click en <Pencil size={10} className="inline" /> = detalles.</span>
+          </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[700px]">
+            <table className="w-full text-sm min-w-[640px]">
               <thead>
                 <tr className="bg-[#1A1A1A] border-b border-[#3A3A3A]">
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider w-44">Empleado</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider w-40">Empleado</th>
                   {days.map((d, i) => (
-                    <th key={d} className={`px-2 py-3 text-center text-xs font-semibold uppercase tracking-wider ${d === today ? "text-[#CC2229]" : "text-gray-400"}`}>
-                      <div>{DIAS_SEMANA[i]}</div>
+                    <th key={d} className={`px-1 py-3 text-center text-xs font-semibold uppercase tracking-wider ${d === today ? "text-[#CC2229]" : "text-gray-400"}`}>
+                      <div>{DIAS[i]}</div>
                       <div className={`text-[10px] font-normal mt-0.5 ${d === today ? "text-[#CC2229]" : "text-gray-600"}`}>{isoToLabel(d)}</div>
+                      {/* Column bulk btn */}
+                      <button onClick={() => marcarTodos(d, "presente")} title="Todos presentes"
+                        className="mt-1 mx-auto w-5 h-5 rounded flex items-center justify-center bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/25 transition-colors cursor-pointer">
+                        <Check size={9} />
+                      </button>
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#3A3A3A]">
                 {operadores.length === 0 && (
-                  <tr><td colSpan={8} className="px-4 py-12 text-center text-sm text-gray-600">Sin empleados activos registrados.</td></tr>
+                  <tr><td colSpan={8} className="py-12 text-center text-sm text-gray-600">Sin empleados.</td></tr>
                 )}
                 {operadores.map((op) => (
                   <tr key={op.id} className="hover:bg-[#1A1A1A] transition-colors">
                     <td className="px-4 py-3">
                       <div className="text-white font-medium text-xs leading-tight">{op.nombre}</div>
-                      <div className="text-gray-500 text-[10px] mt-0.5">{op.puesto}</div>
+                      <div className="text-gray-600 text-[10px] mt-0.5">{op.puesto}</div>
                     </td>
                     {days.map((fecha) => {
-                      const key = asistenciaId(op.id, fecha);
+                      const key = attId(op.id, fecha);
                       const att = attMap.get(key);
-                      const cfg = att ? estadoCfg(att.estado) : undefined;
-                      const isSaving = saving === key;
+                      const cfg = eCfg(att?.estado);
+                      const isSav = saving.has(key);
                       return (
-                        <td key={fecha} className="px-1 py-2 text-center">
-                          <button
-                            onClick={() => {
-                              setSelectedEmpleado(op);
-                              setDetailDay(fecha);
-                              setHoraEntrada(att?.horaEntrada ?? "");
-                              setHoraSalida(att?.horaSalida ?? "");
-                              setNotas(att?.notas ?? "");
-                            }}
-                            className={`w-10 h-10 rounded-lg border text-xs font-bold transition-all cursor-pointer hover:scale-105 mx-auto flex items-center justify-center ${
-                              isSaving ? "border-[#3A3A3A] bg-[#1A1A1A] text-gray-600" :
-                              cfg ? `${cfg.bg} ${cfg.color} border` :
-                              fecha === today ? "border-[#CC2229]/30 bg-[#CC2229]/5 text-gray-600 hover:border-[#CC2229]/60" :
-                              "border-[#3A3A3A] bg-[#1A1A1A] text-gray-600 hover:border-gray-500"
-                            }`}
-                            title={cfg ? `${cfg.label}${att?.horaEntrada ? ` · ${att.horaEntrada}` : ""}` : "Sin registro"}
-                          >
-                            {isSaving ? <Loader2 size={12} className="animate-spin" /> : cfg ? cfg.short : "—"}
-                          </button>
+                        <td key={fecha} className="px-1 py-1.5 text-center">
+                          <div className="relative group inline-flex flex-col items-center">
+                            <button onClick={() => cycleEstado(op, fecha)} title={cfg?.label ?? "Sin registro — click para marcar"}
+                              className={`w-10 h-10 rounded-lg border text-xs font-bold transition-all cursor-pointer flex items-center justify-center mx-auto ${
+                                isSav ? "border-[#3A3A3A] text-gray-600" :
+                                cfg ? `${cfg.bg} ${cfg.color} border-transparent ring-1 ${cfg.ring}` :
+                                fecha === today ? "border-[#CC2229]/30 text-gray-700 hover:bg-[#CC2229]/10" :
+                                "border-[#3A3A3A] text-gray-700 hover:border-gray-500"
+                              }`}>
+                              {isSav ? <Loader2 size={11} className="animate-spin" /> : cfg ? cfg.short : "—"}
+                            </button>
+                            {/* Pencil overlay */}
+                            <button onClick={() => openDetail(op, fecha)} title="Editar detalles"
+                              className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded bg-[#1A1A1A] border border-[#3A3A3A] text-gray-500 items-center justify-center hidden group-hover:flex hover:text-white transition-colors cursor-pointer z-10">
+                              <Pencil size={8} />
+                            </button>
+                          </div>
                         </td>
                       );
                     })}
@@ -363,95 +501,77 @@ export default function AsistenciaPage() {
               </tbody>
             </table>
           </div>
-          {/* Leyenda */}
-          <div className="px-5 py-3 border-t border-[#3A3A3A] flex flex-wrap items-center gap-4">
-            {ESTADOS.map((e) => (
-              <span key={e.value} className="flex items-center gap-1.5 text-[11px]">
-                <span className={`w-5 h-5 rounded flex items-center justify-center text-[9px] font-bold border ${e.bg} ${e.color}`}>{e.short}</span>
-                <span className="text-gray-500">{e.label}</span>
-              </span>
-            ))}
-          </div>
+          <Legend />
         </div>
       )}
 
-      {/* ── VISTA MES ────────────────────────────────────────────────────── */}
+      {/* ══ VISTA MES ════════════════════════════════════════════════════════ */}
       {view === "mes" && (
         <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-[#3A3A3A] flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-white capitalize">{monthLabel(anchorDay)}</h3>
+          <div className="px-5 py-3 border-b border-[#3A3A3A] flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-white capitalize">{monthLabel(anchor)}</h3>
             <span className="text-xs text-gray-500">{operadores.length} empleados</span>
           </div>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto overflow-y-auto max-h-[70vh]">
             <table className="w-full text-xs">
-              <thead>
+              <thead className="sticky top-0 z-10">
                 <tr className="bg-[#1A1A1A] border-b border-[#3A3A3A]">
-                  <th className="px-4 py-2.5 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider sticky left-0 bg-[#1A1A1A] z-10 min-w-36">Empleado</th>
+                  <th className="px-4 py-2.5 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider sticky left-0 bg-[#1A1A1A] z-20 min-w-32">Empleado</th>
                   {monthDays.map((d) => {
                     const dn = new Date(d + "T12:00:00").getDay();
-                    const isWeekend = dn === 0 || dn === 6;
+                    const wk = dn === 0 || dn === 6;
                     return (
-                      <th key={d} className={`px-0.5 py-2.5 text-center font-semibold uppercase tracking-wider min-w-[28px] ${d === today ? "text-[#CC2229]" : isWeekend ? "text-gray-600" : "text-gray-400"}`}>
+                      <th key={d} className={`px-0 py-2 text-center font-semibold min-w-[26px] bg-[#1A1A1A] ${d === today ? "text-[#CC2229]" : wk ? "text-gray-700" : "text-gray-400"}`}>
                         <div className="text-[9px]">{new Date(d + "T12:00:00").toLocaleDateString("es-MX", { weekday: "narrow" })}</div>
                         <div className="text-[10px]">{new Date(d + "T12:00:00").getDate()}</div>
                       </th>
                     );
                   })}
-                  <th className="px-4 py-2.5 text-center text-[10px] font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">P</th>
-                  <th className="px-4 py-2.5 text-center text-[10px] font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">A</th>
-                  <th className="px-4 py-2.5 text-center text-[10px] font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">%</th>
+                  <th className="px-3 py-2 text-center text-[10px] font-semibold text-emerald-400 uppercase bg-[#1A1A1A]">P</th>
+                  <th className="px-3 py-2 text-center text-[10px] font-semibold text-red-400 uppercase bg-[#1A1A1A]">A</th>
+                  <th className="px-3 py-2 text-center text-[10px] font-semibold text-gray-400 uppercase bg-[#1A1A1A]">%</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#3A3A3A]">
                 {operadores.map((op) => {
-                  const monthAtt = monthDays.map((d) => attMap.get(asistenciaId(op.id, d)));
-                  const presentes = monthAtt.filter((a) => a?.estado === "presente").length;
-                  const ausentes  = monthAtt.filter((a) => a?.estado === "ausente").length;
-                  const recorded  = monthAtt.filter(Boolean).length;
-                  const pct = recorded > 0 ? Math.round((presentes / recorded) * 100) : null;
+                  const mAtt = monthDays.map((d) => attMap.get(attId(op.id, d)));
+                  const pre  = mAtt.filter((a) => a?.estado === "presente").length;
+                  const aus  = mAtt.filter((a) => a?.estado === "ausente").length;
+                  const rec  = mAtt.filter(Boolean).length;
+                  const pct  = rec > 0 ? Math.round((pre / rec) * 100) : null;
                   return (
                     <tr key={op.id} className="hover:bg-[#1A1A1A] transition-colors">
-                      <td className="px-4 py-2 sticky left-0 bg-[#242424] hover:bg-[#1A1A1A] transition-colors z-10">
-                        <div className="text-white font-medium text-[11px] leading-tight whitespace-nowrap">{op.nombre.split(" ").slice(0, 2).join(" ")}</div>
+                      <td className="px-4 py-2 sticky left-0 bg-[#242424] hover:bg-[#1A1A1A] z-10 transition-colors">
+                        <div className="text-white font-medium text-[11px] whitespace-nowrap">{op.nombre.split(" ").slice(0,2).join(" ")}</div>
                         <div className="text-gray-600 text-[9px]">{op.puesto}</div>
                       </td>
                       {monthDays.map((fecha) => {
-                        const key = asistenciaId(op.id, fecha);
+                        const key = attId(op.id, fecha);
                         const att = attMap.get(key);
-                        const cfg = att ? estadoCfg(att.estado) : undefined;
-                        const dn = new Date(fecha + "T12:00:00").getDay();
-                        const isWeekend = dn === 0 || dn === 6;
+                        const cfg = eCfg(att?.estado);
+                        const dn  = new Date(fecha + "T12:00:00").getDay();
+                        const wk  = dn === 0 || dn === 6;
+                        const isSav = saving.has(key);
                         return (
-                          <td key={fecha} className="py-1 px-0.5 text-center">
-                            <button
-                              onClick={() => {
-                                setSelectedEmpleado(op);
-                                setDetailDay(fecha);
-                                setHoraEntrada(att?.horaEntrada ?? "");
-                                setHoraSalida(att?.horaSalida ?? "");
-                                setNotas(att?.notas ?? "");
-                              }}
-                              className={`w-6 h-6 rounded text-[9px] font-bold transition-all cursor-pointer hover:scale-110 mx-auto flex items-center justify-center border ${
-                                cfg ? `${cfg.bg} ${cfg.color}` :
-                                fecha === today ? "border-[#CC2229]/30 bg-transparent text-gray-700" :
-                                isWeekend ? "border-transparent bg-transparent text-gray-700" :
-                                "border-[#3A3A3A] bg-transparent text-gray-700 hover:border-gray-500"
-                              }`}
-                              title={cfg?.label ?? (isWeekend ? "Descanso" : "Sin registro")}
-                            >
-                              {cfg ? cfg.short : isWeekend ? "·" : "—"}
+                          <td key={fecha} className="py-1 px-0 text-center">
+                            <button onClick={() => cycleEstado(op, fecha)} title={cfg?.label ?? (wk ? "Descanso" : "Sin registro")}
+                              className={`w-6 h-6 rounded text-[9px] font-bold transition-all cursor-pointer mx-auto flex items-center justify-center border ${
+                                isSav ? "border-[#3A3A3A] text-gray-700" :
+                                cfg ? `${cfg.bg} ${cfg.color} border-transparent` :
+                                fecha === today ? "border-[#CC2229]/30 text-gray-700" :
+                                wk ? "border-transparent text-gray-700" :
+                                "border-[#3A3A3A] text-gray-700 hover:border-gray-500"
+                              }`}>
+                              {isSav ? <Loader2 size={9} className="animate-spin" /> : cfg ? cfg.short : wk ? "·" : "—"}
                             </button>
                           </td>
                         );
                       })}
-                      <td className="px-4 py-2 text-center text-emerald-400 font-semibold tabular-nums">{presentes}</td>
-                      <td className="px-4 py-2 text-center text-red-400 font-semibold tabular-nums">{ausentes}</td>
-                      <td className="px-4 py-2 text-center tabular-nums">
-                        {pct !== null ? (
-                          <span className={`text-[10px] font-semibold ${pct >= 90 ? "text-emerald-400" : pct >= 75 ? "text-amber-400" : "text-red-400"}`}>{pct}%</span>
-                        ) : (
-                          <span className="text-gray-600 text-[10px]">—</span>
-                        )}
+                      <td className="px-3 py-2 text-center text-emerald-400 font-semibold tabular-nums">{pre}</td>
+                      <td className="px-3 py-2 text-center text-red-400 font-semibold tabular-nums">{aus}</td>
+                      <td className="px-3 py-2 text-center tabular-nums">
+                        {pct !== null ? <span className={`text-[10px] font-semibold ${pct >= 90 ? "text-emerald-400" : pct >= 75 ? "text-amber-400" : "text-red-400"}`}>{pct}%</span>
+                          : <span className="text-gray-700 text-[10px]">—</span>}
                       </td>
                     </tr>
                   );
@@ -459,52 +579,106 @@ export default function AsistenciaPage() {
               </tbody>
             </table>
           </div>
-          <div className="px-5 py-3 border-t border-[#3A3A3A] flex flex-wrap items-center gap-4">
-            {ESTADOS.map((e) => (
-              <span key={e.value} className="flex items-center gap-1.5 text-[11px]">
-                <span className={`w-5 h-5 rounded flex items-center justify-center text-[9px] font-bold border ${e.bg} ${e.color}`}>{e.short}</span>
-                <span className="text-gray-500">{e.label}</span>
+          <Legend />
+        </div>
+      )}
+
+      {/* ══ VISTA RESUMEN ════════════════════════════════════════════════════ */}
+      {view === "resumen" && (
+        <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
+          <div className="px-5 py-4 border-b border-[#3A3A3A] flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-white">Resumen por empleado</h3>
+              <p className="text-xs text-gray-500 mt-0.5 capitalize">{monthLabel(anchor)} · ordenado por % asistencia</p>
+            </div>
+            {resumen.filter((r) => r.ausente > 3).length > 0 && (
+              <span className="flex items-center gap-1.5 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-1.5">
+                <AlertTriangle size={12} /> {resumen.filter((r) => r.ausente > 3).length} empleado(s) con más de 3 faltas
               </span>
-            ))}
+            )}
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-[#1A1A1A]">
+                  {["Empleado","Pres.","Aus.","Just.","Vac.","Perm.","Incap.","% Asistencia"].map((h) => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#3A3A3A]">
+                {resumen.length === 0 && (
+                  <tr><td colSpan={8} className="py-12 text-center text-sm text-gray-600">Sin datos en el período.</td></tr>
+                )}
+                {resumen.map(({ op, presente, ausente, justificada, vacaciones, permiso, incapacidad, pct }) => {
+                  const alert = ausente > 3;
+                  return (
+                    <tr key={op.id} className={`transition-colors ${alert ? "bg-amber-500/4 hover:bg-amber-500/8" : "hover:bg-[#1A1A1A]"}`}>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          {alert && <AlertTriangle size={12} className="text-amber-400 shrink-0" />}
+                          <div>
+                            <div className="text-white font-medium text-xs">{op.nombre}</div>
+                            <div className="text-gray-600 text-[10px]">{op.puesto}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-emerald-400 font-semibold tabular-nums">{presente}</td>
+                      <td className="px-4 py-3 tabular-nums">
+                        <span className={`font-semibold ${ausente > 3 ? "text-red-400" : ausente > 1 ? "text-amber-400" : "text-gray-400"}`}>{ausente}</span>
+                      </td>
+                      <td className="px-4 py-3 text-amber-400 tabular-nums">{justificada || <span className="text-gray-700">—</span>}</td>
+                      <td className="px-4 py-3 text-blue-400 tabular-nums">{vacaciones || <span className="text-gray-700">—</span>}</td>
+                      <td className="px-4 py-3 text-purple-400 tabular-nums">{permiso || <span className="text-gray-700">—</span>}</td>
+                      <td className="px-4 py-3 text-orange-400 tabular-nums">{incapacidad || <span className="text-gray-700">—</span>}</td>
+                      <td className="px-4 py-3">
+                        {pct !== null ? (
+                          <div className="flex items-center gap-2">
+                            <div className="w-20 h-1.5 bg-[#3A3A3A] rounded-full overflow-hidden">
+                              <div className={`h-full rounded-full ${pct >= 90 ? "bg-emerald-500" : pct >= 75 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${pct}%` }} />
+                            </div>
+                            <span className={`text-xs font-semibold tabular-nums ${pct >= 90 ? "text-emerald-400" : pct >= 75 ? "text-amber-400" : "text-red-400"}`}>{pct}%</span>
+                          </div>
+                        ) : <span className="text-gray-600 text-xs">Sin registros</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
 
-      {/* ── PANEL DETALLE / EDICIÓN ─────────────────────────────────────── */}
-      {selectedEmpleado && (
+      {/* ══ MODAL DETALLE ════════════════════════════════════════════════════ */}
+      {detailKey && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
-            {/* Header */}
             <div className="px-6 pt-5 pb-4 border-b border-gray-100 flex items-start justify-between gap-3">
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-0.5">Registrar asistencia</p>
-                <h3 className="text-gray-900 font-semibold text-sm leading-tight">{selectedEmpleado.nombre}</h3>
-                <p className="text-xs text-gray-500 mt-0.5">{selectedEmpleado.puesto} · {isoToLabel(detailDay)}</p>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-0.5">Detalle de asistencia</p>
+                <h3 className="text-gray-900 font-semibold text-sm">{detailKey.op.nombre}</h3>
+                <p className="text-xs text-gray-500 mt-0.5">{detailKey.op.puesto} · {isoToLabel(detailKey.fecha, { weekday: "long", day: "2-digit", month: "short" })}</p>
               </div>
-              <button onClick={() => setSelectedEmpleado(null)} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 transition-colors cursor-pointer">
-                <X size={16} />
-              </button>
+              <button onClick={() => setDetailKey(null)} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 transition-colors cursor-pointer"><X size={16} /></button>
             </div>
 
             <div className="px-6 py-5 space-y-4">
-              {/* Estado buttons */}
+              {/* Estado */}
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-2.5">Estado</p>
                 <div className="grid grid-cols-3 gap-2">
                   {ESTADOS.map((e) => {
                     const Icon = e.icon;
-                    const cur = attMap.get(asistenciaId(selectedEmpleado.id, detailDay))?.estado;
+                    const cur  = attMap.get(attId(detailKey.op.id, detailKey.fecha))?.estado;
                     const active = cur === e.value;
+                    const isSav  = saving.has(attId(detailKey.op.id, detailKey.fecha));
                     return (
-                      <button
-                        key={e.value}
-                        onClick={() => saveDetail(e.value)}
-                        disabled={saving === asistenciaId(selectedEmpleado.id, detailDay)}
+                      <button key={e.value} onClick={() => saveDetail(e.value)} disabled={isSav}
                         className={`flex flex-col items-center gap-1 px-2 py-2.5 rounded-xl border text-[11px] font-semibold transition-all cursor-pointer ${
                           active ? `${e.bg} ${e.color} border-current scale-105` : "border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700"
-                        }`}
-                      >
-                        <Icon size={14} />
+                        } disabled:opacity-50`}>
+                        {isSav && active ? <Loader2 size={13} className="animate-spin" /> : <Icon size={13} />}
                         {e.label}
                       </button>
                     );
@@ -516,48 +690,50 @@ export default function AsistenciaPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5">Hora entrada</label>
-                  <input
-                    type="time"
-                    value={horaEntrada}
-                    onChange={(e) => setHoraEntrada(e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20"
-                  />
+                  <input type="time" value={dHoraE} onChange={(e) => setDHoraE(e.target.value)}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20" />
                 </div>
                 <div>
                   <label className="block text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5">Hora salida</label>
-                  <input
-                    type="time"
-                    value={horaSalida}
-                    onChange={(e) => setHoraSalida(e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20"
-                  />
+                  <input type="time" value={dHoraS} onChange={(e) => setDHoraS(e.target.value)}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20" />
                 </div>
               </div>
 
               {/* Notas */}
               <div>
-                <label className="block text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5">Notas (opcional)</label>
-                <textarea
-                  value={notas}
-                  onChange={(e) => setNotas(e.target.value)}
-                  rows={2}
+                <label className="block text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5">Notas</label>
+                <textarea value={dNotas} onChange={(e) => setDNotas(e.target.value)} rows={2}
                   placeholder="Motivo de falta, observaciones…"
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900 resize-none focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 placeholder-gray-400"
-                />
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900 resize-none focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 placeholder-gray-400" />
               </div>
-            </div>
 
-            <div className="px-6 pb-5">
-              <button
-                onClick={() => setSelectedEmpleado(null)}
-                className="w-full py-2.5 text-sm text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors cursor-pointer"
-              >
-                Cerrar
+              {/* Guardar notas/horario sin cambiar estado */}
+              <button onClick={async () => {
+                const cur = attMap.get(attId(detailKey.op.id, detailKey.fecha))?.estado ?? "presente";
+                await marcar(detailKey.op, detailKey.fecha, cur, { horaEntrada: dHoraE, horaSalida: dHoraS, notas: dNotas });
+                setDetailKey(null);
+              }}
+                className="w-full py-2.5 text-sm font-semibold text-white bg-[#CC2229] rounded-xl hover:bg-[#AA1A1F] transition-colors cursor-pointer">
+                Guardar horario y notas
               </button>
             </div>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function Legend() {
+  return (
+    <div className="px-5 py-3 border-t border-[#3A3A3A] flex flex-wrap items-center gap-4">
+      {ESTADOS.map((e) => (
+        <span key={e.value} className="flex items-center gap-1.5 text-[11px]">
+          <span className={`w-5 h-5 rounded flex items-center justify-center text-[9px] font-bold ${e.bg} ${e.color}`}>{e.short}</span>
+          <span className="text-gray-500">{e.label}</span>
+        </span>
+      ))}
     </div>
   );
 }
