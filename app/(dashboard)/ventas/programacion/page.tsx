@@ -452,11 +452,9 @@ function PedidoDrawer({
               ref={clienteTrigRef}
               type="button"
               onClick={() => { setClienteOpen((o) => !o); setClienteQuery(""); }}
-              className={`w-full flex items-center justify-between gap-2 text-left rounded-xl border px-3 py-2.5 text-sm bg-white focus:outline-none cursor-pointer transition-colors ${
-                clienteOpen
-                  ? "border-[#CC2229] ring-2 ring-[#CC2229]/20"
-                  : "border-gray-200 hover:border-gray-300"
-              } ${!form.cliente ? "text-gray-400" : "text-gray-900"}`}
+              className={`w-full flex items-center justify-between gap-2 text-left rounded-xl border border-gray-200 px-3 py-2.5 text-sm bg-white focus:outline-none cursor-pointer transition-colors hover:border-gray-300 ${
+                !form.cliente ? "text-gray-400" : "text-gray-900"
+              }`}
             >
               <span className="truncate">{form.cliente || "Seleccionar cliente…"}</span>
               <ChevronDown size={14} className={`shrink-0 text-gray-400 transition-transform ${clienteOpen ? "rotate-180" : ""}`} />
@@ -475,7 +473,8 @@ function PedidoDrawer({
                     value={clienteQuery}
                     onChange={(e) => setClienteQuery(e.target.value)}
                     placeholder="Buscar cliente…"
-                    className="flex-1 text-sm text-gray-900 placeholder-gray-400 focus:outline-none bg-transparent"
+                    className="flex-1 text-sm text-gray-900 placeholder-gray-400 bg-transparent"
+                    style={{ outline: "none", boxShadow: "none", border: "none" }}
                   />
                   {clienteQuery && (
                     <button type="button" onClick={() => setClienteQuery("")} className="text-gray-400 hover:text-gray-600 cursor-pointer">
