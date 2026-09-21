@@ -211,7 +211,22 @@ function PedidoDrawer({
   // Cliente combobox state
   const [clienteOpen, setClienteOpen]   = useState(false);
   const [clienteQuery, setClienteQuery] = useState("");
-  const clienteRef = useRef<HTMLDivElement>(null);
+  const clienteRef     = useRef<HTMLDivElement>(null);
+  const clienteTrigRef = useRef<HTMLButtonElement>(null);
+  const [dropRect, setDropRect] = useState<{ top: number; left: number; width: number } | null>(null);
+
+  // Recalcular posición del dropdown al abrirse o hacer scroll
+  useEffect(() => {
+    if (!clienteOpen || !clienteTrigRef.current) return;
+    const update = () => {
+      const r = clienteTrigRef.current!.getBoundingClientRect();
+      setDropRect({ top: r.bottom + 4, left: r.left, width: r.width });
+    };
+    update();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => { window.removeEventListener("scroll", update, true); window.removeEventListener("resize", update); };
+  }, [clienteOpen]);
 
   // Click-outside cierra el combobox de clientes
   useEffect(() => {
@@ -431,43 +446,42 @@ function PedidoDrawer({
           </div>
 
           {/* Cliente — combobox buscable */}
-          <div ref={clienteRef} className="relative">
+          <div ref={clienteRef}>
             <label className={lbl}>Cliente <span className="text-[#CC2229]">*</span></label>
-            {/* Trigger */}
             <button
+              ref={clienteTrigRef}
               type="button"
               onClick={() => { setClienteOpen((o) => !o); setClienteQuery(""); }}
-              className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl border text-sm text-left transition-colors cursor-pointer ${
-                form.cliente ? "text-white" : "text-gray-500"
-              } bg-[#1A1A1A] border-[#3A3A3A] hover:border-[#CC2229]/60 focus:outline-none`}
+              className={`${inp} flex items-center justify-between gap-2 text-left cursor-pointer ${!form.cliente ? "text-gray-400" : "text-gray-900"}`}
             >
               <span className="truncate">{form.cliente || "Seleccionar cliente…"}</span>
-              <ChevronDown size={14} className={`shrink-0 text-gray-500 transition-transform ${clienteOpen ? "rotate-180" : ""}`} />
+              <ChevronDown size={14} className={`shrink-0 text-gray-400 transition-transform ${clienteOpen ? "rotate-180" : ""}`} />
             </button>
 
-            {/* Dropdown */}
-            {clienteOpen && (
-              <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#1A1A1A] border border-[#3A3A3A] rounded-xl shadow-2xl overflow-hidden">
-                {/* Search input */}
-                <div className="flex items-center gap-2 px-3 py-2 border-b border-[#3A3A3A]">
-                  <Search size={13} className="text-gray-500 shrink-0" />
+            {/* Dropdown — fixed para no verse cortado por overflow-y-auto */}
+            {clienteOpen && dropRect && (
+              <div
+                style={{ position: "fixed", top: dropRect.top, left: dropRect.left, width: dropRect.width, zIndex: 9999 }}
+                className="bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden"
+              >
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100">
+                  <Search size={13} className="text-gray-400 shrink-0" />
                   <input
                     autoFocus
                     value={clienteQuery}
                     onChange={(e) => setClienteQuery(e.target.value)}
                     placeholder="Buscar cliente…"
-                    className="flex-1 bg-transparent text-sm text-white placeholder-gray-600 focus:outline-none"
+                    className="flex-1 text-sm text-gray-900 placeholder-gray-400 focus:outline-none bg-transparent"
                   />
                   {clienteQuery && (
-                    <button type="button" onClick={() => setClienteQuery("")} className="text-gray-600 hover:text-gray-400 cursor-pointer">
+                    <button type="button" onClick={() => setClienteQuery("")} className="text-gray-400 hover:text-gray-600 cursor-pointer">
                       <X size={12} />
                     </button>
                   )}
                 </div>
-                {/* List */}
                 <ul className="max-h-52 overflow-y-auto overscroll-contain">
                   {clientesFiltrados.length === 0 && (
-                    <li className="px-3 py-3 text-xs text-gray-600 text-center">Sin resultados</li>
+                    <li className="px-3 py-3 text-xs text-gray-500 text-center">Sin resultados</li>
                   )}
                   {clientesFiltrados.map((c) => (
                     <li key={c}>
@@ -480,7 +494,9 @@ function PedidoDrawer({
                           setClienteQuery("");
                         }}
                         className={`w-full text-left px-3 py-2 text-sm transition-colors cursor-pointer ${
-                          form.cliente === c ? "bg-[#CC2229]/15 text-[#CC2229]" : "text-gray-200 hover:bg-[#2A2A2A]"
+                          form.cliente === c
+                            ? "bg-[#CC2229]/8 text-[#CC2229] font-medium"
+                            : "text-gray-800 hover:bg-gray-50"
                         }`}
                       >
                         {c}
