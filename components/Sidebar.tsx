@@ -105,8 +105,9 @@ const facturacionItems = [
 ];
 
 const recursosHumanosItems = [
-  { href: "/transporte/operadores",    icon: HardHat,      label: "Empleados" },
-  { href: "/recursos-humanos/nomina",  icon: FlaskConical, label: "Nómina", devOnly: true },
+  { href: "/transporte/operadores",            icon: HardHat,      label: "Empleados" },
+  { href: "/recursos-humanos/asistencia",      icon: CalendarDays, label: "Asistencia" },
+  { href: "/recursos-humanos/nomina",          icon: FlaskConical, label: "Nómina", devOnly: true },
 ];
 
 // ─── Badge de estado ──────────────────────────────────────────────────────────

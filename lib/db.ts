@@ -181,6 +181,7 @@ export const COLLECTIONS = {
   pagos: "pagos",
   solicitudesAutorizacion: "solicitudesAutorizacion",
   notificaciones: "notificaciones",
+  asistencias: "asistencias",
 } as const;
 
 export { where, orderBy, limit, startAfter, type QueryConstraint };
