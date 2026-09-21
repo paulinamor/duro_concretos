@@ -452,7 +452,11 @@ function PedidoDrawer({
               ref={clienteTrigRef}
               type="button"
               onClick={() => { setClienteOpen((o) => !o); setClienteQuery(""); }}
-              className={`${inp} flex items-center justify-between gap-2 text-left cursor-pointer ${!form.cliente ? "text-gray-400" : "text-gray-900"}`}
+              className={`w-full flex items-center justify-between gap-2 text-left rounded-xl border px-3 py-2.5 text-sm bg-white focus:outline-none cursor-pointer transition-colors ${
+                clienteOpen
+                  ? "border-[#CC2229] ring-2 ring-[#CC2229]/20"
+                  : "border-gray-200 hover:border-gray-300"
+              } ${!form.cliente ? "text-gray-400" : "text-gray-900"}`}
             >
               <span className="truncate">{form.cliente || "Seleccionar cliente…"}</span>
               <ChevronDown size={14} className={`shrink-0 text-gray-400 transition-transform ${clienteOpen ? "rotate-180" : ""}`} />
