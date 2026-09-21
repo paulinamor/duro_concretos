@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, DollarSign, FileText, TrendingUp, Upload, Users } from "lucide-react";
+import { CheckCircle2, DollarSign, ExternalLink, FileText, Loader2, TrendingUp, Upload, Users } from "lucide-react";
 import KPICard from "@/components/KPICard";
 import { getCollectionDocs, COLLECTIONS } from "@/lib/db";
 import { parseViajeDate, type Viaje } from "@/lib/viajes";
+import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import { storage } from "@/lib/firebase";
 import {
   BarChart,
   Bar,
@@ -111,7 +113,8 @@ function buildPagos(viajes: Viaje[], period: Period, driverView: DriverView) {
 export default function PagosPage() {
   const [period, setPeriod] = useState<Period>("todos");
   const [driverView, setDriverView] = useState<DriverView>("con-viajes");
-  const [uploadedReceipts, setUploadedReceipts] = useState<Record<string, string>>({});
+  const [uploadedReceipts, setUploadedReceipts] = useState<Record<string, { name: string; url: string }>>({});
+  const [uploadingReceipts, setUploadingReceipts] = useState<Set<string>>(new Set());
   const [viajes, setViajes] = useState<Viaje[]>([]);
   const operadoresData = useMemo(() => buildPagos(viajes, period, driverView), [viajes, period, driverView]);
   const totalPagar = operadoresData.reduce((s, o) => s + o.total, 0);
@@ -121,13 +124,25 @@ export default function PagosPage() {
     getCollectionDocs<Viaje>(COLLECTIONS.viajes).then(setViajes);
   }, []);
 
-  function handleReceiptUpload(operador: string, file?: File) {
-    if (!file) return;
+  async function handleReceiptUpload(operador: string, file?: File) {
+    if (!file || !storage) return;
+    const periodoKey = period === "todos" ? "general" : period;
+    const filename = `${operador.replace(/\s+/g, "_")}_${Date.now()}_${file.name}`;
+    const storageRef = ref(storage, `pagos/${periodoKey}/${filename}`);
 
-    setUploadedReceipts((current) => ({
-      ...current,
-      [operador]: file.name,
-    }));
+    setUploadingReceipts((s) => new Set(s).add(operador));
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const task = uploadBytesResumable(storageRef, file, { contentType: file.type });
+        task.on("state_changed", null, reject, () => resolve());
+      });
+      const url = await getDownloadURL(storageRef);
+      setUploadedReceipts((cur) => ({ ...cur, [operador]: { name: file.name, url } }));
+    } catch {
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: `Error al subir recibo de ${operador}.` } }));
+    } finally {
+      setUploadingReceipts((s) => { const n = new Set(s); n.delete(operador); return n; });
+    }
   }
 
   return (
@@ -229,7 +244,8 @@ export default function PagosPage() {
             </thead>
             <tbody className="divide-y divide-[#3A3A3A]">
               {operadoresData.map((o) => {
-                const receiptName = uploadedReceipts[o.nombre];
+                const receipt = uploadedReceipts[o.nombre];
+                const uploading = uploadingReceipts.has(o.nombre);
 
                 return (
                 <tr key={o.nombre} className="transition-colors">
@@ -243,24 +259,32 @@ export default function PagosPage() {
                   <td className="px-4 py-3 text-white font-bold">${o.total.toLocaleString()}</td>
                   <td className="px-4 py-3">
                     <label className={`inline-flex cursor-pointer items-center gap-1.5 text-xs bg-[#1A1A1A] border px-2.5 py-1.5 rounded-lg transition-colors ${
-                      receiptName
-                        ? "border-green-700 text-green-400 hover:text-green-300"
-                        : "border-[#3A3A3A] hover:border-[#CC2229] text-gray-300 hover:text-white"
+                      uploading ? "border-[#3A3A3A] text-gray-400 pointer-events-none" :
+                      receipt ? "border-green-700 text-green-400 hover:text-green-300" :
+                      "border-[#3A3A3A] hover:border-[#CC2229] text-gray-300 hover:text-white"
                     }`}>
-                      {receiptName ? <CheckCircle2 size={12} /> : <Upload size={12} />}
-                      {receiptName ? "Subido" : "Recibo"}
+                      {uploading ? <Loader2 size={12} className="animate-spin" /> : receipt ? <CheckCircle2 size={12} /> : <Upload size={12} />}
+                      {uploading ? "Subiendo…" : receipt ? "Subido" : "Recibo"}
                       <input
                         type="file"
                         accept=".pdf,.jpg,.jpeg,.png,.xml"
                         className="hidden"
+                        disabled={uploading}
                         onChange={(event) => handleReceiptUpload(o.nombre, event.target.files?.[0])}
                       />
                     </label>
-                    {receiptName && (
-                      <p className="mt-1 max-w-32 truncate text-[11px] text-gray-500" title={receiptName}>
-                        <FileText size={10} className="mr-1 inline" />
-                        {receiptName}
-                      </p>
+                    {receipt && (
+                      <a
+                        href={receipt.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-1 flex items-center gap-1 max-w-32 truncate text-[11px] text-blue-400 hover:text-blue-300"
+                        title={receipt.name}
+                      >
+                        <FileText size={10} className="shrink-0" />
+                        <span className="truncate">{receipt.name}</span>
+                        <ExternalLink size={9} className="shrink-0" />
+                      </a>
                     )}
                   </td>
                 </tr>

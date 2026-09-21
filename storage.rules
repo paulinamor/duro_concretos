@@ -1,0 +1,40 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // All authenticated users can read any file
+    match /{allPaths=**} {
+      allow read: if signedIn();
+    }
+
+    // Mantenimiento: factura and evidencia photos
+    match /mantenimiento/{eventId}/{category}/{filename} {
+      allow write: if signedIn()
+        && category in ['factura', 'evidencia']
+        && request.resource.size < 20 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Unidades: insurance and other unit documents
+    match /unidades/{unidadId}/docs/{filename} {
+      allow write: if signedIn()
+        && request.resource.size < 20 * 1024 * 1024;
+    }
+
+    // Pagos: operator payment receipts (PDF, images, XML)
+    match /pagos/{periodo}/{filename} {
+      allow write: if signedIn()
+        && request.resource.size < 20 * 1024 * 1024;
+    }
+
+    // Configuracion: logos and other config assets
+    match /configuracion/{filename} {
+      allow write: if signedIn()
+        && request.resource.size < 5 * 1024 * 1024;
+    }
+  }
+}
