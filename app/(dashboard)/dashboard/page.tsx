@@ -27,6 +27,7 @@ import { filterByPlanta, getAllowedModuleSet, moduleCatalog, getStoredSession } 
 import { localISODate } from "@/lib/dateUtils";
 import type { Unidad } from "@/lib/unidades";
 import { TOOLTIP_STYLE } from "@/lib/chartStyles";
+import { currencyRounded as currency } from "@/lib/formatters";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -65,10 +66,6 @@ interface Cuenta {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function currency(n: number) {
-  return n.toLocaleString("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 0 });
-}
 
 function isoToDisplay(iso: string) {
   if (!iso) return "—";

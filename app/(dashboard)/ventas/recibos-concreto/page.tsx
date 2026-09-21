@@ -30,6 +30,7 @@ import { withPlantaTag } from "@/lib/auth";
 import { todayCST } from "@/lib/dateUtils";
 import { useCollectionWithLoading } from "@/lib/useCollection";
 import type { Cliente } from "@/lib/crmClientes";
+import { matchesQuery } from "@/lib/search";
 import KPICard from "@/components/KPICard";
 import AppSelect from "@/components/AppSelect";
 
@@ -101,12 +102,8 @@ export default function RecibosConcretoPage() {
   const filteredReceipts = useMemo(() => {
     const sorted = [...savedReceipts].sort((a, b) => b.receiptNumber - a.receiptNumber);
     if (!search.trim()) return sorted;
-    const q = search.toLowerCase();
-    return sorted.filter(
-      (r) =>
-        String(r.receiptNumber).includes(q) ||
-        r.cliente.toLowerCase().includes(q) ||
-        r.direccionObra.toLowerCase().includes(q),
+    return sorted.filter((r) =>
+      matchesQuery(search, [r.receiptNumber, r.cliente, r.direccionObra])
     );
   }, [savedReceipts, search]);
 
@@ -185,7 +182,15 @@ export default function RecibosConcretoPage() {
     return nextReceipt;
   }
 
+  function receiptError(): string | null {
+    if (!receipt.cliente.trim()) return "Cliente es requerido.";
+    if (!receipt.m3 || receipt.m3 <= 0) return "M³ debe ser mayor a 0.";
+    return null;
+  }
+
   async function saveReceipt() {
+    const err = receiptError();
+    if (err) { window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: err } })); return; }
     setSaving(true);
     try {
       await persistReceipt();
@@ -196,6 +201,8 @@ export default function RecibosConcretoPage() {
   }
 
   async function printReceipt() {
+    const err = receiptError();
+    if (err) { window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: err } })); return; }
     setSaving(true);
     try {
       await persistReceipt(false);
@@ -214,6 +221,8 @@ export default function RecibosConcretoPage() {
   async function sendWhatsApp(targetReceipt = receipt, shouldSave = true) {
     let messageReceipt = targetReceipt;
     if (shouldSave) {
+      const err = receiptError();
+      if (err) { window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: err } })); return; }
       setSaving(true);
       try {
         messageReceipt = await persistReceipt(false);

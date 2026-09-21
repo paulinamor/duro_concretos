@@ -13,11 +13,14 @@ import {
   Wallet,
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
+import ModuleLoading from "@/components/ModuleLoading";
 import PlantaRequired from "@/components/PlantaRequired";
 import StatusBadge from "@/components/StatusBadge";
 import FormModal from "@/components/FormModal";
 import AppSelect from "@/components/AppSelect";
 import { getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
+import { normalizeKey } from "@/lib/duplicateCheck";
+import DuplicateWarningModal from "@/components/DuplicateWarningModal";
 import {
   PieChart,
   Pie,
@@ -54,15 +57,19 @@ const tooltipStyle = {
 
 export default function CajaChicaPage() {
   const [gastos, setGastos] = useState<GastoCajaChica[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getCollectionDocs<GastoCajaChica>(COLLECTIONS.cajaChica).then(setGastos);
+    getCollectionDocs<GastoCajaChica>(COLLECTIONS.cajaChica)
+      .then(setGastos)
+      .finally(() => setLoading(false));
   }, []);
   const [showForm, setShowForm] = useState(false);
   const [showReposicion, setShowReposicion] = useState(false);
   const [filterEstado, setFilterEstado] = useState("Todos");
   const [filterCategoria, setFilterCategoria] = useState("Todas");
   const [query, setQuery] = useState("");
+  const [duplicateWarn, setDuplicateWarn] = useState<{ field: string; value: string; detail?: string; proceed: () => void } | null>(null);
 
   const gastado = gastos.filter(g => g.estado === "Aprobado").reduce((s, g) => s + g.monto, 0);
   const disponible = fondoTotal - gastado;
@@ -92,10 +99,23 @@ export default function CajaChicaPage() {
     );
   });
 
-  async function handleSave(values: Record<string, string>) {
+  async function handleSave(values: Record<string, string>, force = false) {
     const id = Date.now().toString();
     const fecha = values.Fecha ? values.Fecha.split("-").reverse().join("/") : new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" });
     const monto = Number(values["Monto ($)"]?.replace(/[$,]/g, "") || 0);
+    if (!force) {
+      const desc = normalizeKey(values.Descripción || "");
+      const dup = gastos.find((g) => g.fecha === fecha && normalizeKey(g.descripcion) === desc && g.monto === monto);
+      if (dup) {
+        setDuplicateWarn({
+          field: "Descripción + Fecha + Monto",
+          value: `${values.Descripción} — ${fecha} — $${monto.toLocaleString("es-MX")}`,
+          detail: `Folio ${dup.folio}`,
+          proceed: () => { setDuplicateWarn(null); void handleSave(values, true); },
+        });
+        return;
+      }
+    }
     const newGasto: GastoCajaChica = {
       folio: `CC-${id}`,
       fecha,
@@ -110,7 +130,14 @@ export default function CajaChicaPage() {
     };
 
     setGastos((current) => [newGasto, ...current]);
-    await upsertDocument(COLLECTIONS.cajaChica, id, newGasto);
+    try {
+      await upsertDocument(COLLECTIONS.cajaChica, id, newGasto);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: "Gasto registrado." } }));
+    } catch (e) {
+      console.error(e);
+      setGastos((current) => current.filter((g) => g.folio !== newGasto.folio));
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al guardar. Intenta de nuevo." } }));
+    }
   }
 
   return (
@@ -334,6 +361,9 @@ export default function CajaChicaPage() {
           <div className="px-5 py-4 border-b border-[#3A3A3A]">
             <h3 className="text-white font-semibold">Gastos registrados</h3>
           </div>
+          {loading ? (
+            <ModuleLoading label="Cargando caja chica…" />
+          ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -375,8 +405,19 @@ export default function CajaChicaPage() {
               </tbody>
             </table>
           </div>
+          )}
         </div>
       </div>
+
+      {duplicateWarn && (
+        <DuplicateWarningModal
+          field={duplicateWarn.field}
+          value={duplicateWarn.value}
+          detail={duplicateWarn.detail}
+          onCancel={() => setDuplicateWarn(null)}
+          onConfirm={duplicateWarn.proceed}
+        />
+      )}
     </div>
   );
 }

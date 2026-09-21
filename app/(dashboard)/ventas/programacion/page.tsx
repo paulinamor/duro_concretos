@@ -6,12 +6,14 @@ import {
   MapPin, Package, Phone, Plus, Search, Truck, Users, X,
 } from "lucide-react";
 import AppSelect from "@/components/AppSelect";
+import ModuleLoading from "@/components/ModuleLoading";
 import PlantaRequired from "@/components/PlantaRequired";
 import { upsertDocument, getCollectionDocs, COLLECTIONS, orderBy, limit } from "@/lib/db";
 import { withPlantaTag, getStoredSession, getActivePlanta } from "@/lib/auth";
 import { todayCST, localISODate } from "@/lib/dateUtils";
 import { useCollection } from "@/lib/useCollection";
 import { tiposCliente, type Cliente, type TipoCliente } from "@/lib/crmClientes";
+import { matchesQuery } from "@/lib/search";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -844,13 +846,16 @@ export default function VentasProgramacionPage() {
 
   // Carga única — no real-time, para no disparar re-render de toda la página al guardar un cliente
   const [rawClientes, setRawClientes] = useState<Cliente[]>([]);
-  useEffect(() => {
-    getCollectionDocs<Cliente>(COLLECTIONS.clientes).then(setRawClientes);
-  }, []);
-
   const [obrasData, setObrasData] = useState<Obra[]>([]);
+  const [loading, setLoading] = useState(true);
   useEffect(() => {
-    getCollectionDocs<Obra>(COLLECTIONS.obras).then(setObrasData);
+    Promise.all([
+      getCollectionDocs<Cliente>(COLLECTIONS.clientes),
+      getCollectionDocs<Obra>(COLLECTIONS.obras),
+    ]).then(([cls, obs]) => {
+      setRawClientes(cls);
+      setObrasData(obs);
+    }).finally(() => setLoading(false));
   }, []);
 
   const [diaActivo, setDiaActivo] = useState(todayISO);
@@ -913,13 +918,7 @@ export default function VentasProgramacionPage() {
 
   // Feature 2: filtrado por folio/cliente/dirección
   const pedidosFiltrados = useMemo(() => {
-    if (!folioSearch.trim()) return misPedidos;
-    const q = folioSearch.toLowerCase();
-    return misPedidos.filter((p) =>
-      p.folio?.toLowerCase().includes(q) ||
-      p.cliente?.toLowerCase().includes(q) ||
-      p.direccion?.toLowerCase().includes(q),
-    );
+    return misPedidos.filter((p) => matchesQuery(folioSearch, [p.folio, p.cliente, p.direccion]));
   }, [misPedidos, folioSearch]);
 
   // Disponibilidad del día activo (todos los pedidos de ese día, sin revelar datos de otros)
@@ -1236,7 +1235,11 @@ export default function VentasProgramacionPage() {
           </div>
         </div>
 
-        {pedidosFiltrados.length === 0 ? (
+        {loading ? (
+          <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
+            <ModuleLoading label="Cargando programaciones…" />
+          </div>
+        ) : pedidosFiltrados.length === 0 ? (
           <div className="text-center py-16 text-gray-600 text-sm bg-[#242424] border border-[#3A3A3A] rounded-xl">
             {folioSearch.trim()
               ? "Sin resultados para esa búsqueda."

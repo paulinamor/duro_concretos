@@ -21,6 +21,10 @@ import KPICard from "@/components/KPICard";
 import PlantaRequired from "@/components/PlantaRequired";
 import { diasDesdeIngreso, docsProximos, operadoresActivos, type Operador } from "@/lib/operadores";
 import { COLLECTIONS, deleteDocument, getDocument, subscribeToCollection, upsertDocument } from "@/lib/db";
+import { normalizeKey } from "@/lib/duplicateCheck";
+import DuplicateWarningModal from "@/components/DuplicateWarningModal";
+import { matchesQuery } from "@/lib/search";
+import EmptyState from "@/components/EmptyState";
 
 const TIPOS_LICENCIA = ["A", "B", "C", "D", "E"];
 
@@ -104,16 +108,21 @@ function EmpleadoDrawer({ open, editing, onClose, onSave, puestosList }: {
 }) {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [nombreError, setNombreError] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setForm(editing ? fromOperador(editing) : emptyForm());
+    setNombreError(false);
   }, [open, editing]);
 
-  const set = (k: keyof FormState, v: string) => setForm((p) => ({ ...p, [k]: v }));
+  const set = (k: keyof FormState, v: string) => {
+    setForm((p) => ({ ...p, [k]: v }));
+    if (k === "nombre") setNombreError(false);
+  };
 
   const handleSave = async () => {
-    if (!form.nombre.trim()) return;
+    if (!form.nombre.trim()) { setNombreError(true); return; }
     setSaving(true);
     try { await onSave(form); onClose(); }
     finally { setSaving(false); }
@@ -152,7 +161,8 @@ function EmpleadoDrawer({ open, editing, onClose, onSave, puestosList }: {
               </div>
               <div>
                 <label className={lbl}>Nombre completo <span className="text-[#CC2229]">*</span></label>
-                <input type="text" value={form.nombre} onChange={(e) => set("nombre", e.target.value)} placeholder="Nombre completo" className={inp} />
+                <input type="text" value={form.nombre} onChange={(e) => set("nombre", e.target.value)} placeholder="Nombre completo" className={`${inp} ${nombreError ? "border-red-400 focus:border-red-400 focus:ring-red-400/20" : ""}`} />
+                {nombreError && <p className="text-[11px] text-red-400 mt-1">Campo requerido</p>}
               </div>
               <div>
                 <label className={lbl}>Fecha de nacimiento</label>
@@ -276,6 +286,7 @@ export default function EmpleadosPage() {
   const [puestosListDraft, setPuestosListDraft] = useState<string[]>([]);
   const [nuevoPuesto, setNuevoPuesto] = useState("");
   const [savingPuestos, setSavingPuestos] = useState(false);
+  const [duplicateWarn, setDuplicateWarn] = useState<{ field: string; value: string; detail?: string; proceed: () => void } | null>(null);
 
   useEffect(() => {
     getDocument<{ lista: string[] }>(COLLECTIONS.configuracion, "puestos").then((doc) => {
@@ -334,15 +345,8 @@ export default function EmpleadosPage() {
   }, []);
 
   const filtered = useMemo(() => {
-    const term = query.toLowerCase();
     return operadores.filter((op) => {
-      const matchQuery = !term ||
-        op.nombre.toLowerCase().includes(term) ||
-        (op.apodo ?? "").toLowerCase().includes(term) ||
-        (op.puesto ?? "").toLowerCase().includes(term) ||
-        (op.rfc ?? "").toLowerCase().includes(term) ||
-        (op.curp ?? "").toLowerCase().includes(term) ||
-        (op.noSeguroSocial ?? "").toLowerCase().includes(term);
+      const matchQuery = matchesQuery(query, [op.nombre, op.apodo, op.puesto, op.rfc, op.curp, op.noSeguroSocial]);
       const limite90 = Date.now() + 90 * 24 * 60 * 60 * 1000;
       const tieneDocVencer = !op.baja && [op.vencimientoLicencia, op.vencimientoCredencial, op.vencimientoContrato].some(
         (f) => f && new Date(f).getTime() <= limite90
@@ -366,7 +370,15 @@ export default function EmpleadosPage() {
     window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `${op.apodo || op.nombre} eliminado.` } }));
   }
 
-  async function handleSave(f: FormState) {
+  async function handleSave(f: FormState, force = false) {
+    if (!force && !editing) {
+      const norm = normalizeKey(f.nombre);
+      const dup = operadores.find((op) => normalizeKey(op.nombre) === norm);
+      if (dup) {
+        setDuplicateWarn({ field: "Nombre del empleado", value: f.nombre.trim(), detail: dup.puesto || undefined, proceed: () => { setDuplicateWarn(null); void handleSave(f, true); } });
+        return;
+      }
+    }
     const id = editing?.id ?? `OP-${Date.now()}`;
     const next: Operador = {
       id, apodo: f.apodo.trim(), nombre: f.nombre.trim(),
@@ -378,10 +390,15 @@ export default function EmpleadosPage() {
       vencimientoLicencia: f.vencimientoLicencia, vencimientoCredencial: f.vencimientoCredencial,
       contactosEmergencia: f.contactosEmergencia.trim(),
     };
-    setOperadores((c) => editing ? c.map((op) => op.id === editing.id ? next : op) : [next, ...c]);
     const { id: _id, ...data } = next;
-    await upsertDocument(COLLECTIONS.operadores, _id, data);
-    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: editing ? "Empleado actualizado." : "Empleado creado." } }));
+    try {
+      await upsertDocument(COLLECTIONS.operadores, _id, data);
+      setOperadores((c) => editing ? c.map((op) => op.id === editing.id ? next : op) : [next, ...c]);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: editing ? "Empleado actualizado." : "Empleado creado." } }));
+    } catch (e) {
+      console.error(e);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al guardar. Verifica tu conexión." } }));
+    }
   }
 
   function downloadFile(filename: string, content: string, mimeType: string) {
@@ -527,9 +544,12 @@ export default function EmpleadosPage() {
             <tbody className="divide-y divide-[#3A3A3A]">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-5 py-14 text-center">
-                    <p className="text-gray-500 text-sm">No se encontraron empleados.</p>
-                    <button onClick={openCreate} className="mt-3 text-xs text-[#CC2229] hover:underline cursor-pointer">+ Crear primer empleado</button>
+                  <td colSpan={9} className="p-0">
+                    <EmptyState
+                      type={operadores.length === 0 ? "empty" : "no-results"}
+                      action={operadores.length === 0 ? { label: "Crear primer empleado", onClick: openCreate } : undefined}
+                      dark
+                    />
                   </td>
                 </tr>
               ) : filtered.map((op) => {
@@ -638,6 +658,16 @@ export default function EmpleadosPage() {
       )}
 
       <EmpleadoDrawer open={showForm} editing={editing} onClose={() => { setShowForm(false); setEditing(null); }} onSave={handleSave} puestosList={puestosList} />
+
+      {duplicateWarn && (
+        <DuplicateWarningModal
+          field={duplicateWarn.field}
+          value={duplicateWarn.value}
+          detail={duplicateWarn.detail}
+          onCancel={() => setDuplicateWarn(null)}
+          onConfirm={duplicateWarn.proceed}
+        />
+      )}
 
       {/* Confirm Delete Dialog */}
       {confirmDelete && (

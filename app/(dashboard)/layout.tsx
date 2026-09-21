@@ -55,6 +55,8 @@ const pageSections: Record<string, string> = {
   "/perfil":                           "Sistema",
   "/configuracion":                    "Sistema",
   "/transporte/programacion":          "Transporte",
+  "/transporte/flota-en-vivo":         "Transporte",
+  "/transporte/programacion-live":     "Transporte",
   "/transporte/diesel":                "Transporte",
   "/transporte/mantenimiento":         "Transporte",
   "/transporte/seguros":               "Transporte",

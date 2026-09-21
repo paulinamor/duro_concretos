@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
+  Activity,
   LayoutDashboard,
   Truck,
   DollarSign,
@@ -68,10 +69,12 @@ const systemItems = [
 const administracionItems: { href: string; icon: React.ElementType; label: string }[] = [];
 
 const transporteItems = [
-  { href: "/transporte/programacion",  icon: CalendarDays, label: "Programación" },
-  { href: "/transporte/seguros",       icon: Truck,        label: "Unidades y Seguros" },
-  { href: "/transporte/diesel",        icon: Fuel,         label: "Consumo de Diésel" },
-  { href: "/transporte/mantenimiento", icon: Wrench,       label: "Mantenimiento de Flota" },
+  { href: "/transporte/programacion",      icon: CalendarDays, label: "Programación" },
+  { href: "/transporte/flota-en-vivo",     icon: ScanEye,      label: "Flota en vivo" },
+  { href: "/transporte/programacion-live", icon: Activity,     label: "Prog. en tiempo real" },
+  { href: "/transporte/seguros",           icon: Truck,        label: "Unidades y Seguros" },
+  { href: "/transporte/diesel",            icon: Fuel,         label: "Consumo de Diésel" },
+  { href: "/transporte/mantenimiento",     icon: Wrench,       label: "Mantenimiento de Flota" },
 ];
 
 const operacionesItems = [

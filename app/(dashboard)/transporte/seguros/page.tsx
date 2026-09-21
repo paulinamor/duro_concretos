@@ -11,9 +11,11 @@ import KPICard from "@/components/KPICard";
 import HScrollTable from "@/components/HScrollTable";
 import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS, where } from "@/lib/db";
 import { todayCST } from "@/lib/dateUtils";
-import { useCollectionRaw } from "@/lib/useCollection";
+import { useCollectionRawWithLoading } from "@/lib/useCollection";
+import ModuleLoading from "@/components/ModuleLoading";
 import type { Unidad, EstatusUnidad } from "@/lib/unidades";
 import PlantaRequired from "@/components/PlantaRequired";
+import EmptyState from "@/components/EmptyState";
 import { storage } from "@/lib/firebase";
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage";
 
@@ -993,8 +995,9 @@ function FormDrawer({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SegurosPage() {
-  const unidades = useCollectionRaw<Unidad>(COLLECTIONS.unidades);
-  const seguros = useCollectionRaw<Seguro>(COLLECTIONS.seguros);
+  const { data: unidades, loading: loadingUnidades } = useCollectionRawWithLoading<Unidad>(COLLECTIONS.unidades);
+  const { data: seguros, loading: loadingSeguros } = useCollectionRawWithLoading<Seguro>(COLLECTIONS.seguros);
+  const loading = loadingUnidades || loadingSeguros;
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<VigenciaStatus | "todos">("todos");
   const [filterTipo, setFilterTipo] = useState("Todos");
@@ -1091,28 +1094,42 @@ export default function SegurosPage() {
   const handleSave = async (s: Seguro, u: Unidad) => {
     const { id: sId, ...sData } = s;
     const { id: uId, ...uData } = u;
-    await Promise.all([
-      upsertDocument(COLLECTIONS.seguros, sId!, sData),
-      upsertDocument(COLLECTIONS.unidades, uId, uData),
-    ]);
-    // Real-time listener (useCollection) automatically reflects Firestore changes
-    window.dispatchEvent(new CustomEvent("duro:toast", {
-      detail: { type: "success", message: `Unidad ${s.noEconomico} guardada.` },
-    }));
+    try {
+      await Promise.all([
+        upsertDocument(COLLECTIONS.seguros, sId!, sData),
+        upsertDocument(COLLECTIONS.unidades, uId, uData),
+      ]);
+      window.dispatchEvent(new CustomEvent("duro:toast", {
+        detail: { type: "success", message: `Unidad ${s.noEconomico} guardada.` },
+      }));
+    } catch (e) {
+      console.error(e);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al guardar. Intenta de nuevo." } }));
+    }
   };
 
   async function handleDocsUpdate(docs: DocItem[]) {
     if (!docsTarget) return;
-    await upsertDocument(COLLECTIONS.seguros, docsTarget.seguro.id!, { documentos: docs });
-    setDocsTarget((prev) => prev ? { ...prev, seguro: { ...prev.seguro, documentos: docs } } : null);
+    try {
+      await upsertDocument(COLLECTIONS.seguros, docsTarget.seguro.id!, { documentos: docs });
+      setDocsTarget((prev) => prev ? { ...prev, seguro: { ...prev.seguro, documentos: docs } } : null);
+    } catch (e) {
+      console.error(e);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al actualizar documentos." } }));
+    }
   }
 
   async function handleDelete(s: Seguro) {
-    await deleteDocument(COLLECTIONS.seguros, s.id!);
-    setConfirmDelete(null);
-    window.dispatchEvent(new CustomEvent("duro:toast", {
-      detail: { type: "success", message: `Seguro de ${s.noEconomico} eliminado.` },
-    }));
+    try {
+      await deleteDocument(COLLECTIONS.seguros, s.id!);
+      setConfirmDelete(null);
+      window.dispatchEvent(new CustomEvent("duro:toast", {
+        detail: { type: "success", message: `Seguro de ${s.noEconomico} eliminado.` },
+      }));
+    } catch (e) {
+      console.error(e);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al eliminar. Intenta de nuevo." } }));
+    }
   }
 
   async function openDeleteUnit(unidad: Unidad, seguro?: Seguro) {
@@ -1131,15 +1148,20 @@ export default function SegurosPage() {
   async function handleDeleteUnit() {
     if (!confirmDeleteUnit) return;
     const { unidad, seguro } = confirmDeleteUnit;
-    await Promise.all([
-      deleteDocument(COLLECTIONS.unidades, unidad.id),
-      ...(seguro?.id ? [deleteDocument(COLLECTIONS.seguros, seguro.id)] : []),
-    ]);
-    setConfirmDeleteUnit(null);
-    setUnitDeps(null);
-    window.dispatchEvent(new CustomEvent("duro:toast", {
-      detail: { type: "success", message: `Unidad ${unidad.noEconomico} eliminada del sistema.` },
-    }));
+    try {
+      await Promise.all([
+        deleteDocument(COLLECTIONS.unidades, unidad.id),
+        ...(seguro?.id ? [deleteDocument(COLLECTIONS.seguros, seguro.id)] : []),
+      ]);
+      setConfirmDeleteUnit(null);
+      setUnitDeps(null);
+      window.dispatchEvent(new CustomEvent("duro:toast", {
+        detail: { type: "success", message: `Unidad ${unidad.noEconomico} eliminada del sistema.` },
+      }));
+    } catch (e) {
+      console.error(e);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al eliminar. Intenta de nuevo." } }));
+    }
   }
 
   function openDrawer(unidad: Unidad | null, existing?: Seguro) {
@@ -1210,6 +1232,9 @@ export default function SegurosPage() {
           <span className="text-xs text-gray-600 ml-auto">{filtered.length} unidades</span>
         </div>
 
+        {loading ? (
+          <ModuleLoading dark label="Cargando unidades y seguros…" />
+        ) : (
         <HScrollTable maxHeight="calc(100vh - 320px)">
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-10">
@@ -1227,8 +1252,8 @@ export default function SegurosPage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={14} className="px-4 py-12 text-center text-sm text-gray-600">
-                    Sin registros.
+                  <td colSpan={14} className="p-0">
+                    <EmptyState type="no-results" dark />
                   </td>
                 </tr>
               ) : (
@@ -1399,6 +1424,7 @@ export default function SegurosPage() {
             </tbody>
           </table>
         </HScrollTable>
+        )}
 
         {(porVencer > 0 || sinCob > 0) && (
           <div className="px-5 py-3 border-t border-[#3A3A3A] flex items-center gap-2">

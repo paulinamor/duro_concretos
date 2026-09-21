@@ -9,6 +9,8 @@ import KPICard from "@/components/KPICard";
 import AppSelect from "@/components/AppSelect";
 import StatusBadge from "@/components/StatusBadge";
 import { getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
+import DuplicateWarningModal from "@/components/DuplicateWarningModal";
+import EmptyState from "@/components/EmptyState";
 import type { DesglosePago, Periodicidad } from "@/lib/nomina/calcular";
 import type { Operador } from "@/lib/operadores";
 
@@ -68,6 +70,7 @@ export default function NominaPage() {
   const [query, setQuery]               = useState("");
   const [showDrawer, setShowDrawer]     = useState(false);
   const [timbrandoId, setTimbrandoId]   = useState<string | null>(null);
+  const [duplicateWarn, setDuplicateWarn] = useState<{ field: string; value: string; detail?: string; proceed: () => void } | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -93,12 +96,31 @@ export default function NominaPage() {
     );
   });
 
-  async function handleGuardar(recibo: ReciboNomina) {
+  async function handleGuardar(recibo: ReciboNomina, force = false) {
+    if (!force) {
+      const dup = recibos.find(
+        (r) => r.rfc === recibo.rfc && r.fechaInicioPago === recibo.fechaInicioPago
+      );
+      if (dup) {
+        setDuplicateWarn({
+          field: "Empleado + Período",
+          value: `${recibo.empleado} — ${recibo.fechaInicioPago} a ${recibo.fechaFinPago}`,
+          detail: `Folio ${dup.folio}`,
+          proceed: () => { setDuplicateWarn(null); void handleGuardar(recibo, true); },
+        });
+        return;
+      }
+    }
     const id = Date.now().toString();
     const nuevo = { ...recibo, id, folio: `NOM-${id}` };
-    setRecibos((prev) => [nuevo, ...prev]);
-    await upsertDocument(COLLECTIONS.nomina, id, nuevo);
-    setShowDrawer(false);
+    try {
+      await upsertDocument(COLLECTIONS.nomina, id, nuevo);
+      setRecibos((prev) => [nuevo, ...prev]);
+      setShowDrawer(false);
+    } catch (e) {
+      console.error(e);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al guardar el recibo de nómina. Intenta de nuevo." } }));
+    }
   }
 
   async function handleTimbrar(recibo: ReciboNomina) {
@@ -198,11 +220,7 @@ export default function NominaPage() {
             </thead>
             <tbody className="divide-y divide-[#3A3A3A]">
               {filtered.length === 0 && (
-                <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-gray-500 text-sm">
-                    Sin recibos. Usa &quot;Calcular y timbrar&quot; para agregar.
-                  </td>
-                </tr>
+                <tr><td colSpan={10} className="p-0"><EmptyState type="empty" message='Sin recibos. Usa "Calcular y timbrar" para agregar.' dark /></td></tr>
               )}
               {filtered.map((r) => (
                 <tr key={r.folio} className="hover:bg-[#1A1A1A] transition-colors">
@@ -259,6 +277,16 @@ export default function NominaPage() {
       {/* Drawer calcular + guardar */}
       {showDrawer && (
         <CalcularDrawer onClose={() => setShowDrawer(false)} onGuardar={handleGuardar} operadoresList={operadoresList} />
+      )}
+
+      {duplicateWarn && (
+        <DuplicateWarningModal
+          field={duplicateWarn.field}
+          value={duplicateWarn.value}
+          detail={duplicateWarn.detail}
+          onCancel={() => setDuplicateWarn(null)}
+          onConfirm={duplicateWarn.proceed}
+        />
       )}
     </div>
   );

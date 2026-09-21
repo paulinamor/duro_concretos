@@ -112,6 +112,7 @@ export type FmCfdiPayload = {
   Issuer: FmEmisor;
   Receiver: FmReceptor;
   Items: FmItem[];
+  LogoB64?: string;
 };
 
 export type FmCfdiResponse = {
@@ -173,6 +174,7 @@ export type EmitirFacturaInput = {
   emisorNombre: string;
   emisorRegimen: string;
   emisorCp: string;           // CP del lugar de expedición (dirección fiscal del emisor)
+  logoB64?: string;           // Logo en base64 para el PDF (opcional)
   // Receptor
   clienteNombre: string;
   clienteRfc: string;
@@ -289,6 +291,7 @@ export function buildCfdiPayload(input: EmitirFacturaInput): FmCfdiPayload {
       FiscalRegime: input.clienteRegimenFiscal,
     },
     Items: items,
+    ...(input.logoB64 ? { LogoB64: input.logoB64 } : {}),
   };
 }
 

@@ -3,12 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, ChevronLeft, ChevronRight, ClipboardList, DollarSign, Pencil, Plus, Search, Trash2, X, AlertTriangle, Package } from "lucide-react";
 import { deleteDocument, getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
+import DuplicateWarningModal from "@/components/DuplicateWarningModal";
 import { filterByPlanta, withPlantaTag } from "@/lib/auth";
 import { todayCST } from "@/lib/dateUtils";
 import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
 import PlantaRequired from "@/components/PlantaRequired";
+import EmptyState from "@/components/EmptyState";
 import type { Cliente } from "@/lib/crmClientes";
+import { currency } from "@/lib/formatters";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -50,10 +53,6 @@ function n(v: string): number | null {
   return isNaN(p) ? null : p;
 }
 
-function currency(v: number | null) {
-  if (v == null) return "—";
-  return v.toLocaleString("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 0, maximumFractionDigits: 2 });
-}
 
 const todayISO = todayCST;
 
@@ -300,6 +299,7 @@ export default function EfectivoPage() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Recibo | undefined>();
   const [confirmDelete, setConfirmDelete] = useState<Recibo | undefined>();
+  const [duplicateWarn, setDuplicateWarn] = useState<{ field: string; value: string; detail?: string; proceed: () => void } | null>(null);
 
   useEffect(() => {
     if (!loading) { setLoadingLong(false); return; }
@@ -347,32 +347,60 @@ export default function EfectivoPage() {
   const totalM3 = useMemo(() => filtered.reduce((s, r) => s + (r.metros ?? 0), 0), [filtered]);
   const pendientes = useMemo(() => filtered.filter((r) => !r.entregado).length, [filtered]);
 
-  async function handleSave(r: Recibo) {
+  async function handleSave(r: Recibo, force = false) {
     const isNew = !editing;
+    if (!force && isNew) {
+      const dup = recibos.find((x) => x.folio === r.folio);
+      if (dup) {
+        setDuplicateWarn({
+          field: "Número de folio",
+          value: `Folio #${String(r.folio).padStart(4, "0")}`,
+          detail: `${dup.cliente} — ${dup.fecha}`,
+          proceed: () => { setDuplicateWarn(null); void handleSave(r, true); },
+        });
+        return;
+      }
+    }
     const id = editing?.id ?? `rec-${r.folio}-${Date.now()}`;
     const normalized: Recibo = { ...r, cliente: r.cliente.trim().toUpperCase().replace(/\s+/g, " ") };
     const { id: _id, ...data } = { ...normalized, id };
-    await upsertDocument(COLLECTIONS.efectivo, id, withPlantaTag(data));
-    const saved: Recibo = { ...normalized, id };
-    setRecibos((prev) =>
-      isNew
-        ? [saved, ...prev].sort((a, b) => b.folio - a.folio)
-        : prev.map((p) => p.id === id ? saved : p)
-    );
+    try {
+      await upsertDocument(COLLECTIONS.efectivo, id, withPlantaTag(data));
+      const saved: Recibo = { ...normalized, id };
+      setRecibos((prev) =>
+        isNew
+          ? [saved, ...prev].sort((a, b) => b.folio - a.folio)
+          : prev.map((p) => p.id === id ? saved : p)
+      );
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: isNew ? "Recibo guardado." : "Recibo actualizado." } }));
+    } catch (e) {
+      console.error(e);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al guardar el recibo. Intenta de nuevo." } }));
+    }
   }
 
   async function toggleEntregado(r: Recibo) {
     const updated: Recibo = { ...r, entregado: !r.entregado };
     const { id: _id, ...data } = updated;
-    await upsertDocument(COLLECTIONS.efectivo, r.id!, withPlantaTag(data));
-    setRecibos((prev) => prev.map((p) => p.id === r.id ? updated : p));
+    try {
+      await upsertDocument(COLLECTIONS.efectivo, r.id!, withPlantaTag(data));
+      setRecibos((prev) => prev.map((p) => p.id === r.id ? updated : p));
+    } catch (e) {
+      console.error(e);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al actualizar. Intenta de nuevo." } }));
+    }
   }
 
   async function handleDelete(r: Recibo) {
-    setRecibos((prev) => prev.filter((x) => x.id !== r.id));
-    await deleteDocument(COLLECTIONS.efectivo, r.id!);
-    setConfirmDelete(undefined);
-    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `Recibo #${String(r.folio).padStart(4, "0")} eliminado.` } }));
+    try {
+      await deleteDocument(COLLECTIONS.efectivo, r.id!);
+      setRecibos((prev) => prev.filter((x) => x.id !== r.id));
+      setConfirmDelete(undefined);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `Recibo #${String(r.folio).padStart(4, "0")} eliminado.` } }));
+    } catch (e) {
+      console.error(e);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al eliminar. Intenta de nuevo." } }));
+    }
   }
 
   function openNew() { setEditing(undefined); setShowForm(true); }
@@ -527,7 +555,7 @@ export default function EfectivoPage() {
             </thead>
             <tbody className="divide-y divide-[#3A3A3A]">
               {filtered.length === 0 ? (
-                <tr><td colSpan={12} className="px-4 py-10 text-center text-sm text-gray-500">Sin resultados.</td></tr>
+                <tr><td colSpan={12} className="p-0"><EmptyState type="no-results" dark /></td></tr>
               ) : filtered.map((r) => (
                 <tr key={r.id} className="hover:bg-white/5 transition-colors">
                   <td className="px-4 py-3 font-mono text-xs font-semibold text-gray-300">
@@ -619,6 +647,16 @@ export default function EfectivoPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {duplicateWarn && (
+        <DuplicateWarningModal
+          field={duplicateWarn.field}
+          value={duplicateWarn.value}
+          detail={duplicateWarn.detail}
+          onCancel={() => setDuplicateWarn(null)}
+          onConfirm={duplicateWarn.proceed}
+        />
       )}
     </div>
   );

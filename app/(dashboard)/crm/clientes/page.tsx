@@ -24,6 +24,7 @@ import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
 import PlantaRequired from "@/components/PlantaRequired";
 import StatusBadge from "@/components/StatusBadge";
+import EmptyState from "@/components/EmptyState";
 import {
   estatusCliente,
   tiposCliente,
@@ -34,6 +35,7 @@ import {
 } from "@/lib/crmClientes";
 import { COLLECTIONS, deleteDocument, getCollectionDocs, upsertDocument, where } from "@/lib/db";
 import { todayCST } from "@/lib/dateUtils";
+import { matchesQuery } from "@/lib/search";
 
 const DEDUP_STARTED_KEY = "duro_dedup_started_ts";
 const DEDUP_DONE_KEY = "duro_dedup_done_ts";
@@ -523,16 +525,9 @@ export default function CrmClientesPage() {
   }
 
   const filtered = useMemo(() => {
-    const term = query.toLowerCase();
     return clientes
       .filter((c) => {
-        if (term && !(
-          c.razonSocial.toLowerCase().includes(term) ||
-          (c.nombreComercial ?? "").toLowerCase().includes(term) ||
-          c.rfc.toLowerCase().includes(term) ||
-          c.contacto.toLowerCase().includes(term) ||
-          c.municipio.toLowerCase().includes(term)
-        )) return false;
+        if (!matchesQuery(query, [c.razonSocial, c.nombreComercial, c.rfc, c.contacto, c.municipio])) return false;
         if (filtroEstatus !== "Todos" && c.estatus !== filtroEstatus) return false;
         if (filtroTipo !== "Todos" && c.tipoCliente !== filtroTipo) return false;
         if (filtroVendedor !== "Todos" && c.vendedorAsignado !== filtroVendedor) return false;
@@ -571,13 +566,8 @@ export default function CrmClientesPage() {
 
   const mergeSearchResults = useMemo(() => {
     if (!detail) return [];
-    const term = mergeQuery.toLowerCase();
     return clientes
-      .filter((c) => c.id !== detail.id && (
-        !term ||
-        c.razonSocial.toLowerCase().includes(term) ||
-        (c.nombreComercial ?? "").toLowerCase().includes(term)
-      ))
+      .filter((c) => c.id !== detail.id && matchesQuery(mergeQuery, [c.razonSocial, c.nombreComercial]))
       .slice(0, 10);
   }, [clientes, detail, mergeQuery]);
 
@@ -956,7 +946,7 @@ export default function CrmClientesPage() {
             </thead>
             <tbody className="divide-y divide-[#3A3A3A]">
               {filtered.length === 0 ? (
-                <tr><td colSpan={9} className="px-5 py-10 text-center text-gray-500">No se encontraron clientes con ese filtro.</td></tr>
+                <tr><td colSpan={9} className="p-0"><EmptyState type={clientes.length === 0 ? "empty" : "no-results"} dark /></td></tr>
               ) : (
                 filtered.map((c) => {
                   const pct = creditoUtilizado(c);

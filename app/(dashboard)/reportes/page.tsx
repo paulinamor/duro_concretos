@@ -14,6 +14,7 @@ import { getCollectionDocs, COLLECTIONS } from "@/lib/db";
 import AppSelect from "@/components/AppSelect";
 import { filterByPlanta } from "@/lib/auth";
 import { todayCST } from "@/lib/dateUtils";
+import { currencyRounded as currency } from "@/lib/formatters";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -130,9 +131,6 @@ function getPrevRange(p: Period): { start: Date; end: Date } {
   };
 }
 
-function currency(n: number) {
-  return `$${Math.round(n).toLocaleString("es-MX")}`;
-}
 
 function trendPct(curr: number, prev: number): number | null {
   if (!prev) return null;

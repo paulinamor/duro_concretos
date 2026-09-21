@@ -9,6 +9,7 @@ import {
   upsertUserProfile,
   withoutUserProfileId,
   upsertDocument,
+  getDocument,
   getCollectionDocs,
   deleteDocument,
   COLLECTIONS,
@@ -64,7 +65,51 @@ export default function ConfiguracionPage() {
     Pesquería: { lat: "25.7544", lng: "-99.9904", label: "Planta Pesquería" },
   });
   const [savingCoords, setSavingCoords] = useState(false);
+  const [plantaLinks, setPlantaLinks] = useState<Record<string, string>>({});
+  const [resolvingLink, setResolvingLink] = useState<Record<string, boolean>>({});
+  const [logoUploaded, setLogoUploaded] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [checkingLogo, setCheckingLogo] = useState(true);
 
+  useEffect(() => {
+    getDocument<{ logoBase64?: string }>(COLLECTIONS.configuracion, "facturama_logo")
+      .then((doc) => {
+        if (doc?.logoBase64) {
+          setLogoUploaded(true);
+          setCheckingLogo(false);
+        } else {
+          setCheckingLogo(false);
+          void uploadDefaultLogo();
+        }
+      })
+      .catch(() => { setCheckingLogo(false); });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function uploadDefaultLogo() {
+    setUploadingLogo(true);
+    try {
+      const resp = await fetch("/DC_LOGO-removebg-preview.png");
+      const blob = await resp.blob();
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string).split(",")[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      // Guardar en Firestore desde el cliente (tiene auth context)
+      await upsertDocument(COLLECTIONS.configuracion, "facturama_logo", {
+        logoBase64: base64,
+        mimeType: "image/png",
+        updatedAt: new Date().toISOString(),
+      });
+      setLogoUploaded(true);
+    } catch {
+      // silent — se puede reintentar desde el panel
+    } finally {
+      setUploadingLogo(false);
+    }
+  }
 
   useEffect(() => {
     getCollectionDocs<{ id: string; key: string; value: PlantaCoord }>(COLLECTIONS.configuracion)
@@ -81,6 +126,23 @@ export default function ConfiguracionPage() {
       })
       .catch(() => {});
   }, []);
+
+  async function resolveLink(plantaName: string, url: string) {
+    const trimmed = url.trim();
+    if (!trimmed) return;
+    setResolvingLink((prev) => ({ ...prev, [plantaName]: true }));
+    try {
+      const res = await fetch(`/api/maps/resolve?url=${encodeURIComponent(trimmed)}`);
+      const data = await res.json() as { coords?: { lat: number; lng: number } };
+      if (data.coords) {
+        setPlantaCoords((prev) => ({
+          ...prev,
+          [plantaName]: { ...prev[plantaName], lat: String(data.coords!.lat), lng: String(data.coords!.lng) },
+        }));
+      }
+    } catch {}
+    setResolvingLink((prev) => ({ ...prev, [plantaName]: false }));
+  }
 
   async function saveCoords() {
     setSavingCoords(true);
@@ -770,23 +832,93 @@ export default function ConfiguracionPage() {
               El sidebar permanece oscuro en ambos modos.
             </p>
           </div>
+
+          {/* Logo de facturación */}
+          <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl p-6 space-y-4">
+            <div>
+              <p className="text-white font-semibold text-sm">Logo en facturas</p>
+              <p className="text-gray-500 text-xs mt-1">
+                Aparece en el PDF de cada factura electrónica emitida.
+              </p>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="h-16 w-32 rounded-lg bg-white flex items-center justify-center border border-[#3A3A3A] overflow-hidden shrink-0">
+                <img
+                  src="/DC_LOGO-removebg-preview.png"
+                  alt="Logo Duro Concretos"
+                  className="max-h-full max-w-full object-contain p-1"
+                />
+              </div>
+              <div className="space-y-1">
+                {checkingLogo ? (
+                  <p className="text-gray-500 text-xs">Verificando…</p>
+                ) : logoUploaded ? (
+                  <div className="flex items-center gap-1.5 text-emerald-400 text-xs font-medium">
+                    <CheckCircle2 size={14} />
+                    Logo configurado
+                  </div>
+                ) : uploadingLogo ? (
+                  <p className="text-gray-400 text-xs">Subiendo logo…</p>
+                ) : (
+                  <p className="text-gray-500 text-xs">Logo pendiente de subir</p>
+                )}
+                <button
+                  type="button"
+                  disabled={uploadingLogo}
+                  onClick={() => void uploadDefaultLogo()}
+                  className="text-xs text-[#CC2229] hover:text-[#ff3a40] disabled:opacity-40 transition-colors"
+                >
+                  {uploadingLogo ? "Subiendo…" : "Volver a subir"}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
       {/* Tab: Ubicaciones */}
       {activeTab === "ubicaciones" && (
-        <div className="space-y-4 max-w-lg">
+        <div className="space-y-4 max-w-2xl">
           <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
             <div className="px-5 py-4 border-b border-[#3A3A3A]">
               <p className="text-sm font-semibold text-white">Coordenadas de plantas</p>
               <p className="text-xs text-gray-500 mt-0.5">
-                Se usan para mostrar rutas en el modal de rastreo de programaciones.
+                Pega un link de Google Maps para extraer las coordenadas automáticamente.
               </p>
             </div>
-            <div className="p-5 space-y-6">
+            <div className="p-5 space-y-8">
               {Object.entries(plantaCoords).map(([name, coord]) => (
-                <div key={name}>
-                  <p className="text-xs font-semibold text-gray-400 mb-3">{coord.label}</p>
+                <div key={name} className="space-y-3">
+                  <p className="text-xs font-semibold text-white">{coord.label}</p>
+
+                  {/* Link input */}
+                  <div>
+                    <label className="block text-[10px] text-gray-600 mb-1 uppercase tracking-wider">Link de Google Maps</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={plantaLinks[name] ?? ""}
+                        onChange={(e) => setPlantaLinks((prev) => ({ ...prev, [name]: e.target.value }))}
+                        onPaste={(e) => {
+                          const pasted = e.clipboardData.getData("text");
+                          setPlantaLinks((prev) => ({ ...prev, [name]: pasted }));
+                          setTimeout(() => void resolveLink(name, pasted), 50);
+                        }}
+                        placeholder="Pega el link de Google Maps aquí…"
+                        className="flex-1 rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
+                      />
+                      <button
+                        type="button"
+                        disabled={resolvingLink[name] || !plantaLinks[name]?.trim()}
+                        onClick={() => void resolveLink(name, plantaLinks[name] ?? "")}
+                        className="px-3 py-2 rounded-lg bg-[#CC2229] text-white text-xs font-medium disabled:opacity-40 hover:bg-[#B01E24] transition-colors whitespace-nowrap cursor-pointer"
+                      >
+                        {resolvingLink[name] ? "Extrayendo…" : "Extraer coords"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Lat / Lng */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-[10px] text-gray-600 mb-1 uppercase tracking-wider">Latitud</label>
@@ -809,15 +941,18 @@ export default function ConfiguracionPage() {
                       />
                     </div>
                   </div>
-                  {coord.lat && coord.lng && (
-                    <a
-                      href={`https://www.google.com/maps/search/?api=1&query=${coord.lat},${coord.lng}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 mt-2 text-[10px] text-gray-600 hover:text-gray-400 transition-colors"
-                    >
-                      Ver en Maps ↗
-                    </a>
+
+                  {/* Mapa embed */}
+                  {coord.lat && coord.lng && !isNaN(parseFloat(coord.lat)) && !isNaN(parseFloat(coord.lng)) && (
+                    <iframe
+                      key={`${coord.lat},${coord.lng}`}
+                      loading="lazy"
+                      allowFullScreen
+                      referrerPolicy="no-referrer-when-downgrade"
+                      src={`https://www.google.com/maps/embed/v1/place?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&q=${coord.lat},${coord.lng}&zoom=15`}
+                      className="w-full h-52 rounded-xl border border-[#3A3A3A]"
+                      title={`Mapa ${coord.label}`}
+                    />
                   )}
                 </div>
               ))}
@@ -833,9 +968,6 @@ export default function ConfiguracionPage() {
               </button>
             </div>
           </div>
-          <p className="text-xs text-gray-700">
-            Puedes obtener las coordenadas abriendo Google Maps, haciendo clic derecho en la planta y copiando lat/lng.
-          </p>
         </div>
       )}
 

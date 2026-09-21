@@ -9,6 +9,7 @@ import ExcelView from "./ExcelView";
 import type { ExcelProg } from "./ExcelView";
 import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
+import ModuleLoading from "@/components/ModuleLoading";
 import { getCollectionDocs, getDocument, subscribeToCollection, upsertDocument, deleteDocument, COLLECTIONS, type SolicitudAutorizacion, type Notificacion, getAllUserProfiles } from "@/lib/db";
 import { filterByPlanta, getStoredSession, withPlantaTag, getCapturePlanta } from "@/lib/auth";
 import { tdBomToBombeo } from "@/lib/sgp";
@@ -16,6 +17,7 @@ import { todayCST, localISODate } from "@/lib/dateUtils";
 import type { Operador } from "@/lib/operadores";
 import type { Cliente } from "@/lib/crmClientes";
 import type { Unidad } from "@/lib/unidades";
+import { currency } from "@/lib/formatters";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -234,10 +236,6 @@ function calcTotalesProg(p: Programacion): { totalXM3: number | null; total: num
   return { totalXM3: txm3 > 0 ? txm3 : null, total: total > 0 ? total : null };
 }
 
-function currency(v: number | null) {
-  if (v == null) return "—";
-  return `$${v.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 
 function emptyChofer(): ChoferFormEntry {
   return {
@@ -376,10 +374,10 @@ function extractCoordsFromUrl(url: string): { lat: number; lng: number } | null 
   return null;
 }
 
-// Coordenadas de plantas — configurables en Configuración > Ubicaciones
-const PLANT_COORDS: Record<string, { lat: number; lng: number; label: string }> = {
-  Allende: { lat: 25.4437, lng: -100.0233, label: "Planta Allende" },
-  Pesquería: { lat: 25.7544, lng: -99.9904, label: "Planta Pesquería" },
+// Coordenadas de plantas — fallback mientras carga Firestore
+const PLANT_COORDS_DEFAULT: Record<string, { lat: number; lng: number; label: string }> = {
+  Allende:   { lat: 25.4437, lng: -100.0233, label: "Planta Allende" },
+  Pesquería: { lat: 25.7544, lng: -99.9904,  label: "Planta Pesquería" },
 };
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
@@ -1669,6 +1667,7 @@ function TrackingModal({
   const [destCoords, setDestCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [destPlaceName, setDestPlaceName] = useState<string | null>(null);
   const [resolvingDest, setResolvingDest] = useState(false);
+  const [plantaCoordsMap, setPlantaCoordsMap] = useState<Record<string, { lat: number; lng: number; label: string }>>(PLANT_COORDS_DEFAULT);
   const [showCierre, setShowCierre] = useState(false);
   const [cierreNotas, setCierreNotas] = useState("");
   const [saving, setSaving] = useState(false);
@@ -1682,19 +1681,41 @@ function TrackingModal({
     return () => window.removeEventListener("duro:theme-change", sync);
   }, []);
 
+  // Cargar coords de plantas desde Firestore (sobreescribe defaults hardcodeados)
   useEffect(() => {
-    const url = prog.direccion;
-    if (!url || !isUrl(url)) { setDestCoords(null); setDestPlaceName(null); return; }
-    const direct = extractCoordsFromUrl(url);
+    getCollectionDocs<{ id: string; key: string; value: { lat: string; lng: string; label: string } }>(COLLECTIONS.configuracion)
+      .then((docs) => {
+        const coordsDocs = docs.filter((d) => d.key?.startsWith("planta_coords_"));
+        if (!coordsDocs.length) return;
+        const loaded: Record<string, { lat: number; lng: number; label: string }> = {};
+        coordsDocs.forEach((d) => {
+          const name = d.key.replace("planta_coords_", "");
+          const v = d.value;
+          if (v?.lat && v?.lng) loaded[name] = { lat: parseFloat(v.lat), lng: parseFloat(v.lng), label: v.label ?? name };
+        });
+        if (Object.keys(loaded).length) setPlantaCoordsMap((prev) => ({ ...prev, ...loaded }));
+      })
+      .catch(() => {});
+  }, []);
+
+  // Resolver destino: URL → extraer coords; texto plano → geocodificar
+  useEffect(() => {
+    const addr = prog.direccion;
+    if (!addr?.trim()) { setDestCoords(null); setDestPlaceName(null); return; }
+    const direct = extractCoordsFromUrl(addr);
     if (direct) { setDestCoords(direct); return; }
     setResolvingDest(true);
     let cancelled = false;
-    fetch(`/api/maps/resolve?url=${encodeURIComponent(url)}`)
+    const endpoint = isUrl(addr)
+      ? `/api/maps/resolve?url=${encodeURIComponent(addr)}`
+      : `/api/maps/geocode?address=${encodeURIComponent(addr)}`;
+    fetch(endpoint)
       .then((r) => r.json())
       .then((d) => {
         if (cancelled) return;
         if (d.coords) setDestCoords(d.coords);
         if (d.placeName) setDestPlaceName(d.placeName);
+        if (d.formattedAddress) setDestPlaceName(d.formattedAddress);
       })
       .catch(() => {})
       .finally(() => { if (!cancelled) setResolvingDest(false); });
@@ -1703,7 +1724,7 @@ function TrackingModal({
 
   const choferes = (prog.choferes ?? []) as ChoferEntry[];
   // Use the record's own planta first (most accurate), then session planta, then Allende as legacy default
-  const plantaCoords = PLANT_COORDS[prog.planta as string] ?? PLANT_COORDS[plantaActiva] ?? PLANT_COORDS["Allende"];
+  const plantaCoords = plantaCoordsMap[prog.planta as string] ?? plantaCoordsMap[plantaActiva] ?? plantaCoordsMap["Allende"];
 
   async function handleEntregado() {
     if (!prog.id) return;
@@ -2214,6 +2235,7 @@ export default function ProgramacionPage() {
   const [loading, setLoading] = useState(true);
   const [excelFullscreen, setExcelFullscreen] = useState(false);
   const [rastreoSearch, setRastreoSearch] = useState("");
+  const [prevViewMode, setPrevViewMode] = useState<Exclude<ViewMode, "rastreo">>("dia");
   const [timelineProg, setTimelineProg] = useState<Programacion | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [markingId, setMarkingId] = useState<string | null>(null);
@@ -2308,15 +2330,27 @@ export default function ProgramacionPage() {
   const filtered = useMemo(() => {
     let list: Programacion[];
     if (viewMode === "rastreo") {
+      let dateFiltered: Programacion[];
+      if (prevViewMode === "dia") {
+        dateFiltered = programaciones.filter((p) => p.dia === diaActivo);
+      } else if (prevViewMode === "semana") {
+        const [s, e] = weekRange(diaActivo);
+        dateFiltered = programaciones.filter((p) => (p.dia ?? "") >= s && (p.dia ?? "") <= e);
+      } else if (prevViewMode === "mes") {
+        const mesKey = diaActivo.slice(0, 7);
+        dateFiltered = programaciones.filter((p) => (p.dia ?? "").startsWith(mesKey));
+      } else {
+        dateFiltered = programaciones.filter((p) => (p.dia ?? "") >= rangoInicio && (p.dia ?? "") <= rangoFin);
+      }
       const q = rastreoSearch.toLowerCase().trim();
       list = q
-        ? programaciones.filter((p) =>
+        ? dateFiltered.filter((p) =>
             p.folio?.toLowerCase().includes(q) ||
             p.cliente?.toLowerCase().includes(q) ||
             p.vendedor?.toLowerCase().includes(q) ||
             p.direccion?.toLowerCase().includes(q),
           )
-        : [...programaciones];
+        : dateFiltered;
     } else if (viewMode === "dia") {
       list = programaciones.filter((p) => p.dia === diaActivo);
     } else if (viewMode === "semana") {
@@ -2332,7 +2366,7 @@ export default function ProgramacionPage() {
       const dc = (b.dia ?? "").localeCompare(a.dia ?? "");
       return dc !== 0 ? dc : (a.hora ?? "").localeCompare(b.hora ?? "");
     });
-  }, [programaciones, diaActivo, viewMode, rangoInicio, rangoFin, rastreoSearch]);
+  }, [programaciones, diaActivo, viewMode, prevViewMode, rangoInicio, rangoFin, rastreoSearch]);
 
   const totalM3 = filtered.reduce((s, p) => s + (p.m3Totales ?? 0), 0);
   const totalFacturado = filtered.reduce((s, p) => s + (p.total ?? 0), 0);
@@ -2567,6 +2601,8 @@ export default function ProgramacionPage() {
     window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", title: "Enviado a CxC", message: `${p.cliente} · ${currency(p.total)}` } }));
   }
 
+  const effectiveMode = viewMode === "rastreo" ? prevViewMode : viewMode;
+
   return (
     <div className="space-y-6">
       {/* Nav + filtros */}
@@ -2578,8 +2614,14 @@ export default function ProgramacionPage() {
             {(["dia", "semana", "mes", "rango"] as ViewMode[]).map((m) => (
               <button
                 key={m}
-                onClick={() => setViewMode(m)}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer ${viewMode === m ? "bg-[#CC2229] text-white" : "text-gray-400 hover:text-white"}`}
+                onClick={() => {
+                  if (viewMode === "rastreo") {
+                    setPrevViewMode(m as Exclude<ViewMode, "rastreo">);
+                  } else {
+                    setViewMode(m);
+                  }
+                }}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer ${effectiveMode === m ? "bg-[#CC2229] text-white" : "text-gray-400 hover:text-white"}`}
               >
                 {m === "dia" ? "Día" : m === "semana" ? "Semana" : m === "mes" ? "Mes" : "Rango"}
               </button>
@@ -2588,7 +2630,14 @@ export default function ProgramacionPage() {
           <div className="flex items-center gap-2">
             {/* Rastreo — separado visualmente de las vistas de fecha */}
             <button
-              onClick={() => setViewMode(viewMode === "rastreo" ? "dia" : "rastreo")}
+              onClick={() => {
+                if (viewMode !== "rastreo") {
+                  setPrevViewMode(viewMode);
+                  setViewMode("rastreo");
+                } else {
+                  setViewMode(prevViewMode);
+                }
+              }}
               className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border transition-colors cursor-pointer ${
                 viewMode === "rastreo"
                   ? "bg-[#CC2229] border-[#CC2229] text-white"
@@ -2660,19 +2709,19 @@ export default function ProgramacionPage() {
               />
             </div>
           )}
-          {viewMode !== "rango" && viewMode !== "rastreo" && (
+          {effectiveMode !== "rango" && (
             <>
               <button
                 onClick={() => {
-                  if (viewMode === "dia") setDiaActivo((d) => addDays(d, -1));
-                  else if (viewMode === "semana") setDiaActivo((d) => addDays(d, -7));
+                  if (effectiveMode === "dia") setDiaActivo((d) => addDays(d, -1));
+                  else if (effectiveMode === "semana") setDiaActivo((d) => addDays(d, -7));
                   else setDiaActivo((d) => addMonths(d, -1));
                 }}
                 className="rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] p-2 text-gray-400 hover:border-[#CC2229]/60 hover:text-white transition-colors cursor-pointer"
               >
                 <ChevronLeft size={15} />
               </button>
-              {viewMode === "dia" ? (
+              {effectiveMode === "dia" ? (
                 <input
                   type="date"
                   value={diaActivo}
@@ -2681,13 +2730,13 @@ export default function ProgramacionPage() {
                 />
               ) : (
                 <span className="text-sm text-white font-medium px-1 capitalize">
-                  {periodLabel(viewMode, diaActivo, rangoInicio, rangoFin)}
+                  {periodLabel(effectiveMode, diaActivo, rangoInicio, rangoFin)}
                 </span>
               )}
               <button
                 onClick={() => {
-                  if (viewMode === "dia") setDiaActivo((d) => addDays(d, 1));
-                  else if (viewMode === "semana") setDiaActivo((d) => addDays(d, 7));
+                  if (effectiveMode === "dia") setDiaActivo((d) => addDays(d, 1));
+                  else if (effectiveMode === "semana") setDiaActivo((d) => addDays(d, 7));
                   else setDiaActivo((d) => addMonths(d, 1));
                 }}
                 className="rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] p-2 text-gray-400 hover:border-[#CC2229]/60 hover:text-white transition-colors cursor-pointer"
@@ -2702,7 +2751,7 @@ export default function ProgramacionPage() {
               </button>
             </>
           )}
-          {viewMode === "rango" && (
+          {effectiveMode === "rango" && (
             <div className="flex items-center gap-2">
               <input
                 type="date"
@@ -3026,10 +3075,14 @@ export default function ProgramacionPage() {
       {/* Excel view */}
       {viewMode !== "rastreo" && !excelFullscreen && (
         <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
-          <ExcelView
-            rows={filtered as unknown as ExcelProg[]}
-            onEdit={(p) => { setEditing(p as unknown as Programacion); setShowDrawer(true); }}
-          />
+          {loading ? (
+            <ModuleLoading label="Cargando programaciones…" />
+          ) : (
+            <ExcelView
+              rows={filtered as unknown as ExcelProg[]}
+              onEdit={(p) => { setEditing(p as unknown as Programacion); setShowDrawer(true); }}
+            />
+          )}
         </div>
       )}
 

@@ -3,10 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowDownToLine, CheckSquare, GitMerge, MapPin, Pencil, Plus, Search, Square, Trash2, X } from "lucide-react";
 import { upsertDocument, deleteDocument, getCollectionDocs, COLLECTIONS, where } from "@/lib/db";
+import { normalizeKey } from "@/lib/duplicateCheck";
+import { matchesQuery } from "@/lib/search";
+import DuplicateWarningModal from "@/components/DuplicateWarningModal";
+import EmptyState from "@/components/EmptyState";
 import { useCollectionWithLoading } from "@/lib/useCollection";
 import type { Cliente } from "@/lib/crmClientes";
 import { migrarObras, type ResultadoMigracion } from "@/lib/migraciones";
 import AppSelect from "@/components/AppSelect";
+import PlacesInput from "@/components/PlacesInput";
 
 interface Obra {
   id: string;
@@ -44,6 +49,7 @@ export default function CatalogoObrasPage() {
   const [merging, setMerging] = useState(false);
   const [mergeProgress, setMergeProgress] = useState("");
   const [keepId, setKeepId] = useState<Record<string, string>>({});
+  const [duplicateWarn, setDuplicateWarn] = useState<{ field: string; value: string; detail?: string; proceed: () => void } | null>(null);
 
   // Fusión manual: selección libre de 2+ obras para unificar
   const [manualMergeIds, setManualMergeIds] = useState<Set<string>>(new Set());
@@ -63,10 +69,9 @@ export default function CatalogoObrasPage() {
   }, [obras, clientes]);
 
   const filtered = useMemo(() => {
-    const q = search.toLowerCase();
     return obras.filter((o) => {
       if (filterCliente && o.cliente !== filterCliente) return false;
-      if (q && !o.cliente.toLowerCase().includes(q) && !o.nombre.toLowerCase().includes(q) && !o.direccion.toLowerCase().includes(q)) return false;
+      if (!matchesQuery(search, [o.cliente, o.nombre, o.direccion])) return false;
       return true;
     }).sort((a, b) => a.cliente.localeCompare(b.cliente, "es") || a.nombre.localeCompare(b.nombre, "es"));
   }, [obras, search, filterCliente]);
@@ -226,15 +231,29 @@ export default function CatalogoObrasPage() {
     setForm(emptyForm());
   }
 
-  async function handleSave() {
+  async function handleSave(force = false) {
     if (!form.cliente.trim() || !form.nombre.trim()) return;
+    const normNombre = normalizeKey(form.nombre);
+    if (!force && !editingObra) {
+      const dup = obras.find(
+        (o) => normalizeKey(o.nombre) === normNombre && normalizeKey(o.cliente) === normalizeKey(form.cliente)
+      );
+      if (dup) {
+        setDuplicateWarn({
+          field: "Nombre de obra + Cliente",
+          value: `${form.nombre.trim()} — ${form.cliente.trim()}`,
+          proceed: () => { setDuplicateWarn(null); void handleSave(true); },
+        });
+        return;
+      }
+    }
     setSaving(true);
     try {
       const id = editingObra?.id ?? `obra-${Date.now()}`;
       const doc: Obra = {
         id,
         cliente: form.cliente.trim().toUpperCase().replace(/\s+/g, " "),
-        nombre: form.nombre.trim().toUpperCase().replace(/\s+/g, " "),
+        nombre: normNombre,
         direccion: form.direccion.trim(),
       };
       await upsertDocument(COLLECTIONS.obras, id, doc);
@@ -272,9 +291,14 @@ export default function CatalogoObrasPage() {
   }
 
   async function handleDelete(id: string) {
-    await deleteDocument(COLLECTIONS.obras, id);
-    setConfirmDeleteId(null);
-    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: "Obra eliminada." } }));
+    try {
+      await deleteDocument(COLLECTIONS.obras, id);
+      setConfirmDeleteId(null);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: "Obra eliminada." } }));
+    } catch (e) {
+      console.error(e);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al eliminar. Intenta de nuevo." } }));
+    }
   }
 
   const inp = "w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-xl px-3.5 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-all";
@@ -381,15 +405,11 @@ export default function CatalogoObrasPage() {
             <p className="text-sm text-gray-400">Cargando catálogo…</p>
           </div>
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <MapPin size={32} className="mb-3 text-gray-600" />
-            <p className="text-sm text-gray-500 mb-1">
-              {search || filterCliente ? "Sin resultados." : "No hay obras en el catálogo."}
-            </p>
-            <p className="text-xs text-gray-600">
-              {!search && !filterCliente && "Las obras se agregan automáticamente al crear pedidos, o manualmente con el botón de arriba."}
-            </p>
-          </div>
+          <EmptyState
+            type={search || filterCliente ? "no-results" : "empty"}
+            message={!search && !filterCliente ? "Las obras se agregan automáticamente al crear pedidos, o manualmente con el botón de arriba." : undefined}
+            dark
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -593,11 +613,10 @@ export default function CatalogoObrasPage() {
               </div>
               <div>
                 <label className={lbl}>Dirección o link de Maps</label>
-                <input
-                  type="text"
+                <PlacesInput
                   value={form.direccion}
-                  onChange={(e) => setForm((f) => ({ ...f, direccion: e.target.value }))}
-                  placeholder="Dirección o link de Google Maps"
+                  onChange={(v) => setForm((f) => ({ ...f, direccion: v }))}
+                  placeholder="Escribe la dirección o pega un link de Google Maps"
                   className={inp}
                 />
                 <p className="text-xs text-gray-600 mt-1">Al seleccionar esta obra en un pedido, la dirección se llenará automáticamente.</p>
@@ -609,7 +628,7 @@ export default function CatalogoObrasPage() {
                 Cancelar
               </button>
               <button
-                onClick={handleSave}
+                onClick={() => void handleSave()}
                 disabled={saving || !form.cliente.trim() || !form.nombre.trim()}
                 className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-xl transition-colors disabled:opacity-50 shadow-md shadow-[#CC2229]/20 cursor-pointer"
               >
@@ -686,6 +705,16 @@ export default function CatalogoObrasPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {duplicateWarn && (
+        <DuplicateWarningModal
+          field={duplicateWarn.field}
+          value={duplicateWarn.value}
+          detail={duplicateWarn.detail}
+          onCancel={() => setDuplicateWarn(null)}
+          onConfirm={duplicateWarn.proceed}
+        />
       )}
     </div>
   );

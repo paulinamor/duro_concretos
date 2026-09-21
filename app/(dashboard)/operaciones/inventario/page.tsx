@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import KPICard from "@/components/KPICard";
+import ModuleLoading from "@/components/ModuleLoading";
 import AppSelect from "@/components/AppSelect";
 import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
 import { filterByPlanta, getActivePlanta, getStoredSession } from "@/lib/auth";
@@ -441,6 +442,7 @@ export default function InventarioPage() {
   const [remisionesDespacho, setRemisionesDespacho] = useState<RemisionDespacho[]>([]);
   const [entradasMaterial, setEntradasMaterial] = useState<EntradaMaterial[]>([]);
   const [existenciasIniciales, setExistenciasIniciales] = useState<ExistenciaInicial[]>([]);
+  const [loading, setLoading] = useState(true);
 
   // ── UI ───────────────────────────────────────────────────────────────────────
   const [showEntradaForm, setShowEntradaForm] = useState(false);
@@ -453,11 +455,15 @@ export default function InventarioPage() {
 
   // ── Fetch ────────────────────────────────────────────────────────────────────
   useEffect(() => {
-    getCollectionDocs<RemisionDespacho>(COLLECTIONS.remisiones).then((d) => {
-      setRemisionesDespacho(filterByPlanta(d).filter((r) => r.tipo === "despacho"));
-    });
-    getCollectionDocs<EntradaMaterial>(COLLECTIONS.entradasMaterial).then((d) => setEntradasMaterial(filterByPlanta(d)));
-    getCollectionDocs<ExistenciaInicial>(COLLECTIONS.existenciasIniciales).then((d) => setExistenciasIniciales(filterByPlanta(d)));
+    Promise.all([
+      getCollectionDocs<RemisionDespacho>(COLLECTIONS.remisiones),
+      getCollectionDocs<EntradaMaterial>(COLLECTIONS.entradasMaterial),
+      getCollectionDocs<ExistenciaInicial>(COLLECTIONS.existenciasIniciales),
+    ]).then(([rem, ent, exi]) => {
+      setRemisionesDespacho(filterByPlanta(rem).filter((r) => r.tipo === "despacho"));
+      setEntradasMaterial(filterByPlanta(ent));
+      setExistenciasIniciales(filterByPlanta(exi));
+    }).finally(() => setLoading(false));
   }, []);
 
   // ── Plant filter ──────────────────────────────────────────────────────────────
@@ -671,8 +677,11 @@ export default function InventarioPage() {
         ))}
       </div>
 
+      {/* ── Tab content ────────────────────────────────────────────────────────── */}
+      {loading ? <ModuleLoading label="Cargando inventario…" /> : null}
+
       {/* ── Tab: Stock ─────────────────────────────────────────────────────────── */}
-      {tab === "stock" && (
+      {!loading && tab === "stock" && (
         <div className="space-y-6">
           {!existenciaInicial && (
             <div className="flex items-start gap-3 px-5 py-4 bg-amber-50 border border-amber-200 rounded-xl">
@@ -735,7 +744,7 @@ export default function InventarioPage() {
       )}
 
       {/* ── Tab: Remisiones (read-only) ────────────────────────────────────────── */}
-      {tab === "remisiones" && (
+      {!loading && tab === "remisiones" && (
         <div className="space-y-4">
           <div className="flex items-start gap-3 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl text-xs">
             <Info size={14} className="text-blue-500 shrink-0 mt-0.5" />
@@ -809,7 +818,7 @@ export default function InventarioPage() {
       )}
 
       {/* ── Tab: Movimientos ───────────────────────────────────────────────────── */}
-      {tab === "movimientos" && (
+      {!loading && tab === "movimientos" && (
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
           <div className="px-5 py-4 border-b border-gray-100 flex flex-wrap items-center gap-2">
             <p className="text-sm font-semibold text-gray-900 flex-1">{filteredMovimientos.length} movimiento{filteredMovimientos.length !== 1 ? "s" : ""}</p>

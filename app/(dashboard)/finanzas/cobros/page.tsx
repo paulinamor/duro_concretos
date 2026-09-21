@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ArrowLeft, BadgeCheck, ChevronRight, Loader2, Plus, Search, Trash2, X } from "lucide-react";
 import AppSelect from "@/components/AppSelect";
 import { upsertDocument, deleteDocument, getCollectionDocs, COLLECTIONS } from "@/lib/db";
+import { currency } from "@/lib/formatters";
 import { filterByPlanta, withPlantaTag } from "@/lib/auth";
 import { todayCST } from "@/lib/dateUtils";
 
@@ -51,9 +52,6 @@ interface Prog {
 
 function norm(s?: string | null) {
   return (s ?? "").trim().toUpperCase().replace(/\s+/g, " ");
-}
-function currency(n: number) {
-  return `$${n.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 function fmtDate(iso: string) {
   if (!iso) return "—";

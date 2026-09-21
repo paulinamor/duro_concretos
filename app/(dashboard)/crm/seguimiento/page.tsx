@@ -15,6 +15,7 @@ import KPICard from "@/components/KPICard";
 import StatusBadge from "@/components/StatusBadge";
 import FormModal from "@/components/FormModal";
 import { crmFollowUps } from "@/lib/crmPipeline";
+import { matchesQuery } from "@/lib/search";
 
 export default function CrmSeguimientoPage() {
   const [seguimientos, setSeguimientos] = useState(crmFollowUps);
@@ -25,20 +26,11 @@ export default function CrmSeguimientoPage() {
 
   const responsables = ["Todos", ...Array.from(new Set(seguimientos.map((item) => item.responsable)))];
   const filtered = useMemo(() => {
-    const term = query.toLowerCase();
     return seguimientos.filter((item) => {
       if (responsable !== "Todos" && item.responsable !== responsable) return false;
       if (quickFilter === "alta" && item.prioridad !== "Alta") return false;
       if (quickFilter === "riesgo" && item.estadoCliente !== "En riesgo") return false;
-      if (term) {
-        return (
-          item.cliente.toLowerCase().includes(term) ||
-          item.contacto.toLowerCase().includes(term) ||
-          item.oportunidad.toLowerCase().includes(term) ||
-          item.proximaAccion.toLowerCase().includes(term)
-        );
-      }
-      return true;
+      return matchesQuery(query, [item.cliente, item.contacto, item.oportunidad, item.proximaAccion]);
     });
   }, [query, responsable, quickFilter, seguimientos]);
 

@@ -9,6 +9,7 @@ import { filterByPlanta } from "@/lib/auth";
 import type { Cuenta } from "@/components/finanzas/SatAccountsPage";
 import type { Cliente } from "@/lib/crmClientes";
 import { todayCST } from "@/lib/dateUtils";
+import { matchesQuery } from "@/lib/search";
 
 function norm(s?: string | null) {
   return (s ?? "").trim().toUpperCase().replace(/\s+/g, " ");
@@ -222,9 +223,8 @@ export default function EstadoCuentaClientesPage() {
   }, [cuentas, programaciones, clienteNombre, fechaInicio, fechaFin]);
 
   const movimientosFiltrados = useMemo(() => {
-    const term = query.toLowerCase();
-    return estadoCuenta.movimientos.filter(
-      (m) => m.concepto.toLowerCase().includes(term) || m.referencia.toLowerCase().includes(term),
+    return estadoCuenta.movimientos.filter((m) =>
+      matchesQuery(query, [m.concepto, m.referencia])
     );
   }, [estadoCuenta.movimientos, query]);
 

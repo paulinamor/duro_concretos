@@ -21,6 +21,7 @@ import {
   VentaEntrega,
   ventasEntregasBase,
 } from "@/lib/gpsSalesTimes";
+import { matchesQuery } from "@/lib/search";
 
 export default function HorasLlegadaSalidaPage() {
   const [entregas, setEntregas] = useState<VentaEntrega[]>(ventasEntregasBase);
@@ -30,16 +31,10 @@ export default function HorasLlegadaSalidaPage() {
   const [showForm, setShowForm] = useState(false);
 
   const filtered = useMemo(() => {
-    const term = query.toLowerCase();
     return entregas.filter((entrega) => {
       return (
         (filterEstado === "Todos" || entrega.estado === filterEstado) &&
-        (
-          entrega.folio.toLowerCase().includes(term) ||
-          entrega.cliente.toLowerCase().includes(term) ||
-          entrega.obra.toLowerCase().includes(term) ||
-          entrega.unidad.toLowerCase().includes(term)
-        )
+        matchesQuery(query, [entrega.folio, entrega.cliente, entrega.obra, entrega.unidad])
       );
     });
   }, [entregas, filterEstado, query]);

@@ -29,6 +29,11 @@ import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
 import { filterByPlanta, withPlantaTag } from "@/lib/auth";
 import { COLLECTIONS, deleteDocument, getCollectionDocs, upsertDocument } from "@/lib/db";
+import { normalizeKey } from "@/lib/duplicateCheck";
+import { currencyRounded as currency } from "@/lib/formatters";
+import { matchesQuery } from "@/lib/search";
+import DuplicateWarningModal from "@/components/DuplicateWarningModal";
+import EmptyState from "@/components/EmptyState";
 import { todayCST } from "@/lib/dateUtils";
 import type { Unidad } from "@/lib/unidades";
 import PlantaRequired from "@/components/PlantaRequired";
@@ -94,10 +99,6 @@ function fmtFecha(f: string) {
   return f;
 }
 
-function currency(n: number) {
-  if (!n) return "—";
-  return `$${Math.round(n).toLocaleString("es-MX")}`;
-}
 
 function diasHasta(fecha: string): number | null {
   if (!fecha || fecha === "—") return null;
@@ -1028,6 +1029,7 @@ export default function MantenimientoPage() {
   const [confirmDeleteEvento, setConfirmDeleteEvento] = useState<Evento | null>(null);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [duplicateWarn, setDuplicateWarn] = useState<{ field: string; value: string; detail?: string; proceed: () => void } | null>(null);
 
   useEffect(() => {
     if (!loading) { setLoadingLong(false); return; }
@@ -1098,14 +1100,10 @@ export default function MantenimientoPage() {
 
   // Filter for search
   const filteredSummaries = useMemo(() => {
-    const q = query.toLowerCase();
-    if (!q) return unitSummaries;
+    if (!query) return unitSummaries;
     return unitSummaries.filter((s) =>
-      s.unidad.noEconomico.toLowerCase().includes(q) ||
-      s.unidad.placa.toLowerCase().includes(q) ||
-      s.unidad.marca.toLowerCase().includes(q) ||
-      s.unidad.modelo.toLowerCase().includes(q) ||
-      s.eventos.some((e) => e.descripcion.toLowerCase().includes(q))
+      matchesQuery(query, [s.unidad.noEconomico, s.unidad.placa, s.unidad.marca, s.unidad.modelo]) ||
+      s.eventos.some((e) => matchesQuery(query, [e.descripcion]))
     );
   }, [unitSummaries, query]);
 
@@ -1120,13 +1118,9 @@ export default function MantenimientoPage() {
     else if (quickFilter === "fallas") list = list.filter((e) => e.tipo === "Falla" && e.status !== "Resuelta");
     if (dateFrom) list = list.filter((e) => toISO(e.fecha) >= dateFrom);
     if (dateTo)   list = list.filter((e) => toISO(e.fecha) <= dateTo);
-    const q = query.toLowerCase();
-    if (!q) return list;
+    if (!query) return list;
     return list.filter((e) =>
-      e.unidad.toLowerCase().includes(q) ||
-      e.descripcion.toLowerCase().includes(q) ||
-      (e.causa ?? "").toLowerCase().includes(q) ||
-      (e.taller ?? "").toLowerCase().includes(q)
+      matchesQuery(query, [e.unidad, e.descripcion, e.causa, e.taller])
     );
   }, [eventos, query, quickFilter, dateFrom, dateTo]);
 
@@ -1135,8 +1129,24 @@ export default function MantenimientoPage() {
   const pendientes = useMemo(() => eventos.filter((e) => !["Completado", "Resuelta"].includes(e.status)).length, [eventos]);
   const fallasActivas = useMemo(() => eventos.filter((e) => e.tipo === "Falla" && e.status !== "Resuelta").length, [eventos]);
 
-  async function handleSave(ev: EventoRaw) {
+  async function handleSave(ev: EventoRaw, force = false) {
     const isUpdate = !!ev.id;
+    if (!force && !isUpdate) {
+      const dup = eventos.find((e) =>
+        normalizeKey(e.unidad) === normalizeKey(ev.unidad) &&
+        e.fecha === ev.fecha &&
+        e.tipo === ev.tipo
+      );
+      if (dup) {
+        setDuplicateWarn({
+          field: `${ev.tipo} · Unidad + Fecha`,
+          value: `${ev.unidad} — ${ev.fecha}`,
+          detail: dup.descripcion?.slice(0, 60) || undefined,
+          proceed: () => { setDuplicateWarn(null); void handleSave(ev, true); },
+        });
+        return;
+      }
+    }
     const id = ev.id ?? `evt-${Date.now()}`;
     const col = ev.tipo === "Mantenimiento" ? COLLECTIONS.mantenimientos : ev.tipo === "Reparación" ? COLLECTIONS.reparaciones : COLLECTIONS.fallas;
     const full: Evento = { ...ev, id };
@@ -1156,9 +1166,14 @@ export default function MantenimientoPage() {
   async function handleDelete(ev: Evento) {
     setEventos((prev) => prev.filter((e) => e.id !== ev.id));
     const col = ev.tipo === "Mantenimiento" ? COLLECTIONS.mantenimientos : ev.tipo === "Reparación" ? COLLECTIONS.reparaciones : COLLECTIONS.fallas;
-    await deleteDocument(col, ev.id);
-    setConfirmDeleteEvento(null);
-    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `Registro de ${ev.unidad} eliminado.` } }));
+    try {
+      await deleteDocument(col, ev.id);
+      setConfirmDeleteEvento(null);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `Registro de ${ev.unidad} eliminado.` } }));
+    } catch (e) {
+      console.error(e);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al eliminar. Intenta de nuevo." } }));
+    }
   }
 
   async function handleComplete(ev: Evento) {
@@ -1166,8 +1181,13 @@ export default function MantenimientoPage() {
     setEventos((prev) => prev.map((e) => e.id === ev.id ? { ...e, status: newStatus } : e));
     const col = ev.tipo === "Mantenimiento" ? COLLECTIONS.mantenimientos : ev.tipo === "Reparación" ? COLLECTIONS.reparaciones : COLLECTIONS.fallas;
     const { id, ...data } = ev;
-    await upsertDocument(col, id, withPlantaTag({ ...data, status: newStatus }));
-    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `${ev.tipo} de ${ev.unidad} cerrada.` } }));
+    try {
+      await upsertDocument(col, id, withPlantaTag({ ...data, status: newStatus }));
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `${ev.tipo} de ${ev.unidad} cerrada.` } }));
+    } catch (e) {
+      console.error(e);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al actualizar. Intenta de nuevo." } }));
+    }
   }
 
   function setThisWeek() {
@@ -1345,8 +1365,8 @@ export default function MantenimientoPage() {
       {!loading && viewMode === "unidades" && (
         <div className="space-y-3">
           {filteredSummaries.length === 0 ? (
-            <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl px-5 py-16 text-center text-gray-500 text-sm">
-              {unidades.length === 0 ? "Sin unidades registradas en flota" : "Sin resultados para esa búsqueda"}
+            <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
+              <EmptyState type={unidades.length === 0 ? "empty" : "no-results"} dark />
             </div>
           ) : filteredSummaries.map((s) => (
             <UnitCard
@@ -1394,7 +1414,7 @@ export default function MantenimientoPage() {
               </thead>
               <tbody className="divide-y divide-[#2A2A2A]">
                 {filteredEventos.length === 0 ? (
-                  <tr><td colSpan={10} className="px-4 py-14 text-center text-sm text-gray-600">Sin registros</td></tr>
+                  <tr><td colSpan={10} className="p-0"><EmptyState type="no-results" dark /></td></tr>
                 ) : filteredEventos.map((ev) => {
                   const isDone = ev.status === "Completado" || ev.status === "Resuelta";
                   const dias = diasDesde(ev.fecha);
@@ -1533,6 +1553,16 @@ export default function MantenimientoPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {duplicateWarn && (
+        <DuplicateWarningModal
+          field={duplicateWarn.field}
+          value={duplicateWarn.value}
+          detail={duplicateWarn.detail}
+          onCancel={() => setDuplicateWarn(null)}
+          onConfirm={duplicateWarn.proceed}
+        />
       )}
     </div>
   );

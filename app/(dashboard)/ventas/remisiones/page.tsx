@@ -7,12 +7,15 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import KPICard from "@/components/KPICard";
+import ModuleLoading from "@/components/ModuleLoading";
 import AppSelect from "@/components/AppSelect";
 import { getCollectionDocs, getDocument, upsertDocument, COLLECTIONS } from "@/lib/db";
+import DuplicateWarningModal from "@/components/DuplicateWarningModal";
 import { filterByPlanta, getActivePlanta, withPlantaTag } from "@/lib/auth";
 import { todayCST, currentMonthCST } from "@/lib/dateUtils";
 import type { Cliente } from "@/lib/crmClientes";
 import type { Operador } from "@/lib/operadores";
+import { matchesQuery } from "@/lib/search";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -490,6 +493,7 @@ export default function RemisionesPage() {
   const [clientes, setClientes] = useState<Pick<Cliente, "id" | "razonSocial" | "nombreComercial">[]>([]);
   const [operadores, setOperadores] = useState<Pick<Operador, "id" | "nombre">[]>([]);
   const [crOptions, setCrOptions] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const [month, setMonth] = useState(currentMonth());
   const [search, setSearch] = useState("");
@@ -499,6 +503,7 @@ export default function RemisionesPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<RemisionDespacho | undefined>(undefined);
   const [completarMode, setCompletarMode] = useState(false);
+  const [duplicateWarn, setDuplicateWarn] = useState<{ field: string; value: string; detail?: string; proceed: () => void } | null>(null);
   const [printTarget, setPrintTarget] = useState<RemisionDespacho | null>(null);
   const printRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -515,26 +520,21 @@ export default function RemisionesPage() {
   }, []);
 
   useEffect(() => {
-    getCollectionDocs<RemisionDespacho>(COLLECTIONS.remisiones).then((docs) => {
-      const despacho = filterByPlanta(docs).filter((r) => r.tipo === "despacho");
-      setRemisiones(despacho);
-    });
-    getCollectionDocs<Cliente>(COLLECTIONS.clientes).then((docs) =>
-      setClientes(docs.map((c) => ({ id: c.id, razonSocial: c.razonSocial, nombreComercial: c.nombreComercial })))
-    );
-    getCollectionDocs<Operador>(COLLECTIONS.operadores).then((docs) =>
-      setOperadores(docs.filter((o) => !o.baja).map((o) => ({ id: o.id, nombre: o.nombre })))
-    );
-    getCollectionDocs<{ noEconomico?: string; tipoUnidad?: string }>(COLLECTIONS.seguros).then((docs) => {
+    Promise.all([
+      getCollectionDocs<RemisionDespacho>(COLLECTIONS.remisiones),
+      getCollectionDocs<Cliente>(COLLECTIONS.clientes),
+      getCollectionDocs<Operador>(COLLECTIONS.operadores),
+      getCollectionDocs<{ noEconomico?: string; tipoUnidad?: string }>(COLLECTIONS.seguros),
+      getDocument<EmpresaInfo>(COLLECTIONS.configuracion, "empresa-remisiones").catch(() => null),
+    ]).then(([remDocs, clienteDocs, operDocs, segurosDocs, empresaDoc]) => {
+      setRemisiones(filterByPlanta(remDocs).filter((r) => r.tipo === "despacho"));
+      setClientes(clienteDocs.map((c) => ({ id: c.id, razonSocial: c.razonSocial, nombreComercial: c.nombreComercial })));
+      setOperadores(operDocs.filter((o) => !o.baja).map((o) => ({ id: o.id, nombre: o.nombre })));
       const crs = new Set<string>();
-      docs
-        .filter((d) => d.tipoUnidad === "Revolvedora" && d.noEconomico)
-        .forEach((d) => crs.add(d.noEconomico!));
+      segurosDocs.filter((d) => d.tipoUnidad === "Revolvedora" && d.noEconomico).forEach((d) => crs.add(d.noEconomico!));
       setCrOptions([...crs].sort());
-    });
-    getDocument<EmpresaInfo>(COLLECTIONS.configuracion, "empresa-remisiones").then((doc) => {
-      if (doc) { setEmpresa(doc); setEmpresaForm(doc); }
-    }).catch(() => {});
+      if (empresaDoc) { setEmpresa(empresaDoc); setEmpresaForm(empresaDoc); }
+    }).finally(() => setLoading(false));
   }, []);
 
   const nextNoRemision = useMemo(() => {
@@ -548,12 +548,8 @@ export default function RemisionesPage() {
     if (filterStatus === "creada") rows = rows.filter((r) => r.status === "creada");
     else if (filterStatus === "pendiente") rows = rows.filter((r) => r.status !== "creada");
     if (search) {
-      const q = search.toLowerCase();
       rows = rows.filter((r) =>
-        r.noRemision.toLowerCase().includes(q) ||
-        r.cliente.toLowerCase().includes(q) ||
-        r.operador.toLowerCase().includes(q) ||
-        r.cr.toLowerCase().includes(q)
+        matchesQuery(search, [r.noRemision, r.cliente, r.operador, r.cr])
       );
     }
     return [...rows].sort((a, b) => b.noRemision.localeCompare(a.noRemision, undefined, { numeric: true }));
@@ -612,17 +608,34 @@ export default function RemisionesPage() {
     }
   }
 
-  const handleSave = async (r: RemisionDespacho) => {
+  const handleSave = async (r: RemisionDespacho, force = false) => {
+    if (!force && !r.id) {
+      const dup = remisiones.find((x) => x.noRemision === r.noRemision);
+      if (dup) {
+        setDuplicateWarn({
+          field: "Número de remisión",
+          value: `Remisión ${r.noRemision}`,
+          detail: `${dup.cliente ?? ""} — ${dup.fecha ?? ""}`.replace(/^ — | — $/, ""),
+          proceed: () => { setDuplicateWarn(null); void handleSave(r, true); },
+        });
+        return;
+      }
+    }
     const id = r.id ?? `rem-desp-${r.noRemision}-${Date.now()}`;
     const { id: _id, ...data } = r;
     const tagged = withPlantaTag(data) as RemisionDespacho;
-    await upsertDocument(COLLECTIONS.remisiones, id, tagged as Parameters<typeof upsertDocument>[2]);
-    setRemisiones((prev) => {
-      const idx = prev.findIndex((x) => x.id === r.id);
-      const updated = { ...tagged, id };
-      return idx >= 0 ? prev.map((x, i) => (i === idx ? updated : x)) : [updated, ...prev];
-    });
-    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `Remisión ${r.noRemision} guardada.` } }));
+    try {
+      await upsertDocument(COLLECTIONS.remisiones, id, tagged as Parameters<typeof upsertDocument>[2]);
+      setRemisiones((prev) => {
+        const idx = prev.findIndex((x) => x.id === r.id);
+        const updated = { ...tagged, id };
+        return idx >= 0 ? prev.map((x, i) => (i === idx ? updated : x)) : [updated, ...prev];
+      });
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `Remisión ${r.noRemision} guardada.` } }));
+    } catch (e) {
+      console.error(e);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al guardar la remisión. Verifica tu conexión." } }));
+    }
   };
 
   return (
@@ -684,6 +697,8 @@ export default function RemisionesPage() {
 
       {/* ── Table ──────────────────────────────────────────────────────────────── */}
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+        {loading && <ModuleLoading label="Cargando remisiones…" />}
+        {!loading && (<>
         <div className="px-5 py-4 border-b border-gray-100 flex flex-wrap items-center gap-3">
           <p className="text-sm font-semibold text-gray-900">
             {filtered.length} remisión{filtered.length !== 1 ? "es" : ""}
@@ -775,6 +790,7 @@ export default function RemisionesPage() {
             </tbody>
           </table>
         </div>
+        </>)}
       </div>
 
       {/* ── Info banner ────────────────────────────────────────────────────────── */}
@@ -896,6 +912,16 @@ export default function RemisionesPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {duplicateWarn && (
+        <DuplicateWarningModal
+          field={duplicateWarn.field}
+          value={duplicateWarn.value}
+          detail={duplicateWarn.detail}
+          onCancel={() => setDuplicateWarn(null)}
+          onConfirm={duplicateWarn.proceed}
+        />
       )}
 
       {/* ── Hidden div for window.print() ────────────────────────────────────── */}

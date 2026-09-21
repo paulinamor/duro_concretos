@@ -5,18 +5,17 @@ import { CircleDollarSign, Info, Mail, Phone, Search, Target, UserRound, UsersRo
 import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
 import StatusBadge from "@/components/StatusBadge";
-import { useCollectionRaw } from "@/lib/useCollection";
+import { useCollectionRawWithLoading } from "@/lib/useCollection";
+import ModuleLoading from "@/components/ModuleLoading";
+import { currencyRounded as currency } from "@/lib/formatters";
 import { COLLECTIONS } from "@/lib/db";
 import type { Cliente } from "@/lib/crmClientes";
 
 const STATUSES = ["Todos", "Activo", "Prospecto", "Inactivo", "Bloqueado"] as const;
 
-function currency(value: number) {
-  return `$${Math.round(value).toLocaleString("es-MX")}`;
-}
 
 export default function ClientesPorVendedorPage() {
-  const clientes = useCollectionRaw<Cliente>(COLLECTIONS.clientes);
+  const { data: clientes, loading } = useCollectionRawWithLoading<Cliente>(COLLECTIONS.clientes);
 
   const [seller, setSeller] = useState("Todos");
   const [status, setStatus] = useState("Todos");
@@ -183,6 +182,9 @@ export default function ClientesPorVendedorPage() {
         <div className="border-b border-[#3A3A3A] px-5 py-4">
           <h3 className="font-semibold text-white">Base de clientes por vendedor</h3>
         </div>
+        {loading ? (
+          <ModuleLoading dark label="Cargando clientes…" />
+        ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -234,6 +236,7 @@ export default function ClientesPorVendedorPage() {
             </tbody>
           </table>
         </div>
+        )}
       </div>
     </div>
   );

@@ -14,7 +14,12 @@ import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
 import { upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
 import { todayCST } from "@/lib/dateUtils";
-import { useCollectionRaw } from "@/lib/useCollection";
+import { useCollectionRawWithLoading } from "@/lib/useCollection";
+import ModuleLoading from "@/components/ModuleLoading";
+import { normalizeKey } from "@/lib/duplicateCheck";
+import { currencyRounded as currency } from "@/lib/formatters";
+import DuplicateWarningModal from "@/components/DuplicateWarningModal";
+import EmptyState from "@/components/EmptyState";
 import type { Unidad } from "@/lib/unidades";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -62,9 +67,6 @@ function parseNum(s: string): number | null {
   return isNaN(n) ? null : n;
 }
 
-function currency(n: number) {
-  return `$${Math.round(n).toLocaleString("es-MX")}`;
-}
 
 function fmt(n: number | null | undefined, decimals = 2) {
   if (n == null) return "—";
@@ -592,9 +594,11 @@ export default function DieselPage() {
   const [mes, setMes] = useState(() => currentMonth());
   const [query, setQuery] = useState("");
   const [filterBajoRendimiento, setFilterBajoRendimiento] = useState(false);
+  const [duplicateWarn, setDuplicateWarn] = useState<{ field: string; value: string; detail?: string; proceed: () => void } | null>(null);
 
-  const cargas = useCollectionRaw<CargaDiesel>(COLLECTIONS.diesel);
-  const unidades = useCollectionRaw<Unidad>(COLLECTIONS.unidades);
+  const { data: cargas, loading: loadingCargas } = useCollectionRawWithLoading<CargaDiesel>(COLLECTIONS.diesel);
+  const { data: unidades, loading: loadingUnidades } = useCollectionRawWithLoading<Unidad>(COLLECTIONS.unidades);
+  const loading = loadingCargas || loadingUnidades;
   useEffect(() => {
     setUnidadesList(unidades.map((u) => u.noEconomico).filter(Boolean));
   }, [unidades]);
@@ -702,16 +706,41 @@ export default function DieselPage() {
     XLSX.writeFile(wb, `cargas-combustible-${todayCST()}.xlsx`);
   }
 
-  async function handleSave(carga: CargaDiesel) {
+  async function handleSave(carga: CargaDiesel, force = false) {
+    if (!force && !carga.id) {
+      const dup = cargas.find((c) =>
+        normalizeKey(c.unidad) === normalizeKey(carga.unidad) && c.fecha === carga.fecha
+      );
+      if (dup) {
+        setDuplicateWarn({
+          field: "Unidad + Fecha",
+          value: `${carga.unidad} — ${carga.fecha}`,
+          detail: `${dup.litros} L · ${dup.combustible}`,
+          proceed: () => { setDuplicateWarn(null); void handleSave(carga, true); },
+        });
+        return;
+      }
+    }
     const id = carga.id ?? Date.now().toString();
     const { id: _id, planta: _p, ...data } = { ...carga, id };
-    await upsertDocument(COLLECTIONS.diesel, id, data);
+    try {
+      await upsertDocument(COLLECTIONS.diesel, id, data);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: carga.id ? "Carga actualizada." : "Carga registrada." } }));
+    } catch (e) {
+      console.error(e);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al guardar la carga. Intenta de nuevo." } }));
+    }
   }
 
   async function handleDelete(carga: CargaDiesel) {
-    await deleteDocument(COLLECTIONS.diesel, carga.id!);
-    setConfirmDelete(null);
-    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `Carga de ${carga.unidad} eliminada.` } }));
+    try {
+      await deleteDocument(COLLECTIONS.diesel, carga.id!);
+      setConfirmDelete(null);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `Carga de ${carga.unidad} eliminada.` } }));
+    } catch (e) {
+      console.error(e);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al eliminar. Intenta de nuevo." } }));
+    }
   }
 
   const hasFilters = !!(filterUnidad !== "Todas" || filterCombustible !== "Todos" || query);
@@ -886,6 +915,9 @@ export default function DieselPage() {
               <span className="text-xs text-gray-500">0 registros</span>
             )}
           </div>
+          {loading ? (
+            <ModuleLoading dark label="Cargando historial de cargas…" />
+          ) : (
           <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-320px)]">
             <table className="w-full text-sm">
               <thead className="sticky top-0 z-10">
@@ -898,8 +930,8 @@ export default function DieselPage() {
             <tbody className="divide-y divide-[#2A2A2A]">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-16 text-center text-sm text-gray-400">
-                    {cargas.length === 0 ? "Aún no hay cargas registradas" : "Sin resultados para los filtros aplicados"}
+                  <td colSpan={7} className="p-0">
+                    <EmptyState type={cargas.length === 0 ? "empty" : "no-results"} dark />
                   </td>
                 </tr>
               ) : (
@@ -912,6 +944,7 @@ export default function DieselPage() {
             </tbody>
             </table>
           </div>
+          )}
         </div>
 
       </div>{/* end 2-col grid */}
@@ -941,6 +974,16 @@ export default function DieselPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {duplicateWarn && (
+        <DuplicateWarningModal
+          field={duplicateWarn.field}
+          value={duplicateWarn.value}
+          detail={duplicateWarn.detail}
+          onCancel={() => setDuplicateWarn(null)}
+          onConfirm={duplicateWarn.proceed}
+        />
       )}
     </div>
   );

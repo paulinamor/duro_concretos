@@ -30,6 +30,8 @@ export const moduleCatalog = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/reportes", label: "Reportes gerenciales" },
   { href: "/transporte/programacion", label: "Programación" },
+  { href: "/transporte/flota-en-vivo", label: "Flota en vivo GPS" },
+  { href: "/transporte/programacion-live", label: "Programación en tiempo real" },
   { href: "/transporte/operadores", label: "Empleados" },
   { href: "/transporte/seguros", label: "Flota" },
   { href: "/transporte/diesel", label: "Consumo de Diésel" },
@@ -59,8 +61,6 @@ export const DEV_ONLY_ROUTES = new Set([
   "/recursos-humanos/nomina",
   "/configuracion/sat-descarga",
   "/transporte/samsara-test",
-  "/transporte/flota-en-vivo",
-  "/transporte/programacion-live",
 ]);
 
 // Email con acceso completo a herramientas de desarrollo en el sidebar

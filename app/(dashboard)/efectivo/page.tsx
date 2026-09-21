@@ -13,6 +13,7 @@ import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
 import PlantaRequired from "@/components/PlantaRequired";
 import type { Cliente } from "@/lib/crmClientes";
+import { currency } from "@/lib/formatters";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -92,10 +93,6 @@ function n(v: string): number | null {
   return isNaN(p) ? null : p;
 }
 
-function currency(v: number | null) {
-  if (v == null) return "—";
-  return v.toLocaleString("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
 
 const todayISO = todayCST;
 

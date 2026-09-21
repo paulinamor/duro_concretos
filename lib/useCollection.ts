@@ -86,3 +86,29 @@ export function useCollectionRaw<T>(
 
   return data;
 }
+
+/**
+ * Igual que useCollectionRaw pero devuelve { data, loading } sin filtro de planta.
+ */
+export function useCollectionRawWithLoading<T>(
+  collectionName: string,
+  constraints: QueryConstraint[] = [],
+): { data: T[]; loading: boolean } {
+  const [data, setData] = useState<T[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const unsub = subscribeToCollection<T>(
+      collectionName,
+      (docs) => {
+        setData(docs);
+        setLoading(false);
+      },
+      constraints,
+    );
+    return unsub;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collectionName]);
+
+  return { data, loading };
+}

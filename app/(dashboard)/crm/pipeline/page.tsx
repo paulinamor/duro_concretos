@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
+import ModuleLoading from "@/components/ModuleLoading";
 import PlantaRequired from "@/components/PlantaRequired";
 import {
   pipelineStages,
@@ -25,6 +26,9 @@ import {
   type CrmOpportunity,
 } from "@/lib/crmPipeline";
 import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
+import { normalizeKey } from "@/lib/duplicateCheck";
+import { matchesQuery } from "@/lib/search";
+import DuplicateWarningModal from "@/components/DuplicateWarningModal";
 import { todayCST } from "@/lib/dateUtils";
 
 type Opp = CrmOpportunity;
@@ -189,6 +193,7 @@ export default function CrmPipelinePage() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<PipelineStage | null>(null);
+  const [duplicateWarn, setDuplicateWarn] = useState<{ field: string; value: string; detail?: string; proceed: () => void } | null>(null);
 
   useEffect(() => {
     getCollectionDocs<Opp>(COLLECTIONS.pipeline).then((docs) => {
@@ -198,14 +203,9 @@ export default function CrmPipelinePage() {
   }, []);
 
   const filtered = useMemo(() => {
-    const term = query.toLowerCase();
-    return opportunities.filter((opportunity) => {
-      return (
-        opportunity.cliente.toLowerCase().includes(term) ||
-        opportunity.obra.toLowerCase().includes(term) ||
-        opportunity.contacto.toLowerCase().includes(term)
-      );
-    });
+    return opportunities.filter((o) =>
+      matchesQuery(query, [o.cliente, o.obra, o.contacto])
+    );
   }, [opportunities, query]);
 
   const totalPipeline = opportunities.reduce((sum, item) => sum + item.valorEstimado, 0);
@@ -213,7 +213,23 @@ export default function CrmPipelinePage() {
   const totalM3 = opportunities.reduce((sum, item) => sum + item.m3Estimados, 0);
   const cierre = opportunities.filter((item) => item.etapa === "Cierre").length;
 
-  async function handleSave(form: OppForm, existingId?: string) {
+  async function handleSave(form: OppForm, existingId?: string, force = false) {
+    if (!force && !existingId) {
+      const normCliente = normalizeKey(form.cliente);
+      const normObra = normalizeKey(form.obra);
+      const dup = opportunities.find(
+        (o) => normalizeKey(o.cliente) === normCliente && normalizeKey(o.obra) === normObra
+      );
+      if (dup) {
+        setDuplicateWarn({
+          field: "Cliente + Obra",
+          value: `${form.cliente.trim()} — ${form.obra}`,
+          detail: `Etapa: ${dup.etapa}`,
+          proceed: () => { setDuplicateWarn(null); void handleSave(form, existingId, true); },
+        });
+        return;
+      }
+    }
     const id = existingId ?? `crm-${Date.now()}`;
     const doc: Opp = {
       id,
@@ -226,16 +242,26 @@ export default function CrmPipelinePage() {
       resistencia: form.resistencia || undefined,
       comentarios: form.comentarios || undefined,
     };
-    await upsertDocument(COLLECTIONS.pipeline, id, doc);
-    setOpportunities((cur) =>
-      existingId ? cur.map((o) => o.id === id ? doc : o) : [doc, ...cur]
-    );
+    try {
+      await upsertDocument(COLLECTIONS.pipeline, id, doc);
+      setOpportunities((cur) =>
+        existingId ? cur.map((o) => o.id === id ? doc : o) : [doc, ...cur]
+      );
+    } catch (e) {
+      console.error(e);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al guardar la oportunidad. Intenta de nuevo." } }));
+    }
   }
 
   async function handleDelete(id: string) {
-    await deleteDocument(COLLECTIONS.pipeline, id);
-    setOpportunities((cur) => cur.filter((o) => o.id !== id));
-    setConfirmDeleteId(null);
+    try {
+      await deleteDocument(COLLECTIONS.pipeline, id);
+      setOpportunities((cur) => cur.filter((o) => o.id !== id));
+      setConfirmDeleteId(null);
+    } catch (e) {
+      console.error(e);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al eliminar. Intenta de nuevo." } }));
+    }
   }
 
   function handleDragStart(opportunityId: string) {
@@ -456,7 +482,11 @@ export default function CrmPipelinePage() {
         editing={editingOpp}
       />
 
-      <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
+      <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
+        {loading ? (
+          <ModuleLoading label="Cargando pipeline…" />
+        ) : (
+          <div className="grid grid-cols-1 xl:grid-cols-5 gap-4 p-4">
         {pipelineStages.map((stage: PipelineStage) => {
           const stageItems = filtered.filter((opportunity) => opportunity.etapa === stage);
           return (
@@ -549,6 +579,8 @@ export default function CrmPipelinePage() {
             </div>
           );
         })}
+          </div>
+        )}
       </div>
 
       {confirmDeleteId && (
@@ -570,6 +602,16 @@ export default function CrmPipelinePage() {
             </div>
           </div>
         </div>
+      )}
+
+      {duplicateWarn && (
+        <DuplicateWarningModal
+          field={duplicateWarn.field}
+          value={duplicateWarn.value}
+          detail={duplicateWarn.detail}
+          onCancel={() => setDuplicateWarn(null)}
+          onConfirm={duplicateWarn.proceed}
+        />
       )}
     </div>
   );
