@@ -24,6 +24,7 @@ export const MODULE_STATUS_DEFAULTS: Record<string, ModuleStatus> = {
   "/configuracion":                    "live",
   "/facturacion":                      "wip",
   "/configuracion/sat-descarga":       "live",
+  "/recursos-humanos/asistencia":      "live",
   "/recursos-humanos/nomina":          "dev",
 };
 

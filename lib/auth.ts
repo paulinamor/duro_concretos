@@ -51,6 +51,7 @@ export const moduleCatalog = [
   { href: "/configuracion", label: "Autenticación y roles" },
   { href: "/facturacion", label: "Facturación CFDI" },
   { href: "/configuracion/sat-descarga", label: "Descarga masiva SAT" },
+  { href: "/recursos-humanos/asistencia", label: "Control de Asistencia" },
   // Módulos en desarrollo — solo accesibles para DEV_EMAILS
   { href: "/recursos-humanos/nomina", label: "Nómina" },
 ];
