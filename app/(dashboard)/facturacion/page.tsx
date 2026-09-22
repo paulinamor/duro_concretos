@@ -588,7 +588,12 @@ function EmitirDrawer({
           {/* Pago */}
           <div className="grid grid-cols-2 gap-4">
             <Field label="Método de pago">
-              <AppSelect value={metodo} onChange={(e) => setMetodo(e.target.value as MetodoPago)}>
+              <AppSelect value={metodo} onChange={(e) => {
+                const m = e.target.value as MetodoPago;
+                setMetodo(m);
+                if (m === "PPD") setForma("99");
+                else if (forma === "99") setForma("03");
+              }}>
                 <option value="PUE">PUE — Pago en una exhibición</option>
                 <option value="PPD">PPD — Pago en parcialidades o diferido</option>
               </AppSelect>

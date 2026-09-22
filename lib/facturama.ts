@@ -49,7 +49,9 @@ export async function facturamaFetch<T>(
     try {
       const body = await res.json();
       msg = body?.ModelState
-        ? Object.values(body.ModelState).flat().join("; ")
+        ? Object.entries(body.ModelState as Record<string, unknown>)
+            .flatMap(([k, v]) => (Array.isArray(v) ? v : [v]).map((m) => `${k}: ${m}`))
+            .join("; ")
         : body?.message ?? body?.Message ?? JSON.stringify(body);
     } catch {}
     throw new Error(`Facturama ${res.status}: ${msg}`);
@@ -108,7 +110,7 @@ export type FmCfdiPayload = {
   PaymentForm?: string;
   PaymentMethod?: "PUE" | "PPD";
   Currency: string;
-  ExchangeRate?: number;
+  CurrencyExchangeRate?: number;
   Issuer: FmEmisor;
   Receiver: FmReceptor;
   Items: FmItem[];
@@ -280,7 +282,7 @@ export function buildCfdiPayload(input: EmitirFacturaInput): FmCfdiPayload {
     PaymentForm:    input.metodoPago === "PPD" ? "99" : input.formaPago,
     PaymentMethod:  input.metodoPago,
     Currency:       input.moneda,
-    ExchangeRate:   input.moneda !== "MXN" ? input.tipoCambio : undefined,
+    CurrencyExchangeRate: input.moneda !== "MXN" ? input.tipoCambio : undefined,
     Issuer:         emisor,
     Receiver: {
       Rfc:          input.clienteRfc,
