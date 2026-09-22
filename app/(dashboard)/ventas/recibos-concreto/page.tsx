@@ -172,6 +172,24 @@ export default function RecibosConcretoPage() {
     await upsertDocument(COLLECTIONS.remisiones, docId, withPlantaTag(saveData));
     syncReceiptWithTrip(nextReceipt).catch((err) => console.error("Error sincronizando viaje:", err));
 
+    // Sync to efectivo module
+    upsertDocument(COLLECTIONS.efectivo, `ef-${docId}`, withPlantaTag({
+      folio: num,
+      cliente: nextReceipt.cliente,
+      importe: realTotal,
+      fecha: nextReceipt.fecha,
+      cemento: "Concreto premezclado",
+      metros: nextReceipt.m3,
+      precio: nextReceipt.precioPorM3,
+      resistencia: nextReceipt.resistencia,
+      tipoDeTiro: nextReceipt.supplyType,
+      direccionObra: nextReceipt.direccionObra,
+      notas: nextReceipt.nota ?? "",
+      entregado: false,
+      origenConcreto: true,
+      reciboConcreteId: docId,
+    })).catch((err) => console.error("Error sincronizando a efectivo:", err));
+
     if (showToast) {
       window.dispatchEvent(
         new CustomEvent("duro:toast", {

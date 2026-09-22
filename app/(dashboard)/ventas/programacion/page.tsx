@@ -2,13 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertTriangle, ArrowLeft, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Clock, Copy, ExternalLink,
-  MapPin, Package, Phone, Plus, Search, Truck, Users, X,
+  AlertTriangle, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Clock, Copy, ExternalLink,
+  MapPin, Package, Phone, Plus, Search, Truck, X,
 } from "lucide-react";
 import AppSelect from "@/components/AppSelect";
 import ModuleLoading from "@/components/ModuleLoading";
 import PlantaRequired from "@/components/PlantaRequired";
-import { upsertDocument, getCollectionDocs, COLLECTIONS, orderBy, limit } from "@/lib/db";
+import { upsertDocument, getCollectionDocs, COLLECTIONS, orderBy, limit, type SolicitudAutorizacion } from "@/lib/db";
 import { withPlantaTag, getStoredSession, getActivePlanta } from "@/lib/auth";
 import { todayCST, localISODate } from "@/lib/dateUtils";
 import { useCollection } from "@/lib/useCollection";
@@ -193,7 +193,7 @@ function PedidoDrawer({
   vendedorNombre: string;
   onClose: () => void;
   onSave: (data: VForm, id?: string) => Promise<void>;
-  onSaveCliente?: (f: NuevoClienteForm) => Promise<string>;
+  onSaveCliente?: (f: NuevoClienteForm) => Promise<string | null>;
   onSaveObra?: (cliente: string, nombre: string, direccion: string) => void;
 }) {
   const [form, setForm] = useState<VForm>(emptyForm(todayISO()));
@@ -205,6 +205,7 @@ function PedidoDrawer({
   });
   const [nuevoSaving, setNuevoSaving] = useState(false);
   const [nuevoError, setNuevoError] = useState("");
+  const [nuevoEnviado, setNuevoEnviado] = useState(false);
   const [resolvedCoords, setResolvedCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [resolvingUrl, setResolvingUrl] = useState(false);
 
@@ -390,11 +391,15 @@ function PedidoDrawer({
     setNuevoSaving(true);
     setNuevoError("");
     try {
-      const razonSocial = await onSaveCliente(nuevoForm);
-      setForm((f) => ({ ...f, cliente: razonSocial, telefono: nuevoForm.telefono }));
-      setNuevoOpen(false);
-    } catch {
-      setNuevoError("No se pudo guardar el cliente.");
+      const result = await onSaveCliente(nuevoForm);
+      if (result) {
+        setForm((f) => ({ ...f, cliente: result, telefono: nuevoForm.telefono }));
+        setNuevoOpen(false);
+      } else {
+        setNuevoEnviado(true);
+      }
+    } catch (err) {
+      setNuevoError(err instanceof Error ? err.message : "No se pudo enviar la solicitud.");
     } finally {
       setNuevoSaving(false);
     }
@@ -447,7 +452,89 @@ function PedidoDrawer({
 
           {/* Cliente — combobox buscable */}
           <div ref={clienteRef}>
-            <label className={lbl}>Cliente <span className="text-[#CC2229]">*</span></label>
+            <div className="flex items-center justify-between mb-1">
+              <label className={lbl} style={{ marginBottom: 0 }}>
+                Cliente <span className="text-[#CC2229]">*</span>
+              </label>
+              {!nuevoOpen && (
+                <button
+                  type="button"
+                  onClick={() => { setNuevoOpen(true); setNuevoEnviado(false); setNuevoError(""); }}
+                  className="text-[11px] font-semibold text-[#CC2229] hover:text-[#B01E24] cursor-pointer transition-colors shrink-0"
+                >
+                  + Nuevo cliente
+                </button>
+              )}
+              {nuevoOpen && !nuevoEnviado && (
+                <button
+                  type="button"
+                  onClick={() => setNuevoOpen(false)}
+                  className="text-[11px] font-medium text-gray-400 hover:text-gray-600 cursor-pointer transition-colors shrink-0"
+                >
+                  Cancelar
+                </button>
+              )}
+            </div>
+
+            {/* Formulario inline nuevo cliente */}
+            {nuevoOpen && !nuevoEnviado && (
+              <div className="rounded-xl border border-[#CC2229]/30 bg-red-50/40 p-3 space-y-2 mb-2">
+                {nuevoError && (
+                  <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">{nuevoError}</p>
+                )}
+                <input
+                  autoFocus
+                  value={nuevoForm.razonSocial}
+                  onChange={(e) => setNuevo("razonSocial", e.target.value)}
+                  placeholder="Razón social *"
+                  className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 bg-white focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20"
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    value={nuevoForm.rfc}
+                    onChange={(e) => setNuevo("rfc", e.target.value.toUpperCase())}
+                    placeholder="RFC *"
+                    className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 bg-white focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 uppercase"
+                  />
+                  <AppSelect value={nuevoForm.tipoCliente} onChange={(e) => setNuevo("tipoCliente", e.target.value as TipoCliente)} className="text-sm px-3 py-2 rounded-lg border border-gray-200 bg-white focus:outline-none">
+                    {tiposCliente.map((t) => <option key={t}>{t}</option>)}
+                  </AppSelect>
+                </div>
+                <input
+                  value={nuevoForm.contacto}
+                  onChange={(e) => setNuevo("contacto", e.target.value)}
+                  placeholder="Contacto principal *"
+                  className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 bg-white focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20"
+                />
+                <input
+                  type="tel"
+                  inputMode="numeric"
+                  value={nuevoForm.telefono}
+                  onChange={(e) => setNuevo("telefono", e.target.value.replace(/\D/g, "").slice(0, 10))}
+                  placeholder="Teléfono"
+                  maxLength={10}
+                  className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 bg-white focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20"
+                />
+                <button
+                  type="button"
+                  disabled={nuevoSaving || !nuevoForm.razonSocial.trim() || !nuevoForm.rfc.trim() || !nuevoForm.contacto.trim()}
+                  onClick={handleSaveNuevo}
+                  className="w-full text-sm py-2 rounded-lg bg-[#CC2229] text-white hover:bg-[#B01E24] disabled:opacity-50 cursor-pointer transition-colors font-medium"
+                >
+                  {nuevoSaving ? "Enviando solicitud…" : "Solicitar registro"}
+                </button>
+              </div>
+            )}
+
+            {/* Confirmación enviada */}
+            {nuevoOpen && nuevoEnviado && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 mb-2 text-xs text-amber-700 space-y-1">
+                <p className="font-semibold">Solicitud enviada</p>
+                <p>Pendiente de autorización. Una vez aprobada, el cliente quedará disponible.</p>
+                <button type="button" onClick={() => { setNuevoOpen(false); setNuevoEnviado(false); }} className="text-[11px] underline text-amber-600 cursor-pointer">Cerrar</button>
+              </div>
+            )}
+
             <button
               ref={clienteTrigRef}
               type="button"
@@ -845,75 +932,6 @@ function PedidoDrawer({
           </button>
         </div>
 
-        {/* Overlay: registrar nuevo cliente */}
-        {nuevoOpen && (
-          <div className="absolute inset-0 z-[200] flex flex-col bg-white overflow-hidden">
-            <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-4 shrink-0">
-              <button onClick={() => setNuevoOpen(false)} className="rounded-xl p-2 text-gray-400 hover:bg-gray-100 transition-colors cursor-pointer">
-                <ArrowLeft size={16} />
-              </button>
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#CC2229]/10 text-[#CC2229]">
-                <Users size={18} />
-              </div>
-              <div>
-                <h2 className="text-sm font-semibold text-gray-900">Registrar nuevo cliente</h2>
-                <p className="text-xs text-gray-400">Razón social, RFC y contacto son obligatorios</p>
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
-              {nuevoError && (
-                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600">
-                  {nuevoError}
-                </div>
-              )}
-              <div>
-                <label className={lbl}>Razón social <span className="text-[#CC2229]">*</span></label>
-                <input type="text" value={nuevoForm.razonSocial} onChange={(e) => setNuevo("razonSocial", e.target.value)} placeholder="Nombre fiscal completo" className={inp} />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={lbl}>RFC <span className="text-[#CC2229]">*</span></label>
-                  <input type="text" value={nuevoForm.rfc} onChange={(e) => setNuevo("rfc", e.target.value.toUpperCase())} placeholder="RFC" className={`${inp} uppercase`} />
-                </div>
-                <div>
-                  <label className={lbl}>Tipo</label>
-                  <AppSelect value={nuevoForm.tipoCliente} onChange={(e) => setNuevo("tipoCliente", e.target.value as TipoCliente)}>
-                    {tiposCliente.map((t) => <option key={t}>{t}</option>)}
-                  </AppSelect>
-                </div>
-              </div>
-              <div>
-                <label className={lbl}>Contacto principal <span className="text-[#CC2229]">*</span></label>
-                <input type="text" value={nuevoForm.contacto} onChange={(e) => setNuevo("contacto", e.target.value)} placeholder="Nombre del contacto" className={inp} />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={lbl}>Teléfono</label>
-                  <input type="tel" inputMode="numeric" value={nuevoForm.telefono} onChange={(e) => setNuevo("telefono", e.target.value.replace(/\D/g, "").slice(0, 10))} placeholder="8100000000" className={inp} maxLength={10} />
-                </div>
-                <div>
-                  <label className={lbl}>Vendedor asignado</label>
-                  <input type="text" value={nuevoForm.vendedorAsignado} onChange={(e) => setNuevo("vendedorAsignado", e.target.value)} placeholder="Vendedor" className={inp} />
-                </div>
-              </div>
-            </div>
-
-            <div className="shrink-0 border-t border-gray-100 px-6 py-4 flex items-center gap-3">
-              <button onClick={() => setNuevoOpen(false)} className="px-4 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors cursor-pointer">
-                Cancelar
-              </button>
-              <button
-                onClick={handleSaveNuevo}
-                disabled={nuevoSaving || !nuevoForm.razonSocial.trim() || !nuevoForm.rfc.trim() || !nuevoForm.contacto.trim()}
-                className="flex-1 flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-semibold bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-xl transition-colors disabled:opacity-60 shadow-lg shadow-[#CC2229]/20 cursor-pointer"
-              >
-                <Users size={14} />
-                {nuevoSaving ? "Registrando…" : "Registrar cliente"}
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -1101,38 +1119,55 @@ export default function VentasProgramacionPage() {
     );
   }
 
-  async function handleSaveCliente(f: NuevoClienteForm): Promise<string> {
-    const id = `CL-${Date.now()}`;
+  async function handleSaveCliente(f: NuevoClienteForm): Promise<string | null> {
     const razonSocial = f.razonSocial.trim().toUpperCase().replace(/\s+/g, " ");
-    const doc = {
-      razonSocial,
-      nombreComercial: razonSocial,
-      rfc: f.rfc.trim().toUpperCase(),
-      domicilio: "", colonia: "", municipio: "", estado: "Nuevo León", cp: "",
-      contacto: f.contacto.trim(),
-      cargo: "",
-      telefono: f.telefono.trim(),
-      email: "",
-      tipoCliente: f.tipoCliente,
-      vendedorAsignado: f.vendedorAsignado.trim(),
-      limiteCredito: 0,
-      saldoPendiente: 0,
-      diasCredito: 0,
-      ultimaCompra: "—",
-      totalComprasAnio: 0,
-      m3Acumulados: 0,
-      estatus: "Activo" as const,
-      calificacion: "B" as const,
-      fechaAlta: todayCST(),
-      notas: "",
+    const rfc = f.rfc.trim().toUpperCase();
+
+    // Duplicate check
+    const dupRS = rawClientes.find((c) => c.razonSocial.trim().toUpperCase().replace(/\s+/g, " ") === razonSocial);
+    if (dupRS) throw new Error(`Ya existe un cliente con razón social "${razonSocial}".`);
+    if (rfc) {
+      const dupRFC = rawClientes.find((c) => c.rfc?.trim().toUpperCase() === rfc);
+      if (dupRFC) throw new Error(`Ya existe un cliente con RFC "${rfc}" (${dupRFC.razonSocial}).`);
+    }
+
+    const session = getStoredSession();
+    const solId = `sol-cl-${Date.now()}`;
+    const solicitud: Omit<SolicitudAutorizacion, "id"> = {
+      tipo: "nuevo_cliente",
+      clienteData: {
+        razonSocial,
+        nombreComercial: razonSocial,
+        rfc,
+        domicilio: "", colonia: "", municipio: "", estado: "Nuevo León", cp: "",
+        contacto: f.contacto.trim(),
+        cargo: "",
+        telefono: f.telefono.trim(),
+        email: "",
+        tipoCliente: f.tipoCliente,
+        vendedorAsignado: f.vendedorAsignado.trim(),
+        limiteCredito: 0,
+        saldoPendiente: 0,
+        diasCredito: 0,
+        ultimaCompra: "—",
+        totalComprasAnio: 0,
+        m3Acumulados: 0,
+        estatus: "Activo",
+        calificacion: "B",
+        fechaAlta: todayCST(),
+        notas: "",
+      },
+      motivo: `Solicitud de registro de cliente desde módulo de programación. Solicitante: ${session?.name ?? session?.email ?? "—"}.`,
+      solicitanteNombre: session?.name ?? "—",
+      solicitanteEmail: session?.email ?? "—",
+      status: "pendiente",
+      creadoEn: new Date().toISOString(),
     };
-    await upsertDocument(COLLECTIONS.clientes, id, withPlantaTag(doc));
-    // Actualiza el estado local sin esperar re-fetch para no congelar la página
-    setRawClientes((prev) => [...prev, { id, ...doc } as Cliente]);
+    await upsertDocument(COLLECTIONS.solicitudesAutorizacion, solId, withPlantaTag(solicitud as Record<string, unknown>));
     window.dispatchEvent(new CustomEvent("duro:toast", {
-      detail: { type: "success", message: `Cliente ${razonSocial} registrado.` },
+      detail: { type: "info", title: "Solicitud enviada", message: `El registro de ${razonSocial} está pendiente de autorización.` },
     }));
-    return razonSocial;
+    return null;
   }
 
   async function handleSave(form: VForm, existingId?: string) {

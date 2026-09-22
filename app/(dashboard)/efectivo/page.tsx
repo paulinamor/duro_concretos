@@ -32,6 +32,8 @@ interface Recibo {
   notas: string;
   entregado: boolean;
   planta?: string;
+  origenConcreto?: boolean;
+  reciboConcreteId?: string;
 }
 
 interface FormState {
@@ -766,8 +768,9 @@ export default function EfectivoPage() {
   }, []);
 
   const nextFolio = useMemo(() => {
-    if (recibos.length === 0) return 1;
-    return Math.max(...recibos.map((r) => r.folio ?? 0)) + 1;
+    const propios = recibos.filter((r) => !r.origenConcreto);
+    if (propios.length === 0) return 1;
+    return Math.max(...propios.map((r) => r.folio ?? 0)) + 1;
   }, [recibos]);
 
   const filtered = useMemo(() => {
@@ -915,7 +918,10 @@ export default function EfectivoPage() {
                       <tr><td colSpan={12} className="px-4 py-10 text-center text-sm text-gray-500">Sin resultados.</td></tr>
                     ) : filtered.map((r) => (
                       <tr key={r.id} className="hover:bg-white/5 transition-colors">
-                        <td className="px-4 py-3 font-mono text-xs font-semibold text-gray-300">#{String(r.folio).padStart(4, "0")}</td>
+                        <td className="px-4 py-3">
+                          <p className="font-mono text-xs font-semibold text-gray-300">#{String(r.folio).padStart(4, "0")}</p>
+                          {r.origenConcreto && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/20">Concreto</span>}
+                        </td>
                         <td className="px-4 py-3 text-gray-400 whitespace-nowrap text-xs">{fmtFecha(r.fecha)}</td>
                         <td className="px-4 py-3 max-w-[180px]">
                           <p className="font-semibold text-white truncate">{r.cliente || "—"}</p>
@@ -938,10 +944,14 @@ export default function EfectivoPage() {
                           </button>
                         </td>
                         <td className="px-4 py-3">
-                          <div className="flex items-center gap-1">
-                            <button onClick={() => openEdit(r)} className="rounded-lg p-2 text-gray-400 hover:bg-[#1A1A1A] hover:text-white transition-colors cursor-pointer"><Pencil size={14} /></button>
-                            <button onClick={() => setConfirmDelete(r)} className="rounded-lg p-2 text-gray-400 hover:bg-[#1A1A1A] hover:text-[#CC2229] transition-colors cursor-pointer"><Trash2 size={14} /></button>
-                          </div>
+                          {r.origenConcreto ? (
+                            <span className="text-[10px] text-gray-600 italic">Ventas → Recibos</span>
+                          ) : (
+                            <div className="flex items-center gap-1">
+                              <button onClick={() => openEdit(r)} className="rounded-lg p-2 text-gray-400 hover:bg-[#1A1A1A] hover:text-white transition-colors cursor-pointer"><Pencil size={14} /></button>
+                              <button onClick={() => setConfirmDelete(r)} className="rounded-lg p-2 text-gray-400 hover:bg-[#1A1A1A] hover:text-[#CC2229] transition-colors cursor-pointer"><Trash2 size={14} /></button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ))}

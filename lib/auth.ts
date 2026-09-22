@@ -44,6 +44,7 @@ export const moduleCatalog = [
   { href: "/ventas/recibos-concreto", label: "Recibos de Concreto" },
   { href: "/ventas/obras", label: "Catálogo de Obras" },
   { href: "/ventas/remisiones", label: "Remisiones de Despacho" },
+  { href: "/ventas/productos", label: "Productos" },
   { href: "/finanzas/cxc", label: "Cuentas por Cobrar" },
   { href: "/finanzas/cxp", label: "Cuentas por Pagar" },
   { href: "/finanzas/cobros", label: "Cobros" },

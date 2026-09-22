@@ -5,13 +5,13 @@ import {
   AlertTriangle, ArrowDownToLine, ArrowUpToLine,
   BarChart2, Clock, Edit2,
   Info, Package, Plus, Search, Trash2, X,
-  Layers, TrendingDown, CheckCircle2,
+  Layers, TrendingDown, CheckCircle2, Shield, XCircle,
 } from "lucide-react";
 import Link from "next/link";
 import KPICard from "@/components/KPICard";
 import ModuleLoading from "@/components/ModuleLoading";
 import AppSelect from "@/components/AppSelect";
-import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
+import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS, type SolicitudAutorizacion } from "@/lib/db";
 import { filterByPlanta, getActivePlanta, getStoredSession } from "@/lib/auth";
 import { todayCST, currentMonthCST } from "@/lib/dateUtils";
 
@@ -61,6 +61,7 @@ interface EntradaFormState {
 type MovRow =
   | { _source: "manual"; data: EntradaMaterial }
   | { _source: "existencia"; material: MatKey; label: string; cantidad: number; unidad: string; fecha: string };
+
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -424,6 +425,111 @@ function ExistenciaModal({ open, onClose, periodo, planta, current, onSave }: {
   );
 }
 
+// ─── EditInventarioModal ──────────────────────────────────────────────────────
+
+function EditInventarioModal({ open, onClose, entry, onSubmit }: {
+  open: boolean; onClose: () => void; entry: EntradaMaterial | null;
+  onSubmit: (propuestos: SolicitudAutorizacion["camposPropuestos"], motivo: string) => Promise<void>;
+}) {
+  const [fechaISO, setFechaISO] = useState("");
+  const [cantidad, setCantidad] = useState("");
+  const [observaciones, setObservaciones] = useState("");
+  const [motivo, setMotivo] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open || !entry) return;
+    setFechaISO(entry.fecha?.includes("/") ? displayToISO(entry.fecha) : (entry.fecha ?? ""));
+    setCantidad(String(entry.cantidad));
+    setObservaciones(entry.observaciones ?? "");
+    setMotivo("");
+  }, [open, entry]);
+
+  const canSubmit = motivo.trim().length >= 10;
+
+  const handleSubmit = async () => {
+    if (!canSubmit || !entry) return;
+    setSaving(true);
+    try {
+      const propuestos: SolicitudAutorizacion["camposPropuestos"] = {};
+      const newFecha = isoToDisplay(fechaISO);
+      if (newFecha !== entry.fecha) propuestos.fecha = newFecha;
+      const newCantidad = parseFloat(cantidad);
+      if (!isNaN(newCantidad) && newCantidad !== entry.cantidad) propuestos.cantidad = newCantidad;
+      if (observaciones !== (entry.observaciones ?? "")) propuestos.observaciones = observaciones;
+      if (Object.keys(propuestos).length === 0) { onClose(); return; }
+      await onSubmit(propuestos, motivo.trim());
+      onClose();
+    } finally { setSaving(false); }
+  };
+
+  if (!open || !entry) return null;
+
+  const matLabel = entry.categoria === "inventario"
+    ? (INVENTARIO_MATERIALES.find((m) => m.key === entry.material)?.label ?? entry.material)
+    : entry.material;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <button className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} aria-label="Cerrar" />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden">
+        <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 shrink-0">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600"><Shield size={18} /></div>
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">Solicitar edición</h2>
+            <p className="text-xs text-gray-500">Requiere autorización del administrador</p>
+          </div>
+          <button onClick={onClose} className="ml-auto rounded-xl p-2 text-gray-400 hover:bg-gray-100 transition-colors cursor-pointer"><X size={16} /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+          {/* Current values */}
+          <div className="rounded-xl bg-gray-50 border border-gray-200 px-4 py-3">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-2">Valores actuales</p>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div><span className="text-gray-500">Material:</span><span className="ml-1.5 text-gray-900 font-medium">{matLabel}</span></div>
+              <div><span className="text-gray-500">Fecha:</span><span className="ml-1.5 text-gray-900 font-mono">{entry.fecha}</span></div>
+              <div><span className="text-gray-500">Cantidad:</span><span className="ml-1.5 text-gray-900 font-mono">{entry.cantidad} {entry.unidad}</span></div>
+              <div><span className="text-gray-500">Tipo:</span><span className="ml-1.5 text-gray-900">{entry.tipo === "entrada" ? "Entrada" : "Salida"}</span></div>
+            </div>
+          </div>
+          {/* Proposed values */}
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-3">Valores propuestos</p>
+            <div className="space-y-3">
+              <div><label className={lbl}>Fecha <span className="text-[#CC2229]">*</span></label><input type="date" value={fechaISO} onChange={(e) => setFechaISO(e.target.value)} className={inp} /></div>
+              <div><label className={lbl}>Cantidad</label><input type="number" step="0.001" min="0" value={cantidad} onChange={(e) => setCantidad(e.target.value)} className={inp} /></div>
+              <div><label className={lbl}>Observaciones</label><input type="text" value={observaciones} onChange={(e) => setObservaciones(e.target.value)} className={inp} /></div>
+            </div>
+          </div>
+          {/* Mandatory reason */}
+          <div>
+            <label className={lbl}>Motivo del error <span className="text-[#CC2229]">*</span></label>
+            <textarea
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              placeholder="Describe por qué ocurrió el error y qué se está corrigiendo…"
+              rows={3}
+              className={`${inp} resize-none`}
+            />
+            <p className="text-[10px] text-gray-400 mt-1">{motivo.length < 10 ? `Mínimo 10 caracteres · ${motivo.length} escritos` : `✓ ${motivo.length} caracteres`}</p>
+          </div>
+          {/* Warning */}
+          <div className="flex items-start gap-2 px-3.5 py-3 bg-amber-50 border border-amber-200 rounded-xl">
+            <AlertTriangle size={14} className="text-amber-500 shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-700">El cambio quedará <strong>pendiente de autorización</strong> y solo se aplicará cuando el administrador lo apruebe.</p>
+          </div>
+        </div>
+        <div className="shrink-0 border-t border-gray-100 px-6 py-4 flex justify-end gap-3">
+          <button onClick={onClose} className="px-4 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 border border-gray-200 rounded-xl transition-colors cursor-pointer">Cancelar</button>
+          <button onClick={handleSubmit} disabled={saving || !canSubmit} className="px-5 py-2.5 text-sm font-semibold bg-amber-600 hover:bg-amber-700 text-white rounded-xl transition-colors disabled:opacity-60 cursor-pointer">
+            {saving ? "Enviando…" : "Enviar solicitud"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 type Tab = "stock" | "remisiones" | "movimientos";
@@ -448,10 +554,14 @@ export default function InventarioPage() {
   const [showEntradaForm, setShowEntradaForm] = useState(false);
   const [showExistenciaForm, setShowExistenciaForm] = useState(false);
   const [confirmDeleteMovimiento, setConfirmDeleteMovimiento] = useState<EntradaMaterial | null>(null);
+  const [editTarget, setEditTarget] = useState<EntradaMaterial | null>(null);
   const [search, setSearch] = useState("");
   const [searchMov, setSearchMov] = useState("");
   const [filterTipo, setFilterTipo] = useState<"Todos" | "entrada" | "salida">("Todos");
   const [filterCat, setFilterCat] = useState<"Todos" | "inventario" | "almacen">("Todos");
+
+  // ── Solicitudes de edición ────────────────────────────────────────────────────
+  const [solicitudesEdicion, setSolicitudesEdicion] = useState<SolicitudAutorizacion[]>([]);
 
   // ── Fetch ────────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -459,10 +569,12 @@ export default function InventarioPage() {
       getCollectionDocs<RemisionDespacho>(COLLECTIONS.remisiones),
       getCollectionDocs<EntradaMaterial>(COLLECTIONS.entradasMaterial),
       getCollectionDocs<ExistenciaInicial>(COLLECTIONS.existenciasIniciales),
-    ]).then(([rem, ent, exi]) => {
+      getCollectionDocs<SolicitudAutorizacion>(COLLECTIONS.solicitudesAutorizacion),
+    ]).then(([rem, ent, exi, sols]) => {
       setRemisionesDespacho(filterByPlanta(rem).filter((r) => r.tipo === "despacho"));
       setEntradasMaterial(filterByPlanta(ent));
       setExistenciasIniciales(filterByPlanta(exi));
+      setSolicitudesEdicion(sols.filter((s) => s.tipo === "editar_inventario"));
     }).finally(() => setLoading(false));
   }, []);
 
@@ -560,6 +672,59 @@ export default function InventarioPage() {
       const updated = { ...e, id, planta: localPlanta };
       return idx >= 0 ? prev.map((x, i) => i === idx ? updated : x) : [...prev, updated];
     });
+  };
+
+  // ── Edit authorization handlers ───────────────────────────────────────────────
+  const solicitudesEdicionPendientes = useMemo(
+    () => solicitudesEdicion.filter((s) => s.status === "pendiente" && (!s.planta || s.planta === localPlanta)),
+    [solicitudesEdicion, localPlanta],
+  );
+
+  const handleSubmitEdicion = async (
+    propuestos: SolicitudAutorizacion["camposPropuestos"],
+    motivo: string,
+  ) => {
+    if (!editTarget?.id) return;
+    const session = getStoredSession();
+    const id = `sa-inv-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const solicitud: SolicitudAutorizacion = {
+      tipo: "editar_inventario",
+      documentoId: editTarget.id,
+      camposActuales: { fecha: editTarget.fecha, cantidad: editTarget.cantidad, observaciones: editTarget.observaciones ?? "" },
+      camposPropuestos: propuestos,
+      motivo,
+      solicitanteNombre: session?.name ?? session?.email ?? "Desconocido",
+      solicitanteEmail: session?.email ?? "",
+      status: "pendiente",
+      creadoEn: new Date().toISOString(),
+      planta: localPlanta,
+      materialLabel: editTarget.categoria === "inventario"
+        ? (INVENTARIO_MATERIALES.find((m) => m.key === editTarget.material)?.label ?? editTarget.material)
+        : editTarget.material,
+    };
+    await upsertDocument(COLLECTIONS.solicitudesAutorizacion, id, { ...solicitud });
+    setSolicitudesEdicion((prev) => [{ ...solicitud, id }, ...prev]);
+    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: "Solicitud enviada. Pendiente de autorización." } }));
+  };
+
+  const handleApproveEdicion = async (solicitud: SolicitudAutorizacion) => {
+    if (!solicitud.id || !solicitud.documentoId) return;
+    await upsertDocument(COLLECTIONS.entradasMaterial, solicitud.documentoId, solicitud.camposPropuestos as Record<string, unknown>);
+    setEntradasMaterial((prev) => prev.map((e) => e.id === solicitud.documentoId ? { ...e, ...solicitud.camposPropuestos } : e));
+    const session = getStoredSession();
+    const update = { status: "aprobada" as const, resueltoPor: session?.email ?? "", resueltaEn: new Date().toISOString() };
+    await upsertDocument(COLLECTIONS.solicitudesAutorizacion, solicitud.id, update);
+    setSolicitudesEdicion((prev) => prev.map((s) => s.id === solicitud.id ? { ...s, ...update } : s));
+    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: "Edición aprobada y aplicada." } }));
+  };
+
+  const handleRejectEdicion = async (solicitud: SolicitudAutorizacion) => {
+    if (!solicitud.id) return;
+    const session = getStoredSession();
+    const update = { status: "rechazada" as const, resueltoPor: session?.email ?? "", resueltaEn: new Date().toISOString() };
+    await upsertDocument(COLLECTIONS.solicitudesAutorizacion, solicitud.id, update);
+    setSolicitudesEdicion((prev) => prev.map((s) => s.id === solicitud.id ? { ...s, ...update } : s));
+    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "info", message: "Solicitud rechazada." } }));
   };
 
   // ── Filtered lists ────────────────────────────────────────────────────────────
@@ -665,7 +830,7 @@ export default function InventarioPage() {
         {[
           { key: "stock" as Tab,       label: "Stock de Materiales", icon: Package,         badge: materialesConAlerta > 0 ? materialesConAlerta : undefined },
           { key: "remisiones" as Tab,  label: "Remisiones",          icon: ArrowUpToLine,   badge: remisionesPeriodo.length || undefined },
-          { key: "movimientos" as Tab, label: "Movimientos",          icon: ArrowDownToLine, badge: undefined as number | undefined },
+          { key: "movimientos" as Tab, label: "Movimientos",          icon: ArrowDownToLine, badge: solicitudesEdicionPendientes.length || undefined },
         ].map(({ key, label, icon: Icon, badge }) => (
           <button key={key} onClick={() => setTab(key)}
             className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap cursor-pointer ${tab === key ? "border-[#CC2229] text-gray-900" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
@@ -819,6 +984,52 @@ export default function InventarioPage() {
 
       {/* ── Tab: Movimientos ───────────────────────────────────────────────────── */}
       {!loading && tab === "movimientos" && (
+        <div className="space-y-4">
+
+        {/* Solicitudes pendientes — solo superadmin */}
+        {isSuperAdmin && solicitudesEdicionPendientes.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl overflow-hidden">
+            <div className="flex items-center gap-2 px-5 py-3 border-b border-amber-200">
+              <Shield size={15} className="text-amber-600 shrink-0" />
+              <p className="text-sm font-semibold text-amber-900">Solicitudes de edición pendientes</p>
+              <span className="ml-auto text-xs font-bold px-2 py-0.5 rounded-full bg-amber-200 text-amber-800">{solicitudesEdicionPendientes.length}</span>
+            </div>
+            <div className="divide-y divide-amber-100">
+              {solicitudesEdicionPendientes.map((sol) => (
+                <div key={sol.id} className="px-5 py-4 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900">{sol.materialLabel ?? sol.documentoId}</p>
+                    <p className="text-xs text-gray-500 mt-0.5 font-mono">
+                      {(() => {
+                        const act = sol.camposActuales as Record<string, unknown> | undefined;
+                        const prop = sol.camposPropuestos as Record<string, unknown> | undefined;
+                        return (
+                          <>
+                            Fecha: <span className="line-through text-gray-400">{String(act?.fecha ?? "—")}</span> → <span className="text-amber-700 font-semibold">{prop?.fecha ? String(prop.fecha) : "sin cambio"}</span>
+                            {prop?.cantidad !== undefined && (
+                              <> · Cantidad: <span className="line-through text-gray-400">{String(act?.cantidad ?? "—")}</span> → <span className="text-amber-700 font-semibold">{String(prop.cantidad)}</span></>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </p>
+                    <p className="text-xs text-gray-600 mt-1.5 italic">"{sol.motivo}"</p>
+                    <p className="text-[10px] text-gray-400 mt-1">Por {sol.solicitanteNombre} · {sol.creadoEn?.slice(0, 10)}</p>
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    <button onClick={() => handleApproveEdicion(sol)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 rounded-lg transition-colors cursor-pointer">
+                      <CheckCircle2 size={12} /> Aprobar
+                    </button>
+                    <button onClick={() => handleRejectEdicion(sol)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-600 bg-white border border-red-200 hover:bg-red-50 rounded-lg transition-colors cursor-pointer">
+                      <XCircle size={12} /> Rechazar
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
           <div className="px-5 py-4 border-b border-gray-100 flex flex-wrap items-center gap-2">
             <p className="text-sm font-semibold text-gray-900 flex-1">{filteredMovimientos.length} movimiento{filteredMovimientos.length !== 1 ? "s" : ""}</p>
@@ -874,7 +1085,10 @@ export default function InventarioPage() {
                         <td className="px-4 py-3 text-gray-500 text-sm">{e.proveedor || "—"}</td>
                         <td className="px-4 py-3 text-gray-400 text-xs font-mono">{e.noFactura || "—"}</td>
                         <td className="px-4 py-3">
-                          <button onClick={() => setConfirmDeleteMovimiento(e)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"><Trash2 size={12} /></button>
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => setEditTarget(e)} className="p-1.5 text-gray-400 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer" title="Solicitar edición"><Edit2 size={12} /></button>
+                            <button onClick={() => setConfirmDeleteMovimiento(e)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"><Trash2 size={12} /></button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -883,11 +1097,13 @@ export default function InventarioPage() {
             </table>
           </div>
         </div>
+        </div>
       )}
 
       {/* ── Drawers & Modals ───────────────────────────────────────────────────── */}
       <EntradaDrawer open={showEntradaForm} onClose={() => setShowEntradaForm(false)} onSave={handleSaveEntrada} remisionesDespacho={remisionesDespacho} />
       {isSuperAdmin && <ExistenciaModal open={showExistenciaForm} onClose={() => setShowExistenciaForm(false)} periodo={periodo} planta={localPlanta} current={existenciaInicial} onSave={handleSaveExistencia} />}
+      <EditInventarioModal open={!!editTarget} onClose={() => setEditTarget(null)} entry={editTarget} onSubmit={handleSubmitEdicion} />
 
       {confirmDeleteMovimiento && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center">

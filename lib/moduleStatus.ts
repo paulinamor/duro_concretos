@@ -16,6 +16,7 @@ export const MODULE_STATUS_DEFAULTS: Record<string, ModuleStatus> = {
   "/ventas/programacion":              "live",
   "/ventas/recibos-concreto":          "live",
   "/ventas/obras":                     "live",
+  "/ventas/productos":                 "live",
   "/crm/seguimiento":                  "wip",
   "/finanzas/cxc":                     "live",
   "/finanzas/cxp":                     "live",

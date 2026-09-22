@@ -384,7 +384,16 @@ export default function ConfiguracionPage() {
     if (!sol.id) return;
     setProcesandoId(sol.id);
     try {
-      await deleteDocument(COLLECTIONS.programaciones, sol.programacionId);
+      if (sol.tipo === "eliminar_programacion" && sol.programacionId) {
+        await deleteDocument(COLLECTIONS.programaciones, sol.programacionId);
+      }
+      if (sol.tipo === "editar_inventario" && sol.documentoId && sol.camposPropuestos) {
+        await upsertDocument(COLLECTIONS.entradasMaterial, sol.documentoId, sol.camposPropuestos as Record<string, unknown>);
+      }
+      if (sol.tipo === "nuevo_cliente" && sol.clienteData) {
+        const clienteId = `CL-${Date.now()}`;
+        await upsertDocument(COLLECTIONS.clientes, clienteId, sol.clienteData as Record<string, unknown>);
+      }
       await upsertDocument(COLLECTIONS.solicitudesAutorizacion, sol.id, {
         ...sol,
         status: "aprobada",
@@ -392,7 +401,14 @@ export default function ConfiguracionPage() {
         resueltaEn: new Date().toISOString(),
       });
       setSolicitudes((prev) => prev.map((s) => s.id === sol.id ? { ...s, status: "aprobada" } : s));
-      showToast("success", "Aprobada", `Programación ${sol.folio} eliminada correctamente.`);
+      if (sol.tipo === "eliminar_programacion") {
+        showToast("success", "Aprobada", `Programación ${sol.folio} eliminada correctamente.`);
+      } else if (sol.tipo === "nuevo_cliente") {
+        const nombre = (sol.clienteData?.razonSocial as string) ?? "Cliente";
+        showToast("success", "Aprobada", `Cliente "${nombre}" registrado correctamente.`);
+      } else {
+        showToast("success", "Aprobada", `Edición de inventario aplicada.`);
+      }
     } catch {
       showToast("error", "Error", "No se pudo procesar la aprobación.");
     } finally {
@@ -628,10 +644,31 @@ export default function ConfiguracionPage() {
                         {isPendiente ? <Clock size={15} /> : isAprobada ? <CheckCircle2 size={15} /> : <XCircle size={15} />}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-white">
-                          Eliminar programación {sol.folio}
-                        </p>
-                        <p className="text-xs text-gray-500">{sol.cliente} · {sol.dia}</p>
+                        {sol.tipo === "eliminar_programacion" ? (
+                          <>
+                            <p className="text-sm font-semibold text-white">Eliminar programación {sol.folio}</p>
+                            <p className="text-xs text-gray-500">{sol.cliente} · {sol.dia}</p>
+                          </>
+                        ) : sol.tipo === "nuevo_cliente" ? (
+                          <>
+                            <p className="text-sm font-semibold text-white">Nuevo cliente · {(sol.clienteData?.razonSocial as string) ?? "—"}</p>
+                            <p className="text-xs text-gray-500">RFC: {(sol.clienteData?.rfc as string) ?? "—"} · {(sol.clienteData?.tipoCliente as string) ?? "—"}</p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-sm font-semibold text-white">Edición de inventario · {sol.materialLabel ?? sol.documentoId}</p>
+                            <p className="text-xs text-gray-500">
+                              {(() => {
+                                const act = sol.camposActuales as Record<string, unknown> | undefined;
+                                const prop = sol.camposPropuestos as Record<string, unknown> | undefined;
+                                const parts: string[] = [];
+                                if (prop?.fecha) parts.push(`Fecha: ${act?.fecha} → ${prop.fecha}`);
+                                if (prop?.cantidad !== undefined) parts.push(`Cantidad: ${act?.cantidad} → ${prop.cantidad}`);
+                                return parts.join(" · ") || "Corrección de datos";
+                              })()}
+                            </p>
+                          </>
+                        )}
                       </div>
                       <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${
                         isPendiente ? "bg-amber-500/15 text-amber-400"
@@ -673,6 +710,26 @@ export default function ConfiguracionPage() {
                           </div>
                         )}
                       </div>
+
+                      {/* Datos propuestos del cliente */}
+                      {sol.tipo === "nuevo_cliente" && sol.clienteData && (
+                        <div className="rounded-lg border border-[#3A3A3A] bg-[#1A1A1A] px-4 py-3 space-y-1.5 text-xs">
+                          <p className="text-gray-500 uppercase tracking-widest text-[10px] font-semibold mb-2">Datos del cliente</p>
+                          {[
+                            ["Razón social", sol.clienteData.razonSocial],
+                            ["RFC", sol.clienteData.rfc],
+                            ["Contacto", sol.clienteData.contacto],
+                            ["Teléfono", sol.clienteData.telefono],
+                            ["Tipo", sol.clienteData.tipoCliente],
+                            ["Vendedor", sol.clienteData.vendedorAsignado],
+                          ].filter(([, v]) => v).map(([k, v]) => (
+                            <div key={String(k)} className="flex gap-2">
+                              <span className="text-gray-600 w-24 shrink-0">{String(k)}</span>
+                              <span className="text-gray-300">{String(v)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
 
                       {/* Acciones solo si pendiente y usuario puede autorizar */}
                       {isPendiente && (session?.canAuthorize || session?.role === "admin") && (

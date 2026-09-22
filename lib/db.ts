@@ -81,11 +81,20 @@ export interface UserProfile {
 // Solicitudes de autorización para acciones sensibles
 export interface SolicitudAutorizacion {
   id?: string;
-  tipo: "eliminar_programacion";
-  programacionId: string;
-  folio: string;
-  dia: string;
-  cliente: string;
+  tipo: "eliminar_programacion" | "editar_inventario" | "nuevo_cliente";
+  // eliminar_programacion
+  programacionId?: string;
+  folio?: string;
+  dia?: string;
+  cliente?: string;
+  // editar_inventario
+  documentoId?: string;
+  camposActuales?: Record<string, unknown>;
+  camposPropuestos?: Record<string, unknown>;
+  materialLabel?: string;
+  // nuevo_cliente
+  clienteData?: Record<string, unknown>;
+  // shared
   motivo: string;
   solicitanteNombre: string;
   solicitanteEmail: string;
@@ -182,6 +191,7 @@ export const COLLECTIONS = {
   solicitudesAutorizacion: "solicitudesAutorizacion",
   notificaciones: "notificaciones",
   asistencias: "asistencias",
+  productos: "productos",
 } as const;
 
 export { where, orderBy, limit, startAfter, type QueryConstraint };

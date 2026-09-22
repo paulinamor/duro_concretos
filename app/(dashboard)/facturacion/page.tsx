@@ -326,7 +326,9 @@ function EmitirDrawer({
   const [emisoresFm, setEmisoresFm] = useState<EmisorFm[]>([]);
   const [emisorRfcSel, setEmisorRfcSel] = useState("");
   const [rfcLookupLoading, setRfcLookupLoading] = useState(false);
-  const [paso, setPaso] = useState<"form" | "preview">("form");
+  const [paso, setPaso] = useState<"form" | "preview" | "timbrado">("form");
+  const [cfdiTimbrado, setCfdiTimbrado] = useState<CfdiEmitido | null>(null);
+  const [enviandoCxc, setEnviandoCxc] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -470,11 +472,51 @@ function EmitirDrawer({
         emisorRfc:     emisorSel!.rfc,
       });
       onEmitido(nuevo);
-      onClose();
+      setCfdiTimbrado(nuevo);
+      setPaso("timbrado");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error inesperado");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleEnviarCxc() {
+    if (!cfdiTimbrado) return;
+    setEnviandoCxc(true);
+    setError("");
+    try {
+      const conceptoLabel = conceptos.map((c) => c.descripcion.trim()).filter(Boolean).join(", ") || "Venta de concreto";
+      const fechaISO = cfdiTimbrado.fechaTimbrado.slice(0, 10);
+      const vencimiento = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const id = `cxc-${cfdiTimbrado.uuid.replace(/-/g, "").slice(0, 16)}`;
+      await upsertDocument(COLLECTIONS.cuentasPorCobrar, id, withPlantaTag({
+        estadoSAT:    "Vigente",
+        tipo:         cfdiTimbrado.tipo === "E" ? "Nota de Crédito" : "Factura",
+        serie:        cfdiTimbrado.serie,
+        uuid:         cfdiTimbrado.uuid,
+        uuidRelacion: "",
+        rfc:          cfdiTimbrado.clienteRfc,
+        fecha:        fechaISO,
+        folio:        String(cfdiTimbrado.folio),
+        contraparte:  cfdiTimbrado.clienteNombre,
+        concepto:     conceptoLabel,
+        subtotal:     cfdiTimbrado.subtotal,
+        iva:          cfdiTimbrado.impuestos,
+        total:        cfdiTimbrado.total,
+        formaPago:    metodo === "PPD" ? "99 — Por definir" : `${forma} — ${FORMA_PAGO.find((f) => f.clave === forma)?.desc ?? ""}`,
+        banco:        "",
+        montoPagado:  0,
+        vencimiento,
+        status:       "Pendiente",
+        notas:        `CFDI timbrado: ${cfdiTimbrado.uuid}`,
+      }));
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: "Factura agregada a CXC · Pendiente de cobro." } }));
+      onClose();
+    } catch (e) {
+      setError("No se pudo agregar a CXC: " + (e instanceof Error ? e.message : "Error"));
+    } finally {
+      setEnviandoCxc(false);
     }
   }
 
@@ -499,7 +541,9 @@ function EmitirDrawer({
             </div>
             <div>
               <h2 className="text-gray-900 font-semibold text-base">Emitir CFDI</h2>
-              <p className="text-[10px] text-gray-400 mt-0.5">{paso === "form" ? "Paso 1 de 2 — Datos del comprobante" : "Paso 2 de 2 — Vista previa"}</p>
+              <p className="text-[10px] text-gray-400 mt-0.5">
+                {paso === "form" ? "Paso 1 de 3 — Datos del comprobante" : paso === "preview" ? "Paso 2 de 3 — Vista previa" : "Paso 3 de 3 — CFDI timbrado"}
+              </p>
             </div>
           </div>
           <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors">
@@ -752,7 +796,7 @@ function EmitirDrawer({
             </div>
           )}
         </div>
-        ) : (
+        ) : paso === "preview" ? (
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {/* Emisor */}
           {(() => {
@@ -843,7 +887,56 @@ function EmitirDrawer({
             </div>
           )}
         </div>
-        )}
+        ) : paso === "timbrado" && cfdiTimbrado ? (
+        <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
+          {/* Éxito */}
+          <div className="flex flex-col items-center gap-3 py-6">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/10">
+              <BadgeCheck size={36} className="text-emerald-500" />
+            </div>
+            <p className="text-lg font-bold text-gray-900">CFDI timbrado</p>
+            <p className="text-xs text-gray-500 font-mono text-center break-all">{cfdiTimbrado.uuid}</p>
+          </div>
+
+          {/* Resumen de la factura */}
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-2.5 text-sm">
+            <div className="flex justify-between"><span className="text-gray-500">Receptor</span><span className="font-medium text-gray-900 text-right max-w-[60%] truncate">{cfdiTimbrado.clienteNombre}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">RFC</span><span className="font-mono text-gray-700">{cfdiTimbrado.clienteRfc}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Serie / Folio</span><span className="font-mono text-gray-700">{cfdiTimbrado.serie || "–"}-{cfdiTimbrado.folio}</span></div>
+            <div className="flex justify-between border-t border-gray-200 pt-2 font-bold"><span className="text-gray-700">Total</span><span className="text-[#CC2229]">{fmt(cfdiTimbrado.total)}</span></div>
+          </div>
+
+          {/* Pregunta CXC */}
+          <div className="rounded-xl border border-blue-200 bg-blue-50 px-5 py-4">
+            <p className="text-sm font-semibold text-blue-900 mb-1">¿Agregar a Cuentas por Cobrar?</p>
+            <p className="text-xs text-blue-700">Se creará un registro en CXC con estatus <strong>Pendiente</strong>, monto total y vencimiento a 30 días. Podrás registrar cobros desde el módulo de Finanzas.</p>
+          </div>
+
+          {error && (
+            <div className="flex items-center gap-2 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">
+              <AlertCircle size={15} />{error}
+            </div>
+          )}
+
+          {/* Acciones */}
+          <div className="mt-auto flex flex-col gap-2.5">
+            <button
+              onClick={handleEnviarCxc}
+              disabled={enviandoCxc}
+              className="w-full flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 py-3 text-sm font-semibold text-white transition-colors shadow-lg shadow-emerald-600/20 cursor-pointer"
+            >
+              {enviandoCxc ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
+              {enviandoCxc ? "Agregando…" : "Sí, agregar a CXC"}
+            </button>
+            <button
+              onClick={onClose}
+              className="w-full rounded-xl border border-gray-200 py-2.5 text-sm text-gray-500 hover:text-gray-800 hover:bg-gray-50 transition-colors cursor-pointer"
+            >
+              No, cerrar
+            </button>
+          </div>
+        </div>
+        ) : null}
 
         {paso === "form" ? (
         <div className="border-t border-gray-100 px-6 py-4 flex gap-3 sticky bottom-0 bg-white">
@@ -857,7 +950,7 @@ function EmitirDrawer({
             <Eye size={15} /> Vista previa
           </button>
         </div>
-        ) : (
+        ) : paso === "preview" ? (
         <div className="border-t border-gray-100 px-6 py-4 flex gap-3 sticky bottom-0 bg-white">
           <button onClick={() => setPaso("form")} className="flex-1 rounded-xl border border-gray-200 py-2.5 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
             ← Editar
@@ -871,7 +964,7 @@ function EmitirDrawer({
             {loading ? "Timbrando…" : "Timbrar CFDI"}
           </button>
         </div>
-        )}
+        ) : null}
       </aside>
     </div>
   );

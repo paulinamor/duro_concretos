@@ -91,6 +91,7 @@ const ventasItems = [
   { href: "/ventas/recibos-concreto", icon: ReceiptText,  label: "Recibos de Concreto" },
   { href: "/ventas/obras",            icon: MapPin,       label: "Catálogo de Obras" },
   { href: "/ventas/remisiones",       icon: FileText,     label: "Remisiones" },
+  { href: "/ventas/productos",        icon: Package,      label: "Productos" },
 ];
 
 const finanzasItems = [
