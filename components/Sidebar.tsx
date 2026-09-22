@@ -64,6 +64,7 @@ const navItems = [
 const systemItems = [
   { href: "/configuracion",              icon: ShieldCheck,   label: "Configuración" },
   { href: "/configuracion/sat-descarga", icon: CloudDownload, label: "Descarga SAT", devOnly: true },
+  { href: "/dev",                        icon: Terminal,      label: "Dev Tools",     devOnly: true },
 ];
 
 const administracionItems: { href: string; icon: React.ElementType; label: string }[] = [];

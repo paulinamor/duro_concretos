@@ -63,6 +63,7 @@ export const DEV_ONLY_ROUTES = new Set([
   "/recursos-humanos/nomina",
   "/configuracion/sat-descarga",
   "/transporte/samsara-test",
+  "/dev",
 ]);
 
 // Email con acceso completo a herramientas de desarrollo en el sidebar
