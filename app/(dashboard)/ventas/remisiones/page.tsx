@@ -325,8 +325,8 @@ function RemisionDrawer({
         cr: form.cr,
         unidad: form.cr,
         recibidoPor: form.recibidoPor.trim(),
-        programacionId: initial?.programacionId,
-        programacionFolio: initial?.programacionFolio,
+        ...(initial?.programacionId     ? { programacionId:     initial.programacionId }     : {}),
+        ...(initial?.programacionFolio  ? { programacionFolio:  initial.programacionFolio }  : {}),
         creadoEn: initial?.creadoEn ?? new Date().toISOString(),
       });
       onClose();

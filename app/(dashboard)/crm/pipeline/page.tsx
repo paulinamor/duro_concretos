@@ -239,8 +239,8 @@ export default function CrmPipelinePage() {
       probabilidad: probabilidadPorEtapa[form.etapa],
       fechaSeguimiento: form.fechaSeguimiento, responsable: form.responsable,
       proximaAccion: form.proximaAccion || "Dar seguimiento comercial",
-      resistencia: form.resistencia || undefined,
-      comentarios: form.comentarios || undefined,
+      ...(form.resistencia ? { resistencia: form.resistencia } : {}),
+      ...(form.comentarios ? { comentarios: form.comentarios } : {}),
     };
     try {
       await upsertDocument(COLLECTIONS.pipeline, id, doc);
