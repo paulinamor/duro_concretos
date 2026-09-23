@@ -2,13 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertTriangle, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Clock, Copy, ExternalLink,
-  MapPin, Package, Phone, Plus, Search, Truck, X,
+  AlertTriangle, CalendarDays, ChevronDown, ChevronLeft, ChevronRight,
+  Clock, Copy, ExternalLink, MapPin, Package, Phone, Plus, Search, Truck, X,
 } from "lucide-react";
 import AppSelect from "@/components/AppSelect";
 import ModuleLoading from "@/components/ModuleLoading";
 import PlantaRequired from "@/components/PlantaRequired";
-import { upsertDocument, getCollectionDocs, COLLECTIONS, orderBy, limit, type SolicitudAutorizacion } from "@/lib/db";
+import { upsertDocument, getCollectionDocs, COLLECTIONS, orderBy, limit, where, type SolicitudAutorizacion } from "@/lib/db";
 import { withPlantaTag, getStoredSession, getActivePlanta } from "@/lib/auth";
 import { todayCST, localISODate } from "@/lib/dateUtils";
 import { useCollection } from "@/lib/useCollection";
@@ -77,6 +77,7 @@ interface Programacion {
   metodoPago2?: string;
   sgpSerie?: string;
   sgpNumero?: string;
+  vendedorEmail?: string;
 }
 
 interface NuevoClienteForm {
@@ -383,8 +384,8 @@ function PedidoDrawer({
   }
 
   async function handleSaveNuevo() {
-    if (!nuevoForm.razonSocial.trim() || !nuevoForm.rfc.trim() || !nuevoForm.contacto.trim()) {
-      setNuevoError("Razón social, RFC y contacto son obligatorios.");
+    if (!nuevoForm.razonSocial.trim() || !nuevoForm.contacto.trim()) {
+      setNuevoError("Razón social y contacto son obligatorios.");
       return;
     }
     if (!onSaveCliente) return;
@@ -493,7 +494,7 @@ function PedidoDrawer({
                   <input
                     value={nuevoForm.rfc}
                     onChange={(e) => setNuevo("rfc", e.target.value.toUpperCase())}
-                    placeholder="RFC *"
+                    placeholder="RFC (opcional)"
                     className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 bg-white focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 uppercase"
                   />
                   <AppSelect value={nuevoForm.tipoCliente} onChange={(e) => setNuevo("tipoCliente", e.target.value as TipoCliente)} className="text-sm px-3 py-2 rounded-lg border border-gray-200 bg-white focus:outline-none">
@@ -517,7 +518,7 @@ function PedidoDrawer({
                 />
                 <button
                   type="button"
-                  disabled={nuevoSaving || !nuevoForm.razonSocial.trim() || !nuevoForm.rfc.trim() || !nuevoForm.contacto.trim()}
+                  disabled={nuevoSaving || !nuevoForm.razonSocial.trim() || !nuevoForm.contacto.trim()}
                   onClick={handleSaveNuevo}
                   className="w-full text-sm py-2 rounded-lg bg-[#CC2229] text-white hover:bg-[#B01E24] disabled:opacity-50 cursor-pointer transition-colors font-medium"
                 >
@@ -942,6 +943,7 @@ function PedidoDrawer({
 export default function VentasProgramacionPage() {
   const session = useMemo(() => getStoredSession(), []);
   const vendedorNombre = session?.name ?? "";
+  const isAdmin = session?.role === "admin";
 
   // Limitar a 400 más recientes para evitar cargar toda la colección en memoria
   const allProgs = useCollection<Programacion>(
@@ -969,6 +971,8 @@ export default function VentasProgramacionPage() {
 
   // Feature 2: búsqueda por folio/cliente/dirección
   const [folioSearch, setFolioSearch] = useState("");
+  // Admin: filtro por vendedor
+  const [vendedorFiltro, setVendedorFiltro] = useState<string>("todos");
 
   // Feature 3: modal de cierre
   const [showCierre, setShowCierre] = useState(false);
@@ -1014,16 +1018,34 @@ export default function VentasProgramacionPage() {
     rawClientes.flatMap((c) => [c.razonSocial, c.nombreComercial ?? ""].filter(Boolean).map((n) => n.trim().toLowerCase())),
   ), [rawClientes]);
 
-  // Solo los pedidos del vendedor activo
-  const misPedidos = useMemo(() =>
-    allProgs
-      .filter((p) => p.vendedor === vendedorNombre)
-      .sort((a, b) => b.dia.localeCompare(a.dia) || (a.diaHoraPedido ?? "").localeCompare(b.diaHoraPedido ?? "")),
-    [allProgs, vendedorNombre]);
+  // Lista de vendedores únicos para el filtro de admin — dedup case-insensitive
+  // Ante dos variantes del mismo nombre, se muestra la más larga (más completa)
+  const vendedoresUnicos = useMemo(() => {
+    const byKey = new Map<string, string>();
+    for (const p of allProgs) {
+      const name = p.vendedor?.trim();
+      if (!name) continue;
+      const key = name.toLowerCase();
+      const prev = byKey.get(key);
+      if (!prev || name.length > prev.length) byKey.set(key, name);
+    }
+    return Array.from(byKey.values()).sort();
+  }, [allProgs]);
+
+  // Admin ve todos; vendedor solo ve los suyos
+  // El filtro usa comparación case-insensitive para capturar variantes del mismo nombre
+  const misPedidos = useMemo(() => {
+    const base = isAdmin
+      ? (vendedorFiltro === "todos"
+          ? allProgs
+          : allProgs.filter((p) => p.vendedor?.trim().toLowerCase() === vendedorFiltro.trim().toLowerCase()))
+      : allProgs.filter((p) => p.vendedor === vendedorNombre);
+    return [...base].sort((a, b) => b.dia.localeCompare(a.dia) || (a.diaHoraPedido ?? "").localeCompare(b.diaHoraPedido ?? ""));
+  }, [allProgs, vendedorNombre, isAdmin, vendedorFiltro]);
 
   // Feature 2: filtrado por folio/cliente/dirección
   const pedidosFiltrados = useMemo(() => {
-    return misPedidos.filter((p) => matchesQuery(folioSearch, [p.folio, p.cliente, p.direccion]));
+    return misPedidos.filter((p) => matchesQuery(folioSearch, [p.folio, p.cliente, p.direccion, p.vendedor]));
   }, [misPedidos, folioSearch]);
 
   // Disponibilidad del día activo (todos los pedidos de ese día, sin revelar datos de otros)
@@ -1178,24 +1200,52 @@ export default function VentasProgramacionPage() {
       const current = allProgs.find((p) => p.id === existingId);
       if (!current) return;
       const { id: _id, ...rest } = current;
+
+      // Detect field-level changes for the audit trail
+      const TRACKED: Array<[keyof typeof rest, string]> = [
+        ["dia",          "Fecha"],
+        ["cliente",      "Cliente"],
+        ["telefono",     "Teléfono"],
+        ["direccion",    "Dirección"],
+        ["m3Totales",    "m³"],
+        ["resistencia",  "Resistencia"],
+        ["extras",       "Extras"],
+        ["tdBom",        "Tipo/Bomba"],
+        ["hora",         "Hora entrega"],
+        ["precioM3",     "Precio m³"],
+        ["precioM3Bomba","Precio m³ Bomba"],
+        ["nombreObra",   "Obra"],
+      ];
+      const newValues: Record<string, unknown> = {
+        dia: form.dia, cliente: form.cliente.trim().toUpperCase().replace(/\s+/g, " "),
+        telefono: form.telefono.trim(), direccion: form.direccion.trim(),
+        m3Totales: m3, resistencia: form.resistencia.trim(), extras: form.extras.trim(),
+        tdBom: form.tdBom.trim(), hora: form.horaEntrega.trim(), precioM3, precioM3Bomba,
+        nombreObra: form.obraNombre.trim() || rest.nombreObra || "",
+      };
+      const cambios = TRACKED
+        .filter(([k]) => String(rest[k] ?? "") !== String(newValues[k] ?? ""))
+        .map(([k, label]) => ({ campo: label, antes: String(rest[k] ?? ""), despues: String(newValues[k] ?? "") }));
+
+      const editorLabel = isAdmin && current.vendedor && current.vendedor !== vendedorNombre
+        ? `Admin: ${vendedorNombre}`
+        : vendedorNombre;
+      const histEntry: FaseEntry = {
+        fase: rest.fase ?? "Creado",
+        fecha: new Date().toISOString(),
+        usuario: editorLabel,
+        nota: cambios.length
+          ? cambios.map((c) => `${c.campo}: ${c.antes || "—"} → ${c.despues || "—"}`).join(" | ")
+          : "Sin cambios detectados",
+      };
+
       const merged = {
         ...rest,
-        diaHoraPedido: form.diaHoraPedido,
-        dia: form.dia,
-        cliente: form.cliente.trim().toUpperCase().replace(/\s+/g, " "),
-        telefono: form.telefono.trim(),
-        nombreObra: form.obraNombre.trim() || rest.nombreObra || "",
-        direccion: form.direccion.trim(),
-        m3Totales: m3,
-        resistencia: form.resistencia.trim(),
-        extras: form.extras.trim(),
-        tdBom: form.tdBom.trim(),
-        hora: form.horaEntrega.trim(),
-        precioM3,
-        precioM3Bomba,
+        ...newValues,
+        historial: [...(rest.historial ?? []), histEntry],
       };
       await upsertDocument(COLLECTIONS.programaciones, existingId, withPlantaTag(merged));
-      void syncClienteM3(merged.cliente, (m3 ?? 0) - (current.m3Totales ?? 0), form.dia);
+      void syncClienteM3(merged.cliente as string, (m3 ?? 0) - (current.m3Totales ?? 0), form.dia);
       if (form.obraNombre.trim()) void autoSaveObra(form.cliente, form.obraNombre, form.direccion);
       window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", title: "Guardado", message: "Pedido actualizado." } }));
     } else {
@@ -1204,6 +1254,7 @@ export default function VentasProgramacionPage() {
       const newProg: Omit<Programacion, "id"> = {
         dia: form.dia,
         vendedor: vendedorNombre,
+        vendedorEmail: session?.email ?? undefined,
         diaHoraPedido: form.diaHoraPedido,
         cliente: form.cliente.trim().toUpperCase().replace(/\s+/g, " "),
         telefono: form.telefono.trim(),
@@ -1279,7 +1330,10 @@ export default function VentasProgramacionPage() {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-gray-500 text-sm" suppressHydrationWarning>
-          Tus pedidos · <span className="text-white font-medium" suppressHydrationWarning>{vendedorNombre}</span>
+          {isAdmin
+            ? <span>Vista administrador · <span className="text-[#CC2229] font-medium">todos los vendedores</span></span>
+            : <span>Tus pedidos · <span className="text-white font-medium">{vendedorNombre}</span></span>
+          }
         </p>
         <PlantaRequired>
           {(ok) => (
@@ -1345,15 +1399,32 @@ export default function VentasProgramacionPage() {
       {/* Mis pedidos */}
       <div>
         <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
-          <h3 className="text-xs font-semibold uppercase tracking-widest text-gray-500">Todos mis pedidos</h3>
-          <div className="relative">
-            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
-            <input
-              value={folioSearch}
-              onChange={(e) => setFolioSearch(e.target.value)}
-              placeholder="Buscar folio, cliente o dirección..."
-              className="w-72 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg pl-9 pr-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
-            />
+          <h3 className="text-xs font-semibold uppercase tracking-widest text-gray-500">
+            {isAdmin ? "Todos los pedidos" : "Todos mis pedidos"}
+          </h3>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Filtro por vendedor — solo admin */}
+            {isAdmin && vendedoresUnicos.length > 0 && (
+              <select
+                value={vendedorFiltro}
+                onChange={(e) => setVendedorFiltro(e.target.value)}
+                className="bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229] cursor-pointer"
+              >
+                <option value="todos">Todos los vendedores</option>
+                {vendedoresUnicos.map((v) => (
+                  <option key={v} value={v}>{v}</option>
+                ))}
+              </select>
+            )}
+            <div className="relative">
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+              <input
+                value={folioSearch}
+                onChange={(e) => setFolioSearch(e.target.value)}
+                placeholder="Buscar folio, cliente o dirección..."
+                className="w-72 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg pl-9 pr-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
+              />
+            </div>
           </div>
         </div>
 
@@ -1382,16 +1453,23 @@ export default function VentasProgramacionPage() {
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    {/* Feature 2: folio clickeable que abre timeline */}
-                    {p.folio && (
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); setTimelineProg(p); setShowTimeline(true); }}
-                        className="text-[10px] font-mono font-semibold text-[#CC2229] hover:text-[#FF3A42] transition-colors mb-0.5"
-                      >
-                        #{p.folio}
-                      </button>
-                    )}
+                    {/* Folio + badge vendedor (admin) */}
+                    <div className="flex items-center gap-2 mb-0.5">
+                      {p.folio && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setTimelineProg(p); setShowTimeline(true); }}
+                          className="text-[10px] font-mono font-semibold text-[#CC2229] hover:text-[#FF3A42] transition-colors"
+                        >
+                          #{p.folio}
+                        </button>
+                      )}
+                      {isAdmin && p.vendedor && (
+                        <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/20">
+                          {p.vendedor}
+                        </span>
+                      )}
+                    </div>
 
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2 min-w-0">
@@ -1744,6 +1822,7 @@ export default function VentasProgramacionPage() {
         onSaveCliente={handleSaveCliente}
         onSaveObra={(cliente, nombre, direccion) => void autoSaveObra(cliente, nombre, direccion)}
       />
+
 
     </div>
   );

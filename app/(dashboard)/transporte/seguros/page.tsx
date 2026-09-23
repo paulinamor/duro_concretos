@@ -10,6 +10,7 @@ import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
 import HScrollTable from "@/components/HScrollTable";
 import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS, where } from "@/lib/db";
+import { currency } from "@/lib/formatters";
 import { todayCST } from "@/lib/dateUtils";
 import { useCollectionRawWithLoading } from "@/lib/useCollection";
 import ModuleLoading from "@/components/ModuleLoading";
@@ -1355,7 +1356,7 @@ export default function SegurosPage() {
                       {/* $ Póliza */}
                       <td className="px-3 py-2.5 text-gray-400 text-[11px] tabular-nums whitespace-nowrap">
                         {seguro?.costoPoliza != null
-                          ? `$${seguro.costoPoliza.toLocaleString("es-MX", { minimumFractionDigits: 0 })}`
+                          ? currency(seguro.costoPoliza)
                           : <span className="text-gray-700">—</span>}
                       </td>
                       {/* Valor */}

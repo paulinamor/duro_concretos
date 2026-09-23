@@ -30,7 +30,7 @@ import KPICard from "@/components/KPICard";
 import { filterByPlanta, withPlantaTag } from "@/lib/auth";
 import { COLLECTIONS, deleteDocument, getCollectionDocs, upsertDocument } from "@/lib/db";
 import { normalizeKey } from "@/lib/duplicateCheck";
-import { currencyRounded as currency } from "@/lib/formatters";
+import { currency } from "@/lib/formatters";
 import { matchesQuery } from "@/lib/search";
 import DuplicateWarningModal from "@/components/DuplicateWarningModal";
 import EmptyState from "@/components/EmptyState";

@@ -31,6 +31,7 @@ export const moduleCatalog = [
   { href: "/reportes", label: "Reportes gerenciales" },
   { href: "/transporte/programacion", label: "Programación" },
   { href: "/transporte/flota-en-vivo", label: "Flota en vivo GPS" },
+  { href: "/transporte/verificacion-viajes", label: "Verificación de viajes GPS" },
   { href: "/transporte/programacion-live", label: "Programación en tiempo real" },
   { href: "/transporte/operadores", label: "Empleados" },
   { href: "/transporte/seguros", label: "Flota" },

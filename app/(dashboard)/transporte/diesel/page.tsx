@@ -17,7 +17,7 @@ import { todayCST } from "@/lib/dateUtils";
 import { useCollectionRawWithLoading } from "@/lib/useCollection";
 import ModuleLoading from "@/components/ModuleLoading";
 import { normalizeKey } from "@/lib/duplicateCheck";
-import { currencyRounded as currency } from "@/lib/formatters";
+import { currency } from "@/lib/formatters";
 import DuplicateWarningModal from "@/components/DuplicateWarningModal";
 import EmptyState from "@/components/EmptyState";
 import type { Unidad } from "@/lib/unidades";
@@ -568,7 +568,7 @@ function UnitCard({ row, maxLitros }: {
       <div className="flex items-center justify-between pt-2 border-t border-[#3A3A3A]">
         <div>
           <p className="text-[10px] text-gray-400 mb-0.5">Costo total</p>
-          <p className="text-sm font-bold text-gray-200">{Math.round(row.costo).toLocaleString("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 0 })}</p>
+          <p className="text-sm font-bold text-gray-200">{currency(row.costo)}</p>
         </div>
         {row.promPrecio != null && (
           <div className="text-right">

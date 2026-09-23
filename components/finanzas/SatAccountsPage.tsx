@@ -96,7 +96,7 @@ function displayToISO(display: string) {
 }
 
 function currency(n: number) {
-  return `$${n.toLocaleString("es-MX", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+  return `$${n.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function normalizeName(s: string): string {

@@ -105,6 +105,7 @@ interface Programacion {
   sgpNumero?: string;
   sgpStatus?: "enviado" | "error" | "pendiente";
   sgpError?: string;
+  vendedorEmail?: string;
 }
 
 interface Obra {
@@ -660,7 +661,12 @@ function FormDrawer({
   const isAdminInForm   = sessionInForm?.role === "admin";
   const userNameInForm  = sessionInForm?.name ?? sessionInForm?.email ?? "Sistema";
   const vendedorDeRegistro = initial?.vendedor ?? "";
-  const isVendorOfRecord   = vendedorDeRegistro !== "" && userNameInForm === vendedorDeRegistro;
+  // Compare by email first (stable); fall back to name for legacy records without vendedorEmail
+  const isVendorOfRecord = vendedorDeRegistro !== "" && (
+    initial?.vendedorEmail
+      ? sessionInForm?.email?.toLowerCase() === initial.vendedorEmail.toLowerCase()
+      : userNameInForm === vendedorDeRegistro
+  );
   const canSeeProgNotas    = isAdminInForm || !isVendorOfRecord;
   const canEditVendorNotas = isAdminInForm || isVendorOfRecord || vendedorDeRegistro === "";
 
@@ -831,6 +837,7 @@ function FormDrawer({
         id,
         dia: form.dia,
         vendedor: form.vendedor.trim(),
+        vendedorEmail: sessionInForm?.email ?? undefined,
         diaHoraPedido: form.diaHoraPedido,
         muestras: form.muestras.trim(),
         cliente: form.cliente.trim(),
