@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type { Map as LeafletMap, Polyline } from "leaflet";
 
 export type VehicleLocation = {
   id:             string;
@@ -29,7 +28,6 @@ const ENGINE_COLOR: Record<string, string> = {
 
 const TRAIL_MAX = 50;
 
-// Compass bearing from point A → B (degrees 0–360)
 function bearingTo(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const toR = (d: number) => d * Math.PI / 180;
   const dLon = toR(lon2 - lon1);
@@ -39,86 +37,119 @@ function bearingTo(lat1: number, lon1: number, lat2: number, lon2: number): numb
   return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
 }
 
-// Outer circle stays fixed; only the inner SVG arrow rotates to heading.
-// Prevents the border from tilting and makes the direction clearly visible.
-function markerSvg(color: string, heading: number, moving: boolean, idle: boolean): string {
-  if (moving) {
-    return `
-      <div style="position:relative;width:40px;height:40px">
-        <div style="
-          position:absolute;inset:0;border-radius:50%;
-          background:${color};
-          border:3px solid rgba(255,255,255,0.97);
-          box-shadow:0 4px 14px rgba(0,0,0,0.45),0 0 0 4px ${color}44;
-        "></div>
-        <div style="
-          position:absolute;inset:0;
-          display:flex;align-items:center;justify-content:center;
-          transform:rotate(${heading}deg);
-        ">
-          <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-            <path d="M11 3 L16.5 18 L11 14 L5.5 18 Z"
-              fill="white" fill-opacity="0.97"
-              stroke="rgba(0,0,0,0.15)" stroke-width="0.5"/>
-          </svg>
-        </div>
-      </div>`;
-  }
-  if (idle) {
-    return `
-      <div style="position:relative;width:26px;height:26px;display:flex;align-items:center;justify-content:center">
-        <div style="
-          position:absolute;width:26px;height:26px;border-radius:50%;
-          border:2px solid ${color}66;background:${color}22;
-        "></div>
-        <div style="
-          width:14px;height:14px;background:${color};border-radius:50%;
-          border:2.5px solid rgba(255,255,255,0.9);
-          box-shadow:0 2px 8px rgba(0,0,0,0.35);
-          position:relative;
-        "></div>
-      </div>`;
-  }
-  return `
-    <div style="
-      width:14px;height:14px;background:${color};border-radius:50%;
-      border:2.5px solid rgba(255,255,255,0.85);
-      box-shadow:0 1px 6px rgba(0,0,0,0.4);
-    "></div>`;
+function escXml(s: string) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-export default function FlotaMap({ vehicles, selectedId, className = "" }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef       = useRef<LeafletMap | null>(null);
-  const markersRef   = useRef<Record<string, L.Marker>>({});
-  const trailsRef    = useRef<Record<string, Polyline>>({});
-  const historyRef   = useRef<Record<string, { lat: number; lng: number }[]>>({});
+function markerSvgUrl(color: string, heading: number, moving: boolean, idle: boolean, name: string): string {
+  const charW  = 6.2;
+  const pillPx = 14;
+  const pillW  = Math.max(name.length * charW + pillPx * 2, 32);
+  const pillH  = 15;
+  const gap    = 3;
 
+  let markerW: number, markerH: number, markerSvg: string;
+
+  if (moving) {
+    markerW = 40; markerH = 40;
+    markerSvg = `
+      <circle cx="20" cy="20" r="18" fill="${color}" stroke="white" stroke-width="3"/>
+      <g transform="rotate(${heading},20,20)">
+        <path d="M20 6 L26 32 L20 27 L14 32 Z" fill="white" fill-opacity="0.95" stroke="rgba(0,0,0,0.1)" stroke-width="0.5"/>
+      </g>`;
+  } else if (idle) {
+    markerW = 26; markerH = 26;
+    markerSvg = `
+      <circle cx="13" cy="13" r="12" fill="${color}" fill-opacity="0.2" stroke="${color}" stroke-width="2"/>
+      <circle cx="13" cy="13" r="7" fill="${color}" stroke="white" stroke-width="2.5"/>`;
+  } else {
+    markerW = 14; markerH = 14;
+    markerSvg = `<circle cx="7" cy="7" r="6" fill="${color}" stroke="white" stroke-width="2"/>`;
+  }
+
+  const totalW  = Math.max(markerW, pillW);
+  const totalH  = pillH + gap + markerH;
+  const mOffX   = (totalW - markerW) / 2;
+  const pillX   = (totalW - pillW) / 2;
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${totalW}" height="${totalH}">
+    <g transform="translate(${mOffX},${pillH + gap})">${markerSvg}</g>
+    <rect x="${pillX}" y="0" width="${pillW}" height="${pillH}" rx="${pillH / 2}" fill="rgba(15,23,42,0.82)"/>
+    <text x="${totalW / 2}" y="${pillH * 0.73}" text-anchor="middle" fill="white"
+      font-size="9" font-weight="700"
+      font-family="system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">${escXml(name)}</text>
+  </svg>`;
+
+  return "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg);
+}
+
+type GMap       = google.maps.Map;
+type GMarker    = google.maps.Marker;
+type GPolyline  = google.maps.Polyline;
+type GInfoWindow = google.maps.InfoWindow;
+
+export default function FlotaMap({ vehicles, selectedId, className = "" }: Props) {
+  const containerRef  = useRef<HTMLDivElement>(null);
+  const mapRef        = useRef<GMap | null>(null);
+  const markersRef    = useRef<Record<string, GMarker>>({});
+  const trailsRef     = useRef<Record<string, GPolyline>>({});
+  const historyRef    = useRef<Record<string, { lat: number; lng: number }[]>>({});
+  const infoWindowRef = useRef<GInfoWindow | null>(null);
+
+  // Init map
   useEffect(() => {
     if (typeof window === "undefined" || !containerRef.current) return;
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const L = require("leaflet") as typeof import("leaflet");
+    if (mapRef.current) return;
 
-    if (!mapRef.current) {
-      const map = L.map(containerRef.current, { zoomControl: false, attributionControl: false });
-      // OpenStreetMap — free, no API key required
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 19,
-        attribution: "© OpenStreetMap contributors",
-      }).addTo(map);
-      L.control.zoom({ position: "bottomright" }).addTo(map);
-      mapRef.current = map;
-    }
+    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
 
-    const map = mapRef.current;
-    const isFirstLoad = Object.keys(markersRef.current).length === 0;
-    const newIds = new Set(vehicles.map((v) => v.id));
+    import("@googlemaps/js-api-loader").then(({ setOptions, importLibrary }) => {
+      setOptions({ key: apiKey });
+      importLibrary("maps").then(() => {
+        if (!containerRef.current || mapRef.current) return;
+        const map = new google.maps.Map(containerRef.current, {
+          center: { lat: 25.65, lng: -100.35 },
+          zoom: 11,
+          mapTypeId: "roadmap",
+          disableDefaultUI: false,
+          zoomControl: true,
+          zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_BOTTOM },
+          streetViewControl: false,
+          mapTypeControl: false,
+          fullscreenControl: false,
+          styles: [
+            { featureType: "poi",               elementType: "labels",    stylers: [{ visibility: "off" }] },
+            { featureType: "poi.business",      elementType: "all",       stylers: [{ visibility: "off" }] },
+            { featureType: "transit",           elementType: "labels",    stylers: [{ visibility: "off" }] },
+            { featureType: "road",              elementType: "labels.icon", stylers: [{ visibility: "off" }] },
+            { featureType: "administrative",    elementType: "labels.text.fill", stylers: [{ color: "#6b7280" }] },
+            { featureType: "road",              elementType: "geometry",  stylers: [{ color: "#f3f4f6" }] },
+            { featureType: "road.highway",      elementType: "geometry",  stylers: [{ color: "#e5e7eb" }] },
+            { featureType: "road.highway",      elementType: "geometry.stroke", stylers: [{ color: "#d1d5db" }] },
+            { featureType: "water",             elementType: "geometry",  stylers: [{ color: "#bfdbfe" }] },
+            { featureType: "landscape",         elementType: "geometry",  stylers: [{ color: "#f9fafb" }] },
+            { featureType: "landscape.natural", elementType: "geometry",  stylers: [{ color: "#f3f4f6" }] },
+          ],
+        });
+        mapRef.current    = map;
+        infoWindowRef.current = new google.maps.InfoWindow();
+      });
+    });
+  }, []);
 
-    // Remove stale markers
+  // Update markers whenever vehicles change
+  useEffect(() => {
+    if (!mapRef.current || !window.google) return;
+
+    const map      = mapRef.current;
+    const newIds   = new Set(vehicles.map((v) => v.id));
+    const isFirst  = Object.keys(markersRef.current).length === 0 && vehicles.length > 0;
+
+    // Remove stale markers + trails
     Object.keys(markersRef.current).forEach((id) => {
       if (!newIds.has(id)) {
-        markersRef.current[id].remove();
-        trailsRef.current[id]?.remove();
+        markersRef.current[id].setMap(null);
+        trailsRef.current[id]?.setMap(null);
         delete markersRef.current[id];
         delete trailsRef.current[id];
         delete historyRef.current[id];
@@ -130,8 +161,9 @@ export default function FlotaMap({ vehicles, selectedId, className = "" }: Props
       const moving = v.speedMph > 0.5;
       const idle   = v.engineState === "Idle";
       const speedKph = Math.max(0, Math.round(v.speedMph * 1.60934));
+      const pos    = { lat: v.lat, lng: v.lng };
 
-      // Position history
+      // Trail history
       if (!historyRef.current[v.id]) historyRef.current[v.id] = [];
       const hist = historyRef.current[v.id];
       const last = hist[hist.length - 1];
@@ -140,8 +172,6 @@ export default function FlotaMap({ vehicles, selectedId, className = "" }: Props
         if (hist.length > TRAIL_MAX) hist.shift();
       }
 
-      // Use GPS heading when available; fall back to bearing from position trail.
-      // headingDegrees = 0 from Samsara usually means "unknown", not "facing north".
       let heading = v.headingDegrees;
       if ((heading === 0 || heading == null) && moving && hist.length >= 2) {
         const prev = hist[hist.length - 2];
@@ -150,90 +180,121 @@ export default function FlotaMap({ vehicles, selectedId, className = "" }: Props
 
       // Trail polyline
       if (moving && hist.length > 1) {
-        const coords = hist.map((p) => [p.lat, p.lng] as [number, number]);
+        const path = hist.map((p) => ({ lat: p.lat, lng: p.lng }));
         if (trailsRef.current[v.id]) {
-          trailsRef.current[v.id].setLatLngs(coords);
+          trailsRef.current[v.id].setPath(path);
         } else {
-          trailsRef.current[v.id] = L.polyline(coords, {
-            color, weight: 3, opacity: 0.5,
-          }).addTo(map);
+          trailsRef.current[v.id] = new google.maps.Polyline({
+            path, map,
+            strokeColor: color, strokeOpacity: 0.55, strokeWeight: 3,
+          });
         }
       } else if (!moving && trailsRef.current[v.id]) {
-        trailsRef.current[v.id].remove();
+        trailsRef.current[v.id].setMap(null);
         delete trailsRef.current[v.id];
       }
 
-      // Marker icon
-      const html = markerSvg(color, heading, moving, idle);
-      const size = moving ? 40 : idle ? 26 : 14;
-      const half = size / 2;
-      const icon = L.divIcon({
-        html,
-        iconSize:   [size, size],
-        iconAnchor: [half, half],
-        className:  "",
-      });
+      // Marker icon — includes name pill above the marker in the SVG
+      const charW   = 6.2;
+      const pillPx  = 14;
+      const pillW   = Math.max(v.name.length * charW + pillPx * 2, 32);
+      const pillH   = 15;
+      const gap     = 3;
+      const mSize   = moving ? 40 : idle ? 26 : 14;
+      const totalW  = Math.max(mSize, pillW);
+      const totalH  = pillH + gap + mSize;
+      const anchorX = totalW / 2;
+      const anchorY = pillH + gap + mSize / 2; // center of the vehicle marker shape
+
+      const icon: google.maps.Icon = {
+        url:    markerSvgUrl(color, heading, moving, idle, v.name),
+        size:   new google.maps.Size(totalW, totalH),
+        anchor: new google.maps.Point(anchorX, anchorY),
+      };
 
       const stateLabel = v.engineState === "On" ? "En ruta" : v.engineState === "Idle" ? "Ralentí" : "Apagado";
-      const popup = `
-        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:12px;min-width:180px;color:#111;line-height:1.5">
+      const infoContent = `
+        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:12px;min-width:190px;color:#111;line-height:1.5;padding:2px 0">
           <p style="font-weight:700;margin:0 0 2px;font-size:13px">${v.name}</p>
-          <p style="margin:0;color:#666;font-size:10.5px">${v.address || "Sin dirección"}</p>
-          <div style="margin:7px 0;height:1px;background:#efefef"></div>
+          <p style="margin:0;color:#6b7280;font-size:10.5px">${v.address || "Sin dirección"}</p>
+          <div style="margin:7px 0;height:1px;background:#f3f4f6"></div>
           <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-            <span style="font-weight:700;font-size:15px">${speedKph} <span style="font-size:11px;font-weight:500;color:#555">km/h</span></span>
+            <span style="font-weight:700;font-size:15px">${speedKph} <span style="font-size:11px;font-weight:500;color:#6b7280">km/h</span></span>
             <span style="font-size:10.5px;background:${color}22;color:${color};border:1px solid ${color}55;border-radius:10px;padding:2px 9px;font-weight:600">${stateLabel}</span>
           </div>
-          <p style="margin:5px 0 0;color:#aaa;font-size:10px">${new Date(v.updatedAt).toLocaleTimeString("es-MX")}</p>
+          <p style="margin:5px 0 0;color:#9ca3af;font-size:10px">${new Date(v.updatedAt).toLocaleTimeString("es-MX")}</p>
         </div>`;
 
       if (markersRef.current[v.id]) {
-        markersRef.current[v.id]
-          .setLatLng([v.lat, v.lng])
-          .setIcon(icon)
-          .setPopupContent(popup);
-        if (moving) markersRef.current[v.id].setZIndexOffset(1000);
+        markersRef.current[v.id].setPosition(pos);
+        markersRef.current[v.id].setIcon(icon);
+        markersRef.current[v.id].setZIndex(moving ? 10 : 1);
       } else {
-        markersRef.current[v.id] = L.marker([v.lat, v.lng], {
-          icon,
-          zIndexOffset: moving ? 1000 : 0,
-        })
-          .addTo(map)
-          .bindPopup(popup, { maxWidth: 220, offset: [0, -half] });
+        const marker = new google.maps.Marker({
+          position: pos, map, icon,
+          title:    v.name,
+          zIndex:   moving ? 10 : 1,
+        });
+        marker.addListener("click", () => {
+          infoWindowRef.current?.setContent(infoContent);
+          infoWindowRef.current?.open(map, marker);
+        });
+        markersRef.current[v.id] = marker;
+      }
+
+      // Update info window if already open on this vehicle
+      const iw = infoWindowRef.current;
+      if (iw && (iw as unknown as { anchor?: GMarker }).anchor === markersRef.current[v.id]) {
+        iw.setContent(infoContent);
       }
     });
 
-    if (isFirstLoad && vehicles.length > 0) {
-      map.fitBounds(
-        vehicles.map((v) => [v.lat, v.lng] as [number, number]),
-        { padding: [50, 50], maxZoom: 14 },
-      );
+    // Fit bounds on first load
+    if (isFirst) {
+      const bounds = new google.maps.LatLngBounds();
+      vehicles.forEach((v) => bounds.extend({ lat: v.lat, lng: v.lng }));
+      map.fitBounds(bounds, { top: 50, right: 50, bottom: 50, left: 50 });
     }
   }, [vehicles]);
 
-  // Fly to selected
+  // Fly to selected vehicle
   useEffect(() => {
-    if (!selectedId || !mapRef.current) return;
+    if (!selectedId || !mapRef.current || !window.google) return;
     const v = vehicles.find((x) => x.id === selectedId);
-    if (v) {
-      mapRef.current.flyTo([v.lat, v.lng], 16, { animate: true, duration: 0.8 });
-      markersRef.current[v.id]?.openPopup();
+    if (!v) return;
+    mapRef.current.panTo({ lat: v.lat, lng: v.lng });
+    mapRef.current.setZoom(16);
+    const marker = markersRef.current[v.id];
+    if (marker && infoWindowRef.current) {
+      const stateLabel = v.engineState === "On" ? "En ruta" : v.engineState === "Idle" ? "Ralentí" : "Apagado";
+      const color = ENGINE_COLOR[v.engineState ?? "Off"];
+      const speedKph = Math.max(0, Math.round(v.speedMph * 1.60934));
+      infoWindowRef.current.setContent(`
+        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:12px;min-width:190px;color:#111;line-height:1.5;padding:2px 0">
+          <p style="font-weight:700;margin:0 0 2px;font-size:13px">${v.name}</p>
+          <p style="margin:0;color:#6b7280;font-size:10.5px">${v.address || "Sin dirección"}</p>
+          <div style="margin:7px 0;height:1px;background:#f3f4f6"></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+            <span style="font-weight:700;font-size:15px">${speedKph} <span style="font-size:11px;font-weight:500;color:#6b7280">km/h</span></span>
+            <span style="font-size:10.5px;background:${color}22;color:${color};border:1px solid ${color}55;border-radius:10px;padding:2px 9px;font-weight:600">${stateLabel}</span>
+          </div>
+          <p style="margin:5px 0 0;color:#9ca3af;font-size:10px">${new Date(v.updatedAt).toLocaleTimeString("es-MX")}</p>
+        </div>`);
+      infoWindowRef.current.open(mapRef.current, marker);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
 
+  // Cleanup on unmount
   useEffect(() => () => {
-    mapRef.current?.remove();
-    mapRef.current    = null;
+    Object.values(markersRef.current).forEach((m) => m.setMap(null));
+    Object.values(trailsRef.current).forEach((p) => p.setMap(null));
+    infoWindowRef.current?.close();
     markersRef.current  = {};
     trailsRef.current   = {};
     historyRef.current  = {};
+    mapRef.current      = null;
   }, []);
 
-  return (
-    <>
-      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-      <div ref={containerRef} className={className} />
-    </>
-  );
+  return <div ref={containerRef} className={className} />;
 }

@@ -4,10 +4,9 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity, AlertCircle, ChevronDown, ChevronUp, Clock,
-  Fuel, Gauge, Loader2, MapPin, Navigation, RefreshCw,
+  Fuel, Gauge, Loader2, MapPin, Navigation, RefreshCw, Search,
   Timer, Truck, User, Wifi, WifiOff, X,
 } from "lucide-react";
-import KPICard from "@/components/KPICard";
 import type { VehicleLocation } from "@/components/FlotaMap";
 
 const FlotaMap = dynamic(() => import("@/components/FlotaMap"), {
@@ -439,161 +438,156 @@ export default function FlotaEnVivoPage() {
     };
   }, [fetchFast, fetchSlow]);
 
+  const [search, setSearch] = useState("");
+
   const selected = vehicles.find((v) => v.id === selectedId) ?? null;
   const on   = vehicles.filter((v) => v.engineState === "On").length;
   const idle = vehicles.filter((v) => v.engineState === "Idle").length;
   const off  = vehicles.filter((v) => !v.engineState || v.engineState === "Off").length;
 
-  const filtered = vehicles.filter((v) =>
-    filter === "todos" ? true :
-    filter === "on"    ? v.engineState === "On" || v.engineState === "Idle" :
-    v.engineState === "Off" || !v.engineState,
-  );
+  const filtered = vehicles.filter((v) => {
+    const matchFilter =
+      filter === "todos" ? true :
+      filter === "on"    ? v.engineState === "On" || v.engineState === "Idle" :
+      v.engineState === "Off" || !v.engineState;
+    const q = search.trim().toLowerCase();
+    const matchSearch = !q || v.name.toLowerCase().includes(q) || v.address.toLowerCase().includes(q) || (v.driverName?.toLowerCase().includes(q) ?? false);
+    return matchFilter && matchSearch;
+  });
 
   return (
-    <div className="flex flex-col gap-4" style={{ height: "calc(100vh - 112px)" }}>
+    <div className="flex gap-0 rounded-2xl overflow-hidden border border-slate-200 bg-white shadow-sm" style={{ height: "calc(100vh - 96px)" }}>
 
-      {/* Topbar */}
-      <div className="flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3">
-          <span className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-full font-medium border ${
-            online
-              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-              : "bg-red-50 text-red-600 border-red-200"
-          }`}>
-            {online ? <Wifi size={11} /> : <WifiOff size={11} />}
-            {online ? "Conectado · Samsara" : "Sin conexión"}
-          </span>
-          {lastUpdate && (
-            <span className="text-xs text-slate-400">
-              Actualizado {lastUpdate.toLocaleTimeString("es-MX")} · auto 5s
-            </span>
-          )}
+      {/* ── Sidebar ──────────────────────────────────────────────────────────── */}
+      <div className="w-[300px] shrink-0 flex flex-col border-r border-slate-200 bg-white">
+
+        {/* Header */}
+        <div className="px-4 pt-4 pb-3 border-b border-slate-100 shrink-0">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <span className={`flex items-center gap-1.5 text-[10px] font-semibold px-2 py-1 rounded-full ${online ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-600"}`}>
+                {online ? <Wifi size={9} /> : <WifiOff size={9} />}
+                {online ? "Samsara · En vivo" : "Sin conexión"}
+              </span>
+              {lastUpdate && (
+                <span className="text-[10px] text-slate-400">{lastUpdate.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+              )}
+            </div>
+            <button onClick={() => { fetchSlow(); fetchFast(false); }} disabled={loading} className="text-slate-400 hover:text-slate-700 cursor-pointer disabled:opacity-40">
+              <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
+            </button>
+          </div>
+
+          {/* Search */}
+          <div className="relative">
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar vehículo, conductor…"
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 pl-8 pr-3 py-2 text-xs text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#CC2229]/20 focus:border-[#CC2229]/40"
+            />
+            {search && <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"><X size={11} /></button>}
+          </div>
         </div>
-        <button
-          onClick={() => { fetchSlow(); fetchFast(false); }}
-          disabled={loading}
-          className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl transition-colors disabled:opacity-50 cursor-pointer"
-        >
-          {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-          Actualizar
-        </button>
-      </div>
 
-      {/* KPIs */}
-      <div className="grid grid-cols-4 gap-3 shrink-0">
-        <KPICard title="Total flota" value={loading ? "—" : String(vehicles.length)} icon={Truck}    iconColor="text-[#CC2229]"   iconBg="bg-[#CC2229]/10"  active={filter === "todos"} onClick={() => setFilter("todos")} />
-        <KPICard title="En ruta"     value={loading ? "—" : String(on)}              icon={Activity} iconColor="text-emerald-600" iconBg="bg-emerald-50"     active={filter === "on"}    onClick={() => setFilter("on")} />
-        <KPICard title="En ralentí"  value={loading ? "—" : String(idle)}            icon={Activity} iconColor="text-amber-600"   iconBg="bg-amber-50"       active={filter === "on"}    onClick={() => setFilter("on")} />
-        <KPICard title="Apagados"    value={loading ? "—" : String(off)}             icon={Truck}    iconColor="text-slate-400"   iconBg="bg-slate-100"      active={filter === "off"}   onClick={() => setFilter("off")} />
-      </div>
-
-      {error && (
-        <div className="flex items-center gap-2 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600 shrink-0">
-          <AlertCircle size={15} />{error}
+        {/* Filter tabs */}
+        <div className="flex border-b border-slate-100 shrink-0">
+          {([["todos", `Todos ${vehicles.length}`], ["on", `En ruta ${on + idle}`], ["off", `Parados ${off}`]] as const).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setFilter(key)}
+              className={`flex-1 py-2.5 text-[11px] font-semibold transition-colors cursor-pointer border-b-2 ${
+                filter === key
+                  ? "border-[#CC2229] text-[#CC2229]"
+                  : "border-transparent text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
-      )}
-
-      {/* Main row */}
-      <div className="flex gap-3 flex-1 min-h-0">
 
         {/* Vehicle list */}
-        <div className="w-60 shrink-0 flex flex-col gap-2 min-h-0">
-          {/* Filter tabs */}
-          <div className="flex gap-1 bg-slate-100 rounded-xl p-1 shrink-0">
-            {([["todos","Todos"], ["on","En ruta"], ["off","Parados"]] as const).map(([key, label]) => (
-              <button
-                key={key}
-                onClick={() => setFilter(key)}
-                className={`flex-1 text-[10px] font-semibold py-1.5 rounded-lg transition-colors cursor-pointer ${
-                  filter === key
-                    ? "bg-white text-slate-900 shadow-sm"
-                    : "text-slate-500 hover:text-slate-700"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+        <div className="flex-1 overflow-y-auto">
+          {error && (
+            <div className="flex items-center gap-2 m-3 rounded-xl bg-red-50 border border-red-200 px-3 py-2.5 text-xs text-red-600">
+              <AlertCircle size={13} />{error}
+            </div>
+          )}
 
-          {/* List */}
-          <div className="flex-1 overflow-y-auto space-y-1.5 pr-0.5">
-            {loading && vehicles.length === 0
-              ? [...Array(6)].map((_, i) => (
-                  <div key={i} className="h-[76px] bg-slate-100 rounded-xl border border-slate-200 animate-pulse" />
-                ))
-              : filtered.map((v) => {
-                  const state      = v.engineState ?? "Off";
-                  const kph        = toKph(v.speedMph);
-                  const isSelected = selectedId === v.id;
-                  return (
-                    <button
-                      key={v.id}
-                      onClick={() => setSelectedId(isSelected ? null : v.id)}
-                      className={`w-full text-left px-3.5 py-3 rounded-xl border transition-colors cursor-pointer ${
-                        isSelected
-                          ? "bg-[#CC2229]/5 border-[#CC2229]/25"
-                          : "bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50"
-                      }`}
-                    >
-                      <div className="flex items-start gap-2.5">
-                        <span className={`w-2 h-2 rounded-full shrink-0 mt-[5px] ${STATE_DOT[state]}`} />
-                        <div className="min-w-0 flex-1">
-                          <p className="text-slate-900 text-xs font-semibold truncate">{v.name}</p>
-                          <p className="text-slate-400 text-[10px] truncate mt-0.5">{shortAddr(v.address)}</p>
-                          <div className="flex items-center justify-between mt-1.5">
-                            <span className={`text-[10px] font-semibold tabular-nums ${kph > 0 ? "text-emerald-600" : "text-slate-400"}`}>
-                              {kph} km/h
-                            </span>
-                            {v.driverName && (
-                              <span className="text-[10px] text-slate-400 truncate max-w-[90px]">
-                                {v.driverName.split(" ")[0]}
-                              </span>
-                            )}
-                            {!v.driverName && v.fuelPct != null && (
-                              <div className="flex items-center gap-1">
-                                <div className="w-12 h-1 bg-slate-200 rounded-full overflow-hidden">
-                                  <div
-                                    className={`h-full rounded-full ${v.fuelPct > 40 ? "bg-emerald-500" : v.fuelPct > 20 ? "bg-amber-500" : "bg-red-500"}`}
-                                    style={{ width: `${v.fuelPct}%` }}
-                                  />
-                                </div>
-                                <span className="text-[9px] text-slate-400">{v.fuelPct}%</span>
-                              </div>
-                            )}
-                          </div>
+          {loading && vehicles.length === 0
+            ? [...Array(8)].map((_, i) => (
+                <div key={i} className="mx-3 my-1.5 h-[72px] bg-slate-100 rounded-xl animate-pulse" />
+              ))
+            : filtered.length === 0
+            ? <div className="text-center py-16 text-slate-400 text-xs">Sin vehículos</div>
+            : filtered.map((v) => {
+                const state      = v.engineState ?? "Off";
+                const kph        = toKph(v.speedMph);
+                const isSelected = selectedId === v.id;
+                const stoppedSecs = Math.floor((Date.now() - new Date(v.updatedAt).getTime()) / 1000);
+                const isLongStopped = state === "Off" && stoppedSecs > 3600;
+
+                return (
+                  <button
+                    key={v.id}
+                    onClick={() => setSelectedId(isSelected ? null : v.id)}
+                    className={`w-full text-left px-4 py-3.5 border-b border-slate-100 transition-colors cursor-pointer ${
+                      isSelected ? "bg-[#CC2229]/5" : "hover:bg-slate-50"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-slate-900 text-sm font-bold truncate leading-tight">{v.name}</p>
+                      {kph > 0
+                        ? <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">{kph} KM/H</span>
+                        : <span className="shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">0 KM/H</span>
+                      }
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATE_DOT[state]}`} />
+                      <p className="text-slate-500 text-[11px] truncate">{shortAddr(v.address)}</p>
+                    </div>
+                    {v.driverName && (
+                      <p className="text-slate-400 text-[10px] mt-0.5 truncate">{v.driverName}</p>
+                    )}
+                    {isLongStopped && (
+                      <p className="text-red-500 text-[10px] mt-0.5 font-medium">Vehículo detenido · {staleness(v.updatedAt)}</p>
+                    )}
+                    {v.fuelPct != null && (
+                      <div className="flex items-center gap-1.5 mt-1.5">
+                        <div className="flex-1 h-1 bg-slate-200 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full ${v.fuelPct > 40 ? "bg-emerald-500" : v.fuelPct > 20 ? "bg-amber-400" : "bg-red-500"}`} style={{ width: `${v.fuelPct}%` }} />
                         </div>
+                        <span className="text-[9px] text-slate-400 shrink-0">{v.fuelPct}%</span>
                       </div>
-                    </button>
-                  );
-                })}
-
-            {!loading && filtered.length === 0 && (
-              <div className="text-center py-8 text-slate-400 text-xs">
-                Sin vehículos en esta categoría
-              </div>
-            )}
-          </div>
-
-          {/* Legend */}
-          <div className="shrink-0 flex items-center justify-center gap-4 py-2 border-t border-slate-100">
-            {[["Ruta","bg-emerald-500"], ["Ralentí","bg-amber-500"], ["Apagado","bg-slate-400"]].map(([lbl, cls]) => (
-              <div key={lbl} className="flex items-center gap-1.5">
-                <span className={`w-1.5 h-1.5 rounded-full ${cls}`} />
-                <span className="text-[10px] text-slate-500">{lbl}</span>
-              </div>
-            ))}
-          </div>
+                    )}
+                  </button>
+                );
+              })
+          }
         </div>
 
-        {/* Map */}
-        <div className="flex-1 min-w-0 rounded-2xl overflow-hidden border border-slate-200">
-          <FlotaMap vehicles={vehicles} selectedId={selectedId} className="w-full h-full" />
+        {/* Footer legend */}
+        <div className="shrink-0 flex items-center justify-center gap-5 py-2.5 border-t border-slate-100 bg-slate-50">
+          {[["En ruta","bg-emerald-500"], ["Ralentí","bg-amber-400"], ["Apagado","bg-slate-400"]].map(([lbl, cls]) => (
+            <div key={lbl} className="flex items-center gap-1.5">
+              <span className={`w-2 h-2 rounded-full ${cls}`} />
+              <span className="text-[10px] text-slate-500">{lbl}</span>
+            </div>
+          ))}
         </div>
+      </div>
 
-        {/* Detail panel */}
+      {/* ── Map + detail ─────────────────────────────────────────────────────── */}
+      <div className="flex-1 min-w-0 relative">
+        <FlotaMap vehicles={vehicles} selectedId={selectedId} className="w-full h-full" />
+
+        {/* Detail panel — floats over map */}
         {selected && (
-          <VehicleDetailPanel v={selected} onClose={() => setSelectedId(null)} />
+          <div className="absolute top-3 right-3 z-[500]">
+            <VehicleDetailPanel v={selected} onClose={() => setSelectedId(null)} />
+          </div>
         )}
       </div>
     </div>
