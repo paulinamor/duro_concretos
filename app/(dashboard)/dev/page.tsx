@@ -2,12 +2,17 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  Activity, AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, ChevronRight,
-  ClipboardCopy, Code2, Database, Eye, EyeOff, Globe, Info,
-  Layers, Lock, RefreshCw, Server, Settings2, Shield, Terminal, Trash2,
-  Users, Zap,
+  Activity, AlertCircle, AlertTriangle, Bug, CheckCircle2,
+  ChevronDown, ChevronRight, ClipboardCopy, ClipboardList, Clock, Code2,
+  Database, Eye, EyeOff, Globe, HeartPulse,
+  Layers, Lock, RefreshCw, Server, Shield, Terminal, Trash2,
+  XCircle, Zap,
 } from "lucide-react";
-import { COLLECTIONS, type SolicitudAutorizacion, getCollectionDocs } from "@/lib/db";
+import {
+  COLLECTIONS, type SolicitudAutorizacion, type AppError, type AuditEntry,
+  getCollectionDocs, countCollectionDocs, limit, orderBy,
+} from "@/lib/db";
+import { INTEGRITY_CHECKS, type IntegrityResult } from "@/lib/integrityChecks";
 import {
   getStoredSession, DEVELOPER_EMAIL, moduleCatalog, DEV_ONLY_ROUTES,
   getImpersonationOriginal, isImpersonating, stopImpersonation,
@@ -75,9 +80,12 @@ const COLS = Array.from(COL_MAP.values());
 
 // ─── Module section map ────────────────────────────────────────────────────────
 
+const _moduleHrefs = new Set(moduleCatalog.map((m) => m.href));
 const ALL_ROUTES = [
-  ...moduleCatalog.map((m) => ({ ...m, devOnly: false })),
-  ...Array.from(DEV_ONLY_ROUTES).map((href) => ({ href, label: href, devOnly: true })),
+  ...moduleCatalog.map((m) => ({ ...m, devOnly: DEV_ONLY_ROUTES.has(m.href) })),
+  ...Array.from(DEV_ONLY_ROUTES)
+    .filter((href) => !_moduleHrefs.has(href))
+    .map((href) => ({ href, label: href, devOnly: true })),
 ];
 
 const SECTION_MAP: Record<string, string> = {
@@ -107,15 +115,19 @@ function toast(type: string, title: string, message: string) {
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 
-type Tab = "sistema" | "modulos" | "colecciones" | "plantas" | "sesion" | "herramientas";
+type Tab = "salud" | "errores" | "integridad" | "bitacora" | "sistema" | "modulos" | "colecciones" | "plantas" | "sesion" | "herramientas";
 
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
-  { id: "sistema",      label: "Sistema",       icon: Server },
-  { id: "modulos",      label: "Módulos",        icon: Layers },
-  { id: "colecciones",  label: "Colecciones",    icon: Database },
-  { id: "plantas",      label: "Visibilidad por planta", icon: Globe },
-  { id: "sesion",       label: "Sesión & Auth",  icon: Shield },
-  { id: "herramientas", label: "Herramientas",   icon: Terminal },
+  { id: "salud",        label: "Salud",          icon: HeartPulse },
+  { id: "errores",      label: "Errores",         icon: Bug },
+  { id: "integridad",   label: "Integridad",      icon: AlertCircle },
+  { id: "bitacora",     label: "Bitácora",        icon: ClipboardList },
+  { id: "sistema",      label: "Sistema",         icon: Server },
+  { id: "modulos",      label: "Módulos",         icon: Layers },
+  { id: "colecciones",  label: "Colecciones",     icon: Database },
+  { id: "plantas",      label: "Plantas",         icon: Globe },
+  { id: "sesion",       label: "Sesión",          icon: Shield },
+  { id: "herramientas", label: "Herramientas",    icon: Terminal },
 ];
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -156,6 +168,515 @@ function KV({ k, v, mono = false }: { k: string; v: string | React.ReactNode; mo
     <div className="flex items-start justify-between gap-4 py-1.5 border-b border-gray-50 last:border-0">
       <span className="text-xs text-gray-500 shrink-0 w-40">{k}</span>
       <span className={`text-xs font-medium text-gray-900 text-right ${mono ? "font-mono" : ""}`}>{v}</span>
+    </div>
+  );
+}
+
+// ─── Salud tab ────────────────────────────────────────────────────────────────
+
+const MONITORED_COLS = [
+  "programaciones", "clientes", "efectivo", "cfdiEmitidos",
+  "remisiones", "solicitudesAutorizacion", "errores", "auditLog",
+] as const;
+
+function SemLight({ status }: { status: "ok" | "warn" | "error" | "unknown" }) {
+  const cfg = {
+    ok:      { dot: "bg-emerald-500",  ring: "ring-emerald-200", label: "OK",         text: "text-emerald-700" },
+    warn:    { dot: "bg-amber-400",    ring: "ring-amber-200",   label: "Advertencia", text: "text-amber-700" },
+    error:   { dot: "bg-red-500",      ring: "ring-red-200",     label: "Error",       text: "text-red-700" },
+    unknown: { dot: "bg-gray-300",     ring: "ring-gray-200",    label: "—",           text: "text-gray-400" },
+  }[status];
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 ring-1 ${cfg.ring} bg-white`}>
+      <span className={`inline-block h-2 w-2 rounded-full ${cfg.dot}`} />
+      <span className={`text-[11px] font-semibold ${cfg.text}`}>{cfg.label}</span>
+    </span>
+  );
+}
+
+function TabSalud() {
+  const [checking, setChecking]         = useState(false);
+  const [firebase, setFirebase]         = useState<"ok" | "warn" | "error" | "unknown">("unknown");
+  const [facturama, setFacturama]       = useState<"ok" | "warn" | "error" | "unknown">("unknown");
+  const [factMsg, setFactMsg]           = useState("");
+  const [counts, setCounts]             = useState<Record<string, number>>({});
+  const [lastCheck, setLastCheck]       = useState<string | null>(null);
+  const [errorCount, setErrorCount]     = useState<number | null>(null);
+  const [staleCount, setStaleCount]     = useState<number | null>(null);
+
+  async function runCheck() {
+    setChecking(true);
+
+    // Firebase connectivity
+    try {
+      await countCollectionDocs(COLLECTIONS.users);
+      setFirebase("ok");
+    } catch {
+      setFirebase("error");
+    }
+
+    // Facturama
+    try {
+      const res  = await fetch("/api/facturama/test");
+      const data = await res.json() as { ok?: boolean; sandbox?: boolean; mensaje?: string; error?: string };
+      if (!data.ok) { setFacturama("error"); setFactMsg(data.error ?? "Error"); }
+      else if (data.sandbox) { setFacturama("warn"); setFactMsg("SANDBOX — no es producción"); }
+      else { setFacturama("ok"); setFactMsg(data.mensaje ?? "Conectado"); }
+    } catch (e) {
+      setFacturama("error");
+      setFactMsg(e instanceof Error ? e.message : "Sin respuesta");
+    }
+
+    // Collection counts
+    const entries: Record<string, number> = {};
+    await Promise.all(
+      MONITORED_COLS.map(async (col) => {
+        try { entries[col] = await countCollectionDocs(col); }
+        catch { entries[col] = -1; }
+      }),
+    );
+    setCounts(entries);
+
+    // Unresolved error count
+    try {
+      const errs = await getCollectionDocs<AppError>(COLLECTIONS.errores, [limit(200)]);
+      setErrorCount(errs.filter((e) => !e.resolved).length);
+    } catch { setErrorCount(null); }
+
+    // Stale solicitudes (pendiente >7d)
+    try {
+      const sols = await getCollectionDocs<SolicitudAutorizacion>(COLLECTIONS.solicitudesAutorizacion);
+      const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      setStaleCount(sols.filter((s) => s.status === "pendiente" && s.creadoEn && new Date(s.creadoEn) < cutoff).length);
+    } catch { setStaleCount(null); }
+
+    setLastCheck(new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+    setChecking(false);
+  }
+
+  useEffect(() => { runCheck(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-gray-400">{lastCheck ? `Última verificación: ${lastCheck}` : "Verificando…"}</p>
+        <button
+          onClick={runCheck}
+          disabled={checking}
+          className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 cursor-pointer transition-colors disabled:opacity-50"
+        >
+          <RefreshCw size={12} className={checking ? "animate-spin" : ""} />
+          Actualizar
+        </button>
+      </div>
+
+      {/* Alertas activas */}
+      {((errorCount ?? 0) > 0 || (staleCount ?? 0) > 0) && (
+        <div className="space-y-2">
+          {(errorCount ?? 0) > 0 && (
+            <div className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+              <Bug size={15} className="text-red-500 shrink-0" />
+              <p className="text-xs font-medium text-red-700">{errorCount} error(es) sin resolver — revisa la pestaña Errores</p>
+            </div>
+          )}
+          {(staleCount ?? 0) > 0 && (
+            <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+              <Clock size={15} className="text-amber-500 shrink-0" />
+              <p className="text-xs font-medium text-amber-700">{staleCount} solicitud(es) pendiente(s) con más de 7 días sin resolver</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Servicios */}
+      <SectionCard title="Estado de servicios">
+        <div className="space-y-3">
+          {[
+            { label: "Firebase / Firestore", status: firebase, msg: firebase === "ok" ? "Conectado" : "Sin conexión" },
+            { label: "Facturama API",        status: facturama, msg: factMsg || "—" },
+          ].map(({ label, status, msg }) => (
+            <div key={label} className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0">
+              <div>
+                <p className="text-xs font-medium text-gray-900">{label}</p>
+                <p className="text-[11px] text-gray-400 mt-0.5">{msg}</p>
+              </div>
+              <SemLight status={status} />
+            </div>
+          ))}
+        </div>
+      </SectionCard>
+
+      {/* Conteos de colecciones */}
+      <SectionCard title="Documentos por colección">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {MONITORED_COLS.map((col) => {
+            const n = counts[col];
+            return (
+              <div key={col} className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5">
+                <p className="text-[10px] font-mono text-gray-400 truncate">{col}</p>
+                <p className={`text-lg font-bold mt-0.5 ${n === undefined ? "text-gray-300" : n < 0 ? "text-red-400" : "text-gray-900"}`}>
+                  {n === undefined ? "…" : n < 0 ? "ERR" : n.toLocaleString()}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      </SectionCard>
+    </div>
+  );
+}
+
+// ─── Errores tab ──────────────────────────────────────────────────────────────
+
+function fmtTime(iso: string) {
+  try {
+    return new Date(iso).toLocaleString("es-MX", {
+      day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
+    });
+  } catch { return iso; }
+}
+
+function TabErrores() {
+  const [errors, setErrors]     = useState<AppError[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [filter, setFilter]     = useState<"all" | "unresolved">("unresolved");
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [marking, setMarking]   = useState<string | null>(null);
+
+  function load() {
+    setLoading(true);
+    getCollectionDocs<AppError>(COLLECTIONS.errores, [orderBy("timestamp", "desc"), limit(200)])
+      .then(setErrors).catch(() => {}).finally(() => setLoading(false));
+  }
+
+  useEffect(load, []);
+
+  const shown = filter === "all" ? errors : errors.filter((e) => !e.resolved);
+
+  async function markResolved(id: string) {
+    if (!id) return;
+    setMarking(id);
+    try {
+      const { upsertDocument } = await import("@/lib/db");
+      await upsertDocument(COLLECTIONS.errores, id, { resolved: true });
+      setErrors((prev) => prev.map((e) => e.id === id ? { ...e, resolved: true } : e));
+      toast("success", "Resuelto", "Error marcado como resuelto");
+    } catch { toast("error", "Error", "No se pudo actualizar"); }
+    finally { setMarking(null); }
+  }
+
+  const typeIcon: Record<string, string> = {
+    runtime: "bg-red-100 text-red-600",
+    unhandled_promise: "bg-orange-100 text-orange-600",
+    network: "bg-blue-100 text-blue-600",
+    react: "bg-violet-100 text-violet-600",
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex gap-1 rounded-lg border border-gray-200 bg-gray-50 p-0.5">
+          {(["unresolved", "all"] as const).map((f) => (
+            <button key={f} onClick={() => setFilter(f)}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all cursor-pointer ${filter === f ? "bg-white text-gray-900 shadow-sm border border-gray-200" : "text-gray-500 hover:text-gray-700"}`}>
+              {f === "unresolved" ? `Sin resolver (${errors.filter((e) => !e.resolved).length})` : `Todos (${errors.length})`}
+            </button>
+          ))}
+        </div>
+        <button onClick={load} className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 cursor-pointer">
+          <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+          Actualizar
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="text-center py-12 text-gray-400 text-sm">Cargando errores…</div>
+      ) : shown.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 py-16 text-center">
+          <CheckCircle2 size={32} className="text-emerald-400" />
+          <p className="text-sm font-medium text-gray-600">Sin errores {filter === "unresolved" ? "sin resolver" : "registrados"}</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {shown.map((err) => {
+            const isExp = expanded === err.id;
+            return (
+              <div key={err.id} className={`rounded-xl border overflow-hidden transition-all ${err.resolved ? "border-gray-100 opacity-60" : "border-red-200"}`}>
+                <div
+                  className={`flex items-start gap-3 px-4 py-3 cursor-pointer ${err.resolved ? "bg-gray-50" : "bg-red-50/40"}`}
+                  onClick={() => setExpanded(isExp ? null : (err.id ?? null))}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 ${typeIcon[err.type] ?? "bg-gray-100 text-gray-600"}`}>{err.type}</span>
+                      <span className="text-[10px] text-gray-400 font-mono">{err.route}</span>
+                      <span className="text-[10px] text-gray-400">{fmtTime(err.timestamp)}</span>
+                      {err.resolved && <Pill label="resuelto" color="bg-emerald-100 text-emerald-700" />}
+                    </div>
+                    <p className="text-xs font-medium text-gray-900 truncate">{err.message}</p>
+                    <p className="text-[11px] text-gray-400 mt-0.5">{err.userName} · {err.userEmail}</p>
+                  </div>
+                  <ChevronRight size={14} className={`text-gray-400 shrink-0 transition-transform mt-0.5 ${isExp ? "rotate-90" : ""}`} />
+                </div>
+                {isExp && (
+                  <div className="border-t border-gray-100 bg-white px-4 py-3 space-y-3">
+                    {err.stack && (
+                      <div>
+                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Stack trace</p>
+                        <pre className="rounded-lg bg-gray-900 text-emerald-400 text-[10px] font-mono p-3 overflow-auto max-h-48 whitespace-pre-wrap">{err.stack}</pre>
+                      </div>
+                    )}
+                    {err.context && (
+                      <div>
+                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Contexto</p>
+                        <pre className="rounded-lg bg-gray-50 text-gray-700 text-[10px] font-mono p-3">{JSON.stringify(err.context, null, 2)}</pre>
+                      </div>
+                    )}
+                    {!err.resolved && (
+                      <button
+                        onClick={() => markResolved(err.id ?? "")}
+                        disabled={marking === err.id}
+                        className="flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 cursor-pointer disabled:opacity-50"
+                      >
+                        <CheckCircle2 size={12} />
+                        {marking === err.id ? "Marcando…" : "Marcar como resuelto"}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Integridad tab ───────────────────────────────────────────────────────────
+
+type CheckStatus = "idle" | "running" | "ok" | "issues";
+
+interface CheckState {
+  status: CheckStatus;
+  result?: IntegrityResult;
+}
+
+function TabIntegridad() {
+  const [states, setStates] = useState<Record<string, CheckState>>(() =>
+    Object.fromEntries(INTEGRITY_CHECKS.map((c) => [c.id, { status: "idle" }])),
+  );
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [runningAll, setRunningAll] = useState(false);
+
+  function updateCheck(id: string, patch: Partial<CheckState>) {
+    setStates((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
+  }
+
+  async function runOne(checkId: string) {
+    const check = INTEGRITY_CHECKS.find((c) => c.id === checkId);
+    if (!check) return;
+    updateCheck(checkId, { status: "running" });
+    try {
+      const result = await check.run();
+      updateCheck(checkId, { status: result.ok ? "ok" : "issues", result });
+    } catch {
+      updateCheck(checkId, { status: "issues", result: { ok: false, count: 1, items: [{ id: "err", desc: "Error ejecutando la verificación" }], durationMs: 0 } });
+    }
+  }
+
+  async function runAll() {
+    setRunningAll(true);
+    await Promise.all(INTEGRITY_CHECKS.map((c) => runOne(c.id)));
+    setRunningAll(false);
+  }
+
+  const severityColor = { error: "bg-red-100 text-red-600", warning: "bg-amber-100 text-amber-600", info: "bg-blue-100 text-blue-600" };
+
+  const summary = {
+    ok:     INTEGRITY_CHECKS.filter((c) => states[c.id]?.status === "ok").length,
+    issues: INTEGRITY_CHECKS.filter((c) => states[c.id]?.status === "issues").length,
+    idle:   INTEGRITY_CHECKS.filter((c) => states[c.id]?.status === "idle" || states[c.id]?.status === "running").length,
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex gap-3 text-xs">
+          <span className="text-emerald-600 font-semibold">{summary.ok} OK</span>
+          <span className="text-red-500 font-semibold">{summary.issues} con problemas</span>
+          <span className="text-gray-400">{summary.idle} pendientes</span>
+        </div>
+        <button
+          onClick={runAll}
+          disabled={runningAll}
+          className="flex items-center gap-1.5 rounded-xl bg-[#CC2229] px-4 py-2 text-xs font-semibold text-white hover:bg-[#B01E24] cursor-pointer disabled:opacity-50"
+        >
+          <Activity size={13} className={runningAll ? "animate-pulse" : ""} />
+          {runningAll ? "Verificando…" : "Ejecutar todas"}
+        </button>
+      </div>
+
+      <div className="space-y-2">
+        {INTEGRITY_CHECKS.map((check) => {
+          const state = states[check.id];
+          const isExp = expanded === check.id;
+          const result = state.result;
+          return (
+            <div key={check.id} className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
+              <div className="flex items-center gap-3 px-4 py-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <p className="text-xs font-semibold text-gray-900">{check.label}</p>
+                    <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 ${severityColor[check.severity]}`}>{check.severity}</span>
+                  </div>
+                  <p className="text-[11px] text-gray-400">{check.description}</p>
+                  {result && (
+                    <p className={`text-[11px] font-medium mt-1 ${result.ok ? "text-emerald-600" : "text-red-600"}`}>
+                      {result.ok ? "Sin problemas" : `${result.count} problema(s) encontrado(s)`}
+                      {" · "}
+                      <span className="text-gray-400">{result.durationMs}ms</span>
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {state.status === "running" && <RefreshCw size={14} className="animate-spin text-gray-400" />}
+                  {state.status === "ok"      && <CheckCircle2 size={16} className="text-emerald-500" />}
+                  {state.status === "issues"  && <XCircle size={16} className="text-red-500" />}
+                  <button
+                    onClick={() => runOne(check.id)}
+                    disabled={state.status === "running"}
+                    className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-[11px] font-medium text-gray-600 hover:bg-gray-50 cursor-pointer disabled:opacity-40"
+                  >
+                    {state.status === "running" ? "…" : "Verificar"}
+                  </button>
+                  {result && result.items.length > 0 && (
+                    <button onClick={() => setExpanded(isExp ? null : check.id)} className="cursor-pointer">
+                      <ChevronDown size={14} className={`text-gray-400 transition-transform ${isExp ? "rotate-180" : ""}`} />
+                    </button>
+                  )}
+                </div>
+              </div>
+              {isExp && result && result.items.length > 0 && (
+                <div className="border-t border-gray-100 bg-gray-50 px-4 py-3 space-y-1.5 max-h-64 overflow-y-auto">
+                  {result.items.map((item) => (
+                    <div key={item.id} className="flex items-start gap-2 text-[11px]">
+                      <AlertTriangle size={11} className="text-amber-500 shrink-0 mt-0.5" />
+                      <span className="text-gray-700">{item.desc}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Bitácora tab ─────────────────────────────────────────────────────────────
+
+function TabBitacora() {
+  const [entries, setEntries]     = useState<AuditEntry[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [filterUser, setFilterUser] = useState("");
+  const [filterCol, setFilterCol]   = useState("");
+  const [filterAction, setFilterAction] = useState<"" | "create" | "update" | "delete">("");
+
+  function load() {
+    setLoading(true);
+    getCollectionDocs<AuditEntry>(COLLECTIONS.auditLog, [orderBy("timestamp", "desc"), limit(500)])
+      .then(setEntries).catch(() => {}).finally(() => setLoading(false));
+  }
+
+  useEffect(load, []);
+
+  const shown = entries.filter((e) => {
+    if (filterUser && !e.userEmail.toLowerCase().includes(filterUser.toLowerCase())) return false;
+    if (filterCol && !e.collection.toLowerCase().includes(filterCol.toLowerCase())) return false;
+    if (filterAction && e.action !== filterAction) return false;
+    return true;
+  });
+
+  const actionStyle: Record<string, string> = {
+    create: "bg-emerald-100 text-emerald-700",
+    update: "bg-blue-100 text-blue-700",
+    delete: "bg-red-100 text-red-600",
+  };
+
+  const inp = "rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#CC2229]/20 bg-white";
+
+  const uniqueUsers = Array.from(new Set(entries.map((e) => e.userEmail)));
+  const uniqueCols  = Array.from(new Set(entries.map((e) => e.collection)));
+
+  return (
+    <div className="space-y-4">
+      {/* Filters */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <select value={filterUser} onChange={(e) => setFilterUser(e.target.value)} className={inp}>
+          <option value="">Todos los usuarios</option>
+          {uniqueUsers.map((u) => <option key={u} value={u}>{u}</option>)}
+        </select>
+        <select value={filterCol} onChange={(e) => setFilterCol(e.target.value)} className={inp}>
+          <option value="">Todas las colecciones</option>
+          {uniqueCols.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select value={filterAction} onChange={(e) => setFilterAction(e.target.value as "" | "create" | "update" | "delete")} className={inp}>
+          <option value="">Todas las acciones</option>
+          <option value="create">create</option>
+          <option value="update">update</option>
+          <option value="delete">delete</option>
+        </select>
+        <button onClick={load} className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 cursor-pointer">
+          <RefreshCw size={11} className={loading ? "animate-spin" : ""} />
+          {loading ? "Cargando…" : "Actualizar"}
+        </button>
+        <span className="text-xs text-gray-400 ml-auto">{shown.length} de {entries.length} registros</span>
+      </div>
+
+      {loading && entries.length === 0 ? (
+        <div className="text-center py-12 text-gray-400 text-sm">Cargando bitácora…</div>
+      ) : shown.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 py-16 text-center">
+          <ClipboardList size={32} className="text-gray-200" />
+          <p className="text-sm font-medium text-gray-500">Sin registros de auditoría</p>
+          <p className="text-xs text-gray-400">Las acciones de crear, actualizar y eliminar documentos quedarán registradas aquí.</p>
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-gray-100 bg-gray-50">
+                <th className="px-4 py-2.5 text-left font-semibold text-gray-400 uppercase tracking-wide text-[10px]">Acción</th>
+                <th className="px-4 py-2.5 text-left font-semibold text-gray-400 uppercase tracking-wide text-[10px]">Colección / Doc</th>
+                <th className="px-4 py-2.5 text-left font-semibold text-gray-400 uppercase tracking-wide text-[10px]">Usuario</th>
+                <th className="px-4 py-2.5 text-left font-semibold text-gray-400 uppercase tracking-wide text-[10px] hidden md:table-cell">Planta</th>
+                <th className="px-4 py-2.5 text-left font-semibold text-gray-400 uppercase tracking-wide text-[10px]">Fecha</th>
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((e, i) => (
+                <tr key={e.id ?? i} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50">
+                  <td className="px-4 py-2.5">
+                    <span className={`rounded-full px-2 py-0.5 font-semibold text-[10px] ${actionStyle[e.action] ?? "bg-gray-100 text-gray-600"}`}>{e.action}</span>
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <p className="font-mono text-[10px] text-gray-700">{e.collection}</p>
+                    <p className="text-[10px] text-gray-400 truncate max-w-[160px]">{e.summary ?? e.documentId}</p>
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <p className="font-medium text-gray-800">{e.userName}</p>
+                    <p className="text-[10px] text-gray-400">{e.userEmail}</p>
+                  </td>
+                  <td className="px-4 py-2.5 text-gray-500 hidden md:table-cell">{e.planta ?? "—"}</td>
+                  <td className="px-4 py-2.5 text-gray-400">{fmtTime(e.timestamp)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -666,7 +1187,7 @@ function TabHerramientas() {
 export default function DevPage() {
   const session = getStoredSession();
   const router  = useRouter();
-  const [activeTab, setActiveTab] = useState<Tab>("sistema");
+  const [activeTab, setActiveTab] = useState<Tab>("salud");
 
   useEffect(() => {
     if (!session || session.email !== DEVELOPER_EMAIL) {
@@ -706,6 +1227,10 @@ export default function DevPage() {
         ))}
       </div>
 
+      {activeTab === "salud"        && <TabSalud />}
+      {activeTab === "errores"      && <TabErrores />}
+      {activeTab === "integridad"   && <TabIntegridad />}
+      {activeTab === "bitacora"     && <TabBitacora />}
       {activeTab === "sistema"      && <TabSistema />}
       {activeTab === "modulos"      && <TabModulos />}
       {activeTab === "colecciones"  && <TabColecciones />}

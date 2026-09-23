@@ -46,6 +46,7 @@ interface EntradaMaterial {
 }
 interface ExistenciaInicial {
   id?: string; periodo: string;
+  fecha?: string;
   cemento: number; grava: number; arena4: number; arena5: number; aditivo: number;
   hr25: number; imper: number; costalFibra: number; colorCubetas: number;
   almacenMateriales?: Record<string, number>; planta?: string;
@@ -746,7 +747,7 @@ export default function InventarioPage() {
     let rows: MovRow[] = [];
     if (existenciaInicial) {
       const [y, m] = periodo.split("-");
-      const fechaExi = `01/${m}/${y}`;
+      const fechaExi = existenciaInicial.fecha ?? `01/${m}/${y}`;
       INVENTARIO_MATERIALES.forEach(({ key, label, unidad }) => {
         const cantidad = existenciaInicial[key] ?? 0;
         if (cantidad > 0) rows.push({ _source: "existencia", material: key, label, cantidad, unidad, fecha: fechaExi });
@@ -1071,7 +1072,17 @@ export default function InventarioPage() {
                         <td className="px-4 py-3 text-gray-900 font-mono font-semibold">{fmt(row.cantidad)}{row.unidad ? ` ${row.unidad}` : ""}</td>
                         <td className="px-4 py-3 text-gray-400">—</td>
                         <td className="px-4 py-3 text-gray-400 text-xs capitalize">{periodLabel(periodo)}</td>
-                        <td />
+                        <td className="px-4 py-3">
+                          {isSuperAdmin && (
+                            <button
+                              onClick={() => setShowExistenciaForm(true)}
+                              className="text-gray-300 hover:text-[#CC2229] transition-colors cursor-pointer"
+                              title="Editar existencia inicial"
+                            >
+                              <Edit2 size={14} />
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     );
                     const e = row.data;

@@ -6,6 +6,7 @@ import { Construction, FlaskConical, ArrowLeft } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
 import Header from "@/components/Header";
 import DevToolsOverlay from "@/components/DevToolsOverlay";
+import ErrorCaptureProvider from "@/components/ErrorCaptureProvider";
 import {
   getAllowedModuleSet,
   getStoredSession,
@@ -254,6 +255,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <div className="flex h-screen overflow-hidden bg-background text-foreground">
       <Sidebar mobileOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="flex min-h-0 flex-1 flex-col min-w-0">
+        <ErrorCaptureProvider />
         <DevToolsOverlay />
         <Header title={title} section={section} onMobileMenu={() => setSidebarOpen(true)} />
         <main id="duro-module-content" className="min-h-0 flex-1 overflow-y-auto bg-[#1A1A1A] p-3 lg:p-5">

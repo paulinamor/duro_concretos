@@ -122,6 +122,33 @@ export interface Notificacion {
   planta?: string;
 }
 
+export interface AppError {
+  id?: string;
+  message: string;
+  stack?: string;
+  route: string;
+  userEmail: string;
+  userName: string;
+  timestamp: string;
+  type: "runtime" | "unhandled_promise" | "network" | "react";
+  resolved: boolean;
+  context?: Record<string, unknown>;
+}
+
+export interface AuditEntry {
+  id?: string;
+  action: "create" | "update" | "delete";
+  collection: string;
+  documentId: string;
+  userEmail: string;
+  userName: string;
+  timestamp: string;
+  planta?: string;
+  summary?: string;
+  before?: Record<string, unknown>;
+  after?: Record<string, unknown>;
+}
+
 export async function getAllUserProfiles(): Promise<UserProfile[]> {
   return getCollectionDocs<UserProfile>("users");
 }
@@ -192,6 +219,8 @@ export const COLLECTIONS = {
   notificaciones: "notificaciones",
   asistencias: "asistencias",
   productos: "productos",
+  errores:   "errores",
+  auditLog:  "auditLog",
 } as const;
 
 export { where, orderBy, limit, startAfter, type QueryConstraint };

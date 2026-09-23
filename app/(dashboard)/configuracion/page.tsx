@@ -28,6 +28,7 @@ import {
   type Planta,
   type UserRole,
 } from "@/lib/auth";
+import { logAudit } from "@/lib/errorLogger";
 
 type UserDraft = {
   uid: string | null;
@@ -400,6 +401,7 @@ export default function ConfiguracionPage() {
         resueltoPor: session?.email ?? "",
         resueltaEn: new Date().toISOString(),
       });
+      logAudit({ action: "update", collection: COLLECTIONS.solicitudesAutorizacion, documentId: sol.id, summary: `Aprobó solicitud ${sol.tipo} de ${sol.solicitanteEmail}` });
       setSolicitudes((prev) => prev.map((s) => s.id === sol.id ? { ...s, status: "aprobada" } : s));
       if (sol.tipo === "eliminar_programacion") {
         showToast("success", "Aprobada", `Programación ${sol.folio} eliminada correctamente.`);
@@ -427,6 +429,7 @@ export default function ConfiguracionPage() {
         resueltaEn: new Date().toISOString(),
         comentarioResolucion: comentarioRechazo.trim(),
       });
+      logAudit({ action: "update", collection: COLLECTIONS.solicitudesAutorizacion, documentId: sol.id, summary: `Rechazó solicitud ${sol.tipo} de ${sol.solicitanteEmail}` });
       setSolicitudes((prev) => prev.map((s) => s.id === sol.id ? { ...s, status: "rechazada" } : s));
       setRechazandoId(null);
       setComentarioRechazo("");
