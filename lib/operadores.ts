@@ -1,3 +1,10 @@
+export interface DocEmpleado {
+  nombre: string;    // etiqueta del documento, ej. "Contrato 2026"
+  url: string;       // download URL de Firebase Storage
+  path: string;      // storage path para poder eliminarlo
+  fechaSubida: string;
+}
+
 export interface Operador {
   id: string;
   apodo: string;
@@ -18,6 +25,8 @@ export interface Operador {
   vencimientoCredencial: string;
   contactosEmergencia: string;
   planta?: string;
+  fotoUrl?: string;
+  documentos?: DocEmpleado[];
 }
 
 export const operadores: Operador[] = [
