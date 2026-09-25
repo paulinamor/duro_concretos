@@ -27,7 +27,7 @@ import StatusBadge from "@/components/StatusBadge";
 import ClienteCombobox from "@/components/ClienteCombobox";
 import CargaMasivaModal from "@/components/finanzas/CargaMasivaModal";
 import AppSelect from "@/components/AppSelect";
-import { upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
+import { upsertDocument, deleteDocument, getDocument, COLLECTIONS } from "@/lib/db";
 import { withPlantaTag } from "@/lib/auth";
 import { useCollectionRaw, useCollectionWithLoading } from "@/lib/useCollection";
 import type { SatDownloadKind } from "@/lib/satDownloads";
@@ -168,12 +168,50 @@ function mesLabel(iso: string): string {
   return `${MESES[parseInt(m, 10) - 1]} ${y}`;
 }
 
+// ─── Categoria Cell (inline editable, acepta nuevas) ─────────────────────────
+
+function CategoriaCell({
+  value,
+  onSave,
+  dark = false,
+}: {
+  value: string;
+  onSave: (cat: string) => void;
+  dark?: boolean;
+}) {
+  const [local, setLocal] = useState(value);
+  useEffect(() => { setLocal(value); }, [value]);
+
+  function commit() {
+    const trimmed = local.trim();
+    if (trimmed !== value) onSave(trimmed);
+  }
+
+  const base = dark
+    ? `text-xs bg-[#1A1A1A] border rounded-lg px-2.5 py-1 focus:outline-none focus:border-blue-400 transition-colors ${local ? "border-blue-500/50 text-blue-300 font-medium" : "border-[#3A3A3A] text-gray-400"}`
+    : `text-[10px] bg-transparent border rounded px-1.5 py-0.5 w-32 focus:outline-none focus:border-blue-400 transition-colors ${local ? "border-blue-200 text-blue-700 font-semibold hover:border-blue-400" : "border-gray-200 text-gray-400 hover:border-gray-400"}`;
+
+  return (
+    <input
+      type="text"
+      value={local}
+      onChange={(e) => setLocal(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+      list="cat-cxp-datalist"
+      placeholder="Sin categoría"
+      className={base}
+    />
+  );
+}
+
 // ─── Form Drawer ──────────────────────────────────────────────────────────────
 
 function FormDrawer({
   open,
   kind,
   clientesList,
+  categorias,
   onClose,
   onSave,
   initial,
@@ -183,6 +221,7 @@ function FormDrawer({
   open: boolean;
   kind: SatDownloadKind;
   clientesList: string[];
+  categorias: string[];
   onClose: () => void;
   onSave: (data: Omit<Cuenta, "id" | "abonos" | "planta">) => Promise<void>;
   initial?: Cuenta;
@@ -463,7 +502,7 @@ function FormDrawer({
                 className={inp}
               />
               <datalist id="categorias-cxp-list">
-                {CATEGORIAS_CXP.map((cat) => (
+                {categorias.map((cat) => (
                   <option key={cat} value={cat} />
                 ))}
               </datalist>
@@ -1168,19 +1207,11 @@ function CuentaRow({
                 {kind === "cxp" && (
                   <div onClick={(e) => e.stopPropagation()}>
                     <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Categoría</p>
-                    <select
+                    <CategoriaCell
                       value={cuenta.categoria ?? ""}
-                      onChange={(e) => { e.stopPropagation(); void onCategoriaChange?.(cuenta, e.target.value); }}
-                      onClick={(e) => e.stopPropagation()}
-                      className={`text-xs bg-[#1A1A1A] border rounded-lg px-2.5 py-1 cursor-pointer focus:outline-none focus:border-blue-400 transition-colors ${
-                        cuenta.categoria
-                          ? "border-blue-500/50 text-blue-300 font-medium"
-                          : "border-[#3A3A3A] text-gray-400"
-                      }`}
-                    >
-                      <option value="">— Sin categoría</option>
-                      {CATEGORIAS_CXP.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
-                    </select>
+                      onSave={(cat) => void onCategoriaChange?.(cuenta, cat)}
+                      dark
+                    />
                   </div>
                 )}
                 {/* Fila 2: datos CFDI */}
@@ -1625,22 +1656,13 @@ function ExcelTable({
                             ? "✓ Liquidada"
                             : currency(saldo)}
                         </td>
-                        {/* Categoría (CxP only) — inline dropdown */}
+                        {/* Categoría (CxP only) — inline editable */}
                         {!isCxc && (
                           <td className="px-2 py-1 whitespace-nowrap border-r border-black/10" onClick={(e) => e.stopPropagation()}>
-                            <select
+                            <CategoriaCell
                               value={c.categoria ?? ""}
-                              onChange={(e) => { e.stopPropagation(); void onCategoriaChange?.(c, e.target.value); }}
-                              onClick={(e) => e.stopPropagation()}
-                              className={`text-[10px] bg-transparent border rounded px-1.5 py-0.5 cursor-pointer focus:outline-none focus:border-blue-400 transition-colors ${
-                                c.categoria
-                                  ? "border-blue-200 text-blue-700 font-semibold hover:border-blue-400"
-                                  : "border-gray-200 text-gray-400 hover:border-gray-400"
-                              }`}
-                            >
-                              <option value="">— Sin categoría</option>
-                              {CATEGORIAS_CXP.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
-                            </select>
+                              onSave={(cat) => void onCategoriaChange?.(c, cat)}
+                            />
                           </td>
                         )}
                         {/* Actions */}
@@ -1875,6 +1897,13 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
   const [filterCategoria, setFilterCategoria] = useState("todos");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<"dark" | "excel">("excel");
+  const [categoriasGuardadas, setCategoriasGuardadas] = useState<string[]>([]);
+
+  useEffect(() => {
+    getDocument<{ lista: string[] }>(COLLECTIONS.configuracion, "categorias-cxp").then((doc) => {
+      if (doc?.lista?.length) setCategoriasGuardadas(doc.lista);
+    });
+  }, []);
 
   const { data: rawCuentas, loading } = useCollectionWithLoading<Cuenta>(collection);
   const [loadingLong, setLoadingLong] = useState(false);
@@ -1887,6 +1916,13 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
     () => rawCuentas.map((c) => ({ ...c, status: computeStatus(c) })),
     [rawCuentas],
   );
+
+  // Categorías dinámicas: hardcodeadas + guardadas + ya usadas en registros
+  const categoriasActivas = useMemo(() => {
+    const usadas = cuentas.map((c) => c.categoria).filter((c): c is string => !!c?.trim());
+    const merged = [...CATEGORIAS_CXP, ...categoriasGuardadas, ...usadas];
+    return Array.from(new Set(merged.map((c) => c.trim()).filter(Boolean))).sort();
+  }, [cuentas, categoriasGuardadas]);
 
   // Deriva del array vivo para que los cambios de Firestore se reflejen sin reabrir el drawer
   const abonoTarget = abonoTargetId ? (cuentas.find((c) => c.id === abonoTargetId) ?? null) : null;
@@ -2235,8 +2271,15 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
   }
 
   async function handleCategoriaChange(cuenta: Cuenta, categoria: string) {
+    const cat = categoria.trim();
     const { id, ...data } = cuenta;
-    await upsertDocument(collection, id!, withPlantaTag({ ...data, categoria }));
+    await upsertDocument(collection, id!, withPlantaTag({ ...data, categoria: cat }));
+    // Persistir la categoría si es nueva
+    if (cat && !categoriasActivas.includes(cat)) {
+      const nuevaLista = Array.from(new Set([...categoriasActivas, cat])).sort();
+      setCategoriasGuardadas((prev) => Array.from(new Set([...prev, cat])).sort());
+      await upsertDocument(COLLECTIONS.configuracion, "categorias-cxp", { lista: nuevaLista });
+    }
   }
 
   async function handleCargaMasiva(records: Omit<Cuenta, "id" | "planta">[]) {
@@ -2768,12 +2811,18 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
         open={showForm}
         kind={kind}
         clientesList={clientesList}
+        categorias={categoriasActivas}
         initial={editing ?? undefined}
         onClose={() => { setShowForm(false); setEditing(null); }}
         onSave={handleSave}
         onAplicarNC={editing ? () => handleAplicarNC(editing) : undefined}
         ncYaAplicada={editing?.id ? ncYaAplicadaMap.get(editing.id) : undefined}
       />
+      {/* Datalist global para CategoriaCell — referenciado por id en los inputs */}
+      <datalist id="cat-cxp-datalist">
+        {categoriasActivas.map((cat) => <option key={cat} value={cat} />)}
+      </datalist>
+
       <AbonoDrawer cuenta={abonoTarget} kind={kind} onClose={() => setAbonoTargetId(null)} onSave={handleAbono} onEditAbono={handleEditAbono} onDeleteAbono={handleDeleteAbono} />
       <EditAbonoDrawer target={editAbonoTarget} kind={kind} onClose={() => setEditAbonoTarget(null)} onSave={handleEditAbono} />
       <CargaMasivaModal open={showCargaMasiva} kind={kind} existingUuids={existingUuids} onClose={() => setShowCargaMasiva(false)} onConfirm={handleCargaMasiva} />
