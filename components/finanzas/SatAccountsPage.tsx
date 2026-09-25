@@ -173,35 +173,27 @@ function mesLabel(iso: string): string {
 function CategoriaCell({
   value,
   onSave,
+  categorias,
   dark = false,
 }: {
   value: string;
   onSave: (cat: string) => void;
+  categorias: string[];
   dark?: boolean;
 }) {
-  const [local, setLocal] = useState(value);
-  useEffect(() => { setLocal(value); }, [value]);
-
-  function commit() {
-    const trimmed = local.trim();
-    if (trimmed !== value) onSave(trimmed);
-  }
-
   const base = dark
-    ? `text-xs bg-[#1A1A1A] border rounded-lg px-2.5 py-1 focus:outline-none focus:border-blue-400 transition-colors ${local ? "border-blue-500/50 text-blue-300 font-medium" : "border-[#3A3A3A] text-gray-400"}`
-    : `text-[10px] bg-transparent border rounded px-1.5 py-0.5 w-32 focus:outline-none focus:border-blue-400 transition-colors ${local ? "border-blue-200 text-blue-700 font-semibold hover:border-blue-400" : "border-gray-200 text-gray-400 hover:border-gray-400"}`;
+    ? `text-xs bg-[#1A1A1A] border rounded-lg px-2.5 py-1 focus:outline-none focus:border-blue-400 transition-colors cursor-pointer ${value ? "border-blue-500/50 text-blue-300 font-medium" : "border-[#3A3A3A] text-gray-400"}`
+    : `text-[10px] bg-white border rounded px-1.5 py-0.5 w-32 focus:outline-none focus:border-blue-400 transition-colors cursor-pointer ${value ? "border-blue-200 text-blue-700 font-semibold" : "border-gray-200 text-gray-400"}`;
 
   return (
-    <input
-      type="text"
-      value={local}
-      onChange={(e) => setLocal(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-      list="cat-cxp-datalist"
-      placeholder="Sin categoría"
+    <select
+      value={value}
+      onChange={(e) => onSave(e.target.value)}
       className={base}
-    />
+    >
+      <option value="">Sin categoría</option>
+      {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
+    </select>
   );
 }
 
@@ -1101,6 +1093,7 @@ function CuentaRow({
   onCategoriaChange,
   onAplicarNC,
   ncYaAplicada,
+  categorias,
 }: {
   cuenta: Cuenta;
   kind: SatDownloadKind;
@@ -1114,6 +1107,7 @@ function CuentaRow({
   onCategoriaChange?: (c: Cuenta, cat: string) => Promise<void>;
   onAplicarNC?: (c: Cuenta) => void;
   ncYaAplicada?: boolean;
+  categorias: string[];
 }) {
   const [expanded, setExpanded] = useState(false);
   const saldo = cuenta.total - cuenta.montoPagado;
@@ -1210,6 +1204,7 @@ function CuentaRow({
                     <CategoriaCell
                       value={cuenta.categoria ?? ""}
                       onSave={(cat) => void onCategoriaChange?.(cuenta, cat)}
+                      categorias={categorias}
                       dark
                     />
                   </div>
@@ -1407,6 +1402,7 @@ function ExcelTable({
   onCategoriaChange,
   ncYaAplicadaMap,
   onAplicarNC,
+  categorias,
 }: {
   filtered: Cuenta[];
   kind: SatDownloadKind;
@@ -1417,6 +1413,7 @@ function ExcelTable({
   onCategoriaChange?: (c: Cuenta, cat: string) => Promise<void>;
   ncYaAplicadaMap?: Map<string, boolean>;
   onAplicarNC?: (c: Cuenta) => void;
+  categorias: string[];
 }) {
   const isCxc = kind === "cxc";
   const contraparteLabel = isCxc ? "Nombre Receptor" : "Nombre Emisor";
@@ -1662,6 +1659,7 @@ function ExcelTable({
                             <CategoriaCell
                               value={c.categoria ?? ""}
                               onSave={(cat) => void onCategoriaChange?.(c, cat)}
+                              categorias={categorias}
                             />
                           </td>
                         )}
@@ -2647,7 +2645,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
         {!isCxc && (
           <AppSelect dark compact value={filterCategoria} onChange={(e) => setFilterCategoria(e.target.value)} wrapperClassName="">
             <option value="todos">Categoría: Todas</option>
-            {CATEGORIAS_CXP.map((c) => <option key={c} value={c}>{c}</option>)}
+            {categoriasActivas.map((c) => <option key={c} value={c}>{c}</option>)}
           </AppSelect>
         )}
 
@@ -2729,6 +2727,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
           onCategoriaChange={handleCategoriaChange}
           ncYaAplicadaMap={ncYaAplicadaMap}
           onAplicarNC={handleAplicarNC}
+          categorias={categoriasActivas}
         />
       ) : (
         <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
@@ -2774,6 +2773,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
                     onCategoriaChange={handleCategoriaChange}
                     onAplicarNC={handleAplicarNC}
                     ncYaAplicada={ncYaAplicadaMap.get(c.id!)}
+                    categorias={categoriasActivas}
                   />
                 ))}
               </tbody>
