@@ -949,7 +949,7 @@ export default function DieselPage() {
       </div>{/* end 2-col grid */}
 
       <FormDrawer open={showForm} onClose={() => { setShowForm(false); setEditingCarga(null); }} onSave={handleSave} editing={editingCarga}
-        unidadesList={[...unidadesList, ...cargas.map((c) => c.unidad)].filter((v, i, a) => v && a.indexOf(v) === i).sort()}
+        unidadesList={unidadesList}
         lastKmByUnidad={lastKmByUnidad} />
 
       {confirmDelete && (
