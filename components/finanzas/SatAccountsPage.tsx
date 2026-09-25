@@ -1059,6 +1059,7 @@ function CuentaRow({
   onDelete,
   onEditAbono,
   onDeleteAbono,
+  onCategoriaChange,
   onAplicarNC,
   ncYaAplicada,
 }: {
@@ -1071,6 +1072,7 @@ function CuentaRow({
   onDelete: (c: Cuenta) => void;
   onEditAbono: (c: Cuenta, index: number) => void;
   onDeleteAbono: (c: Cuenta, index: number) => void;
+  onCategoriaChange?: (c: Cuenta, cat: string) => Promise<void>;
   onAplicarNC?: (c: Cuenta) => void;
   ncYaAplicada?: boolean;
 }) {
@@ -1161,6 +1163,24 @@ function CuentaRow({
                   <div>
                     <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-0.5">Concepto</p>
                     <p className="text-gray-300 text-xs max-w-[280px]">{cuenta.concepto}</p>
+                  </div>
+                )}
+                {kind === "cxp" && (
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Categoría</p>
+                    <select
+                      value={cuenta.categoria ?? ""}
+                      onChange={(e) => { e.stopPropagation(); void onCategoriaChange?.(cuenta, e.target.value); }}
+                      onClick={(e) => e.stopPropagation()}
+                      className={`text-xs bg-[#1A1A1A] border rounded-lg px-2.5 py-1 cursor-pointer focus:outline-none focus:border-blue-400 transition-colors ${
+                        cuenta.categoria
+                          ? "border-blue-500/50 text-blue-300 font-medium"
+                          : "border-[#3A3A3A] text-gray-400"
+                      }`}
+                    >
+                      <option value="">— Sin categoría</option>
+                      {CATEGORIAS_CXP.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
+                    </select>
                   </div>
                 )}
                 {/* Fila 2: datos CFDI */}
@@ -1353,6 +1373,7 @@ function ExcelTable({
   onEdit,
   onDelete,
   onDeleteAbono,
+  onCategoriaChange,
   ncYaAplicadaMap,
   onAplicarNC,
 }: {
@@ -1362,6 +1383,7 @@ function ExcelTable({
   onEdit: (c: Cuenta) => void;
   onDelete: (c: Cuenta) => void;
   onDeleteAbono: (c: Cuenta, index: number) => void;
+  onCategoriaChange?: (c: Cuenta, cat: string) => Promise<void>;
   ncYaAplicadaMap?: Map<string, boolean>;
   onAplicarNC?: (c: Cuenta) => void;
 }) {
@@ -1603,16 +1625,22 @@ function ExcelTable({
                             ? "✓ Liquidada"
                             : currency(saldo)}
                         </td>
-                        {/* Categoría (CxP only) */}
+                        {/* Categoría (CxP only) — inline dropdown */}
                         {!isCxc && (
                           <td className="px-2 py-1 whitespace-nowrap border-r border-black/10" onClick={(e) => e.stopPropagation()}>
-                            {c.categoria ? (
-                              <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 text-[10px] font-medium px-2 py-0.5">
-                                {c.categoria}
-                              </span>
-                            ) : (
-                              <span className="text-gray-400 text-[10px]">—</span>
-                            )}
+                            <select
+                              value={c.categoria ?? ""}
+                              onChange={(e) => { e.stopPropagation(); void onCategoriaChange?.(c, e.target.value); }}
+                              onClick={(e) => e.stopPropagation()}
+                              className={`text-[10px] bg-transparent border rounded px-1.5 py-0.5 cursor-pointer focus:outline-none focus:border-blue-400 transition-colors ${
+                                c.categoria
+                                  ? "border-blue-200 text-blue-700 font-semibold hover:border-blue-400"
+                                  : "border-gray-200 text-gray-400 hover:border-gray-400"
+                              }`}
+                            >
+                              <option value="">— Sin categoría</option>
+                              {CATEGORIAS_CXP.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
+                            </select>
                           </td>
                         )}
                         {/* Actions */}
@@ -2206,6 +2234,11 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
     }
   }
 
+  async function handleCategoriaChange(cuenta: Cuenta, categoria: string) {
+    const { id, ...data } = cuenta;
+    await upsertDocument(collection, id!, withPlantaTag({ ...data, categoria }));
+  }
+
   async function handleCargaMasiva(records: Omit<Cuenta, "id" | "planta">[]) {
     const items: Cuenta[] = records.map((r) => {
       const uuidNorm = r.uuid?.trim().toUpperCase() ?? "";
@@ -2650,6 +2683,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
           onEdit={(c) => { setEditing(c); setShowForm(true); }}
           onDelete={handleDelete}
           onDeleteAbono={handleDeleteAbono}
+          onCategoriaChange={handleCategoriaChange}
           ncYaAplicadaMap={ncYaAplicadaMap}
           onAplicarNC={handleAplicarNC}
         />
@@ -2694,6 +2728,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
                     onDelete={handleDelete}
                     onEditAbono={(c, i) => setEditAbonoTarget({ cuenta: c, index: i })}
                     onDeleteAbono={handleDeleteAbono}
+                    onCategoriaChange={handleCategoriaChange}
                     onAplicarNC={handleAplicarNC}
                     ncYaAplicada={ncYaAplicadaMap.get(c.id!)}
                   />
