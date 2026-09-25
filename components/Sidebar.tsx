@@ -47,6 +47,7 @@ import {
   DEV_ONLY_ROUTES,
   DEVELOPER_EMAIL,
 } from "@/lib/auth";
+import pkg from "@/package.json";
 import {
   ModuleStatus,
   loadModuleStatuses,
@@ -497,10 +498,23 @@ export default function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
             )}
           </div>
         )}
-        <p className="text-xs text-slate-500">v1.0.0 © 2026 Duro Concretos</p>
-        <a href="https://lpsoft.mx" target="_blank" rel="noopener noreferrer" className="text-xs text-slate-500 hover:text-white transition-colors">
-          By Software and Solutions LP
-        </a>
+        <div className="border-t border-white/5 pt-3 space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-medium text-slate-500 uppercase tracking-widest">Duro Concretos ERP</span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-white/5 border border-white/10 px-2 py-0.5 text-[10px] font-mono font-medium text-slate-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              v{pkg.version}
+            </span>
+          </div>
+          <a
+            href="https://lpsoft.mx"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block text-[10px] text-slate-600 hover:text-slate-400 transition-colors"
+          >
+            By Software and Solutions LP
+          </a>
+        </div>
       </div>
     </div>
   );
