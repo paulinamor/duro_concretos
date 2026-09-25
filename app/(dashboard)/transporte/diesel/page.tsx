@@ -604,9 +604,8 @@ export default function DieselPage() {
   }, [unidades]);
 
   const allUnidades = useMemo(() => {
-    const fromCargas = cargas.map((c) => c.unidad);
-    return ["Todas", ...Array.from(new Set([...unidadesList, ...fromCargas])).sort()];
-  }, [cargas, unidadesList]);
+    return ["Todas", ...unidadesList.slice().sort()];
+  }, [unidadesList]);
 
   const filtered = useMemo(() => {
     const toMs = (f: string) => {
