@@ -117,10 +117,12 @@ const emptyForm = (): FormState => ({
 
 // ─── Form Drawer ──────────────────────────────────────────────────────────────
 
-function FormDrawer({ open, onClose, onSave, unidadesList, editing, lastKmByUnidad }: {
+type UnidadGrupo = { tipo: string; label: string; items: string[] };
+
+function FormDrawer({ open, onClose, onSave, unidadesAgrupadas, editing, lastKmByUnidad }: {
   open: boolean; onClose: () => void;
   onSave: (carga: CargaDiesel) => Promise<void>;
-  unidadesList: string[]; editing?: CargaDiesel | null;
+  unidadesAgrupadas: UnidadGrupo[]; editing?: CargaDiesel | null;
   lastKmByUnidad: Map<string, number>;
 }) {
   const [form, setForm] = useState<FormState>(emptyForm);
@@ -263,7 +265,11 @@ function FormDrawer({ open, onClose, onSave, unidadesList, editing, lastKmByUnid
               <label className={lbl}>Unidad {req}</label>
               <AppSelect value={form.unidad} onChange={(e) => handleUnidadChange(e.target.value)}>
                 <option value="">Seleccionar unidad…</option>
-                {unidadesList.map((u) => <option key={u} value={u}>{u}</option>)}
+                {unidadesAgrupadas.map((g) => (
+                  <optgroup key={g.tipo} label={g.label}>
+                    {g.items.map((u) => <option key={u} value={u}>{u}</option>)}
+                  </optgroup>
+                ))}
               </AppSelect>
               {errors.unidad && <p className="mt-1 text-xs text-red-400">{errors.unidad}</p>}
             </div>
@@ -583,8 +589,23 @@ function UnitCard({ row, maxLitros }: {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+const RUBROS_DIESEL = [
+  { tipo: "Revolvedora",  label: "Revolvedoras"  },
+  { tipo: "Bomba",        label: "Bombas"         },
+  { tipo: "Maquinaria",   label: "Maquinaria"     },
+  { tipo: "Volteo",       label: "Volteos"        },
+  { tipo: "Tractocamión", label: "Tractos"        },
+  { tipo: "Plataforma",   label: "Plataformas"    },
+  { tipo: "Remolque",     label: "Remolques"      },
+  { tipo: "Vehículo",     label: "Vehículos"      },
+  { tipo: "Otro",         label: "Otros"          },
+];
+const RUBRO_IDX_D = new Map(RUBROS_DIESEL.map(({ tipo }, i) => [tipo, i]));
+function naturalCmp(a: string, b: string) {
+  return a.localeCompare(b, "es", { numeric: true, sensitivity: "base" });
+}
+
 export default function DieselPage() {
-  const [unidadesList, setUnidadesList] = useState<string[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingCarga, setEditingCarga] = useState<CargaDiesel | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<CargaDiesel | null>(null);
@@ -598,14 +619,32 @@ export default function DieselPage() {
 
   const { data: cargas, loading: loadingCargas } = useCollectionRawWithLoading<CargaDiesel>(COLLECTIONS.diesel);
   const { data: unidades, loading: loadingUnidades } = useCollectionRawWithLoading<Unidad>(COLLECTIONS.unidades);
+  const { data: segurosRaw } = useCollectionRawWithLoading<{ noEconomico: string; tipoUnidad: string }>(COLLECTIONS.seguros);
   const loading = loadingCargas || loadingUnidades;
-  useEffect(() => {
-    setUnidadesList(unidades.map((u) => u.noEconomico).filter(Boolean));
-  }, [unidades]);
+
+  const tipoByNoEco = useMemo(() => {
+    const map = new Map<string, string>();
+    segurosRaw.forEach((s) => { if (s.noEconomico && s.tipoUnidad) map.set(s.noEconomico.trim(), s.tipoUnidad); });
+    return map;
+  }, [segurosRaw]);
+
+  const unidadesAgrupadas = useMemo((): UnidadGrupo[] => {
+    const noEcos = unidades.map((u) => u.noEconomico).filter(Boolean);
+    noEcos.sort(naturalCmp);
+    const groups = new Map<string, string[]>();
+    for (const noEco of noEcos) {
+      const tipo = tipoByNoEco.get(noEco.trim()) ?? "Otro";
+      if (!groups.has(tipo)) groups.set(tipo, []);
+      groups.get(tipo)!.push(noEco);
+    }
+    return [...groups.entries()]
+      .sort(([a], [b]) => (RUBRO_IDX_D.get(a) ?? 99) - (RUBRO_IDX_D.get(b) ?? 99))
+      .map(([tipo, items]) => ({ tipo, label: RUBROS_DIESEL.find((r) => r.tipo === tipo)?.label ?? tipo, items }));
+  }, [unidades, tipoByNoEco]);
 
   const allUnidades = useMemo(() => {
-    return ["Todas", ...unidadesList.slice().sort()];
-  }, [unidadesList]);
+    return ["Todas", ...unidades.map((u) => u.noEconomico).filter(Boolean).sort(naturalCmp)];
+  }, [unidades]);
 
   const filtered = useMemo(() => {
     const toMs = (f: string) => {
@@ -818,7 +857,12 @@ export default function DieselPage() {
 
         {/* Unidad */}
         <AppSelect dark compact value={filterUnidad} onChange={(e) => setFilterUnidad(e.target.value)}>
-          {allUnidades.map((u) => <option key={u}>{u}</option>)}
+          <option>Todas</option>
+          {unidadesAgrupadas.map((g) => (
+            <optgroup key={g.tipo} label={g.label}>
+              {g.items.map((u) => <option key={u}>{u}</option>)}
+            </optgroup>
+          ))}
         </AppSelect>
 
         {hasFilters && (
@@ -949,7 +993,7 @@ export default function DieselPage() {
       </div>{/* end 2-col grid */}
 
       <FormDrawer open={showForm} onClose={() => { setShowForm(false); setEditingCarga(null); }} onSave={handleSave} editing={editingCarga}
-        unidadesList={unidadesList}
+        unidadesAgrupadas={unidadesAgrupadas}
         lastKmByUnidad={lastKmByUnidad} />
 
       {confirmDelete && (
