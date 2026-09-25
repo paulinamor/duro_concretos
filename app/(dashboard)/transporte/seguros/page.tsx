@@ -1020,34 +1020,19 @@ export default function SegurosPage() {
     return map;
   }, [seguros]);
 
-  // Standalone seguros (no matching unidad in DB — imported from Excel)
-  const standaloneIds = useMemo(() => {
-    const unitIds = new Set(unidades.map((u) => u.id));
-    return seguros.filter((s) => s.unidadId && !unitIds.has(s.unidadId)).map((s) => s.id);
-  }, [seguros, unidades]);
-
-  // Merged rows
+  // Merged rows — solo unidades activas en la colección unidades
   const rows = useMemo(() => {
-    const fromUnidades = unidades.map((u) => ({
+    return unidades.map((u) => ({
       unidad: u,
       seguro: seguroByUnidad.get(u.id),
       status: vigenciaStatus(seguroByUnidad.get(u.id)?.vigenciaFin),
     }));
-    // Also include standalone seguros (e.g. imported that have no unidad doc)
-    const extra = seguros
-      .filter((s) => standaloneIds.includes(s.id))
-      .map((s) => ({
-        unidad: null as unknown as Unidad,
-        seguro: s,
-        status: vigenciaStatus(s.vigenciaFin),
-      }));
-    return [...fromUnidades, ...extra];
-  }, [unidades, seguroByUnidad, seguros, standaloneIds]);
+  }, [unidades, seguroByUnidad]);
 
   const tipos = useMemo(() => {
-    const set = new Set(seguros.map((s) => s.tipoUnidad).filter(Boolean));
+    const set = new Set(rows.map((r) => r.seguro?.tipoUnidad).filter(Boolean));
     return ["Todos", ...Array.from(set).sort()];
-  }, [seguros]);
+  }, [rows]);
 
   const filtered = useMemo(() => {
     let list = rows;
