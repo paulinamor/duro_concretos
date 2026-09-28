@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowLeft, BadgeCheck, ChevronRight, Loader2, Plus, Search, Trash2, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, BadgeCheck, ChevronRight, Clock, Loader2, Plus, Search, Trash2, X } from "lucide-react";
 import AppSelect from "@/components/AppSelect";
-import { upsertDocument, deleteDocument, getCollectionDocs, COLLECTIONS } from "@/lib/db";
+import { upsertDocument, deleteDocument, getCollectionDocs, COLLECTIONS, subscribeToCollection } from "@/lib/db";
 import { currency } from "@/lib/formatters";
 import { filterByPlanta, withPlantaTag } from "@/lib/auth";
 import { todayCST } from "@/lib/dateUtils";
@@ -46,6 +46,8 @@ interface Prog {
   montoPagado: number | null;
   nombreObra?: string;
   planta?: string;
+  origenRecibo?: boolean;
+  reciboId?: string;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -83,19 +85,32 @@ export default function CobrosPage() {
   const [filterTipo, setFilterTipo] = useState("");
   const [pagoAElim, setPagoAElim]   = useState<Pago | null>(null);
   const [eliminando, setEliminando] = useState(false);
+  const [prefillClienteId, setPrefillClienteId] = useState<string | null>(null);
 
   useEffect(() => {
-    (async () => {
-      const [p, pr, cl] = await Promise.all([
-        getCollectionDocs<Pago>(COLLECTIONS.pagos),
-        getCollectionDocs<Prog>(COLLECTIONS.programaciones),
-        getCollectionDocs<ClienteDoc>(COLLECTIONS.clientes),
-      ]);
-      setPagos(filterByPlanta(p).sort((a, b) => b.fecha.localeCompare(a.fecha)));
-      setProgs(filterByPlanta(pr));
+    let loadedPagos = false;
+    let loadedProgs = false;
+    let loadedClientes = false;
+    function checkDone() {
+      if (loadedPagos && loadedProgs && loadedClientes) setLoading(false);
+    }
+
+    const unsubPagos = subscribeToCollection<Pago>(COLLECTIONS.pagos, (docs) => {
+      setPagos(filterByPlanta(docs).sort((a, b) => b.fecha.localeCompare(a.fecha)));
+      if (!loadedPagos) { loadedPagos = true; checkDone(); }
+    });
+    const unsubProgs = subscribeToCollection<Prog>(COLLECTIONS.programaciones, (docs) => {
+      setProgs(filterByPlanta(docs));
+      if (!loadedProgs) { loadedProgs = true; checkDone(); }
+    });
+
+    getCollectionDocs<ClienteDoc>(COLLECTIONS.clientes).then((cl) => {
       setClientesList(cl.sort((a, b) => a.razonSocial.localeCompare(b.razonSocial, "es")));
-      setLoading(false);
-    })();
+      loadedClientes = true;
+      checkDone();
+    });
+
+    return () => { unsubPagos(); unsubProgs(); };
   }, []);
 
   const pagosFiltrados = useMemo(() => pagos.filter((p) => {
@@ -104,6 +119,12 @@ export default function CobrosPage() {
     if (filterTipo && p.tipoPago !== filterTipo) return false;
     return true;
   }), [pagos, q, filterMes, filterTipo]);
+
+  const pendientesRecibo = useMemo(
+    () => progs.filter((p) => p.origenRecibo === true && saldoPendiente(p) > 0.01)
+               .sort((a, b) => b.dia.localeCompare(a.dia)),
+    [progs],
+  );
 
   const mesActual = todayCST().slice(0, 7);
   const totalCobrado  = pagos.reduce((s, p) => s + p.cantidad, 0);
@@ -154,7 +175,13 @@ export default function CobrosPage() {
   );
 
   if (view === "new") return (
-    <NuevoPagoView clientesList={clientesList} progs={progs} onBack={() => setView("list")} onCreated={onPagoCreated} />
+    <NuevoPagoView
+      clientesList={clientesList}
+      progs={progs}
+      prefillClienteId={prefillClienteId ?? undefined}
+      onBack={() => { setView("list"); setPrefillClienteId(null); }}
+      onCreated={onPagoCreated}
+    />
   );
 
   if (view === "detail" && selected) return (
@@ -211,6 +238,67 @@ export default function CobrosPage() {
           </button>
         )}
       </div>
+
+      {/* Pendientes de cobro (recibos de concreto) */}
+      {pendientesRecibo.length > 0 && (
+        <div className="bg-white rounded-2xl border border-amber-200 overflow-hidden">
+          <div className="px-5 py-3.5 bg-amber-50 border-b border-amber-100 flex items-center gap-2">
+            <Clock size={14} className="text-amber-500" />
+            <p className="text-sm font-semibold text-amber-700">Pendientes de Cobro</p>
+            <span className="ml-auto text-xs font-medium text-amber-600 bg-amber-100 rounded-full px-2 py-0.5">
+              {pendientesRecibo.length}
+            </span>
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-amber-50 bg-amber-50/30">
+                {["Fecha","Folio","Cliente","Obra","Total","Saldo pendiente",""].map((h) => (
+                  <th key={h} className={`px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider ${h === "Total" || h === "Saldo pendiente" ? "text-right" : "text-left"}`}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-amber-50">
+              {pendientesRecibo.map((p) => {
+                const saldo = saldoPendiente(p);
+                const clienteDoc = clientesList.find((c) => norm(c.razonSocial) === norm(p.cliente));
+                return (
+                  <tr key={p.id} className="hover:bg-amber-50/40 transition-colors">
+                    <td className="px-5 py-3.5 text-[#CC2229] font-medium">{fmtDate(p.dia)}</td>
+                    <td className="px-5 py-3.5 text-gray-700 font-medium">{p.folio || "—"}</td>
+                    <td className="px-5 py-3.5 text-gray-800">{p.cliente}</td>
+                    <td className="px-5 py-3.5 text-gray-500 text-xs max-w-[180px] truncate">{p.nombreObra || "—"}</td>
+                    <td className="px-5 py-3.5 text-right text-gray-700 font-medium">{currency(p.total ?? 0)}</td>
+                    <td className="px-5 py-3.5 text-right">
+                      <span className="font-semibold text-amber-700">{currency(saldo)}</span>
+                    </td>
+                    <td className="px-5 py-3.5 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => {
+                            const cid = clienteDoc?.id ?? null;
+                            setPrefillClienteId(cid);
+                            setView("new");
+                          }}
+                          className="px-3 py-1.5 bg-[#CC2229] hover:bg-[#B01E24] text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+                        >
+                          Cobrar
+                        </button>
+                        <button
+                          onClick={() => deleteDocument(COLLECTIONS.programaciones, p.id).catch(console.error)}
+                          className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer"
+                          title="Quitar de pendientes"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Table */}
       <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
@@ -311,15 +399,20 @@ export default function CobrosPage() {
 
 // ─── Nuevo Pago ───────────────────────────────────────────────────────────────
 
-function NuevoPagoView({ clientesList, progs, onBack, onCreated }: {
+function NuevoPagoView({ clientesList, progs, prefillClienteId, onBack, onCreated }: {
   clientesList: ClienteDoc[];
   progs: Prog[];
+  prefillClienteId?: string;
   onBack: () => void;
   onCreated: (pago: Pago) => void;
 }) {
   const [fecha, setFecha]               = useState(todayCST());
-  const [clienteId, setClienteId]       = useState("");
-  const [cliente, setCliente]           = useState("");
+  const [clienteId, setClienteId]       = useState(prefillClienteId ?? "");
+  const [cliente, setCliente]           = useState(() => {
+    if (!prefillClienteId) return "";
+    const found = clientesList.find((c) => c.id === prefillClienteId);
+    return found ? norm(found.razonSocial) : "";
+  });
   const [cantidad, setCantidad]         = useState("");
   const [tipoPago, setTipoPago]         = useState("");
   const [banco, setBanco]               = useState("");

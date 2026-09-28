@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import {
   Calculator,
+  ChevronDown,
   DollarSign,
   MessageCircle,
   Package,
@@ -28,11 +29,15 @@ import {
 import { upsertDocument, deleteDocument, COLLECTIONS, getCollectionDocs } from "@/lib/db";
 import { withPlantaTag } from "@/lib/auth";
 import { todayCST } from "@/lib/dateUtils";
-import { useCollectionWithLoading } from "@/lib/useCollection";
+import { useCollectionWithLoading, useCollectionRawWithLoading } from "@/lib/useCollection";
 import type { Cliente } from "@/lib/crmClientes";
 import { matchesQuery } from "@/lib/search";
 import KPICard from "@/components/KPICard";
 import AppSelect from "@/components/AppSelect";
+
+interface Obra { id: string; cliente: string; nombre: string; direccion: string; }
+
+const normCl = (s: string) => s.split("//")[0].trim().toUpperCase().replace(/\s+/g, " ");
 
 function money(value: number | undefined | null) {
   return `$${(value ?? 0).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -68,6 +73,7 @@ function createReceipt(receipts: ConcreteReceipt[]): ConcreteReceipt {
     total: 0,
     resta: 0,
     viajeFolio: `VJ-2026-${nextNumber}`,
+    enviarACobros: true,
   };
 }
 
@@ -78,15 +84,29 @@ export default function RecibosConcretoPage() {
     [allRemisiones],
   );
 
+  // Global (todas las plantas) solo para calcular el siguiente folio sin colisiones
+  const { data: allRemisionesGlobal } = useCollectionRawWithLoading<ConcreteReceipt>(COLLECTIONS.remisiones);
+
   const [receipt, setReceipt] = useState<ConcreteReceipt>(() => createReceipt([]));
   const [isLoadedReceipt, setIsLoadedReceipt] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [clienteSuggestions, setClienteSuggestions] = useState<string[]>([]);
+  const [rawClientes, setRawClientes] = useState<{ razonSocial?: string; nombreComercial?: string }[]>([]);
+  const [obrasData, setObrasData] = useState<Obra[]>([]);
+  const [obraOpen, setObraOpen] = useState(false);
+  const [obraQuery, setObraQuery] = useState("");
+  const [obraNewOpen, setObraNewOpen] = useState(false);
+  const [obraNewNombre, setObraNewNombre] = useState("");
+  const [obraNewDireccion, setObraNewDireccion] = useState("");
+  const obraContainerRef = useRef<HTMLDivElement>(null);
   const [search, setSearch] = useState("");
 
-  const nextReceiptNum = useMemo(() => getNextReceiptNumber(savedReceipts), [savedReceipts]);
+  const nextReceiptNum = useMemo(
+    () => getNextReceiptNumber(allRemisionesGlobal.filter((r) => r.receiptNumber != null)),
+    [allRemisionesGlobal],
+  );
   const effectiveReceiptNumber = isLoadedReceipt ? receipt.receiptNumber : nextReceiptNum;
 
   const totalM3 = useMemo(() => savedReceipts.reduce((s, r) => s + (r.m3 ?? 0), 0), [savedReceipts]);
@@ -108,14 +128,60 @@ export default function RecibosConcretoPage() {
   }, [savedReceipts, search]);
 
   useEffect(() => {
-    getCollectionDocs<Cliente>(COLLECTIONS.clientes).then((clientes) => {
+    Promise.all([
+      getCollectionDocs<Cliente>(COLLECTIONS.clientes),
+      getCollectionDocs<Obra>(COLLECTIONS.obras),
+    ]).then(([clientes, obras]) => {
       const names = clientes
         .map((c) => c.razonSocial)
         .filter(Boolean)
         .sort((a, b) => a.localeCompare(b, "es", { sensitivity: "base" }));
       setClienteSuggestions(Array.from(new Set(names)));
+      setRawClientes(clientes);
+      setObrasData(obras);
     });
   }, []);
+
+  const obrasSugeridas = useMemo(() => {
+    if (!receipt.cliente) return [];
+    const clienteNorm = normCl(receipt.cliente);
+    const clienteReg = rawClientes.find((c) => {
+      const rs = normCl(c.razonSocial ?? "");
+      const nc = normCl(c.nombreComercial ?? "");
+      return rs === clienteNorm || nc === clienteNorm;
+    });
+    const aliases = new Set<string>([clienteNorm]);
+    if (clienteReg) {
+      aliases.add(normCl(clienteReg.razonSocial ?? ""));
+      aliases.add(normCl(clienteReg.nombreComercial ?? ""));
+    }
+    aliases.delete("");
+    return obrasData.filter((o) => aliases.has(normCl(o.cliente))).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+  }, [obrasData, receipt.cliente, rawClientes]);
+
+  const obrasFiltradas = useMemo(() => {
+    if (!obraQuery.trim()) return obrasSugeridas;
+    const q = obraQuery.toLowerCase();
+    return obrasSugeridas.filter((o) => o.nombre.toLowerCase().includes(q));
+  }, [obrasSugeridas, obraQuery]);
+
+  useEffect(() => {
+    function handle(e: MouseEvent) {
+      if (obraContainerRef.current && !obraContainerRef.current.contains(e.target as Node)) setObraOpen(false);
+    }
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, []);
+
+  async function autoSaveObra(cliente: string, nombre: string, direccion: string) {
+    if (!nombre.trim() || !cliente.trim()) return;
+    const ya = obrasData.find((o) => normCl(o.cliente) === normCl(cliente) && o.nombre.toLowerCase() === nombre.trim().toLowerCase());
+    if (ya) return;
+    const id = `obra-${Date.now()}`;
+    const doc: Obra = { id, cliente: cliente.trim().toUpperCase().replace(/\s+/g, " "), nombre: nombre.trim().toUpperCase().replace(/\s+/g, " "), direccion: direccion.trim() };
+    await upsertDocument(COLLECTIONS.obras, id, doc);
+    setObrasData((prev) => [...prev, doc]);
+  }
 
   const totals = useMemo(() => calculateConcreteReceiptTotal(receipt), [receipt]);
   const receiptDate = formatReceiptDate(receipt.fecha);
@@ -171,6 +237,24 @@ export default function RecibosConcretoPage() {
     const { id: docId, ...saveData } = nextReceipt;
     await upsertDocument(COLLECTIONS.remisiones, docId, withPlantaTag(saveData));
     syncReceiptWithTrip(nextReceipt).catch((err) => console.error("Error sincronizando viaje:", err));
+
+    // Sync to Cobros (programaciones) — solo si enviarACobros !== false
+    const progId = `recibo-${docId}`;
+    if (nextReceipt.enviarACobros !== false) {
+      upsertDocument(COLLECTIONS.programaciones, progId, withPlantaTag({
+        dia: nextReceipt.fecha,
+        cliente: nextReceipt.cliente,
+        folio: `#${String(num).padStart(4, "0")}`,
+        total: realTotal,
+        montoPagado: nextReceipt.anticipo ?? 0,
+        nombreObra: nextReceipt.direccionObra,
+        origenRecibo: true,
+        reciboId: docId,
+      })).catch((err) => console.error("Error sincronizando a cobros:", err));
+    } else {
+      // Si se desactivó, eliminar la entrada de cobros si existía
+      deleteDocument(COLLECTIONS.programaciones, progId).catch(() => {});
+    }
 
     // Sync to efectivo module
     upsertDocument(COLLECTIONS.efectivo, `ef-${docId}`, withPlantaTag({
@@ -267,6 +351,7 @@ export default function RecibosConcretoPage() {
 
   async function deleteReceipt(id: string) {
     await deleteDocument(COLLECTIONS.remisiones, id);
+    deleteDocument(COLLECTIONS.programaciones, `recibo-${id}`).catch(() => {});
     window.dispatchEvent(
       new CustomEvent("duro:toast", {
         detail: { type: "success", message: "Recibo eliminado." },
@@ -553,7 +638,12 @@ export default function RecibosConcretoPage() {
                   <label className={lbl}>Nombre del cliente</label>
                   <AppSelect
                     value={receipt.cliente}
-                    onChange={(e) => updateReceipt({ cliente: e.target.value })}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      updateReceipt({ cliente: v, direccionObra: v !== receipt.cliente ? "" : receipt.direccionObra });
+                      setObraQuery("");
+                      setObraOpen(false);
+                    }}
                   >
                     <option value="">Seleccionar cliente…</option>
                     {clienteSuggestions.map((c) => (
@@ -564,15 +654,95 @@ export default function RecibosConcretoPage() {
                     )}
                   </AppSelect>
                 </div>
-                <div>
-                  <label className={lbl}>Dirección de la obra</label>
-                  <input
-                    type="text"
-                    value={receipt.direccionObra}
-                    onChange={(e) => updateReceipt({ direccionObra: e.target.value })}
-                    placeholder="Calle, número, colonia…"
-                    className={inp}
-                  />
+                {/* Nombre de la obra — selector con dropdown */}
+                <div ref={obraContainerRef} className="relative">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className={`${lbl} mb-0`}>
+                      Nombre de la obra
+                      {obrasSugeridas.length > 0 && !obraNewOpen && (
+                        <span className="ml-2 text-[10px] font-normal normal-case tracking-normal text-[#CC2229]/70">
+                          {obrasSugeridas.length} guardada{obrasSugeridas.length !== 1 ? "s" : ""}
+                        </span>
+                      )}
+                    </label>
+                    {receipt.cliente && !obraNewOpen && (
+                      <button
+                        type="button"
+                        onClick={() => { setObraNewOpen(true); setObraOpen(false); setObraNewNombre(""); setObraNewDireccion(""); }}
+                        className="text-[11px] font-semibold text-[#CC2229] hover:text-[#B01E24] cursor-pointer transition-colors shrink-0"
+                      >
+                        + Nueva obra
+                      </button>
+                    )}
+                    {obraNewOpen && (
+                      <button type="button" onClick={() => { setObraNewOpen(false); setObraQuery(""); }}
+                        className="text-[11px] font-medium text-gray-400 hover:text-gray-600 cursor-pointer transition-colors shrink-0">
+                        Cancelar
+                      </button>
+                    )}
+                  </div>
+
+                  {obraNewOpen && (
+                    <div className="rounded-xl border border-[#CC2229]/30 bg-red-50/40 p-3 space-y-2">
+                      <input autoFocus value={obraNewNombre} onChange={(e) => setObraNewNombre(e.target.value)}
+                        placeholder="Nombre de la obra *"
+                        className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 bg-white focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20" />
+                      <input value={obraNewDireccion} onChange={(e) => setObraNewDireccion(e.target.value)}
+                        placeholder="Dirección o link de Maps (opcional)"
+                        className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 bg-white focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20" />
+                      <button type="button" disabled={!obraNewNombre.trim()}
+                        onClick={() => {
+                          if (!obraNewNombre.trim()) return;
+                          const nombre = obraNewNombre.trim().toUpperCase().replace(/\s+/g, " ");
+                          updateReceipt({ direccionObra: nombre });
+                          autoSaveObra(receipt.cliente, nombre, obraNewDireccion);
+                          setObraNewOpen(false); setObraQuery("");
+                        }}
+                        className="w-full text-sm py-2 rounded-lg bg-[#CC2229] text-white hover:bg-[#B01E24] disabled:opacity-50 cursor-pointer transition-colors font-medium">
+                        Guardar obra
+                      </button>
+                    </div>
+                  )}
+
+                  {!obraNewOpen && (
+                    <div
+                      role="button" tabIndex={receipt.cliente ? 0 : -1}
+                      onClick={() => { if (receipt.cliente) setObraOpen((v) => !v); }}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (receipt.cliente) setObraOpen((v) => !v); } }}
+                      className={`flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-sm cursor-pointer select-none transition-colors ${obraOpen ? "border-[#CC2229]/60 ring-1 ring-[#CC2229]/20" : "border-gray-200 hover:border-gray-300"} ${!receipt.cliente ? "opacity-50 cursor-not-allowed bg-gray-50" : "bg-white"}`}
+                    >
+                      <span className={`flex-1 truncate ${receipt.direccionObra ? "text-gray-900 font-medium" : "text-gray-400"}`}>
+                        {receipt.direccionObra || (receipt.cliente ? "Seleccionar obra…" : "Selecciona un cliente primero")}
+                      </span>
+                      {receipt.direccionObra
+                        ? <button type="button" onMouseDown={(e) => { e.stopPropagation(); updateReceipt({ direccionObra: "" }); setObraQuery(""); }} className="p-0.5 text-gray-300 hover:text-gray-500 cursor-pointer"><X size={11} /></button>
+                        : <ChevronDown size={14} className={`text-gray-400 transition-transform ${obraOpen ? "rotate-180" : ""}`} />
+                      }
+                    </div>
+                  )}
+
+                  {obraOpen && !obraNewOpen && (
+                    <div className="absolute z-50 mt-1 w-full rounded-xl border border-gray-200 bg-white shadow-lg overflow-hidden">
+                      <div className="p-2 border-b border-gray-100">
+                        <input autoFocus value={obraQuery} onChange={(e) => setObraQuery(e.target.value)}
+                          placeholder="Buscar obra…"
+                          className="w-full text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[#CC2229]/60" />
+                      </div>
+                      <div className="max-h-48 overflow-y-auto">
+                        {obrasFiltradas.length === 0
+                          ? <p className="px-4 py-3 text-sm text-gray-400">{obrasSugeridas.length === 0 ? "Sin obras guardadas para este cliente" : "Sin resultados"}</p>
+                          : obrasFiltradas.map((o) => (
+                            <button key={o.id} type="button"
+                              onMouseDown={(e) => { e.preventDefault(); updateReceipt({ direccionObra: o.nombre }); setObraOpen(false); setObraQuery(""); }}
+                              className={`w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors ${receipt.direccionObra === o.nombre ? "text-[#CC2229] font-semibold bg-red-50" : "text-gray-800"}`}>
+                              {o.nombre}
+                              {o.direccion && <span className="ml-1 text-[11px] text-gray-400 truncate">· {o.direccion}</span>}
+                            </button>
+                          ))
+                        }
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -794,6 +964,27 @@ export default function RecibosConcretoPage() {
               </div>
             </div>
 
+            {/* Toggle: enviar a Cobros */}
+            <div className="px-6 py-3 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => updateReceipt({ enviarACobros: receipt.enviarACobros === false ? true : false })}
+                className="flex items-center justify-between w-full group"
+              >
+                <div className="flex flex-col items-start gap-0.5">
+                  <span className="text-sm font-medium text-gray-800">Enviar a Cobros</span>
+                  <span className="text-[11px] text-gray-400">
+                    {receipt.enviarACobros !== false
+                      ? "El saldo aparecerá en el módulo de Cobros para seguimiento"
+                      : "No se registrará en Cobros"}
+                  </span>
+                </div>
+                <div className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${receipt.enviarACobros !== false ? "bg-[#CC2229]" : "bg-gray-200"}`}>
+                  <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${receipt.enviarACobros !== false ? "translate-x-[18px]" : "translate-x-1"}`} />
+                </div>
+              </button>
+            </div>
+
             {/* Totals bar */}
             <div className="grid grid-cols-2 gap-4 px-6 py-3 border-t border-gray-100 bg-gray-50 shrink-0">
               <div>
@@ -862,7 +1053,7 @@ export default function RecibosConcretoPage() {
                 Nombre del cliente: <span className="receipt-line handwritten">{receipt.cliente}</span>
               </p>
               <p>
-                Dirección de la obra: <span className="receipt-line handwritten">{receipt.direccionObra}</span>
+                Obra: <span className="receipt-line handwritten">{receipt.direccionObra}</span>
               </p>
               <p>
                 M³: <span className="short-line handwritten">{receipt.m3}</span>

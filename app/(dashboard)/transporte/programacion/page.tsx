@@ -627,7 +627,7 @@ function HistorialDrawer({
 // ─── FormDrawer ───────────────────────────────────────────────────────────────
 
 function FormDrawer({
-  open, onClose, onSave, onDelete, initial, dia, operadoresList, clientesList, revolveList, obrasData, rawClientes,
+  open, onClose, onSave, onDelete, initial, dia, operadoresList, clientesList, revolveList, obrasData, rawClientes, recibosDisponibles,
 }: {
   open: boolean;
   onClose: () => void;
@@ -640,6 +640,7 @@ function FormDrawer({
   revolveList: string[];
   obrasData: Obra[];
   rawClientes: Cliente[];
+  recibosDisponibles: { id: string; receiptNumber: number; cliente: string; fecha: string }[];
 }) {
   const [form, setForm] = useState<FormState>(() => emptyForm(dia));
   const [saving, setSaving] = useState(false);
@@ -1346,7 +1347,26 @@ function FormDrawer({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={lbl}>Recibo</label>
-              <input type="text" value={form.recibo} onChange={(e) => set("recibo", e.target.value)} placeholder="No. recibo" className={inp} />
+              <AppSelect
+                value={form.recibo}
+                onChange={(e) => set("recibo", e.target.value)}
+              >
+                <option value="">Sin recibo</option>
+                {/* Si el recibo actual ya está guardado pero no está en la lista (ya ligado), mostrarlo igual */}
+                {form.recibo && !recibosDisponibles.some((r) => `#${String(r.receiptNumber).padStart(4, "0")}` === form.recibo) && (
+                  <option value={form.recibo}>{form.recibo}</option>
+                )}
+                {recibosDisponibles
+                  .sort((a, b) => b.receiptNumber - a.receiptNumber)
+                  .map((r) => {
+                    const folio = `#${String(r.receiptNumber).padStart(4, "0")}`;
+                    return (
+                      <option key={r.id} value={folio}>
+                        {folio} — {r.cliente} ({r.fecha})
+                      </option>
+                    );
+                  })}
+              </AppSelect>
             </div>
             <div>
               <label className={lbl}>Fact</label>
@@ -2232,6 +2252,7 @@ export default function ProgramacionPage() {
   const [revolveList, setRevolveList] = useState<string[]>([]);
   const [obrasData, setObrasData] = useState<Obra[]>([]);
   const [rawClientesTransporte, setRawClientesTransporte] = useState<Cliente[]>([]);
+  const [recibosData, setRecibosData] = useState<{ id: string; receiptNumber: number; cliente: string; fecha: string }[]>([]);
   const [clientesSet, setClientesSet] = useState<Set<string>>(new Set());
   const [diaActivo, setDiaActivo] = useState(todayISO);
   const [viewMode, setViewMode] = useState<ViewMode>("dia");
@@ -2291,6 +2312,9 @@ export default function ProgramacionPage() {
       setClientesList(Array.from(new Set(fromClientes)).sort());
     }).catch((err) => console.error("Error cargando datos estáticos:", err));
     getCollectionDocs<Obra>(COLLECTIONS.obras).then(setObrasData).catch(() => {});
+    getCollectionDocs<{ id: string; receiptNumber: number; cliente: string; fecha: string }>(COLLECTIONS.remisiones)
+      .then((docs) => setRecibosData(docs.filter((r) => r.receiptNumber != null)))
+      .catch(() => {});
   }, []);
 
   // Real-time programaciones subscription
@@ -3137,6 +3161,11 @@ export default function ProgramacionPage() {
         revolveList={revolveList}
         obrasData={obrasData}
         rawClientes={rawClientesTransporte}
+        recibosDisponibles={recibosData.filter((r) => {
+          const folioUsado = `#${String(r.receiptNumber).padStart(4, "0")}`;
+          const yaLigado = programaciones.some((p) => p.recibo === folioUsado && p.id !== editing?.id);
+          return !yaLigado;
+        })}
       />
 
       {/* Modal: solicitud de autorización para eliminar */}

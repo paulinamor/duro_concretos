@@ -35,6 +35,7 @@ export interface ConcreteReceipt {
   resta: number;
   viajeFolio?: string;
   planta?: string;
+  enviarACobros?: boolean; // default true — si false no se crea entrada en programaciones
 }
 
 export const concreteReceiptObras = [

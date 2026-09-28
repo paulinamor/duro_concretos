@@ -63,6 +63,8 @@ interface EventoRaw {
   conceptos?: Concepto[];
   taller?: string;
   status: string;
+  horaInicio?: string;
+  horaCierre?: string;
   notas?: string;
   planta?: string;
   km?: number;
@@ -131,6 +133,12 @@ function urgenciaUnidad(eventos: Evento[]): UrgenciaColor {
   const tieneReparacionLarga = activos.some((e) => (e.tipo === "Reparación" || e.tipo === "Falla") && diasDesde(e.fecha) >= 2);
   if (tieneEnProceso || tieneReparacionLarga) return "ambar";
   return "neutral";
+}
+
+function autoStatus(tipo: EventoTipo, horaInicio?: string, horaCierre?: string): string {
+  if (horaCierre) return tipo === "Falla" ? "Resuelta" : "Completado";
+  if (horaInicio) return "En proceso";
+  return tipo === "Falla" ? "Reportada" : "Pendiente";
 }
 
 const TIPO_BADGE: Record<EventoTipo, string> = {
@@ -232,6 +240,8 @@ function EventoRow({
           {ev.causa && <span className="text-xs text-gray-500">Causa: {ev.causa}</span>}
           {ev.taller && <span className="text-xs text-gray-500">Taller: {ev.taller}</span>}
           {ev.reportadoPor && <span className="text-xs text-gray-500">Reportó: {ev.reportadoPor}</span>}
+          {ev.horaInicio && <span className="text-xs text-gray-500">Inicio: {ev.horaInicio}</span>}
+          {ev.horaCierre && <span className="text-xs text-gray-500">Cierre: {ev.horaCierre}</span>}
           {ev.notas && <span className="text-xs text-gray-400 italic">{ev.notas}</span>}
         </div>
         <div className="flex flex-wrap gap-1.5 mt-1.5">
@@ -609,7 +619,6 @@ function RegistroDrawer({
         descripcion: editing.descripcion,
         costo: String(editing.costo || ""),
         taller: editing.taller ?? "",
-        status: editing.status,
         notas: editing.notas ?? "",
         subtipo: editing.subtipo ?? "Preventivo",
         causa: editing.causa ?? "",
@@ -618,13 +627,15 @@ function RegistroDrawer({
         km: editing.km != null ? String(editing.km) : "",
         horometro: editing.horometro != null ? String(editing.horometro) : "",
         horasReparacion: editing.horasReparacion != null ? String(editing.horasReparacion) : "",
+        horaInicio: editing.horaInicio ?? "",
+        horaCierre: editing.horaCierre ?? "",
       });
       setConceptos(editing.conceptos ?? []);
       setFotosFactura(editing.fotosFactura ?? []);
       setFotosEvidencia(editing.fotosEvidencia ?? []);
     } else {
       setTipo("Mantenimiento");
-      setForm({ fecha: todayISO(), unidad: preselectedUnidad, status: "Pendiente", km: "", horometro: "" });
+      setForm({ fecha: todayISO(), unidad: preselectedUnidad, km: "", horometro: "", horaInicio: "", horaCierre: "" });
       setConceptos([]);
       setFotosFactura([]);
       setFotosEvidencia([]);
@@ -667,6 +678,7 @@ function RegistroDrawer({
       const costoFinal = conceptos.length > 0
         ? totalConceptos
         : parseFloat((form.costo ?? "0").replace(/[$,\s]/g, "")) || 0;
+      const computedStatus = autoStatus(tipo, form.horaInicio || undefined, form.horaCierre || undefined);
       const base: EventoRaw = {
         ...(editing?.id ? { id: editing.id } : {}),
         tipo,
@@ -676,8 +688,10 @@ function RegistroDrawer({
         costo: costoFinal,
         ...(conceptos.length > 0 ? { conceptos } : {}),
         taller: form.taller ?? "",
-        status: form.status ?? "Pendiente",
+        status: computedStatus,
         notas: form.notas ?? "",
+        ...(form.horaInicio ? { horaInicio: form.horaInicio } : {}),
+        ...(form.horaCierre ? { horaCierre: form.horaCierre } : {}),
         ...(form.km ? { km: parseFloat(form.km) } : {}),
         ...(form.horometro ? { horometro: parseFloat(form.horometro) } : {}),
         ...(form.horasReparacion ? { horasReparacion: parseFloat(form.horasReparacion) } : {}),
@@ -689,7 +703,6 @@ function RegistroDrawer({
       if (tipo === "Falla") {
         base.severidad = (form.severidad as SeveridadFalla) ?? "Media";
         base.reportadoPor = form.reportadoPor ?? "";
-        base.status = form.status ?? "Reportada";
       }
       await onSave(base);
       onClose();
@@ -827,63 +840,68 @@ function RegistroDrawer({
 
           {/* Tipo-specific fields */}
           {tipo === "Mantenimiento" && (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className={lbl}>Subtipo</label>
-                <AppSelect value={form.subtipo ?? "Preventivo"} onChange={(e) => set("subtipo", e.target.value)}>
-                  <option>Preventivo</option>
-                  <option>Correctivo</option>
-                  <option>Inspección</option>
-                </AppSelect>
-              </div>
-              <div>
-                <label className={lbl}>Status</label>
-                <AppSelect value={form.status ?? "Pendiente"} onChange={(e) => set("status", e.target.value)}>
-                  <option>Pendiente</option>
-                  <option>En proceso</option>
-                  <option>Completado</option>
-                </AppSelect>
-              </div>
+            <div>
+              <label className={lbl}>Subtipo</label>
+              <AppSelect value={form.subtipo ?? "Preventivo"} onChange={(e) => set("subtipo", e.target.value)}>
+                <option>Preventivo</option>
+                <option>Correctivo</option>
+                <option>Inspección</option>
+              </AppSelect>
             </div>
           )}
 
           {tipo === "Reparación" && (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className={lbl}>Causa / Motivo</label>
-                <input type="text" value={form.causa ?? ""} onChange={(e) => set("causa", e.target.value)} placeholder="Ej. Desgaste por uso" className={inp} />
-              </div>
-              <div>
-                <label className={lbl}>Status</label>
-                <AppSelect value={form.status ?? "Pendiente"} onChange={(e) => set("status", e.target.value)}>
-                  <option>Pendiente</option>
-                  <option>En proceso</option>
-                  <option>Completado</option>
-                </AppSelect>
-              </div>
+            <div>
+              <label className={lbl}>Causa / Motivo</label>
+              <input type="text" value={form.causa ?? ""} onChange={(e) => set("causa", e.target.value)} placeholder="Ej. Desgaste por uso" className={inp} />
             </div>
           )}
 
           {tipo === "Falla" && (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className={lbl}>Severidad</label>
-                <AppSelect value={form.severidad ?? "Media"} onChange={(e) => set("severidad", e.target.value)}>
-                  <option>Alta</option>
-                  <option>Media</option>
-                  <option>Baja</option>
-                </AppSelect>
-              </div>
-              <div>
-                <label className={lbl}>Status</label>
-                <AppSelect value={form.status ?? "Reportada"} onChange={(e) => set("status", e.target.value)}>
-                  <option>Reportada</option>
-                  <option>En proceso</option>
-                  <option>Resuelta</option>
-                </AppSelect>
-              </div>
+            <div>
+              <label className={lbl}>Severidad</label>
+              <AppSelect value={form.severidad ?? "Media"} onChange={(e) => set("severidad", e.target.value)}>
+                <option>Alta</option>
+                <option>Media</option>
+                <option>Baja</option>
+              </AppSelect>
             </div>
           )}
+
+          {/* Horario — status automático */}
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={lbl}>Hora de inicio</label>
+                <input type="time" value={form.horaInicio ?? ""} onChange={(e) => set("horaInicio", e.target.value)} className={inp} />
+              </div>
+              <div>
+                <label className={lbl}>Hora de cierre</label>
+                <input type="time" value={form.horaCierre ?? ""} onChange={(e) => set("horaCierre", e.target.value)} className={inp} />
+              </div>
+            </div>
+            {/* Status badge derivado */}
+            {(() => {
+              const s = autoStatus(tipo, form.horaInicio || undefined, form.horaCierre || undefined);
+              const badgeCls: Record<string, string> = {
+                "Completado": "bg-emerald-50 text-emerald-700 border-emerald-200",
+                "Resuelta":   "bg-emerald-50 text-emerald-700 border-emerald-200",
+                "En proceso": "bg-amber-50 text-amber-700 border-amber-200",
+                "Pendiente":  "bg-gray-100 text-gray-500 border-gray-200",
+                "Reportada":  "bg-red-50 text-red-600 border-red-200",
+              };
+              const hint =
+                !form.horaInicio && !form.horaCierre ? "Agrega hora de inicio → En Proceso" :
+                form.horaInicio && !form.horaCierre  ? "Agrega hora de cierre → Completado" : "";
+              return (
+                <div className="flex items-center gap-3 rounded-xl bg-gray-50 px-4 py-2.5">
+                  <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">Estatus:</span>
+                  <span className={`text-[10px] font-semibold px-2.5 py-1 rounded-full border ${badgeCls[s] ?? "bg-gray-100 text-gray-500 border-gray-200"}`}>{s}</span>
+                  {hint && <span className="text-[10px] text-gray-400">{hint}</span>}
+                </div>
+              );
+            })()}
+          </div>
 
           {/* Description */}
           <div>
@@ -1177,13 +1195,15 @@ export default function MantenimientoPage() {
   }
 
   async function handleComplete(ev: Evento) {
+    const now = new Date();
+    const horaCierre = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
     const newStatus = ev.tipo === "Falla" ? "Resuelta" : "Completado";
-    setEventos((prev) => prev.map((e) => e.id === ev.id ? { ...e, status: newStatus } : e));
+    setEventos((prev) => prev.map((e) => e.id === ev.id ? { ...e, status: newStatus, horaCierre } : e));
     const col = ev.tipo === "Mantenimiento" ? COLLECTIONS.mantenimientos : ev.tipo === "Reparación" ? COLLECTIONS.reparaciones : COLLECTIONS.fallas;
     const { id, ...data } = ev;
     try {
-      await upsertDocument(col, id, withPlantaTag({ ...data, status: newStatus }));
-      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `${ev.tipo} de ${ev.unidad} cerrada.` } }));
+      await upsertDocument(col, id, withPlantaTag({ ...data, status: newStatus, horaCierre }));
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `${ev.tipo} de ${ev.unidad} cerrada a las ${horaCierre}.` } }));
     } catch (e) {
       console.error(e);
       window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al actualizar. Intenta de nuevo." } }));
@@ -1210,6 +1230,8 @@ export default function MantenimientoPage() {
       Subtipo: e.subtipo ?? e.severidad ?? "—",
       Descripción: e.descripcion,
       "Taller/Proveedor": e.taller ?? e.reportadoPor ?? "—",
+      "Hora inicio": e.horaInicio ?? "—",
+      "Hora cierre": e.horaCierre ?? "—",
       KM: e.km ?? "—",
       "Horómetro (h)": e.horometro ?? "—",
       "Horas taller": e.horasReparacion ?? "—",
@@ -1392,35 +1414,33 @@ export default function MantenimientoPage() {
               <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-red-400" />Falla</span>
             </div>
           </div>
-          <div className="overflow-x-auto">
+          <div>
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-[#1A1A1A]">
                   {[
-                    { h: "Fecha reporte",  cls: "w-[110px]" },
-                    { h: "Unidad",         cls: "w-[90px]" },
-                    { h: "Tipo",           cls: "w-[130px]" },
-                    { h: "Descripción",    cls: "" },
-                    { h: "Días abierto",   cls: "w-[100px] text-center" },
-                    { h: "KM",             cls: "w-[90px] text-right" },
-                    { h: "Horómetro",      cls: "w-[90px] text-right" },
-                    { h: "Importe",        cls: "w-[100px] text-right" },
-                    { h: "Status",         cls: "w-[110px]" },
-                    { h: "",               cls: "w-[110px]" },
+                    { h: "Fecha",       cls: "w-[95px]" },
+                    { h: "Unidad",      cls: "w-[80px]" },
+                    { h: "Tipo",        cls: "w-[110px]" },
+                    { h: "Descripción", cls: "" },
+                    { h: "Abierto",     cls: "w-[80px] text-center" },
+                    { h: "KM / Hor.",   cls: "w-[95px] text-right" },
+                    { h: "Importe",     cls: "w-[90px] text-right" },
+                    { h: "Status",      cls: "w-[95px]" },
+                    { h: "",            cls: "w-[90px]" },
                   ].map(({ h, cls }) => (
-                    <th key={h} className={`px-4 py-3 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap ${cls}`}>{h}</th>
+                    <th key={h} className={`px-3 py-3 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap ${cls}`}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#2A2A2A]">
                 {filteredEventos.length === 0 ? (
-                  <tr><td colSpan={10} className="p-0"><EmptyState type="no-results" dark /></td></tr>
+                  <tr><td colSpan={9} className="p-0"><EmptyState type="no-results" dark /></td></tr>
                 ) : filteredEventos.map((ev) => {
                   const isDone = ev.status === "Completado" || ev.status === "Resuelta";
                   const dias = diasDesde(ev.fecha);
-                  const diasLabel = dias === 0 ? "Hoy" : `${dias} día${dias !== 1 ? "s" : ""}`;
+                  const diasLabel = dias === 0 ? "Hoy" : `${dias}d`;
                   const diasColor = !isDone ? (dias > 5 ? "text-red-400 font-bold" : dias > 2 ? "text-amber-400 font-semibold" : "text-gray-400") : "text-gray-700";
-                  // Row highlight for urgent open events
                   const rowBg = !isDone && ev.tipo === "Falla" && ev.severidad === "Alta"
                     ? "bg-red-500/8 hover:bg-red-500/12"
                     : !isDone && (ev.status === "En proceso" || (ev.tipo === "Reparación" && dias > 1))
@@ -1430,17 +1450,17 @@ export default function MantenimientoPage() {
                   return (
                     <tr key={ev.id} className={`transition-colors ${rowBg} ${isDone ? "opacity-60" : ""}`}>
                       {/* Fecha */}
-                      <td className="px-4 py-3.5 whitespace-nowrap">
+                      <td className="px-3 py-3 whitespace-nowrap">
                         <p className="text-xs text-gray-300 font-mono">{fmtFecha(ev.fecha)}</p>
-                        {ev.taller && <p className="text-[10px] text-gray-600 mt-0.5 truncate max-w-[100px]">{ev.taller}</p>}
-                        {ev.reportadoPor && <p className="text-[10px] text-gray-600 mt-0.5">Reportó: {ev.reportadoPor}</p>}
+                        {ev.taller && <p className="text-[10px] text-gray-600 mt-0.5 truncate max-w-[85px]">{ev.taller}</p>}
+                        {ev.reportadoPor && <p className="text-[10px] text-gray-600 mt-0.5 truncate max-w-[85px]">{ev.reportadoPor}</p>}
                       </td>
                       {/* Unidad */}
-                      <td className="px-4 py-3.5 whitespace-nowrap">
+                      <td className="px-3 py-3 whitespace-nowrap">
                         <p className="text-white font-bold text-sm">{ev.unidad}</p>
                       </td>
                       {/* Tipo */}
-                      <td className="px-4 py-3.5 whitespace-nowrap">
+                      <td className="px-3 py-3 whitespace-nowrap">
                         <div className="flex flex-col gap-1">
                           <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border w-fit ${TIPO_BADGE[ev.tipo]}`}>{ev.tipo}</span>
                           {ev.subtipo && <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border w-fit ${SUBTIPO_BADGE[ev.subtipo] ?? ""}`}>{ev.subtipo}</span>}
@@ -1448,7 +1468,7 @@ export default function MantenimientoPage() {
                         </div>
                       </td>
                       {/* Descripción */}
-                      <td className="px-4 py-3.5 max-w-[220px]">
+                      <td className="px-3 py-3 max-w-[200px]">
                         <p className={`text-sm font-medium leading-snug ${isDone ? "text-gray-500" : "text-gray-100"}`}>{ev.descripcion}</p>
                         {ev.causa && <p className="text-[10px] text-gray-500 mt-0.5">Causa: {ev.causa}</p>}
                         {ev.notas && <p className="text-[10px] text-gray-600 mt-0.5 italic">{ev.notas}</p>}
@@ -1459,44 +1479,42 @@ export default function MantenimientoPage() {
                         )}
                       </td>
                       {/* Días abierto */}
-                      <td className="px-4 py-3.5 text-center whitespace-nowrap">
+                      <td className="px-3 py-3 text-center whitespace-nowrap">
                         {!isDone
                           ? <span className={`text-sm ${diasColor}`}>{diasLabel}</span>
                           : <span className="text-gray-700 text-xs">—</span>}
                         {ev.horasReparacion != null && (
-                          <p className="text-[10px] text-amber-400 mt-0.5 font-semibold">{ev.horasReparacion}h taller</p>
+                          <p className="text-[10px] text-amber-400 mt-0.5 font-semibold">{ev.horasReparacion}h</p>
                         )}
                       </td>
-                      {/* KM */}
-                      <td className="px-4 py-3.5 text-right whitespace-nowrap">
+                      {/* KM + Horómetro combinados */}
+                      <td className="px-3 py-3 text-right whitespace-nowrap">
                         {ev.km != null
-                          ? <span className="text-sm text-sky-300 font-mono font-semibold">{ev.km.toLocaleString("es-MX")}</span>
-                          : <span className="text-gray-700">—</span>}
-                      </td>
-                      {/* Horómetro */}
-                      <td className="px-4 py-3.5 text-right whitespace-nowrap">
+                          ? <p className="text-xs text-sky-300 font-mono font-semibold">{ev.km.toLocaleString("es-MX")} km</p>
+                          : null}
                         {ev.horometro != null
-                          ? <span className="text-sm text-violet-300 font-mono font-semibold">{ev.horometro.toLocaleString("es-MX")} h</span>
-                          : <span className="text-gray-700">—</span>}
+                          ? <p className="text-xs text-violet-300 font-mono font-semibold">{ev.horometro.toLocaleString("es-MX")} h</p>
+                          : null}
+                        {ev.km == null && ev.horometro == null && <span className="text-gray-700">—</span>}
                       </td>
                       {/* Importe */}
-                      <td className="px-4 py-3.5 text-right whitespace-nowrap">
+                      <td className="px-3 py-3 text-right whitespace-nowrap">
                         <span className={`text-sm font-bold tabular-nums ${ev.costo > 0 ? (isDone ? "text-gray-500" : "text-white") : "text-gray-700"}`}>
                           {currency(ev.costo)}
                         </span>
                       </td>
                       {/* Status */}
-                      <td className="px-4 py-3.5 whitespace-nowrap">
-                        <span className={`text-[10px] font-semibold px-2.5 py-1 rounded-full border ${STATUS_BADGE[ev.status] ?? "bg-gray-500/15 text-gray-400 border-gray-500/30"}`}>
+                      <td className="px-3 py-3 whitespace-nowrap">
+                        <span className={`text-[10px] font-semibold px-2 py-1 rounded-full border ${STATUS_BADGE[ev.status] ?? "bg-gray-500/15 text-gray-400 border-gray-500/30"}`}>
                           {ev.status}
                         </span>
                       </td>
                       {/* Actions */}
-                      <td className="px-4 py-3.5">
-                        <div className="flex items-center gap-1.5">
+                      <td className="px-3 py-3">
+                        <div className="flex items-center gap-1">
                           {!isDone && (
                             <button onClick={() => handleComplete(ev)}
-                              className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-semibold text-emerald-400 border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 rounded-lg transition-colors cursor-pointer whitespace-nowrap">
+                              className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-emerald-400 border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 rounded-lg transition-colors cursor-pointer whitespace-nowrap">
                               <CheckCircle2 size={11} /> Cerrar
                             </button>
                           )}
