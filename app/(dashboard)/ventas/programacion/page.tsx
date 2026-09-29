@@ -146,7 +146,7 @@ function nowLocalISO(): string {
   const now = new Date();
   return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 }
-function isUrl(v: string) { return v.startsWith("http://") || v.startsWith("https://"); }
+function isUrl(v: string | undefined | null) { return (v ?? "").startsWith("http://") || (v ?? "").startsWith("https://"); }
 
 function extractCoordsFromUrl(url: string): { lat: number; lng: number } | null {
   const atMatch = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);

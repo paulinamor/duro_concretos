@@ -1347,26 +1347,54 @@ function FormDrawer({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={lbl}>Recibo</label>
-              <AppSelect
-                value={form.recibo}
-                onChange={(e) => set("recibo", e.target.value)}
-              >
-                <option value="">Sin recibo</option>
-                {/* Si el recibo actual ya está guardado pero no está en la lista (ya ligado), mostrarlo igual */}
-                {form.recibo && !recibosDisponibles.some((r) => `#${String(r.receiptNumber).padStart(4, "0")}` === form.recibo) && (
-                  <option value={form.recibo}>{form.recibo}</option>
-                )}
-                {recibosDisponibles
-                  .sort((a, b) => b.receiptNumber - a.receiptNumber)
-                  .map((r) => {
-                    const folio = `#${String(r.receiptNumber).padStart(4, "0")}`;
-                    return (
-                      <option key={r.id} value={folio}>
-                        {folio} — {r.cliente} ({r.fecha})
-                      </option>
-                    );
-                  })}
-              </AppSelect>
+              {/* Si ya hay recibo guardado (editing), mostrarlo bloqueado — no se puede quitar sin acción explícita */}
+              {form.recibo ? (
+                <div className="flex items-center gap-2">
+                  <div className={`${inp} flex-1 bg-gray-50 text-gray-700 font-medium`}>{form.recibo}</div>
+                  <button
+                    type="button"
+                    title="Quitar recibo (requiere confirmación)"
+                    onClick={() => {
+                      if (window.confirm(`¿Seguro que quieres quitar el recibo ${form.recibo} de esta programación?`)) {
+                        set("recibo", "");
+                      }
+                    }}
+                    className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer shrink-0"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ) : (
+                <AppSelect
+                  value=""
+                  onChange={(e) => {
+                    const folio = e.target.value;
+                    if (!folio) return;
+                    // Auto-fill fecha y método pago desde el recibo seleccionado
+                    const recibo = recibosDisponibles.find((r) => `#${String(r.receiptNumber).padStart(4, "0")}` === folio);
+                    set("recibo", folio);
+                    if (recibo?.fecha && !form.fechaPago) set("fechaPago", recibo.fecha);
+                    if (!form.metodoPago) set("metodoPago", "Efectivo");
+                  }}
+                >
+                  <option value="">Seleccionar recibo…</option>
+                  {recibosDisponibles
+                    .filter((r) => {
+                      if (!form.cliente) return true;
+                      const normCliente = (s: string) => s.trim().toUpperCase().replace(/\s+/g, " ");
+                      return normCliente(r.cliente) === normCliente(form.cliente);
+                    })
+                    .sort((a, b) => b.receiptNumber - a.receiptNumber)
+                    .map((r) => {
+                      const folio = `#${String(r.receiptNumber).padStart(4, "0")}`;
+                      return (
+                        <option key={r.id} value={folio}>
+                          {folio} — {r.cliente} ({r.fecha})
+                        </option>
+                      );
+                    })}
+                </AppSelect>
+              )}
             </div>
             <div>
               <label className={lbl}>Fact</label>
