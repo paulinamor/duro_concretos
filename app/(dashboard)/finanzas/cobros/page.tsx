@@ -48,6 +48,7 @@ interface Prog {
   planta?: string;
   origenRecibo?: boolean;
   reciboId?: string;
+  reciboFolio?: string;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -264,7 +265,7 @@ export default function CobrosPage() {
                 return (
                   <tr key={p.id} className="hover:bg-amber-50/40 transition-colors">
                     <td className="px-5 py-3.5 text-[#CC2229] font-medium">{fmtDate(p.dia)}</td>
-                    <td className="px-5 py-3.5 text-gray-700 font-medium">{p.folio || "—"}</td>
+                    <td className="px-5 py-3.5 text-gray-700 font-medium">{p.reciboFolio || p.folio || "—"}</td>
                     <td className="px-5 py-3.5 text-gray-800">{p.cliente}</td>
                     <td className="px-5 py-3.5 text-gray-500 text-xs max-w-[180px] truncate">{p.nombreObra || "—"}</td>
                     <td className="px-5 py-3.5 text-right text-gray-700 font-medium">{currency(p.total ?? 0)}</td>
@@ -515,7 +516,7 @@ function NuevoPagoView({ clientesList, progs, prefillClienteId, onBack, onCreate
             <div>
               <p className="text-xs font-semibold text-amber-700">{progsCliente.length} colada{progsCliente.length !== 1 ? "s" : ""} pendiente{progsCliente.length !== 1 ? "s" : ""}</p>
               <p className="text-xs text-amber-600 mt-0.5">
-                {progsCliente.map((p) => p.folio || p.id.slice(-6)).join(", ")}
+                {progsCliente.map((p) => p.reciboFolio || p.folio || p.id.slice(-6)).join(", ")}
               </p>
             </div>
             <div className="text-right">
@@ -734,7 +735,7 @@ function DetallePagoView({ pago, progs, onBack, onUpdated }: {
                 <option value="">Seleccionar…</option>
                 {pendientes.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.folio || p.id.slice(-6)} · {fmtDate(p.dia)} · {currency(saldoPendiente(p))}
+                    {p.reciboFolio || p.folio || p.id.slice(-6)} · {fmtDate(p.dia)} · {currency(saldoPendiente(p))}
                   </option>
                 ))}
               </AppSelect>
@@ -798,7 +799,7 @@ function DetallePagoView({ pago, progs, onBack, onUpdated }: {
                     <div>
                       <p className="font-semibold text-gray-700 flex items-center gap-1">
                         <span className={`inline-block w-2 h-2 rounded-full ${sp > 0.01 ? "bg-[#CC2229]" : "bg-green-400"}`} />
-                        Remisión: {p.folio || p.id.slice(-6)}
+                        Remisión: {p.reciboFolio || p.folio || p.id.slice(-6)}
                       </p>
                       <p className="text-gray-400 mt-0.5">Cantidad {currency(p.total ?? 0)}</p>
                       <p className="text-gray-400">Abonado {currency(p.montoPagado ?? 0)}</p>

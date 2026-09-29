@@ -1035,11 +1035,13 @@ export default function VentasProgramacionPage() {
   // Admin ve todos; vendedor solo ve los suyos
   // El filtro usa comparación case-insensitive para capturar variantes del mismo nombre
   const misPedidos = useMemo(() => {
+    // Excluir entradas creadas desde recibos de concreto (no son pedidos de venta)
+    const ventasProgs = allProgs.filter((p) => !(p as { origenRecibo?: boolean }).origenRecibo);
     const base = isAdmin
       ? (vendedorFiltro === "todos"
-          ? allProgs
-          : allProgs.filter((p) => p.vendedor?.trim().toLowerCase() === vendedorFiltro.trim().toLowerCase()))
-      : allProgs.filter((p) => p.vendedor === vendedorNombre);
+          ? ventasProgs
+          : ventasProgs.filter((p) => p.vendedor?.trim().toLowerCase() === vendedorFiltro.trim().toLowerCase()))
+      : ventasProgs.filter((p) => p.vendedor === vendedorNombre);
     return [...base].sort((a, b) => b.dia.localeCompare(a.dia) || (a.diaHoraPedido ?? "").localeCompare(b.diaHoraPedido ?? ""));
   }, [allProgs, vendedorNombre, isAdmin, vendedorFiltro]);
 
@@ -1050,7 +1052,7 @@ export default function VentasProgramacionPage() {
 
   // Disponibilidad del día activo (todos los pedidos de ese día, sin revelar datos de otros)
   const pedidosDia = useMemo(() =>
-    allProgs.filter((p) => p.dia === diaActivo),
+    allProgs.filter((p) => p.dia === diaActivo && !(p as { origenRecibo?: boolean }).origenRecibo),
     [allProgs, diaActivo]);
 
   const misPedidosDia = useMemo(() =>

@@ -244,7 +244,7 @@ export default function RecibosConcretoPage() {
       upsertDocument(COLLECTIONS.programaciones, progId, withPlantaTag({
         dia: nextReceipt.fecha,
         cliente: nextReceipt.cliente,
-        folio: `#${String(num).padStart(4, "0")}`,
+        reciboFolio: `#${String(num).padStart(4, "0")}`,
         total: realTotal,
         montoPagado: nextReceipt.anticipo ?? 0,
         nombreObra: nextReceipt.direccionObra,
