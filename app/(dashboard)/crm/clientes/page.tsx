@@ -5,7 +5,9 @@ import {
   BadgeDollarSign,
   Building2,
   ChevronRight,
+  CreditCard,
   FileSpreadsheet,
+  FileText,
   GitMerge,
   Mail,
   MapPin,
@@ -33,7 +35,8 @@ import {
   type EstatusCliente,
   type TipoCliente,
 } from "@/lib/crmClientes";
-import { COLLECTIONS, deleteDocument, getCollectionDocs, upsertDocument, where } from "@/lib/db";
+import { COLLECTIONS, deleteDocument, getCollectionDocs, upsertDocument, where, orderBy, limit } from "@/lib/db";
+import { currency } from "@/lib/formatters";
 import { todayCST } from "@/lib/dateUtils";
 import { matchesQuery } from "@/lib/search";
 
@@ -411,6 +414,41 @@ export default function CrmClientesPage() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Cliente | null>(null);
   const [detail, setDetail] = useState<Cliente | null>(null);
+  const [clientActivity, setClientActivity] = useState<{
+    programaciones: Array<{ id: string; dia: string; hora?: string; total?: number | null; folio?: string; origenRecibo?: boolean }>;
+    recibos: Array<{ id: string; fecha?: string; total?: number; receiptNumber?: number }>;
+    pagos: Array<{ id: string; fecha: string; cantidad: number; tipoPago: string }>;
+  } | null>(null);
+  const [activityLoading, setActivityLoading] = useState(false);
+
+  useEffect(() => {
+    if (!detail) { setClientActivity(null); return; }
+    setActivityLoading(true);
+    const nombre = detail.razonSocial;
+    type RawProg = { id: string; dia: string; hora?: string; total?: number | null; folio?: string; origenRecibo?: boolean };
+    type RawRecibo = { id: string; fecha?: string; total?: number; receiptNumber?: number };
+    type RawPago = { id: string; fecha: string; cantidad: number; tipoPago: string };
+
+    Promise.all([
+      getCollectionDocs<RawProg>(COLLECTIONS.programaciones, [where("cliente", "==", nombre)]).then((docs) =>
+        docs.filter((d) => !d.origenRecibo)
+            .sort((a, b) => b.dia.localeCompare(a.dia))
+            .slice(0, 5)
+      ),
+      getCollectionDocs<RawRecibo>(COLLECTIONS.remisiones, [where("cliente", "==", nombre)]).then((docs) =>
+        docs.sort((a, b) => (b.fecha ?? "").localeCompare(a.fecha ?? ""))
+            .slice(0, 5)
+      ),
+      getCollectionDocs<RawPago>(COLLECTIONS.pagos, [where("cliente", "==", nombre)]).then((docs) =>
+        docs.sort((a, b) => b.fecha.localeCompare(a.fecha))
+            .slice(0, 5)
+      ),
+    ]).then(([programaciones, recibos, pagos]) => {
+      setClientActivity({ programaciones, recibos, pagos });
+    }).catch(() => setClientActivity(null))
+      .finally(() => setActivityLoading(false));
+  }, [detail?.id]);
+
   const [saveError, setSaveError] = useState("");
   const [showDedupModal, setShowDedupModal] = useState(false);
   const [dedupKeep, setDedupKeep] = useState<Record<string, string>>({});
@@ -1083,6 +1121,80 @@ export default function CrmClientesPage() {
                   </div>
                 </div>
               )}
+
+              {/* Concentrate — actividad real */}
+              <div>
+                <p className="text-xs font-extrabold uppercase tracking-wider text-gray-500 mb-3">Actividad reciente</p>
+                {activityLoading ? (
+                  <div className="flex items-center justify-center py-6">
+                    <div className="w-5 h-5 rounded-full border-2 border-[#CC2229] border-t-transparent animate-spin" />
+                  </div>
+                ) : clientActivity ? (
+                  <div className="space-y-3">
+                    {/* Programaciones */}
+                    <div className="rounded-xl border border-[#3A3A3A] bg-[#111318] overflow-hidden">
+                      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[#3A3A3A]">
+                        <FileText size={13} className="text-gray-500" />
+                        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Programaciones</span>
+                        <span className="ml-auto text-[10px] text-gray-600">{clientActivity.programaciones.length === 0 ? "Sin registros" : `${clientActivity.programaciones.length} recientes`}</span>
+                      </div>
+                      {clientActivity.programaciones.length === 0 ? (
+                        <p className="px-4 py-3 text-xs text-gray-600">Sin programaciones</p>
+                      ) : clientActivity.programaciones.map((p) => (
+                        <div key={p.id} className="flex items-center justify-between px-4 py-2.5 border-b border-[#1A1A1A] last:border-0">
+                          <div>
+                            <p className="text-xs text-gray-300">{p.dia?.replace(/-/g, "/") ?? "—"}{p.hora ? ` · ${p.hora}` : ""}</p>
+                            {p.folio && <p className="text-[10px] text-gray-600 font-mono">{p.folio}</p>}
+                          </div>
+                          <p className="text-xs font-medium text-white">{p.total != null ? currency(p.total) : "—"}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Recibos */}
+                    <div className="rounded-xl border border-[#3A3A3A] bg-[#111318] overflow-hidden">
+                      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[#3A3A3A]">
+                        <FileText size={13} className="text-amber-500" />
+                        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Recibos de concreto</span>
+                        <span className="ml-auto text-[10px] text-gray-600">{clientActivity.recibos.length === 0 ? "Sin registros" : `${clientActivity.recibos.length} recientes`}</span>
+                      </div>
+                      {clientActivity.recibos.length === 0 ? (
+                        <p className="px-4 py-3 text-xs text-gray-600">Sin recibos</p>
+                      ) : clientActivity.recibos.map((r) => (
+                        <div key={r.id} className="flex items-center justify-between px-4 py-2.5 border-b border-[#1A1A1A] last:border-0">
+                          <div>
+                            <p className="text-xs text-gray-300">{r.fecha?.replace(/-/g, "/") ?? "—"}</p>
+                            {r.receiptNumber != null && <p className="text-[10px] text-gray-600 font-mono">#{String(r.receiptNumber).padStart(4, "0")}</p>}
+                          </div>
+                          <p className="text-xs font-medium text-amber-300">{r.total != null ? currency(r.total) : "—"}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Pagos */}
+                    <div className="rounded-xl border border-[#3A3A3A] bg-[#111318] overflow-hidden">
+                      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[#3A3A3A]">
+                        <CreditCard size={13} className="text-emerald-500" />
+                        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Cobros registrados</span>
+                        <span className="ml-auto text-[10px] text-gray-600">{clientActivity.pagos.length === 0 ? "Sin registros" : `${clientActivity.pagos.length} recientes`}</span>
+                      </div>
+                      {clientActivity.pagos.length === 0 ? (
+                        <p className="px-4 py-3 text-xs text-gray-600">Sin cobros</p>
+                      ) : clientActivity.pagos.map((p) => (
+                        <div key={p.id} className="flex items-center justify-between px-4 py-2.5 border-b border-[#1A1A1A] last:border-0">
+                          <div>
+                            <p className="text-xs text-gray-300">{p.fecha?.replace(/-/g, "/") ?? "—"}</p>
+                            <p className="text-[10px] text-gray-600">{p.tipoPago}</p>
+                          </div>
+                          <p className="text-xs font-medium text-emerald-300">{currency(p.cantidad)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-600 py-2">No se pudo cargar la actividad</p>
+                )}
+              </div>
 
               {detail.notas && (
                 <div>

@@ -73,7 +73,7 @@ function createReceipt(receipts: ConcreteReceipt[]): ConcreteReceipt {
     total: 0,
     resta: 0,
     viajeFolio: `VJ-2026-${nextNumber}`,
-    enviarACobros: true,
+    enviarACobros: false,
   };
 }
 
@@ -972,11 +972,11 @@ export default function RecibosConcretoPage() {
                 className="flex items-center justify-between w-full group"
               >
                 <div className="flex flex-col items-start gap-0.5">
-                  <span className="text-sm font-medium text-gray-800">Enviar a Cobros</span>
+                  <span className="text-sm font-medium text-gray-800">Venta a crédito</span>
                   <span className="text-[11px] text-gray-400">
                     {receipt.enviarACobros !== false
-                      ? "El saldo aparecerá en el módulo de Cobros para seguimiento"
-                      : "No se registrará en Cobros"}
+                      ? "El saldo pendiente aparecerá en Cobros para seguimiento"
+                      : "Venta de contado — no requiere seguimiento en Cobros"}
                   </span>
                 </div>
                 <div className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${receipt.enviarACobros !== false ? "bg-[#CC2229]" : "bg-gray-200"}`}>

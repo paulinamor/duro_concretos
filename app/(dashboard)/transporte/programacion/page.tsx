@@ -221,7 +221,7 @@ function nv(v: number | null | undefined): number {
 function calcTotalesProg(p: Programacion): { totalXM3: number | null; total: number | null } {
   const factorBomba = p.aplicarFactorBomba ? (p.factorBomba ?? 1) : 1;
   const txm3 =
-    nv(p.precioM3) +
+    nv(p.precioM3) * factorBomba +
     nv(p.precioM3Bomba) * factorBomba +
     (n(String(p.color ?? "")) ?? 0) +
     nv(p.ltoAcelr) +
@@ -412,7 +412,7 @@ function ChoferCard({
   revolveList: string[];
 }) {
   const set = (k: keyof ChoferFormEntry, v: string) => onChange({ ...entry, [k]: v });
-  const tiempoAuto = calcTiempoDescarga(entry.horaInicioDescarga, entry.horaFinalDescarga);
+  const tiempoAuto = calcTiempoDescarga(entry.horaLlegadaObra, entry.horaFinalDescarga);
 
   return (
     <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
@@ -739,7 +739,7 @@ function FormDrawer({
   const totalXM3Auto = useMemo(() => {
     const factorBomba = form.aplicarFactorBomba ? (n(form.factorBomba) ?? 1) : 1;
     const sum =
-      (n(form.precioM3) ?? 0) +
+      (n(form.precioM3) ?? 0) * factorBomba +
       (n(form.precioM3Bomba) ?? 0) * factorBomba +
       (n(form.color) ?? 0) +
       (n(form.ltoAcelr) ?? 0) +
@@ -830,7 +830,7 @@ function FormDrawer({
         horaInicioDescarga: c.horaInicioDescarga,
         horaFinalDescarga: c.horaFinalDescarga,
         horaSalidaObra: c.horaSalidaObra,
-        tiempoDescarga: calcTiempoDescarga(c.horaInicioDescarga, c.horaFinalDescarga),
+        tiempoDescarga: calcTiempoDescarga(c.horaLlegadaObra, c.horaFinalDescarga),
         m3: n(c.m3),
       }));
 
