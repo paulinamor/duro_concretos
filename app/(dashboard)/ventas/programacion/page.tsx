@@ -941,7 +941,8 @@ function PedidoDrawer({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function VentasProgramacionPage() {
-  const session = useMemo(() => getStoredSession(), []);
+  const [session, setSession] = useState<ReturnType<typeof getStoredSession>>(null);
+  useEffect(() => { setSession(getStoredSession()); }, []);
   const vendedorNombre = session?.name ?? "";
   const isAdmin = session?.role === "admin";
 
