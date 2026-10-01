@@ -10,7 +10,7 @@ import {
   Activity, AlertTriangle, Clock, FlaskConical,
   Loader2, MapPin, RefreshCw, Satellite, Truck,
 } from "lucide-react";
-import { getCollectionDocs, COLLECTIONS } from "@/lib/db";
+import { getCollectionDocs, COLLECTIONS, where } from "@/lib/db";
 import { todayCST } from "@/lib/dateUtils";
 import { filterByPlanta } from "@/lib/auth";
 import KPICard from "@/components/KPICard";
@@ -232,16 +232,8 @@ export default function ProgramacionLivePage() {
 
   useEffect(() => {
     setLoadingProgs(true);
-    getCollectionDocs(COLLECTIONS.programaciones).then((all) => {
-      const filtered = filterByPlanta(
-        (all as Programacion[]).filter((p) => {
-          const d = p.dia?.includes("/")
-            ? p.dia.split("/").reverse().join("-")
-            : p.dia;
-          return d === date;
-        })
-      );
-      setProgs(filtered);
+    getCollectionDocs<Programacion>(COLLECTIONS.programaciones, [where("dia", "==", date)]).then((docs) => {
+      setProgs(filterByPlanta(docs));
       setLoadingProgs(false);
     }).catch(() => setLoadingProgs(false));
   }, [date]);

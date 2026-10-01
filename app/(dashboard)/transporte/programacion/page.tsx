@@ -106,6 +106,7 @@ interface Programacion {
   sgpStatus?: "enviado" | "error" | "pendiente";
   sgpError?: string;
   vendedorEmail?: string;
+  origenRecibo?: boolean;
 }
 
 interface Obra {
@@ -2350,7 +2351,7 @@ export default function ProgramacionPage() {
     const unsub = subscribeToCollection<Programacion>(
       COLLECTIONS.programaciones,
       (progs) => {
-        const filtered = filterByPlanta(progs);
+        const filtered = filterByPlanta(progs).filter((p) => !p.origenRecibo);
         setProgramaciones(filtered);
 
         // Rebuild client suggestions on every update

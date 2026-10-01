@@ -22,7 +22,7 @@ import {
   CartesianGrid, Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { getCollectionDocs, COLLECTIONS } from "@/lib/db";
+import { getCollectionDocs, COLLECTIONS, where } from "@/lib/db";
 import { filterByPlanta, getAllowedModuleSet, moduleCatalog, getStoredSession } from "@/lib/auth";
 import { localISODate } from "@/lib/dateUtils";
 import type { Unidad } from "@/lib/unidades";
@@ -103,9 +103,11 @@ export default function DashboardPage() {
       router.replace(first?.href ?? "/");
       return;
     }
+    const mesStart = `${mesActual}-01`;
+    const mesEnd = `${mesActual}-31`;
     Promise.all([
-      getCollectionDocs<Programacion>(COLLECTIONS.programaciones),
-      getCollectionDocs<Recibo>(COLLECTIONS.efectivo),
+      getCollectionDocs<Programacion>(COLLECTIONS.programaciones, [where("dia", ">=", mesStart), where("dia", "<=", mesEnd)]),
+      getCollectionDocs<Recibo>(COLLECTIONS.efectivo, [where("fecha", ">=", mesStart), where("fecha", "<=", mesEnd)]),
       getCollectionDocs<Cuenta>(COLLECTIONS.cuentasPorCobrar),
       getCollectionDocs<Cuenta>(COLLECTIONS.cuentasPorPagar),
       getCollectionDocs<Unidad>(COLLECTIONS.unidades),
