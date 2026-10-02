@@ -13,7 +13,7 @@ import {
   AlertCircle, DollarSign, Users, Zap, BarChart3, Banknote, FileWarning, X,
   ChevronRight,
 } from "lucide-react";
-import { getCollectionDocs, COLLECTIONS } from "@/lib/db";
+import { getCollectionDocs, COLLECTIONS, where } from "@/lib/db";
 import AppSelect from "@/components/AppSelect";
 import { filterByPlanta } from "@/lib/auth";
 import { todayCST } from "@/lib/dateUtils";
@@ -236,10 +236,20 @@ export default function ReportesPage() {
   useEffect(() => { setDrill(null); }, [period, tab]);
 
   useEffect(() => {
-    getCollectionDocs<Programacion>(COLLECTIONS.programaciones)
+    setLoading(true);
+    // Compute earliest date needed: covers both current and previous period
+    let earliest: Date;
+    if (period === "personalizado") {
+      const diffMs = new Date(customEnd + "T23:59:59").getTime() - new Date(customStart + "T00:00:00").getTime();
+      earliest = new Date(new Date(customStart + "T00:00:00").getTime() - diffMs - 86_400_000);
+    } else {
+      earliest = getPrevRange(period).start;
+    }
+    const isoEarliest = earliest.toISOString().slice(0, 10);
+    getCollectionDocs<Programacion>(COLLECTIONS.programaciones, [where("dia", ">=", isoEarliest)])
       .then((docs) => setProgramaciones(filterByPlanta(docs)))
       .finally(() => setLoading(false));
-  }, []);
+  }, [period, customStart, customEnd]);
 
   useEffect(() => {
     if (!loading) { setLoadingLong(false); return; }

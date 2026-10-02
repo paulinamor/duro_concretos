@@ -1,6 +1,6 @@
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
-import { getFirestore, type Firestore } from "firebase/firestore";
+import { initializeFirestore, getFirestore, persistentLocalCache, persistentMultipleTabManager, type Firestore } from "firebase/firestore";
 import { getStorage, type FirebaseStorage } from "firebase/storage";
 
 // NEXT_PUBLIC_ vars are embedded at build time. If missing (e.g. Vercel env not set),
@@ -38,7 +38,16 @@ if (isFirebaseConfigured) {
 }
 
 export const auth: Auth | null = app ? getAuth(app) : null;
-export const db: Firestore | null = app ? getFirestore(app) : null;
+function buildDb(a: FirebaseApp): Firestore {
+  try {
+    return initializeFirestore(a, {
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+    });
+  } catch {
+    return getFirestore(a);
+  }
+}
+export const db: Firestore | null = app ? buildDb(app) : null;
 export const storage: FirebaseStorage | null = app ? getStorage(app) : null;
 
 // Secondary app instance — used to create users without signing out the current admin
