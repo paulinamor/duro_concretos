@@ -3,13 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import {
-  Download, FileText, Info, Link as LinkIcon, Pencil, Printer, Save, Search, Settings, X,
+  Download, FileText, Info, Link as LinkIcon, Pencil, Printer, Save, Search, Settings, Trash2, X,
 } from "lucide-react";
 import Link from "next/link";
 import KPICard from "@/components/KPICard";
 import ModuleLoading from "@/components/ModuleLoading";
 import AppSelect from "@/components/AppSelect";
-import { getCollectionDocs, getDocument, upsertDocument, COLLECTIONS } from "@/lib/db";
+import { getCollectionDocs, getDocument, upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
 import DuplicateWarningModal from "@/components/DuplicateWarningModal";
 import { filterByPlanta, getActivePlanta, withPlantaTag } from "@/lib/auth";
 import { todayCST, currentMonthCST } from "@/lib/dateUtils";
@@ -622,6 +622,8 @@ export default function RemisionesPage() {
   const [editing, setEditing] = useState<RemisionDespacho | undefined>(undefined);
   const [completarMode, setCompletarMode] = useState(false);
   const [duplicateWarn, setDuplicateWarn] = useState<{ field: string; value: string; detail?: string; proceed: () => void } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<RemisionDespacho | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [printTarget, setPrintTarget] = useState<RemisionDespacho | null>(null);
   const printRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -806,6 +808,33 @@ export default function RemisionesPage() {
     }
   };
 
+  const handleDelete = async (r: RemisionDespacho) => {
+    if (!r.id) return;
+    setDeleting(true);
+    try {
+      await deleteDocument(COLLECTIONS.remisiones, r.id);
+
+      // Si estaba vinculada a una programación, limpia el reciboFolio para que
+      // la programación quede libre de volver a generar una remisión
+      if (r.programacionId) {
+        await upsertDocument(COLLECTIONS.programaciones, r.programacionId, {
+          reciboFolio: null,
+        });
+      }
+
+      setRemisiones((prev) => prev.filter((x) => x.id !== r.id));
+      setDeleteTarget(null);
+      window.dispatchEvent(new CustomEvent("duro:toast", {
+        detail: { type: "success", message: `Remisión ${r.noRemision} eliminada${r.programacionId ? " · Vínculo con programación liberado" : ""}.` },
+      }));
+    } catch (e) {
+      console.error(e);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al eliminar." } }));
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="space-y-5">
       <style jsx global>{`
@@ -959,6 +988,13 @@ export default function RemisionesPage() {
                       >
                         <Printer size={15} />
                       </button>
+                      <button
+                        onClick={() => setDeleteTarget(r)}
+                        title="Eliminar remisión"
+                        className="p-1.5 text-gray-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                      >
+                        <Trash2 size={15} />
+                      </button>
                     </td>
                   </tr>
                 ))
@@ -1099,6 +1135,36 @@ export default function RemisionesPage() {
           onCancel={() => setDuplicateWarn(null)}
           onConfirm={duplicateWarn.proceed}
         />
+      )}
+
+      {/* ── Modal confirmar eliminación ──────────────────────────────────────── */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+            <div className="bg-red-50 px-6 py-5 flex items-start gap-3">
+              <Trash2 size={18} className="text-red-500 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-gray-900">Eliminar remisión {deleteTarget.noRemision}</p>
+                <p className="text-xs text-gray-500 mt-1">{deleteTarget.cliente} · {deleteTarget.fecha}</p>
+                {deleteTarget.programacionId && (
+                  <p className="text-xs text-amber-700 mt-2 font-medium">
+                    Esta remisión está vinculada a una programación. El vínculo se liberará para que puedas generar una nueva remisión.
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="px-6 py-4 flex gap-3">
+              <button onClick={() => setDeleteTarget(null)} disabled={deleting}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 cursor-pointer transition-colors font-medium disabled:opacity-50">
+                Cancelar
+              </button>
+              <button onClick={() => handleDelete(deleteTarget)} disabled={deleting}
+                className="flex-1 py-2.5 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 cursor-pointer transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
+                {deleting ? <><Trash2 size={14} className="animate-pulse" /> Eliminando…</> : <><Trash2 size={14} /> Eliminar</>}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── Hidden div for window.print() ────────────────────────────────────── */}
