@@ -71,12 +71,17 @@ function normalizeNombre(s: string) {
 async function cascadeRename(oldName: string, newName: string) {
   if (!oldName || oldName === newName) return;
 
+  // Try the exact name AND its uppercase trimmed variant to handle case inconsistencies
+  const variants = Array.from(new Set([oldName, oldName.trim().toUpperCase().replace(/\s+/g, " ")]));
+
   const updateField = async (coll: string, field: "cliente" | "contraparte") => {
-    const docs = await getCollectionDocs<{ id: string; cliente?: string; contraparte?: string }>(
-      coll,
-      [where(field, "==", oldName)],
-    );
-    await Promise.all(docs.map((d) => {
+    const seen = new Set<string>();
+    const allDocs: { id: string; [k: string]: unknown }[] = [];
+    for (const v of variants) {
+      const docs = await getCollectionDocs<{ id: string; [k: string]: unknown }>(coll, [where(field, "==", v)]);
+      docs.forEach((d) => { if (!seen.has(d.id)) { seen.add(d.id); allDocs.push(d); } });
+    }
+    await Promise.all(allDocs.map((d) => {
       const { id, ...rest } = d;
       return upsertDocument(coll, id, { ...rest, [field]: newName });
     }));
@@ -86,6 +91,7 @@ async function cascadeRename(oldName: string, newName: string) {
     updateField(COLLECTIONS.programaciones, "cliente"),
     updateField(COLLECTIONS.efectivo, "cliente"),
     updateField(COLLECTIONS.remisiones, "cliente"),
+    updateField(COLLECTIONS.pagos, "cliente"),
     updateField(COLLECTIONS.pipeline, "cliente"),
     updateField(COLLECTIONS.cuentasPorCobrar, "contraparte"),
     updateField(COLLECTIONS.cuentasPorPagar, "contraparte"),
@@ -800,6 +806,12 @@ export default function CrmClientesPage() {
     );
     const { id: _id, ...data } = next;
     await upsertDocument(COLLECTIONS.clientes, _id, data);
+
+    // Cascada: si cambió el nombre, actualiza todas las colecciones que lo referencian
+    if (editing && editing.razonSocial !== razonSocial) {
+      await cascadeRename(editing.razonSocial, razonSocial);
+    }
+
     window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: editing ? "Cliente actualizado." : "Cliente creado." } }));
   }
 

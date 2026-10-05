@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import {
-  Download, FileText, Info, Link as LinkIcon, Printer, Save, Search, Settings, X,
+  Download, FileText, Info, Link as LinkIcon, Pencil, Printer, Save, Search, Settings, X,
 } from "lucide-react";
 import Link from "next/link";
 import KPICard from "@/components/KPICard";
@@ -782,12 +782,24 @@ export default function RemisionesPage() {
     const tagged = withPlantaTag(data) as RemisionDespacho;
     try {
       await upsertDocument(COLLECTIONS.remisiones, id, tagged as Parameters<typeof upsertDocument>[2]);
+
+      // Si el número de remisión cambió y está vinculada a una programación,
+      // actualiza el reciboFolio en la programación para mantener sincronía
+      const folioAnterior = editing?.noRemision;
+      const folioCambio = r.id && r.programacionId && folioAnterior && folioAnterior !== r.noRemision;
+      if (folioCambio) {
+        await upsertDocument(COLLECTIONS.programaciones, r.programacionId!, { reciboFolio: r.noRemision });
+      }
+
       setRemisiones((prev) => {
         const idx = prev.findIndex((x) => x.id === r.id);
         const updated = { ...tagged, id };
         return idx >= 0 ? prev.map((x, i) => (i === idx ? updated : x)) : [updated, ...prev];
       });
-      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `Remisión ${r.noRemision} guardada.` } }));
+      const msg = folioCambio
+        ? `Remisión actualizada: ${folioAnterior} → ${r.noRemision} · Folio sincronizado en programación`
+        : `Remisión ${r.noRemision} guardada.`;
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: msg } }));
     } catch (e) {
       console.error(e);
       window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al guardar la remisión. Verifica tu conexión." } }));
@@ -923,13 +935,21 @@ export default function RemisionesPage() {
                         : <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 border border-amber-200 text-amber-700">Pendiente</span>}
                     </td>
                     <td className="px-3 py-3 flex items-center gap-1.5">
-                      {r.status !== "creada" && (
+                      {r.status !== "creada" ? (
                         <button
                           onClick={() => { setEditing(r); setCompletarMode(true); setDrawerOpen(true); }}
                           title="Completar remisión"
                           className="px-2.5 py-1 text-[11px] font-semibold text-white bg-[#CC2229] hover:bg-[#B01E24] rounded-lg transition-colors cursor-pointer"
                         >
                           Completar
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => { setEditing(r); setCompletarMode(false); setDrawerOpen(true); }}
+                          title="Editar remisión"
+                          className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
+                        >
+                          <Pencil size={15} />
                         </button>
                       )}
                       <button

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowLeft, Building2, ChevronRight, Loader2, Plus, Search, Trash2, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Building2, ChevronRight, GitMerge, Loader2, Plus, Search, Trash2, X } from "lucide-react";
 import type { ConcreteReceipt } from "@/lib/concreteReceipts";
 import { calculateConcreteReceiptTotal } from "@/lib/concreteReceipts";
 import type { RemisionDespacho } from "@/app/(dashboard)/ventas/remisiones/page";
@@ -177,6 +177,35 @@ export default function CobrosPage() {
     );
   }
 
+  async function handleMergeClientes(fuentes: string[], canonico: string) {
+    const sources = fuentes.filter((f) => norm(f) !== norm(canonico));
+    if (sources.length === 0) return;
+
+    const updates: Promise<void>[] = [];
+
+    progs
+      .filter((p) => sources.some((s) => norm(p.cliente) === norm(s)))
+      .forEach((p) => updates.push(upsertDocument(COLLECTIONS.programaciones, p.id, { cliente: canonico })));
+
+    pagos
+      .filter((p) => sources.some((s) => norm(p.cliente) === norm(s)))
+      .forEach((p) => updates.push(upsertDocument(COLLECTIONS.pagos, p.id, { cliente: canonico })));
+
+    // Fetch all remisiones (recibos + despachos) for each source and update
+    const fetches = await Promise.all(
+      sources.map((src) => getCollectionDocs<{ id?: string }>(COLLECTIONS.remisiones, [where("cliente", "==", src)]))
+    );
+    fetches.flat().forEach((d) => {
+      if (d.id) updates.push(upsertDocument(COLLECTIONS.remisiones, d.id, { cliente: canonico }));
+    });
+
+    await Promise.all(updates);
+
+    setTodosRecibos((prev) =>
+      prev.map((r) => (sources.some((s) => norm(r.cliente) === norm(s)) ? { ...r, cliente: canonico } : r))
+    );
+  }
+
   async function loadCuentaCliente(nombre: string) {
     setCuentaCliente(nombre);
     setCuentaRecibos([]);
@@ -263,6 +292,7 @@ export default function CobrosPage() {
         onCuentaTab={setCuentaTab}
         onNuevoPago={(cid) => { setPrefillClienteId(cid); setView("new"); }}
         onSaldarRemision={setSaldarRemision}
+        onMerge={handleMergeClientes}
       />
       {saldarRemision && (
         <SaldarRemisionModal
@@ -404,7 +434,7 @@ function SaldarRemisionModal({
 
 function CuentaClienteView({
   clientesList, progs, pagos, todosRecibos, cuentaCliente, cuentaRecibos, cuentaRemisiones, cuentaLoading,
-  cuentaTab, onSelectCliente, onCuentaTab, onNuevoPago, onSaldarRemision,
+  cuentaTab, onSelectCliente, onCuentaTab, onNuevoPago, onSaldarRemision, onMerge,
 }: {
   clientesList: ClienteDoc[];
   progs: Prog[];
@@ -419,18 +449,34 @@ function CuentaClienteView({
   onCuentaTab: (t: "entregas" | "remisiones" | "programaciones" | "pagos") => void;
   onNuevoPago: (clienteId: string | null) => void;
   onSaldarRemision: (r: RemisionDespacho) => void;
+  onMerge: (fuentes: string[], canonico: string) => Promise<void>;
 }) {
   const [search, setSearch] = useState("");
+  const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
+  const [mergeOpen, setMergeOpen] = useState(false);
 
-  // Clientes únicos con actividad (progs, pagos o recibos con saldo pendiente)
-  const clientesActivos = useMemo(() => {
-    const names = new Set<string>();
-    progs.forEach((p) => { if (p.cliente && !p.origenRecibo) names.add(p.cliente); });
-    pagos.forEach((p) => { if (p.cliente) names.add(p.cliente); });
-    todosRecibos.forEach((r) => {
-      if (r.cliente && calculateConcreteReceiptTotal(r).resta > 0.01) names.add(r.cliente);
+  function toggleSel(nombre: string) {
+    setSeleccionados((prev) => {
+      const next = new Set(prev);
+      if (next.has(nombre)) next.delete(nombre); else next.add(nombre);
+      return next;
     });
-    return Array.from(names).sort((a, b) => a.localeCompare(b, "es"));
+  }
+
+  // Clientes únicos con actividad — deduplicados por nombre normalizado para
+  // evitar que "CLIENTE" y "Cliente" aparezcan como dos entradas distintas.
+  const clientesActivos = useMemo(() => {
+    const seen = new Map<string, string>(); // normed → primer raw encontrado
+    function add(raw: string) {
+      const k = norm(raw);
+      if (!seen.has(k)) seen.set(k, raw);
+    }
+    progs.forEach((p) => { if (p.cliente && !p.origenRecibo) add(p.cliente); });
+    pagos.forEach((p) => { if (p.cliente) add(p.cliente); });
+    todosRecibos.forEach((r) => {
+      if (r.cliente && calculateConcreteReceiptTotal(r).resta > 0.01) add(r.cliente);
+    });
+    return Array.from(seen.values()).sort((a, b) => a.localeCompare(b, "es"));
   }, [progs, pagos, todosRecibos]);
 
   const clientesFiltrados = useMemo(() =>
@@ -534,6 +580,7 @@ function CuentaClienteView({
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50/50">
+                  <th className="w-10 pl-4" />
                   <th className="px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider text-left">Cliente</th>
                   <th className="px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider text-center">Progs.</th>
                   <th className="px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider text-right">Cartera</th>
@@ -544,7 +591,11 @@ function CuentaClienteView({
               <tbody className="divide-y divide-gray-50">
                 {clientesData.map(({ nombre, numProgs, cartera, saldo: sd }) => (
                   <tr key={nombre} onClick={() => onSelectCliente(nombre)}
-                    className="hover:bg-gray-50 transition-colors cursor-pointer">
+                    className={`hover:bg-gray-50 transition-colors cursor-pointer ${seleccionados.has(nombre) ? "bg-red-50/30" : ""}`}>
+                    <td className="pl-4 pr-2 py-3.5" onClick={(e) => { e.stopPropagation(); toggleSel(nombre); }}>
+                      <input type="checkbox" checked={seleccionados.has(nombre)} readOnly
+                        className="w-4 h-4 rounded accent-[#CC2229] cursor-pointer" />
+                    </td>
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full bg-[#CC2229]/10 flex items-center justify-center shrink-0">
@@ -569,6 +620,36 @@ function CuentaClienteView({
             </table>
           )}
         </div>
+
+        {/* Floating bar desde 1 seleccionado */}
+        {seleccionados.size >= 1 && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-gray-900 text-white px-5 py-3 rounded-2xl shadow-2xl">
+            <span className="text-sm font-medium">{seleccionados.size} {seleccionados.size === 1 ? "cliente" : "clientes"} seleccionado{seleccionados.size !== 1 ? "s" : ""}</span>
+            <button onClick={() => setMergeOpen(true)}
+              className="flex items-center gap-2 px-4 py-1.5 bg-[#CC2229] hover:bg-[#B01E24] text-sm font-semibold rounded-xl transition-colors cursor-pointer">
+              <GitMerge size={14} /> {seleccionados.size === 1 ? "Renombrar" : "Unificar"}
+            </button>
+            <button onClick={() => setSeleccionados(new Set())}
+              className="p-1.5 text-gray-400 hover:text-white transition-colors cursor-pointer">
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
+        {mergeOpen && (
+          <MergeClientesModal
+            fuentes={Array.from(seleccionados)}
+            progs={progs}
+            pagos={pagos}
+            recibos={todosRecibos}
+            onClose={() => setMergeOpen(false)}
+            onConfirm={async (canonico) => {
+              await onMerge(Array.from(seleccionados), canonico);
+              setSeleccionados(new Set());
+              setMergeOpen(false);
+            }}
+          />
+        )}
       </div>
     );
   }
@@ -816,6 +897,120 @@ function CuentaClienteView({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Merge Clientes Modal ────────────────────────────────────────────────────
+
+function MergeClientesModal({
+  fuentes, progs, pagos, recibos, onClose, onConfirm,
+}: {
+  fuentes: string[];
+  progs: Prog[];
+  pagos: Pago[];
+  recibos: ConcreteReceipt[];
+  onClose: () => void;
+  onConfirm: (canonico: string) => Promise<void>;
+}) {
+  const [canonico, setCanonnico]   = useState(fuentes[0] ?? "");
+  const [useCustom, setUseCustom]  = useState(false);
+  const [customName, setCustomName] = useState("");
+  const [saving, setSaving]        = useState(false);
+
+  const esRename = fuentes.length === 1;
+  const nombreFinal = useCustom ? customName.trim().toUpperCase() : canonico;
+
+  const counts = fuentes.map((nombre) => ({
+    nombre,
+    total:
+      progs.filter((p) => norm(p.cliente) === norm(nombre) && !p.origenRecibo).length +
+      pagos.filter((p) => norm(p.cliente) === norm(nombre)).length +
+      recibos.filter((r) => norm(r.cliente) === norm(nombre)).length,
+  }));
+
+  const totalMovidos = counts
+    .filter((c) => norm(c.nombre) !== norm(nombreFinal))
+    .reduce((s, c) => s + c.total, 0);
+
+  async function confirm() {
+    if (!nombreFinal) return;
+    setSaving(true);
+    try { await onConfirm(nombreFinal); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-bold text-gray-900">{esRename ? "Renombrar cliente" : "Unificar clientes"}</h3>
+            <p className="text-xs text-gray-400 mt-0.5">{esRename ? "Elige el nombre correcto" : "Elige qué nombre queda como definitivo"}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 cursor-pointer transition-colors">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-2">
+          {/* Opciones: uno por cada fuente (solo visibles cuando hay >1 o cuando no se usa nombre custom) */}
+          {!useCustom && counts.map((c) => (
+            <label key={c.nombre} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${norm(canonico) === norm(c.nombre) ? "border-[#CC2229] bg-red-50/40" : "border-gray-100 hover:border-gray-200"}`}>
+              <input type="radio" name="merge-canonico" value={c.nombre} checked={norm(canonico) === norm(c.nombre)}
+                onChange={() => setCanonnico(c.nombre)} className="accent-[#CC2229] cursor-pointer shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-800 truncate">{c.nombre}</p>
+                <p className="text-xs text-gray-400 mt-0.5">{c.total} registro{c.total !== 1 ? "s" : ""}</p>
+              </div>
+              {norm(canonico) === norm(c.nombre) && !useCustom && (
+                <span className="shrink-0 text-[10px] font-bold text-[#CC2229] bg-red-50 border border-red-100 rounded-full px-2 py-0.5">QUEDA</span>
+              )}
+            </label>
+          ))}
+
+          {/* Opción: nombre personalizado */}
+          <label className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${useCustom ? "border-[#CC2229] bg-red-50/40" : "border-gray-100 hover:border-gray-200"}`}>
+            <input type="radio" name="merge-canonico" checked={useCustom}
+              onChange={() => setUseCustom(true)} className="accent-[#CC2229] cursor-pointer shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-gray-800 mb-1.5">Nombre diferente</p>
+              <input
+                type="text"
+                placeholder="Escribe el nombre correcto…"
+                value={customName}
+                onChange={(e) => { setCustomName(e.target.value.toUpperCase()); setUseCustom(true); }}
+                onFocus={() => setUseCustom(true)}
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20"
+              />
+            </div>
+          </label>
+
+          <div className="pt-1">
+            {nombreFinal && totalMovidos > 0 ? (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
+                Se reasignarán <strong>{totalMovidos} registro{totalMovidos !== 1 ? "s" : ""}</strong> al nombre <strong>&ldquo;{nombreFinal}&rdquo;</strong>. Esta acción no se puede deshacer.
+              </p>
+            ) : nombreFinal ? (
+              <p className="text-xs text-gray-400 bg-gray-50 rounded-xl px-4 py-3">
+                Todos los registros ya tienen este nombre — no se realizarán cambios.
+              </p>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="px-6 pb-6 flex gap-3">
+          <button onClick={onClose} disabled={saving}
+            className="flex-1 py-2.5 text-sm font-semibold text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-xl cursor-pointer transition-colors disabled:opacity-50">
+            Cancelar
+          </button>
+          <button onClick={confirm} disabled={saving || !nombreFinal || totalMovidos === 0}
+            className="flex-1 py-2.5 text-sm font-semibold text-white bg-[#CC2229] hover:bg-[#B01E24] rounded-xl cursor-pointer transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
+            {saving && <Loader2 size={14} className="animate-spin" />}
+            {saving ? (esRename ? "Renombrando…" : "Unificando…") : (esRename ? "Renombrar" : "Unificar")}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
