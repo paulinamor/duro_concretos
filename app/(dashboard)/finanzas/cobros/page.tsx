@@ -425,15 +425,12 @@ function CuentaClienteView({
   const clientesData = useMemo(() =>
     clientesFiltrados.map((nombre) => {
       const cp = progs.filter((p) => norm(p.cliente) === norm(nombre) && !p.origenRecibo);
-      const total   = cp.reduce((s, p) => s + (p.total ?? 0), 0);
-      const saldo   = cp.reduce((s, p) => s + saldoPendiente(p), 0);
-      return { nombre, numProgs: cp.length, total, saldo };
+      const total = cp.reduce((s, p) => s + (p.total ?? 0), 0);
+      return { nombre, numProgs: cp.length, total };
     }),
     [clientesFiltrados, progs],
   );
   const totalCartera   = useMemo(() => clientesData.reduce((s, c) => s + c.total, 0), [clientesData]);
-  const totalPorCobrar = useMemo(() => clientesData.reduce((s, c) => s + c.saldo, 0), [clientesData]);
-  const numConSaldo    = useMemo(() => clientesData.filter((c) => c.saldo > 0.01).length, [clientesData]);
 
   // Datos del cliente seleccionado
   const clienteProgs = useMemo(() =>
@@ -463,17 +460,17 @@ function CuentaClienteView({
           <div className="bg-white rounded-2xl border border-gray-100 p-5">
             <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Cartera total</p>
             <p className="text-2xl font-bold text-gray-900 mt-1">{currency(totalCartera)}</p>
-            <p className="text-xs text-gray-400 mt-1">{clientesActivos.length} clientes activos</p>
+            <p className="text-xs text-gray-400 mt-1">suma de programaciones</p>
           </div>
           <div className="bg-white rounded-2xl border border-gray-100 p-5">
-            <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Por cobrar</p>
-            <p className={`text-2xl font-bold mt-1 ${totalPorCobrar > 0 ? "text-red-600" : "text-green-600"}`}>{currency(totalPorCobrar)}</p>
-            <p className="text-xs text-gray-400 mt-1">saldo pendiente acumulado</p>
+            <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Clientes activos</p>
+            <p className="text-2xl font-bold text-gray-900 mt-1">{clientesActivos.length}</p>
+            <p className="text-xs text-gray-400 mt-1">con programaciones registradas</p>
           </div>
           <div className="bg-white rounded-2xl border border-gray-100 p-5">
-            <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Con saldo pendiente</p>
-            <p className={`text-2xl font-bold mt-1 ${numConSaldo > 0 ? "text-amber-600" : "text-green-600"}`}>{numConSaldo}</p>
-            <p className="text-xs text-gray-400 mt-1">{numConSaldo === 1 ? "cliente" : "clientes"} con deuda activa</p>
+            <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Programaciones</p>
+            <p className="text-2xl font-bold text-gray-900 mt-1">{progs.filter((p) => !p.origenRecibo).length}</p>
+            <p className="text-xs text-gray-400 mt-1">en el período activo</p>
           </div>
         </div>
 
@@ -495,12 +492,11 @@ function CuentaClienteView({
                   <th className="px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider text-left">Cliente</th>
                   <th className="px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider text-center">Progs.</th>
                   <th className="px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider text-right">Cartera</th>
-                  <th className="px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider text-right">Saldo</th>
                   <th className="w-8" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {clientesData.map(({ nombre, numProgs, total, saldo: sd }) => (
+                {clientesData.map(({ nombre, numProgs, total }) => (
                   <tr key={nombre} onClick={() => onSelectCliente(nombre)}
                     className="hover:bg-gray-50 transition-colors cursor-pointer">
                     <td className="px-5 py-3.5">
@@ -513,11 +509,6 @@ function CuentaClienteView({
                     </td>
                     <td className="px-5 py-3.5 text-center text-gray-500 text-xs">{numProgs}</td>
                     <td className="px-5 py-3.5 text-right font-medium text-gray-700">{currency(total)}</td>
-                    <td className="px-5 py-3.5 text-right">
-                      {sd > 0.01
-                        ? <span className="inline-block font-semibold text-red-600 bg-red-50 rounded-full px-2.5 py-0.5 text-xs">{currency(sd)}</span>
-                        : <span className="text-xs text-green-600 font-medium">Al corriente</span>}
-                    </td>
                     <td className="pr-4 text-right">
                       <ChevronRight size={15} className="text-gray-300 inline-block" />
                     </td>
