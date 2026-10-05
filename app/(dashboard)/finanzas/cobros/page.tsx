@@ -422,36 +422,49 @@ function CuentaClienteView({
 }) {
   const [search, setSearch] = useState("");
 
-  // Clientes únicos con actividad
+  // Clientes únicos con actividad (progs, pagos o recibos con saldo pendiente)
   const clientesActivos = useMemo(() => {
     const names = new Set<string>();
     progs.forEach((p) => { if (p.cliente && !p.origenRecibo) names.add(p.cliente); });
     pagos.forEach((p) => { if (p.cliente) names.add(p.cliente); });
+    todosRecibos.forEach((r) => {
+      if (r.cliente && calculateConcreteReceiptTotal(r).resta > 0.01) names.add(r.cliente);
+    });
     return Array.from(names).sort((a, b) => a.localeCompare(b, "es"));
-  }, [progs, pagos]);
+  }, [progs, pagos, todosRecibos]);
 
   const clientesFiltrados = useMemo(() =>
     search ? clientesActivos.filter((c) => norm(c).includes(norm(search))) : clientesActivos,
     [clientesActivos, search],
   );
 
-  // Datos para el dashboard de landing (por cliente) — saldo usa recibos reales
+  // Datos para el dashboard de landing — dos modelos según tipo de cliente
   const clientesData = useMemo(() =>
     clientesFiltrados.map((nombre) => {
-      const cp     = progs.filter((p) => norm(p.cliente) === norm(nombre) && !p.origenRecibo);
-      const total  = cp.reduce((s, p) => s + (p.total ?? 0), 0);
-      const cobradoRecibos = todosRecibos
-        .filter((r) => norm(r.cliente) === norm(nombre))
-        .reduce((s, r) => s + calculateConcreteReceiptTotal(r).total, 0);
-      const cobradoPagos = pagos
-        .filter((p) => norm(p.cliente) === norm(nombre))
-        .reduce((s, p) => s + p.cantidad, 0);
-      const saldo = Math.max(0, total - cobradoRecibos - cobradoPagos);
-      return { nombre, numProgs: cp.length, total, saldo };
+      const cp = progs.filter((p) => norm(p.cliente) === norm(nombre) && !p.origenRecibo);
+      const clienteRecibos = todosRecibos.filter((r) => norm(r.cliente) === norm(nombre));
+      const hasProgs = cp.length > 0;
+
+      let cartera: number;
+      let saldo: number;
+
+      if (hasProgs) {
+        // Modelo crédito: COMPRAS=progs, PAGOS=recibos(total)+pagos
+        cartera = cp.reduce((s, p) => s + (p.total ?? 0), 0);
+        const cobradoRecibos = clienteRecibos.reduce((s, r) => s + calculateConcreteReceiptTotal(r).total, 0);
+        const cobradoPagos   = pagos.filter((p) => norm(p.cliente) === norm(nombre)).reduce((s, p) => s + p.cantidad, 0);
+        saldo = Math.max(0, cartera - cobradoRecibos - cobradoPagos);
+      } else {
+        // Modelo efectivo parcial: cartera=recibo.total, saldo=recibo.resta
+        cartera = clienteRecibos.reduce((s, r) => s + calculateConcreteReceiptTotal(r).total, 0);
+        saldo   = clienteRecibos.reduce((s, r) => s + calculateConcreteReceiptTotal(r).resta, 0);
+      }
+
+      return { nombre, numProgs: cp.length, cartera, saldo };
     }),
     [clientesFiltrados, progs, todosRecibos, pagos],
   );
-  const totalCartera   = useMemo(() => clientesData.reduce((s, c) => s + c.total, 0), [clientesData]);
+  const totalCartera   = useMemo(() => clientesData.reduce((s, c) => s + c.cartera, 0), [clientesData]);
   const totalPorCobrar = useMemo(() => clientesData.reduce((s, c) => s + c.saldo, 0), [clientesData]);
   const numConSaldo    = useMemo(() => clientesData.filter((c) => c.saldo > 0.01).length, [clientesData]);
 
@@ -465,13 +478,22 @@ function CuentaClienteView({
     [pagos, cuentaCliente],
   );
 
-  // COMPRAS = suma de totales de programaciones del cliente; PAGOS = recibos efectivo + cobros adicionales
+  // Modelo según tipo de cliente
+  const esClienteRecibo = clienteProgs.length === 0; // sin programaciones → modelo efectivo parcial
+
+  // Modelo crédito: COMPRAS=progs, PAGOS=recibos.total+pagos
   const totalCompras   = useMemo(() => clienteProgs.reduce((s, p) => s + (p.total ?? 0), 0), [clienteProgs]);
-  // Recibo de concreto = pago en efectivo completo → se suma el total del recibo, no solo el anticipo
   const totalEfectivo  = useMemo(() => cuentaRecibos.reduce((s, r) => s + calculateConcreteReceiptTotal(r).total, 0), [cuentaRecibos]);
   const totalPagosAd   = useMemo(() => clientePagos.reduce((s, p) => s + p.cantidad, 0), [clientePagos]);
-  const totalPagos     = totalEfectivo + totalPagosAd;
-  const saldo          = totalCompras - totalPagos;
+
+  // Modelo efectivo parcial: FACTURADO=recibos.total, COBRADO=recibos.anticipo, POR COBRAR=recibos.resta
+  const totalFacturado = useMemo(() => cuentaRecibos.reduce((s, r) => s + calculateConcreteReceiptTotal(r).total, 0), [cuentaRecibos]);
+  const totalCobrado   = useMemo(() => cuentaRecibos.reduce((s, r) => s + (r.anticipo ?? 0), 0), [cuentaRecibos]);
+  const totalResta     = useMemo(() => cuentaRecibos.reduce((s, r) => s + calculateConcreteReceiptTotal(r).resta, 0), [cuentaRecibos]);
+
+  const totalPagos = esClienteRecibo ? totalCobrado : (totalEfectivo + totalPagosAd);
+  const compras    = esClienteRecibo ? totalFacturado : totalCompras;
+  const saldo      = esClienteRecibo ? totalResta : Math.max(0, totalCompras - totalEfectivo - totalPagosAd);
 
   const clienteDoc = clientesList.find((c) => norm(c.razonSocial) === norm(cuentaCliente));
 
@@ -520,7 +542,7 @@ function CuentaClienteView({
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {clientesData.map(({ nombre, numProgs, total, saldo: sd }) => (
+                {clientesData.map(({ nombre, numProgs, cartera, saldo: sd }) => (
                   <tr key={nombre} onClick={() => onSelectCliente(nombre)}
                     className="hover:bg-gray-50 transition-colors cursor-pointer">
                     <td className="px-5 py-3.5">
@@ -532,7 +554,7 @@ function CuentaClienteView({
                       </div>
                     </td>
                     <td className="px-5 py-3.5 text-center text-gray-500 text-xs">{numProgs}</td>
-                    <td className="px-5 py-3.5 text-right font-medium text-gray-700">{currency(total)}</td>
+                    <td className="px-5 py-3.5 text-right font-medium text-gray-700">{currency(cartera)}</td>
                     <td className="px-5 py-3.5 text-right">
                       {sd > 0.01
                         ? <span className="inline-block font-semibold text-red-600 bg-red-50 rounded-full px-2.5 py-0.5 text-xs">{currency(sd)}</span>
@@ -573,9 +595,25 @@ function CuentaClienteView({
       {/* Resumen COMPRAS / PAGOS / SALDO */}
       <div className="grid grid-cols-3 gap-4">
         {[
-          { label: "Compras", value: currency(totalCompras), color: "text-gray-900" },
-          { label: "Pagos", value: currency(totalPagos), sub: `${currency(totalEfectivo)} efectivo · ${currency(totalPagosAd)} adicional`, color: "text-green-700" },
-          { label: "Saldo", value: currency(Math.abs(saldo)), color: saldo > 0.01 ? "text-red-600" : "text-green-600", badge: saldo > 0.01 ? "Por cobrar" : "Al corriente" },
+          {
+            label: esClienteRecibo ? "Facturado" : "Compras",
+            value: currency(compras),
+            color: "text-gray-900",
+          },
+          {
+            label: esClienteRecibo ? "Cobrado" : "Pagos",
+            value: currency(totalPagos),
+            sub: esClienteRecibo
+              ? `${cuentaRecibos.length} recibo${cuentaRecibos.length !== 1 ? "s" : ""}`
+              : `${currency(totalEfectivo)} efectivo · ${currency(totalPagosAd)} adicional`,
+            color: "text-green-700",
+          },
+          {
+            label: "Saldo",
+            value: currency(saldo),
+            color: saldo > 0.01 ? "text-red-600" : "text-green-600",
+            badge: saldo > 0.01 ? "Por cobrar" : "Al corriente",
+          },
         ].map((k) => (
           <div key={k.label} className="bg-white rounded-2xl border border-gray-100 p-5">
             <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">{k.label}</p>
