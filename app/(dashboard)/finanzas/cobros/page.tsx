@@ -88,6 +88,9 @@ export default function CobrosPage() {
   const [eliminando, setEliminando] = useState(false);
   const [prefillClienteId, setPrefillClienteId] = useState<string | null>(null);
 
+  // Recibos de concreto globales — para calcular saldo correcto en el landing
+  const [todosRecibos, setTodosRecibos]     = useState<ConcreteReceipt[]>([]);
+
   // Estado de Cuenta por cliente
   const [cuentaCliente, setCuentaCliente]   = useState("");
   const [cuentaRecibos, setCuentaRecibos]   = useState<ConcreteReceipt[]>([]);
@@ -121,6 +124,15 @@ export default function CobrosPage() {
       setClientesList(cl.sort((a, b) => a.razonSocial.localeCompare(b.razonSocial, "es")));
       loadedClientes = true;
       checkDone();
+    });
+
+    // Carga en background — recibos de concreto para calcular saldo real en el landing
+    getCollectionDocs<ConcreteReceipt & { receiptNumber?: number }>(COLLECTIONS.remisiones).then((docs) => {
+      setTodosRecibos(
+        filterByPlanta(docs).filter(
+          (d) => typeof d.receiptNumber === "number" && d.receiptNumber >= 1
+        ) as ConcreteReceipt[]
+      );
     });
 
     return () => { unsubPagos(); unsubProgs(); };
@@ -241,6 +253,7 @@ export default function CobrosPage() {
         clientesList={clientesList}
         progs={progs}
         pagos={pagos}
+        todosRecibos={todosRecibos}
         cuentaCliente={cuentaCliente}
         cuentaRecibos={cuentaRecibos}
         cuentaRemisiones={cuentaRemisiones}
@@ -390,12 +403,13 @@ function SaldarRemisionModal({
 // ─── Estado de Cuenta por Cliente ────────────────────────────────────────────
 
 function CuentaClienteView({
-  clientesList, progs, pagos, cuentaCliente, cuentaRecibos, cuentaRemisiones, cuentaLoading,
+  clientesList, progs, pagos, todosRecibos, cuentaCliente, cuentaRecibos, cuentaRemisiones, cuentaLoading,
   cuentaTab, onSelectCliente, onCuentaTab, onNuevoPago, onSaldarRemision,
 }: {
   clientesList: ClienteDoc[];
   progs: Prog[];
   pagos: Pago[];
+  todosRecibos: ConcreteReceipt[];
   cuentaCliente: string;
   cuentaRecibos: ConcreteReceipt[];
   cuentaRemisiones: RemisionDespacho[];
@@ -421,16 +435,25 @@ function CuentaClienteView({
     [clientesActivos, search],
   );
 
-  // Datos para el dashboard de landing (por cliente)
+  // Datos para el dashboard de landing (por cliente) — saldo usa recibos reales
   const clientesData = useMemo(() =>
     clientesFiltrados.map((nombre) => {
-      const cp = progs.filter((p) => norm(p.cliente) === norm(nombre) && !p.origenRecibo);
-      const total = cp.reduce((s, p) => s + (p.total ?? 0), 0);
-      return { nombre, numProgs: cp.length, total };
+      const cp     = progs.filter((p) => norm(p.cliente) === norm(nombre) && !p.origenRecibo);
+      const total  = cp.reduce((s, p) => s + (p.total ?? 0), 0);
+      const cobradoRecibos = todosRecibos
+        .filter((r) => norm(r.cliente) === norm(nombre))
+        .reduce((s, r) => s + calculateConcreteReceiptTotal(r).total, 0);
+      const cobradoPagos = pagos
+        .filter((p) => norm(p.cliente) === norm(nombre))
+        .reduce((s, p) => s + p.cantidad, 0);
+      const saldo = Math.max(0, total - cobradoRecibos - cobradoPagos);
+      return { nombre, numProgs: cp.length, total, saldo };
     }),
-    [clientesFiltrados, progs],
+    [clientesFiltrados, progs, todosRecibos, pagos],
   );
   const totalCartera   = useMemo(() => clientesData.reduce((s, c) => s + c.total, 0), [clientesData]);
+  const totalPorCobrar = useMemo(() => clientesData.reduce((s, c) => s + c.saldo, 0), [clientesData]);
+  const numConSaldo    = useMemo(() => clientesData.filter((c) => c.saldo > 0.01).length, [clientesData]);
 
   // Datos del cliente seleccionado
   const clienteProgs = useMemo(() =>
@@ -460,17 +483,17 @@ function CuentaClienteView({
           <div className="bg-white rounded-2xl border border-gray-100 p-5">
             <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Cartera total</p>
             <p className="text-2xl font-bold text-gray-900 mt-1">{currency(totalCartera)}</p>
-            <p className="text-xs text-gray-400 mt-1">suma de programaciones</p>
+            <p className="text-xs text-gray-400 mt-1">{clientesActivos.length} clientes activos</p>
           </div>
           <div className="bg-white rounded-2xl border border-gray-100 p-5">
-            <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Clientes activos</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{clientesActivos.length}</p>
-            <p className="text-xs text-gray-400 mt-1">con programaciones registradas</p>
+            <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Por cobrar</p>
+            <p className={`text-2xl font-bold mt-1 ${totalPorCobrar > 0 ? "text-red-600" : "text-green-600"}`}>{currency(totalPorCobrar)}</p>
+            <p className="text-xs text-gray-400 mt-1">saldo pendiente acumulado</p>
           </div>
           <div className="bg-white rounded-2xl border border-gray-100 p-5">
-            <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Programaciones</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{progs.filter((p) => !p.origenRecibo).length}</p>
-            <p className="text-xs text-gray-400 mt-1">en el período activo</p>
+            <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Con saldo pendiente</p>
+            <p className={`text-2xl font-bold mt-1 ${numConSaldo > 0 ? "text-amber-600" : "text-green-600"}`}>{numConSaldo}</p>
+            <p className="text-xs text-gray-400 mt-1">{numConSaldo === 1 ? "cliente" : "clientes"} con deuda activa</p>
           </div>
         </div>
 
@@ -492,11 +515,12 @@ function CuentaClienteView({
                   <th className="px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider text-left">Cliente</th>
                   <th className="px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider text-center">Progs.</th>
                   <th className="px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider text-right">Cartera</th>
+                  <th className="px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider text-right">Saldo</th>
                   <th className="w-8" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {clientesData.map(({ nombre, numProgs, total }) => (
+                {clientesData.map(({ nombre, numProgs, total, saldo: sd }) => (
                   <tr key={nombre} onClick={() => onSelectCliente(nombre)}
                     className="hover:bg-gray-50 transition-colors cursor-pointer">
                     <td className="px-5 py-3.5">
@@ -509,6 +533,11 @@ function CuentaClienteView({
                     </td>
                     <td className="px-5 py-3.5 text-center text-gray-500 text-xs">{numProgs}</td>
                     <td className="px-5 py-3.5 text-right font-medium text-gray-700">{currency(total)}</td>
+                    <td className="px-5 py-3.5 text-right">
+                      {sd > 0.01
+                        ? <span className="inline-block font-semibold text-red-600 bg-red-50 rounded-full px-2.5 py-0.5 text-xs">{currency(sd)}</span>
+                        : <span className="text-xs text-green-600 font-medium">Al corriente</span>}
+                    </td>
                     <td className="pr-4 text-right">
                       <ChevronRight size={15} className="text-gray-300 inline-block" />
                     </td>
