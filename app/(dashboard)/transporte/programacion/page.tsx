@@ -935,12 +935,15 @@ function FormDrawer({
       if (choferesCon.length > 0) {
         const folio = newProg.folio ?? id;
         const planta: "Allende" | "Pesquería" = (newProg.planta ?? getCapturePlanta() ?? "Allende") as "Allende" | "Pesquería";
+        const { totalXM3 } = calcTotalesProg(newProg);
         await Promise.all(
           choferesCon.map(async (c) => {
             const noRemision = c.remision.trim();
             const docId = `rem-despacho-${noRemision}`;
             const existing = await getDocument<{ status?: string }>(COLLECTIONS.remisiones, docId).catch(() => null);
             if (existing?.status === "creada") return;
+            const m3Num = parseFloat(c.m3 as unknown as string) || 0;
+            const montoBase = totalXM3 != null && m3Num > 0 ? Math.round(totalXM3 * m3Num * 100) / 100 : undefined;
             await upsertDocument(COLLECTIONS.remisiones, docId, {
               tipo: "despacho",
               status: "pendiente",
@@ -950,6 +953,7 @@ function FormDrawer({
               obra: newProg.nombreObra ?? newProg.paraUso ?? "",
               m3: c.m3 ?? 0,
               mezcla: newProg.resistencia ?? "",
+              ...(montoBase != null ? { monto: montoBase } : {}),
               planta,
               horaSalidaPlanta: c.horaSalida,
               operador: c.chofer,
@@ -2348,19 +2352,30 @@ export default function ProgramacionPage() {
     ).then((docs) => setRecibosData(docs.filter((r) => r.receiptNumber != null))).catch(() => {});
   }, []);
 
-  // Real-time programaciones subscription
+  // Real-time programaciones subscription — reactiva al rango visible
   useEffect(() => {
-    // Limitar a últimos 6 meses + filtro server-side de planta para Pesquería
-    const sixMonthsAgo = new Date(); sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-    const cutoff = sixMonthsAgo.toISOString().slice(0, 10);
-    const subConstraints = plantaActiva === "Pesquería"
-      ? [where("planta", "==", "Pesquería"), where("dia", ">=", cutoff)]
-      : [where("dia", ">=", cutoff)];
+    // Calcula el rango exacto que el usuario está viendo
+    let dateConstraints: ReturnType<typeof where>[];
+    const effectiveView = viewMode === "rastreo" ? prevViewMode : viewMode;
+    if (effectiveView === "dia") {
+      dateConstraints = [where("dia", "==", diaActivo)];
+    } else if (effectiveView === "semana") {
+      const [s, e] = weekRange(diaActivo);
+      dateConstraints = [where("dia", ">=", s), where("dia", "<=", e)];
+    } else if (effectiveView === "mes") {
+      const mesKey = diaActivo.slice(0, 7);
+      dateConstraints = [where("dia", ">=", `${mesKey}-01`), where("dia", "<=", `${mesKey}-31`)];
+    } else {
+      dateConstraints = [where("dia", ">=", rangoInicio), where("dia", "<=", rangoFin)];
+    }
+    const plantaConstraints = plantaActiva === "Pesquería" ? [where("planta", "==", "Pesquería")] : [];
+
     const unsub = subscribeToCollection<Programacion>(
       COLLECTIONS.programaciones,
       (progs) => {
         const filtered = filterByPlanta(progs).filter((p) => !p.origenRecibo);
         setProgramaciones(filtered);
+        setLoading(false);
 
         // Rebuild client suggestions on every update
         setClientesList((prev) => {
@@ -2372,7 +2387,6 @@ export default function ProgramacionPage() {
         // One-time migrations on first snapshot
         if (!migrationRan.current) {
           migrationRan.current = true;
-          setLoading(false);
 
           const toFix = filtered.filter((p) => {
             const { totalXM3, total } = calcTotalesProg(p);
@@ -2388,13 +2402,12 @@ export default function ProgramacionPage() {
               })
             ).catch((err) => console.error("Error migrando totales:", err));
           }
-
         }
       },
-      subConstraints
+      [...plantaConstraints, ...dateConstraints]
     );
     return unsub;
-  }, []);
+  }, [viewMode, prevViewMode, diaActivo, rangoInicio, rangoFin, plantaActiva]);
 
   const filtered = useMemo(() => {
     let list: Programacion[];

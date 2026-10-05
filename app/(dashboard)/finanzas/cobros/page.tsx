@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowLeft, BadgeCheck, ChevronRight, Clock, Loader2, Plus, Search, Trash2, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Building2, ChevronRight, Loader2, Plus, Search, Trash2, X } from "lucide-react";
+import type { ConcreteReceipt } from "@/lib/concreteReceipts";
+import { calculateConcreteReceiptTotal } from "@/lib/concreteReceipts";
+import type { RemisionDespacho } from "@/app/(dashboard)/ventas/remisiones/page";
 import AppSelect from "@/components/AppSelect";
 import { upsertDocument, deleteDocument, getCollectionDocs, COLLECTIONS, subscribeToCollection, where } from "@/lib/db";
 import { currency } from "@/lib/formatters";
@@ -81,12 +84,17 @@ export default function CobrosPage() {
   const [view, setView]             = useState<View>("list");
   const [selected, setSelected]     = useState<Pago | null>(null);
 
-  const [q, setQ]                   = useState("");
-  const [filterMes, setFilterMes]   = useState("");
-  const [filterTipo, setFilterTipo] = useState("");
   const [pagoAElim, setPagoAElim]   = useState<Pago | null>(null);
   const [eliminando, setEliminando] = useState(false);
   const [prefillClienteId, setPrefillClienteId] = useState<string | null>(null);
+
+  // Estado de Cuenta por cliente
+  const [cuentaCliente, setCuentaCliente]   = useState("");
+  const [cuentaRecibos, setCuentaRecibos]   = useState<ConcreteReceipt[]>([]);
+  const [cuentaRemisiones, setCuentaRemisiones] = useState<RemisionDespacho[]>([]);
+  const [cuentaLoading, setCuentaLoading]   = useState(false);
+  const [cuentaTab, setCuentaTab]           = useState<"entregas" | "remisiones" | "programaciones" | "pagos">("entregas");
+  const [saldarRemision, setSaldarRemision] = useState<RemisionDespacho | null>(null);
 
   useEffect(() => {
     let loadedPagos = false;
@@ -118,22 +126,6 @@ export default function CobrosPage() {
     return () => { unsubPagos(); unsubProgs(); };
   }, []);
 
-  const pagosFiltrados = useMemo(() => pagos.filter((p) => {
-    if (q && !norm(p.cliente).includes(norm(q))) return false;
-    if (filterMes && !p.fecha.startsWith(filterMes)) return false;
-    if (filterTipo && p.tipoPago !== filterTipo) return false;
-    return true;
-  }), [pagos, q, filterMes, filterTipo]);
-
-  const pendientesRecibo = useMemo(
-    () => progs.filter((p) => p.origenRecibo === true && saldoPendiente(p) > 0.01)
-               .sort((a, b) => b.dia.localeCompare(a.dia)),
-    [progs],
-  );
-
-  const mesActual = todayCST().slice(0, 7);
-  const totalCobrado  = pagos.reduce((s, p) => s + p.cantidad, 0);
-  const totalEsteMes  = pagos.filter((p) => p.fecha.startsWith(mesActual)).reduce((s, p) => s + p.cantidad, 0);
 
   function onPagoCreated(pago: Pago) {
     setPagos((prev) => [pago, ...prev].sort((a, b) => b.fecha.localeCompare(a.fecha)));
@@ -173,6 +165,50 @@ export default function CobrosPage() {
     );
   }
 
+  async function loadCuentaCliente(nombre: string) {
+    setCuentaCliente(nombre);
+    setCuentaRecibos([]);
+    setCuentaRemisiones([]);
+    if (!nombre) return;
+    setCuentaLoading(true);
+    try {
+      // Recibos guardan cliente en MAYÚSCULAS; progs puede tener case diferente.
+      // Buscamos ambas variantes en una sola pasada sin índice compuesto.
+      const nameU = nombre.trim().toUpperCase().replace(/\s+/g, " ");
+      const variants = [nombre];
+      if (nameU !== nombre) variants.push(nameU);
+      const allResults = await Promise.all(
+        variants.map((v) =>
+          getCollectionDocs<ConcreteReceipt & RemisionDespacho & { tipo?: string; receiptNumber?: number }>(
+            COLLECTIONS.remisiones, [where("cliente", "==", v)]
+          )
+        )
+      );
+      const seen = new Set<string>();
+      const allDocs = allResults.flat().filter((d) => {
+        if (seen.has(d.id)) return false;
+        seen.add(d.id);
+        return true;
+      });
+      const recibos = allDocs.filter((r) => typeof r.receiptNumber === "number" && r.receiptNumber >= 1) as unknown as ConcreteReceipt[];
+      const remisiones = allDocs.filter((r) => r.tipo === "despacho") as unknown as RemisionDespacho[];
+      setCuentaRecibos(recibos.sort((a, b) => b.receiptNumber - a.receiptNumber));
+      setCuentaRemisiones(remisiones.sort((a, b) => b.fecha.localeCompare(a.fecha)));
+    } catch (e) {
+      console.error("loadCuentaCliente:", e);
+    } finally {
+      setCuentaLoading(false);
+    }
+  }
+
+  function handleSaldarRemision(remision: RemisionDespacho, data: { montoPagado: number; fechaPago: string; metodoPago: string }) {
+    const updated = { ...remision, pagado: true, ...data };
+    upsertDocument(COLLECTIONS.remisiones, remision.id!, { pagado: true, montoPagado: data.montoPagado, fechaPago: data.fechaPago, metodoPago: data.metodoPago })
+      .then(() => setCuentaRemisiones((prev) => prev.map((r) => r.id === remision.id ? updated : r)))
+      .catch(console.error);
+    setSaldarRemision(null);
+  }
+
   if (loading) return (
     <div className="flex items-center justify-center h-64">
       <div className="w-6 h-6 rounded-full border-2 border-[#CC2229] border-t-transparent animate-spin" />
@@ -196,174 +232,32 @@ export default function CobrosPage() {
   // ── LIST ──────────────────────────────────────────────────────────────────
   return (
     <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Pagos</h1>
-          <p className="text-xs text-gray-400 mt-0.5">Registro y aplicación de cobros a coladas</p>
-        </div>
-        <button
-          onClick={() => setView("new")}
-          className="flex items-center gap-2 px-4 py-2 bg-[#CC2229] hover:bg-[#B01E24] text-white text-sm font-semibold rounded-xl transition-colors cursor-pointer"
-        >
-          <Plus size={15} /> Nuevo Pago
-        </button>
+      <div>
+        <h1 className="text-xl font-bold text-gray-900">Cobros</h1>
+        <p className="text-xs text-gray-400 mt-0.5">Estado de cuenta por cliente</p>
       </div>
 
-      {/* KPIs */}
-      <div className="grid grid-cols-3 gap-4">
-        {[
-          { label: "Total cobrado", value: currency(totalCobrado) },
-          { label: "Pagos registrados", value: pagos.length },
-          { label: "Este mes", value: currency(totalEsteMes) },
-        ].map((k) => (
-          <div key={k.label} className="bg-white rounded-2xl border border-gray-100 p-4">
-            <p className="text-xs text-gray-400 font-medium">{k.label}</p>
-            <p className="text-xl font-bold text-gray-900 mt-1">{k.value}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Filters */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-4 flex flex-wrap gap-3">
-        <div className="relative flex-1 min-w-[160px]">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar cliente…"
-            className="w-full pl-8 pr-3 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none focus:border-[#CC2229]/60" />
-        </div>
-        <input type="month" value={filterMes} onChange={(e) => setFilterMes(e.target.value)}
-          className="px-3 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none text-gray-600" />
-        <AppSelect value={filterTipo} onChange={(e) => setFilterTipo(e.target.value)} compact wrapperClassName="w-auto">
-          <option value="">Tipo de pago</option>
-          {METODOS.map((m) => <option key={m}>{m}</option>)}
-        </AppSelect>
-        {(q || filterMes || filterTipo) && (
-          <button onClick={() => { setQ(""); setFilterMes(""); setFilterTipo(""); }}
-            className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-50 cursor-pointer transition-colors">
-            <X size={15} />
-          </button>
-        )}
-      </div>
-
-      {/* Pendientes de cobro (recibos de concreto) */}
-      {pendientesRecibo.length > 0 && (
-        <div className="bg-white rounded-2xl border border-amber-200 overflow-hidden">
-          <div className="px-5 py-3.5 bg-amber-50 border-b border-amber-100 flex items-center gap-2">
-            <Clock size={14} className="text-amber-500" />
-            <p className="text-sm font-semibold text-amber-700">Pendientes de Cobro</p>
-            <span className="ml-auto text-xs font-medium text-amber-600 bg-amber-100 rounded-full px-2 py-0.5">
-              {pendientesRecibo.length}
-            </span>
-          </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-amber-50 bg-amber-50/30">
-                {["Fecha","Folio","Cliente","Obra","Total","Saldo pendiente",""].map((h) => (
-                  <th key={h} className={`px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider ${h === "Total" || h === "Saldo pendiente" ? "text-right" : "text-left"}`}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-amber-50">
-              {pendientesRecibo.map((p) => {
-                const saldo = saldoPendiente(p);
-                const clienteDoc = clientesList.find((c) => norm(c.razonSocial) === norm(p.cliente));
-                return (
-                  <tr key={p.id} className="hover:bg-amber-50/40 transition-colors">
-                    <td className="px-5 py-3.5 text-[#CC2229] font-medium">{fmtDate(p.dia)}</td>
-                    <td className="px-5 py-3.5 text-gray-700 font-medium">{p.reciboFolio || p.folio || "—"}</td>
-                    <td className="px-5 py-3.5 text-gray-800">{p.cliente}</td>
-                    <td className="px-5 py-3.5 text-gray-500 text-xs max-w-[180px] truncate">{p.nombreObra || "—"}</td>
-                    <td className="px-5 py-3.5 text-right text-gray-700 font-medium">{currency(p.total ?? 0)}</td>
-                    <td className="px-5 py-3.5 text-right">
-                      <span className="font-semibold text-amber-700">{currency(saldo)}</span>
-                    </td>
-                    <td className="px-5 py-3.5 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => {
-                            const cid = clienteDoc?.id ?? null;
-                            setPrefillClienteId(cid);
-                            setView("new");
-                          }}
-                          className="px-3 py-1.5 bg-[#CC2229] hover:bg-[#B01E24] text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer"
-                        >
-                          Cobrar
-                        </button>
-                        <button
-                          onClick={() => deleteDocument(COLLECTIONS.programaciones, p.id).catch(console.error)}
-                          className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer"
-                          title="Quitar de pendientes"
-                        >
-                          <X size={14} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+      <CuentaClienteView
+        clientesList={clientesList}
+        progs={progs}
+        pagos={pagos}
+        cuentaCliente={cuentaCliente}
+        cuentaRecibos={cuentaRecibos}
+        cuentaRemisiones={cuentaRemisiones}
+        cuentaLoading={cuentaLoading}
+        cuentaTab={cuentaTab}
+        onSelectCliente={(n) => { loadCuentaCliente(n); setCuentaTab("entregas"); }}
+        onCuentaTab={setCuentaTab}
+        onNuevoPago={(cid) => { setPrefillClienteId(cid); setView("new"); }}
+        onSaldarRemision={setSaldarRemision}
+      />
+      {saldarRemision && (
+        <SaldarRemisionModal
+          remision={saldarRemision}
+          onClose={() => setSaldarRemision(null)}
+          onConfirm={(data) => handleSaldarRemision(saldarRemision, data)}
+        />
       )}
-
-      {/* Table */}
-      <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-100 bg-gray-50/50">
-              {["Fecha","Cliente","Tipo de transferencia","Cuenta - Banco","Cantidad","Saldo","Anticipo",""].map((h) => (
-                <th key={h} className={`px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider ${h === "Cantidad" || h === "Saldo" ? "text-right" : h === "Anticipo" ? "text-center" : "text-left"}`}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-50">
-            {pagosFiltrados.length === 0 && (
-              <tr><td colSpan={8} className="px-5 py-10 text-center text-sm text-gray-400">
-                {pagos.length === 0 ? "Sin pagos registrados" : "Sin resultados"}
-              </td></tr>
-            )}
-            {pagosFiltrados.map((pago) => {
-              const aplicado = pago.saldoAplicado >= pago.cantidad - 0.01;
-              return (
-                <tr key={pago.id} className="hover:bg-gray-50/50 transition-colors">
-                  <td className="px-5 py-3.5"><span className="text-[#CC2229] font-medium">{fmtDate(pago.fecha)}</span></td>
-                  <td className="px-5 py-3.5">
-                    <button onClick={() => { setSelected(pago); setView("detail"); }}
-                      className="font-medium text-gray-800 hover:text-[#CC2229] transition-colors cursor-pointer text-left">
-                      {pago.cliente}
-                    </button>
-                  </td>
-                  <td className="px-5 py-3.5 text-gray-600">{pago.tipoPago || "—"}</td>
-                  <td className="px-5 py-3.5 text-gray-600">{pago.banco || "—"}</td>
-                  <td className="px-5 py-3.5 text-right font-semibold text-gray-900">{currency(pago.cantidad)}</td>
-                  <td className="px-5 py-3.5 text-right">
-                    <span className={aplicado ? "text-green-600 font-semibold" : "text-amber-600 font-semibold"}>
-                      {currency(pago.cantidad)}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3.5 text-center">
-                    <span className={`text-xs font-medium ${pago.anticipo ? "text-blue-600" : "text-gray-400"}`}>
-                      {pago.anticipo ? "Sí" : "No"}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3.5 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      {aplicado && <BadgeCheck size={14} className="text-green-500" />}
-                      <button onClick={() => setPagoAElim(pago)}
-                        className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer">
-                        <Trash2 size={14} />
-                      </button>
-                      <button onClick={() => { setSelected(pago); setView("detail"); }}
-                        className="p-1.5 rounded-lg text-gray-400 hover:text-[#CC2229] hover:bg-red-50 transition-colors cursor-pointer">
-                        <ChevronRight size={15} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
 
       {/* Modal confirmación eliminar */}
       {pagoAElim && (
@@ -396,6 +290,472 @@ export default function CobrosPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Saldar Remisión Modal ────────────────────────────────────────────────────
+
+function SaldarRemisionModal({
+  remision, onClose, onConfirm,
+}: {
+  remision: RemisionDespacho;
+  onClose: () => void;
+  onConfirm: (data: { montoPagado: number; fechaPago: string; metodoPago: string }) => void;
+}) {
+  const [monto, setMonto] = useState("");
+  const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
+  const [metodo, setMetodo] = useState("Transferencia");
+  const [loading, setLoading] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    const m = parseFloat(monto);
+    if (!m || m <= 0) return;
+    setLoading(true);
+    await onConfirm({ montoPagado: m, fechaPago: fecha, metodoPago: metodo });
+    setLoading(false);
+    onClose();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-xl border border-gray-100 w-full max-w-md mx-4 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-bold text-gray-900">Saldar Remisión</h3>
+            <p className="text-xs text-gray-400 mt-0.5">No. {remision.noRemision} · {remision.m3} m³</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors cursor-pointer">
+            <X size={18} />
+          </button>
+        </div>
+        <form onSubmit={submit} className="p-6 space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Monto Pagado</label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 font-medium">$</span>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={monto}
+                onChange={(e) => setMonto(e.target.value)}
+                placeholder="0.00"
+                required
+                className="w-full pl-7 pr-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#CC2229] focus:ring-1 focus:ring-[#CC2229]/20 transition-colors"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Fecha de Pago</label>
+            <input
+              type="date"
+              value={fecha}
+              onChange={(e) => setFecha(e.target.value)}
+              required
+              className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#CC2229] focus:ring-1 focus:ring-[#CC2229]/20 transition-colors"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Método de Pago</label>
+            <select
+              value={metodo}
+              onChange={(e) => setMetodo(e.target.value)}
+              className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#CC2229] focus:ring-1 focus:ring-[#CC2229]/20 transition-colors bg-white cursor-pointer"
+            >
+              {["Transferencia", "Efectivo", "Cheque", "Tarjeta", "Otro"].map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button type="button" onClick={onClose}
+              className="flex-1 py-2.5 text-sm font-semibold text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer">
+              Cancelar
+            </button>
+            <button type="submit" disabled={loading}
+              className="flex-1 py-2.5 text-sm font-semibold text-white bg-[#CC2229] hover:bg-[#B01E24] disabled:opacity-60 rounded-xl transition-colors cursor-pointer">
+              {loading ? "Guardando…" : "Confirmar Pago"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── Estado de Cuenta por Cliente ────────────────────────────────────────────
+
+function CuentaClienteView({
+  clientesList, progs, pagos, cuentaCliente, cuentaRecibos, cuentaRemisiones, cuentaLoading,
+  cuentaTab, onSelectCliente, onCuentaTab, onNuevoPago, onSaldarRemision,
+}: {
+  clientesList: ClienteDoc[];
+  progs: Prog[];
+  pagos: Pago[];
+  cuentaCliente: string;
+  cuentaRecibos: ConcreteReceipt[];
+  cuentaRemisiones: RemisionDespacho[];
+  cuentaLoading: boolean;
+  cuentaTab: "entregas" | "remisiones" | "programaciones" | "pagos";
+  onSelectCliente: (nombre: string) => void;
+  onCuentaTab: (t: "entregas" | "remisiones" | "programaciones" | "pagos") => void;
+  onNuevoPago: (clienteId: string | null) => void;
+  onSaldarRemision: (r: RemisionDespacho) => void;
+}) {
+  const [search, setSearch] = useState("");
+
+  // Clientes únicos con actividad
+  const clientesActivos = useMemo(() => {
+    const names = new Set<string>();
+    progs.forEach((p) => { if (p.cliente && !p.origenRecibo) names.add(p.cliente); });
+    pagos.forEach((p) => { if (p.cliente) names.add(p.cliente); });
+    return Array.from(names).sort((a, b) => a.localeCompare(b, "es"));
+  }, [progs, pagos]);
+
+  const clientesFiltrados = useMemo(() =>
+    search ? clientesActivos.filter((c) => norm(c).includes(norm(search))) : clientesActivos,
+    [clientesActivos, search],
+  );
+
+  // Datos para el dashboard de landing (por cliente)
+  const clientesData = useMemo(() =>
+    clientesFiltrados.map((nombre) => {
+      const cp = progs.filter((p) => norm(p.cliente) === norm(nombre) && !p.origenRecibo);
+      const total   = cp.reduce((s, p) => s + (p.total ?? 0), 0);
+      const saldo   = cp.reduce((s, p) => s + saldoPendiente(p), 0);
+      return { nombre, numProgs: cp.length, total, saldo };
+    }),
+    [clientesFiltrados, progs],
+  );
+  const totalCartera   = useMemo(() => clientesData.reduce((s, c) => s + c.total, 0), [clientesData]);
+  const totalPorCobrar = useMemo(() => clientesData.reduce((s, c) => s + c.saldo, 0), [clientesData]);
+  const numConSaldo    = useMemo(() => clientesData.filter((c) => c.saldo > 0.01).length, [clientesData]);
+
+  // Datos del cliente seleccionado
+  const clienteProgs = useMemo(() =>
+    progs.filter((p) => norm(p.cliente) === norm(cuentaCliente) && !p.origenRecibo),
+    [progs, cuentaCliente],
+  );
+  const clientePagos = useMemo(() =>
+    pagos.filter((p) => norm(p.cliente) === norm(cuentaCliente)).sort((a, b) => b.fecha.localeCompare(a.fecha)),
+    [pagos, cuentaCliente],
+  );
+
+  // COMPRAS = suma de totales de programaciones del cliente; PAGOS = recibos efectivo + cobros adicionales
+  const totalCompras   = useMemo(() => clienteProgs.reduce((s, p) => s + (p.total ?? 0), 0), [clienteProgs]);
+  // Recibo de concreto = pago en efectivo completo → se suma el total del recibo, no solo el anticipo
+  const totalEfectivo  = useMemo(() => cuentaRecibos.reduce((s, r) => s + calculateConcreteReceiptTotal(r).total, 0), [cuentaRecibos]);
+  const totalPagosAd   = useMemo(() => clientePagos.reduce((s, p) => s + p.cantidad, 0), [clientePagos]);
+  const totalPagos     = totalEfectivo + totalPagosAd;
+  const saldo          = totalCompras - totalPagos;
+
+  const clienteDoc = clientesList.find((c) => norm(c.razonSocial) === norm(cuentaCliente));
+
+  if (!cuentaCliente) {
+    return (
+      <div className="space-y-5">
+        {/* KPIs */}
+        <div className="grid grid-cols-3 gap-4">
+          <div className="bg-white rounded-2xl border border-gray-100 p-5">
+            <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Cartera total</p>
+            <p className="text-2xl font-bold text-gray-900 mt-1">{currency(totalCartera)}</p>
+            <p className="text-xs text-gray-400 mt-1">{clientesActivos.length} clientes activos</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-gray-100 p-5">
+            <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Por cobrar</p>
+            <p className={`text-2xl font-bold mt-1 ${totalPorCobrar > 0 ? "text-red-600" : "text-green-600"}`}>{currency(totalPorCobrar)}</p>
+            <p className="text-xs text-gray-400 mt-1">saldo pendiente acumulado</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-gray-100 p-5">
+            <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Con saldo pendiente</p>
+            <p className={`text-2xl font-bold mt-1 ${numConSaldo > 0 ? "text-amber-600" : "text-green-600"}`}>{numConSaldo}</p>
+            <p className="text-xs text-gray-400 mt-1">{numConSaldo === 1 ? "cliente" : "clientes"} con deuda activa</p>
+          </div>
+        </div>
+
+        {/* Buscador */}
+        <div className="relative">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar cliente…"
+            className="w-full pl-8 pr-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:border-[#CC2229]/60 bg-white" />
+        </div>
+
+        {/* Tabla de clientes */}
+        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          {clientesData.length === 0 ? (
+            <p className="px-5 py-10 text-center text-sm text-gray-400">Sin clientes con actividad</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 bg-gray-50/50">
+                  <th className="px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider text-left">Cliente</th>
+                  <th className="px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider text-center">Progs.</th>
+                  <th className="px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider text-right">Cartera</th>
+                  <th className="px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider text-right">Saldo</th>
+                  <th className="w-8" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {clientesData.map(({ nombre, numProgs, total, saldo: sd }) => (
+                  <tr key={nombre} onClick={() => onSelectCliente(nombre)}
+                    className="hover:bg-gray-50 transition-colors cursor-pointer">
+                    <td className="px-5 py-3.5">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-[#CC2229]/10 flex items-center justify-center shrink-0">
+                          <span className="text-xs font-bold text-[#CC2229]">{nombre.charAt(0)}</span>
+                        </div>
+                        <span className="font-medium text-gray-800">{nombre}</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3.5 text-center text-gray-500 text-xs">{numProgs}</td>
+                    <td className="px-5 py-3.5 text-right font-medium text-gray-700">{currency(total)}</td>
+                    <td className="px-5 py-3.5 text-right">
+                      {sd > 0.01
+                        ? <span className="inline-block font-semibold text-red-600 bg-red-50 rounded-full px-2.5 py-0.5 text-xs">{currency(sd)}</span>
+                        : <span className="text-xs text-green-600 font-medium">Al corriente</span>}
+                    </td>
+                    <td className="pr-4 text-right">
+                      <ChevronRight size={15} className="text-gray-300 inline-block" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* Header cliente */}
+      <div className="flex items-center gap-3">
+        <button onClick={() => onSelectCliente("")}
+          className="p-2 rounded-xl hover:bg-gray-100 transition-colors cursor-pointer text-gray-500">
+          <ArrowLeft size={16} />
+        </button>
+        <div className="flex-1">
+          <h2 className="text-lg font-bold text-gray-900">{cuentaCliente}</h2>
+          <p className="text-xs text-gray-400">Estado de cuenta</p>
+        </div>
+        <button
+          onClick={() => onNuevoPago(clienteDoc?.id ?? null)}
+          className="flex items-center gap-2 px-4 py-2 bg-[#CC2229] hover:bg-[#B01E24] text-white text-sm font-semibold rounded-xl transition-colors cursor-pointer">
+          <Plus size={14} /> Registrar pago
+        </button>
+      </div>
+
+      {/* Resumen COMPRAS / PAGOS / SALDO */}
+      <div className="grid grid-cols-3 gap-4">
+        {[
+          { label: "Compras", value: currency(totalCompras), color: "text-gray-900" },
+          { label: "Pagos", value: currency(totalPagos), sub: `${currency(totalEfectivo)} efectivo · ${currency(totalPagosAd)} adicional`, color: "text-green-700" },
+          { label: "Saldo", value: currency(Math.abs(saldo)), color: saldo > 0.01 ? "text-red-600" : "text-green-600", badge: saldo > 0.01 ? "Por cobrar" : "Al corriente" },
+        ].map((k) => (
+          <div key={k.label} className="bg-white rounded-2xl border border-gray-100 p-5">
+            <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">{k.label}</p>
+            <p className={`text-2xl font-bold mt-1 ${k.color}`}>{k.value}</p>
+            {k.sub && <p className="text-xs text-gray-400 mt-1">{k.sub}</p>}
+            {k.badge && (
+              <span className={`inline-block mt-2 text-xs font-semibold rounded-full px-2 py-0.5 ${saldo > 0.01 ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"}`}>
+                {k.badge}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-gray-100">
+        {([
+          ["entregas",       `Efectivo (${cuentaRecibos.length})`],
+          ["remisiones",     `Remisiones (${cuentaRemisiones.length})`],
+          ["programaciones", `Programaciones (${clienteProgs.length})`],
+          ["pagos",          `Pagos (${clientePagos.length})`],
+        ] as const).map(([t, label]) => (
+          <button key={t} onClick={() => onCuentaTab(t)}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors cursor-pointer -mb-px ${cuentaTab === t ? "border-[#CC2229] text-[#CC2229]" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab: Entregas (recibos de concreto) */}
+      {cuentaTab === "entregas" && (
+        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          {cuentaLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 size={20} className="animate-spin text-[#CC2229]" />
+            </div>
+          ) : cuentaRecibos.length === 0 ? (
+            <p className="text-center text-sm text-gray-400 py-10">Sin recibos de concreto para este cliente</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 bg-gray-50/50">
+                  {["Folio","Fecha","m³","Precio/m³","Total","Anticipo","Resta"].map((h) => (
+                    <th key={h} className={`px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider ${["Total","Anticipo","Resta","m³","Precio/m³"].includes(h) ? "text-right" : "text-left"}`}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {cuentaRecibos.map((r) => {
+                  const { total, resta } = calculateConcreteReceiptTotal(r);
+                  return (
+                    <tr key={r.id} className="hover:bg-gray-50/50 transition-colors">
+                      <td className="px-4 py-3 font-medium text-[#CC2229]">#{String(r.receiptNumber).padStart(4, "0")}</td>
+                      <td className="px-4 py-3 text-gray-600">{fmtDate(r.fecha)}</td>
+                      <td className="px-4 py-3 text-right text-gray-700">{r.m3}</td>
+                      <td className="px-4 py-3 text-right text-gray-600">{currency(r.precioPorM3)}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-gray-900">{currency(total)}</td>
+                      <td className="px-4 py-3 text-right text-green-700">{currency(r.anticipo ?? 0)}</td>
+                      <td className="px-4 py-3 text-right">
+                        <span className={resta > 0.01 ? "font-semibold text-amber-600" : "text-gray-400"}>{currency(resta)}</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {/* Tab: Remisiones de despacho */}
+      {cuentaTab === "remisiones" && (
+        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          {cuentaLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 size={20} className="animate-spin text-[#CC2229]" />
+            </div>
+          ) : cuentaRemisiones.length === 0 ? (
+            <p className="text-center text-sm text-gray-400 py-10">Sin remisiones de despacho para este cliente</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 bg-gray-50/50">
+                  {["No.","Fecha","m³","Monto","Mezcla","Obra","CR","Estado","Pago",""].map((h) => (
+                    <th key={h} className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider text-left">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {cuentaRemisiones.map((r) => (
+                  <tr key={r.id ?? r.noRemision} className="hover:bg-gray-50/50 transition-colors">
+                    <td className="px-4 py-3 font-mono font-bold text-[#CC2229] text-xs">{r.noRemision}</td>
+                    <td className="px-4 py-3 text-gray-600 text-xs">{r.fecha}</td>
+                    <td className="px-4 py-3 font-semibold text-gray-900">{r.m3} m³</td>
+                    <td className="px-4 py-3 font-semibold text-gray-900 tabular-nums">{currency(r.monto ?? 0)}</td>
+                    <td className="px-4 py-3 text-xs">
+                      {r.mezcla ? <span className="bg-blue-50 border border-blue-200 text-blue-700 rounded-full px-2 py-0.5 text-[11px] font-semibold">{r.mezcla}</span> : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 text-xs max-w-[140px] truncate">{r.obra || "—"}</td>
+                    <td className="px-4 py-3 text-gray-500 text-xs font-mono">{r.cr || "—"}</td>
+                    <td className="px-4 py-3">
+                      {r.status === "creada"
+                        ? <span className="bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-full px-2 py-0.5 text-[11px] font-semibold">Creada</span>
+                        : <span className="bg-amber-50 border border-amber-200 text-amber-700 rounded-full px-2 py-0.5 text-[11px] font-semibold">Pendiente</span>}
+                    </td>
+                    <td className="px-4 py-3">
+                      {r.pagado
+                        ? <span className="bg-green-50 border border-green-200 text-green-700 rounded-full px-2 py-0.5 text-[11px] font-semibold">Saldada</span>
+                        : <span className="bg-red-50 border border-red-200 text-red-600 rounded-full px-2 py-0.5 text-[11px] font-semibold">Por cobrar</span>}
+                    </td>
+                    <td className="px-4 py-3">
+                      {!r.pagado && r.monto && r.monto > 0 && (
+                        <button onClick={() => onSaldarRemision(r)}
+                          className="px-3 py-1.5 text-xs font-semibold text-white bg-[#CC2229] hover:bg-[#B01E24] rounded-lg transition-colors cursor-pointer">
+                          Saldar
+                        </button>
+                      )}
+                      {!r.pagado && (!r.monto || r.monto === 0) && (
+                        <span className="text-xs text-gray-400">Sin monto</span>
+                      )}
+                      {r.pagado && r.montoPagado && (
+                        <span className="text-xs text-green-700 font-medium">{currency(r.montoPagado)}</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {/* Tab: Programaciones */}
+      {cuentaTab === "programaciones" && (
+        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          {clienteProgs.length === 0 ? (
+            <p className="text-center text-sm text-gray-400 py-10">Sin programaciones</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 bg-gray-50/50">
+                  {["Fecha","Folio","Obra","Total","Pagado","Saldo","Recibo"].map((h) => (
+                    <th key={h} className={`px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider ${["Total","Pagado","Saldo"].includes(h) ? "text-right" : "text-left"}`}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {[...clienteProgs].sort((a, b) => b.dia.localeCompare(a.dia)).map((p) => {
+                  const sp = saldoPendiente(p);
+                  return (
+                    <tr key={p.id} className="hover:bg-gray-50/50 transition-colors">
+                      <td className="px-4 py-3 text-[#CC2229] font-medium">{fmtDate(p.dia)}</td>
+                      <td className="px-4 py-3 text-gray-600">{p.folio || "—"}</td>
+                      <td className="px-4 py-3 text-gray-500 text-xs max-w-[160px] truncate">{p.nombreObra || "—"}</td>
+                      <td className="px-4 py-3 text-right font-medium text-gray-800">{currency(p.total ?? 0)}</td>
+                      <td className="px-4 py-3 text-right text-green-700">{currency(p.montoPagado ?? 0)}</td>
+                      <td className="px-4 py-3 text-right">
+                        <span className={sp > 0.01 ? "font-semibold text-amber-600" : "text-gray-400"}>{currency(sp)}</span>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-500">{p.reciboFolio || "—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {/* Tab: Pagos adicionales */}
+      {cuentaTab === "pagos" && (
+        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          {clientePagos.length === 0 ? (
+            <p className="text-center text-sm text-gray-400 py-10">Sin pagos registrados</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 bg-gray-50/50">
+                  {["Fecha","Tipo","Banco","Cantidad","Anticipo"].map((h) => (
+                    <th key={h} className={`px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider ${h === "Cantidad" ? "text-right" : h === "Anticipo" ? "text-center" : "text-left"}`}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {clientePagos.map((p) => (
+                  <tr key={p.id} className="hover:bg-gray-50/50 transition-colors">
+                    <td className="px-4 py-3 text-[#CC2229] font-medium">{fmtDate(p.fecha)}</td>
+                    <td className="px-4 py-3 text-gray-600">{p.tipoPago || "—"}</td>
+                    <td className="px-4 py-3 text-gray-500">{p.banco || "—"}</td>
+                    <td className="px-4 py-3 text-right font-semibold text-gray-900">{currency(p.cantidad)}</td>
+                    <td className="px-4 py-3 text-center text-xs">
+                      <span className={p.anticipo ? "text-blue-600 font-medium" : "text-gray-300"}>
+                        {p.anticipo ? "Sí" : "No"}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       )}
     </div>

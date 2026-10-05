@@ -19,6 +19,13 @@ import { matchesQuery } from "@/lib/search";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+interface Producto {
+  id: string;
+  codigo: string;
+  descripcion: string;
+  categoria?: string;
+}
+
 export interface RemisionDespacho {
   id?: string;
   tipo: "despacho";
@@ -28,6 +35,7 @@ export interface RemisionDespacho {
   cliente: string;
   obra: string;
   m3: number;
+  monto?: number;
   mezcla: string;
   descripcion?: string;
   planta: "Allende" | "Pesquería";
@@ -39,6 +47,12 @@ export interface RemisionDespacho {
   programacionId?: string;
   programacionFolio?: string;
   creadoEn: string;
+  extras?: { codigo: string; descripcion?: string; volumen: number; precioM3: number; total: number }[];
+  // Saldo — se gestiona desde Finanzas → Cobros
+  pagado?: boolean;
+  montoPagado?: number;
+  fechaPago?: string;
+  metodoPago?: string;
 }
 
 interface EmpresaInfo {
@@ -237,9 +251,12 @@ interface DrawerProps {
   clientes: Pick<Cliente, "id" | "razonSocial" | "nombreComercial">[];
   operadores: Pick<Operador, "id" | "nombre">[];
   crOptions: string[];
+  productos: Producto[];
   nextNoRemision: string;
   defaultPlanta: "Allende" | "Pesquería";
 }
+
+interface ExtraItem { codigo: string; descripcion?: string; volumen: string; precioM3: string; }
 
 interface FormState {
   noRemision: string;
@@ -247,31 +264,35 @@ interface FormState {
   cliente: string;
   obra: string;
   m3: string;
+  monto: string;
   mezcla: string;
   descripcion: string;
   planta: "Allende" | "Pesquería";
-  horaSalidaPlanta: string;
   operador: string;
   cr: string;
   recibidoPor: string;
+  extras: ExtraItem[];
 }
 
 function RemisionDrawer({
-  open, onClose, onSave, initial, completar, clientes, operadores, crOptions, nextNoRemision, defaultPlanta,
+  open, onClose, onSave, initial, completar, clientes, operadores, crOptions, productos, nextNoRemision, defaultPlanta,
 }: DrawerProps) {
+  // Campos que vienen de la programación — solo lectura si ya están vinculados
+  const fromProg = !!(initial?.programacionId);
   const empty = (): FormState => ({
     noRemision: nextNoRemision,
     fecha: todayCST(),
     cliente: "",
     obra: "",
     m3: "",
+    monto: "",
     mezcla: "",
     descripcion: "",
     planta: defaultPlanta,
-    horaSalidaPlanta: "",
     operador: "",
     cr: "",
     recibidoPor: "",
+    extras: [],
   });
 
   const [form, setForm] = useState<FormState>(empty);
@@ -288,13 +309,14 @@ function RemisionDrawer({
         cliente: initial.cliente,
         obra: initial.obra,
         m3: String(initial.m3),
+        monto: initial.monto != null ? String(initial.monto) : "",
         mezcla: initial.mezcla,
         descripcion: initial.descripcion ?? "",
         planta: initial.planta,
-        horaSalidaPlanta: initial.horaSalidaPlanta,
         operador: initial.operador,
         cr: initial.cr,
         recibidoPor: initial.recibidoPor,
+        extras: (initial.extras ?? []).map((e) => ({ codigo: e.codigo, descripcion: e.descripcion, volumen: String(e.volumen), precioM3: String(e.precioM3) })),
       });
     } else {
       setForm({ ...empty(), noRemision: nextNoRemision });
@@ -317,10 +339,17 @@ function RemisionDrawer({
         cliente: form.cliente.trim(),
         obra: form.obra.trim(),
         m3: parseFloat(form.m3) || 0,
+        extras: form.extras
+          .filter((e) => e.codigo && parseFloat(e.volumen) > 0)
+          .map((e) => {
+            const vol = parseFloat(e.volumen); const pm3 = parseFloat(e.precioM3) || 0;
+            return { codigo: e.codigo, ...(e.descripcion ? { descripcion: e.descripcion } : {}), volumen: vol, precioM3: pm3, total: Math.round(vol * pm3 * 100) / 100 };
+          }),
+        ...(form.monto ? { monto: parseFloat(form.monto) } : {}),
         mezcla: form.mezcla.trim(),
         descripcion: form.descripcion.trim(),
         planta: form.planta,
-        horaSalidaPlanta: form.horaSalidaPlanta,
+        horaSalidaPlanta: initial?.horaSalidaPlanta ?? "",
         operador: form.operador,
         cr: form.cr,
         unidad: form.cr,
@@ -357,20 +386,36 @@ function RemisionDrawer({
 
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
           {/* Planta */}
+          {/* Banner de vinculación */}
+          {fromProg && (
+            <div className="flex items-center gap-2 px-3 py-2.5 bg-emerald-50 border border-emerald-200 rounded-xl">
+              <LinkIcon size={13} className="text-emerald-600 shrink-0" />
+              <p className="text-xs text-emerald-700 font-medium">
+                Vinculada a programación{initial?.programacionFolio ? ` ${initial.programacionFolio}` : ""}
+                {" · "}Los datos en gris vienen de la programación
+              </p>
+            </div>
+          )}
+
+          {/* Planta — solo lectura si viene de programación */}
           <div>
             <label className={lbl}>Planta</label>
-            <div className="flex gap-2">
-              {(["Allende", "Pesquería"] as const).map((p) => (
-                <button key={p} type="button" onClick={() => set("planta", p)}
-                  className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-colors cursor-pointer ${
-                    form.planta === p
-                      ? "bg-[#CC2229] border-[#CC2229] text-white"
-                      : "bg-white border-gray-200 text-gray-500 hover:border-[#CC2229]/40"
-                  }`}>
-                  {p}
-                </button>
-              ))}
-            </div>
+            {fromProg ? (
+              <div className={inp + " bg-gray-50 text-gray-500 pointer-events-none"}>{form.planta}</div>
+            ) : (
+              <div className="flex gap-2">
+                {(["Allende", "Pesquería"] as const).map((p) => (
+                  <button key={p} type="button" onClick={() => set("planta", p)}
+                    className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-colors cursor-pointer ${
+                      form.planta === p
+                        ? "bg-[#CC2229] border-[#CC2229] text-white"
+                        : "bg-white border-gray-200 text-gray-500 hover:border-[#CC2229]/40"
+                    }`}>
+                    {p}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -379,94 +424,166 @@ function RemisionDrawer({
               <input type="text" inputMode="numeric" value={form.noRemision} onChange={(e) => set("noRemision", e.target.value.replace(/\D/g, ""))} placeholder="20806" className={inp} />
             </div>
             <div>
-              <label className={lbl}>Fecha</label>
-              <input type="date" value={form.fecha} onChange={(e) => set("fecha", e.target.value)} className={inp} />
+              <label className={lbl}>Fecha {fromProg && <span className="text-gray-400 normal-case">(de programación)</span>}</label>
+              <input type="date" value={form.fecha} readOnly={fromProg} onChange={fromProg ? undefined : (e) => set("fecha", e.target.value)}
+                className={inp + (fromProg ? " bg-gray-50 text-gray-500 cursor-default" : "")} />
             </div>
           </div>
 
-          {/* Cliente */}
+          {/* Cliente — solo lectura si viene de programación */}
           <div>
             <label className={lbl}>Cliente</label>
-            <AppSelect value={form.cliente} onChange={(e) => set("cliente", e.target.value)}>
-              <option value="">Seleccionar cliente…</option>
-              {clientes.map((c) => (
-                <option key={c.id} value={c.razonSocial}>
-                  {c.nombreComercial || c.razonSocial}
-                </option>
-              ))}
-            </AppSelect>
+            {fromProg ? (
+              <div className={inp + " bg-gray-50 text-gray-500"}>{form.cliente || "—"}</div>
+            ) : (
+              <AppSelect value={form.cliente} onChange={(e) => set("cliente", e.target.value)}>
+                <option value="">Seleccionar cliente…</option>
+                {clientes.map((c) => (
+                  <option key={c.id} value={c.razonSocial}>
+                    {c.nombreComercial || c.razonSocial}
+                  </option>
+                ))}
+              </AppSelect>
+            )}
           </div>
 
+          {/* Obra — solo lectura si viene de programación */}
           <div>
             <label className={lbl}>Obra</label>
-            <input type="text" value={form.obra} onChange={(e) => set("obra", e.target.value)} placeholder="Nombre de la obra" className={inp} />
+            {fromProg ? (
+              <div className={inp + " bg-gray-50 text-gray-500"}>{form.obra || "—"}</div>
+            ) : (
+              <input type="text" value={form.obra} onChange={(e) => set("obra", e.target.value)} placeholder="Nombre de la obra" className={inp} />
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
+            {/* M³ — solo lectura si viene de programación */}
             <div>
               <label className={lbl}>M³ <span className="text-[#CC2229]">*</span></label>
-              <input type="number" step="0.5" min="0" value={form.m3} onChange={(e) => set("m3", e.target.value)} placeholder="7.0" className={inp} />
+              <input type="number" step="0.5" min="0" value={form.m3}
+                readOnly={fromProg} onChange={fromProg ? undefined : (e) => set("m3", e.target.value)}
+                placeholder="7.0" className={inp + (fromProg ? " bg-gray-50 text-gray-500 cursor-default" : "")} />
             </div>
             <div>
-              <label className={lbl}>Código / Mezcla</label>
-              <input type="text" value={form.mezcla} onChange={(e) => set("mezcla", e.target.value)} placeholder="F'C 200N2014R28D" className={inp} />
+              <label className={lbl}>Monto $</label>
+              <input type="number" step="0.01" min="0" value={form.monto} onChange={(e) => set("monto", e.target.value)} placeholder="0.00" className={inp} />
             </div>
+          </div>
+
+          {/* Producto / Mezcla — dropdown del catálogo */}
+          <div>
+            <label className={lbl}>Producto / Mezcla</label>
+            <AppSelect value={form.mezcla} onChange={(e) => set("mezcla", e.target.value)}>
+              <option value="">— Seleccionar producto —</option>
+              {productos.map((p) => (
+                <option key={p.id} value={p.codigo}>{p.codigo}{p.descripcion ? ` — ${p.descripcion}` : ""}</option>
+              ))}
+              {/* Mantiene el valor existente si no está en el catálogo */}
+              {form.mezcla && !productos.some((p) => p.codigo === form.mezcla) && (
+                <option value={form.mezcla}>{form.mezcla}</option>
+              )}
+            </AppSelect>
           </div>
 
           <div>
             <label className={lbl}>Descripción</label>
-            <textarea
-              rows={2}
-              value={form.descripcion}
-              onChange={(e) => set("descripcion", e.target.value)}
-
-              className={inp + " resize-none"}
-            />
+            <textarea rows={2} value={form.descripcion} onChange={(e) => set("descripcion", e.target.value)} className={inp + " resize-none"} />
           </div>
 
-          <div>
-            <label className={lbl}>Hora de salida de planta</label>
-            <input type="time" value={form.horaSalidaPlanta} onChange={(e) => set("horaSalidaPlanta", e.target.value)} className={inp} />
+          {/* Productos adicionales */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className={lbl + " mb-0"}>Productos adicionales</label>
+              <button type="button"
+                onClick={() => setForm((p) => ({ ...p, extras: [...p.extras, { codigo: "", descripcion: "", volumen: "", precioM3: "" }] }))}
+                className="text-xs font-semibold text-[#CC2229] hover:text-[#B01E24] cursor-pointer transition-colors">
+                + Agregar
+              </button>
+            </div>
+            {form.extras.length === 0 && (
+              <p className="text-xs text-gray-400 py-1">Sin productos adicionales</p>
+            )}
+            {form.extras.map((ex, i) => {
+              const vol = parseFloat(ex.volumen) || 0;
+              const pm3 = parseFloat(ex.precioM3) || 0;
+              const total = vol * pm3;
+              return (
+                <div key={i} className="space-y-1.5">
+                  <div className="grid grid-cols-[1fr_28px] gap-1.5 items-center">
+                    <AppSelect value={ex.codigo}
+                      onChange={(e) => {
+                        const prod = productos.find((p) => p.codigo === e.target.value);
+                        setForm((p) => { const ex2 = [...p.extras]; ex2[i] = { ...ex2[i], codigo: e.target.value, descripcion: prod?.descripcion ?? "" }; return { ...p, extras: ex2 }; });
+                      }}>
+                      <option value="">— Producto —</option>
+                      {productos.map((p) => <option key={p.id} value={p.codigo}>{p.codigo}{p.descripcion ? ` — ${p.descripcion}` : ""}</option>)}
+                    </AppSelect>
+                    <button type="button"
+                      onClick={() => setForm((p) => ({ ...p, extras: p.extras.filter((_, j) => j !== i) }))}
+                      className="flex items-center justify-center w-7 h-7 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer">
+                      <X size={13} />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-[1fr_1fr_auto] gap-1.5 items-center pl-0">
+                    <div className="relative">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">m³</span>
+                      <input type="number" step="0.5" min="0" placeholder="Volumen" value={ex.volumen}
+                        onChange={(e) => setForm((p) => { const ex2 = [...p.extras]; ex2[i] = { ...ex2[i], volumen: e.target.value }; return { ...p, extras: ex2 }; })}
+                        className={inp + " pl-8"} />
+                    </div>
+                    <div className="relative">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">$/m³</span>
+                      <input type="number" step="0.01" min="0" placeholder="Precio" value={ex.precioM3}
+                        onChange={(e) => setForm((p) => { const ex2 = [...p.extras]; ex2[i] = { ...ex2[i], precioM3: e.target.value }; return { ...p, extras: ex2 }; })}
+                        className={inp + " pl-9"} />
+                    </div>
+                    <div className="text-sm font-semibold text-gray-700 tabular-nums whitespace-nowrap pr-1">
+                      = ${total.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
-          {/* Operador */}
+          {/* Operador — solo lectura si viene de programación */}
           <div>
             <label className={lbl}>Operador</label>
-            <AppSelect value={form.operador} onChange={(e) => set("operador", e.target.value)}>
-              <option value="">Sin asignar</option>
-              {operadores.map((o) => (
-                <option key={o.id} value={o.nombre}>{o.nombre}</option>
-              ))}
-            </AppSelect>
+            {fromProg ? (
+              <div className={inp + " bg-gray-50 text-gray-500"}>{form.operador || "—"}</div>
+            ) : (
+              <AppSelect value={form.operador} onChange={(e) => set("operador", e.target.value)}>
+                <option value="">Sin asignar</option>
+                {operadores.map((o) => (
+                  <option key={o.id} value={o.nombre}>{o.nombre}</option>
+                ))}
+              </AppSelect>
+            )}
           </div>
 
-          {/* CR */}
+          {/* CR — solo lectura si viene de programación */}
           <div>
             <label className={lbl}>CR</label>
-            <AppSelect value={form.cr} onChange={(e) => set("cr", e.target.value)}>
-              <option value="">— Sin CR —</option>
-              {crOptions.map((cr) => (
-                <option key={cr} value={cr}>{cr}</option>
-              ))}
-              {form.cr && !crOptions.includes(form.cr) && (
-                <option value={form.cr}>{form.cr}</option>
-              )}
-            </AppSelect>
+            {fromProg ? (
+              <div className={inp + " bg-gray-50 text-gray-500"}>{form.cr || "—"}</div>
+            ) : (
+              <AppSelect value={form.cr} onChange={(e) => set("cr", e.target.value)}>
+                <option value="">— Sin CR —</option>
+                {crOptions.map((cr) => (
+                  <option key={cr} value={cr}>{cr}</option>
+                ))}
+                {form.cr && !crOptions.includes(form.cr) && (
+                  <option value={form.cr}>{form.cr}</option>
+                )}
+              </AppSelect>
+            )}
           </div>
 
           <div>
             <label className={lbl}>Recibido por</label>
             <input type="text" value={form.recibidoPor} onChange={(e) => set("recibidoPor", e.target.value)} placeholder="Nombre" className={inp} />
           </div>
-
-          {initial?.programacionId && (
-            <div className="flex items-center gap-2 px-3 py-2.5 bg-emerald-50 border border-emerald-200 rounded-xl">
-              <LinkIcon size={13} className="text-emerald-600 shrink-0" />
-              <p className="text-xs text-emerald-700 font-medium">
-                Vinculada a programación{initial.programacionFolio ? ` ${initial.programacionFolio}` : ""}
-              </p>
-            </div>
-          )}
         </div>
 
         <div className="shrink-0 border-t border-gray-100 px-6 py-4 flex items-center justify-end gap-3">
@@ -493,6 +610,7 @@ export default function RemisionesPage() {
   const [clientes, setClientes] = useState<Pick<Cliente, "id" | "razonSocial" | "nombreComercial">[]>([]);
   const [operadores, setOperadores] = useState<Pick<Operador, "id" | "nombre">[]>([]);
   const [crOptions, setCrOptions] = useState<string[]>([]);
+  const [productos, setProductos] = useState<Producto[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [month, setMonth] = useState(currentMonth());
@@ -526,7 +644,8 @@ export default function RemisionesPage() {
       getCollectionDocs<Operador>(COLLECTIONS.operadores),
       getCollectionDocs<{ noEconomico?: string; tipoUnidad?: string }>(COLLECTIONS.seguros),
       getDocument<EmpresaInfo>(COLLECTIONS.configuracion, "empresa-remisiones").catch(() => null),
-    ]).then(([remDocs, clienteDocs, operDocs, segurosDocs, empresaDoc]) => {
+      getCollectionDocs<Producto>(COLLECTIONS.productos),
+    ]).then(([remDocs, clienteDocs, operDocs, segurosDocs, empresaDoc, productoDocs]) => {
       setRemisiones(filterByPlanta(remDocs).filter((r) => r.tipo === "despacho"));
       setClientes(clienteDocs.map((c) => ({ id: c.id, razonSocial: c.razonSocial, nombreComercial: c.nombreComercial })));
       setOperadores(operDocs.filter((o) => !o.baja).map((o) => ({ id: o.id, nombre: o.nombre })));
@@ -534,8 +653,45 @@ export default function RemisionesPage() {
       segurosDocs.filter((d) => d.tipoUnidad === "Revolvedora" && d.noEconomico).forEach((d) => crs.add(d.noEconomico!));
       setCrOptions([...crs].sort());
       if (empresaDoc) { setEmpresa(empresaDoc); setEmpresaForm(empresaDoc); }
+      setProductos(productoDocs.sort((a, b) => a.codigo.localeCompare(b.codigo)));
     }).finally(() => setLoading(false));
   }, []);
+
+  // Migración una vez: calcula monto para remisiones vinculadas a programación que no lo tienen
+  const migrationRan = useRef(false);
+  useEffect(() => {
+    if (loading || migrationRan.current) return;
+    const sinMonto = remisiones.filter((r) => r.programacionId && (!r.monto || r.monto === 0));
+    if (sinMonto.length === 0) { migrationRan.current = true; return; }
+    migrationRan.current = true;
+
+    type ProgMin = { precioM3?: number | null; precioM3Bomba?: number | null; aplicarFactorBomba?: boolean; factorBomba?: number | null; color?: string | null; ltoAcelr?: number | null; kiloFibra?: number | null; m3Imper?: number | null; permisosOC?: number | null };
+    const calcPrecioXm3 = (p: ProgMin) => {
+      const f = p.aplicarFactorBomba ? (p.factorBomba ?? 1) : 1;
+      return (p.precioM3 ?? 0) * f + (p.precioM3Bomba ?? 0) * f + (parseFloat(String(p.color ?? "")) || 0) + (p.ltoAcelr ?? 0) + (p.kiloFibra ?? 0) + (p.m3Imper ?? 0) + (p.permisosOC ?? 0);
+    };
+
+    const uniqueProgIds = [...new Set(sinMonto.map((r) => r.programacionId!))];
+    Promise.all(uniqueProgIds.map((id) => getDocument<ProgMin>(COLLECTIONS.programaciones, id).then((p) => ({ id, prog: p })).catch(() => null)))
+      .then((results) => {
+        const progMap = new Map(results.filter(Boolean).map((r) => [r!.id, r!.prog]));
+        const updates = sinMonto.flatMap((r) => {
+          const prog = progMap.get(r.programacionId!);
+          if (!prog || !r.id) return [];
+          const precioXm3 = calcPrecioXm3(prog);
+          if (precioXm3 <= 0) return [];
+          const monto = Math.round(precioXm3 * (r.m3 ?? 0) * 100) / 100;
+          if (monto <= 0) return [];
+          return [{ id: r.id, monto }];
+        });
+        if (updates.length === 0) return;
+        return Promise.all(updates.map(({ id, monto }) => upsertDocument(COLLECTIONS.remisiones, id, { monto })))
+          .then(() => setRemisiones((prev) => prev.map((r) => {
+            const u = updates.find((u) => u.id === r.id);
+            return u ? { ...r, monto: u.monto } : r;
+          })));
+      }).catch(console.error);
+  }, [loading, remisiones]);
 
   const nextNoRemision = useMemo(() => {
     const nums = remisiones.map((r) => parseInt(r.noRemision, 10)).filter((n) => !isNaN(n));
@@ -701,7 +857,7 @@ export default function RemisionesPage() {
         {!loading && (<>
         <div className="px-5 py-4 border-b border-gray-100 flex flex-wrap items-center gap-3">
           <p className="text-sm font-semibold text-gray-900">
-            {filtered.length} remisión{filtered.length !== 1 ? "es" : ""}
+            {filtered.length} {filtered.length !== 1 ? "remisiones" : "remisión"}
           </p>
           <div className="ml-auto relative">
             <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
@@ -723,15 +879,15 @@ export default function RemisionesPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100">
-                {["Fecha", "No. Remisión", "Cliente", "Obra", "M³", "Mezcla", "Operador", "CR", "Estado", ""].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                {["Fecha", "No. Remisión", "Cliente", "Obra", "M³", "Monto", "Mezcla", "CR", "Estado", "Pago", ""].map((h) => (
+                  <th key={h} className="px-3 py-3 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-16 text-center">
+                  <td colSpan={12} className="px-4 py-16 text-center">
                     <div className="flex flex-col items-center gap-3">
                       <FileText size={32} className="text-gray-300" />
                       <p className="text-sm text-gray-500">Sin remisiones para este período</p>
@@ -742,47 +898,47 @@ export default function RemisionesPage() {
               ) : (
                 filtered.map((r) => (
                   <tr key={r.id ?? r.noRemision} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 text-gray-500 text-xs font-mono">{r.fecha}</td>
-                    <td className="px-4 py-3 text-[#CC2229] font-mono text-xs font-bold">{r.noRemision}</td>
-                    <td className="px-4 py-3 text-gray-700 text-sm max-w-[160px] truncate">{r.cliente || <span className="text-gray-400">—</span>}</td>
-                    <td className="px-4 py-3 text-gray-500 text-xs max-w-[120px] truncate">{r.obra || <span className="text-gray-400">—</span>}</td>
-                    <td className="px-4 py-3 text-gray-900 font-bold tabular-nums">{r.m3} m³</td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-3 text-gray-400 text-xs font-mono whitespace-nowrap">{r.fecha}</td>
+                    <td className="px-3 py-3 text-[#CC2229] font-mono text-xs font-bold">{r.noRemision}</td>
+                    <td className="px-3 py-3 text-gray-700 text-xs font-medium max-w-[130px] truncate">{r.cliente || <span className="text-gray-400">—</span>}</td>
+                    <td className="px-3 py-3 text-gray-500 text-xs max-w-[100px] truncate">{r.obra || <span className="text-gray-400">—</span>}</td>
+                    <td className="px-3 py-3 text-gray-900 font-bold tabular-nums text-xs whitespace-nowrap">{r.m3} m³</td>
+                    <td className="px-3 py-3 tabular-nums font-semibold text-gray-900 text-xs whitespace-nowrap">
+                      {r.monto ? `$${r.monto.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : <span className="text-gray-300 font-normal">—</span>}
+                    </td>
+                    <td className="px-3 py-3">
                       {r.mezcla
-                        ? <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 border border-blue-200 text-blue-700">{r.mezcla}</span>
+                        ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 border border-blue-200 text-blue-700">{r.mezcla}</span>
                         : <span className="text-gray-400">—</span>}
                     </td>
-                    <td className="px-4 py-3 text-gray-500 text-sm truncate max-w-[120px]">{r.operador || <span className="text-gray-400">—</span>}</td>
-                    <td className="px-4 py-3 text-gray-500 text-xs font-mono">{r.cr || <span className="text-gray-400">—</span>}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-3 text-gray-500 text-xs font-mono">{r.cr || <span className="text-gray-400">—</span>}</td>
+                    <td className="px-3 py-3">
                       {r.status === "creada"
-                        ? <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 border border-emerald-200 text-emerald-700">Creada</span>
-                        : <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 border border-amber-200 text-amber-700">Pendiente</span>}
+                        ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 border border-emerald-200 text-emerald-700">Creada</span>
+                        : <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 border border-amber-200 text-amber-700">Pendiente</span>}
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        {r.status !== "creada" && (
-                          <button
-                            onClick={() => { setEditing(r); setCompletarMode(true); setDrawerOpen(true); }}
-                            className="px-3 py-1.5 text-xs font-semibold text-white bg-[#CC2229] hover:bg-[#B01E24] rounded-lg transition-colors cursor-pointer"
-                          >
-                            Completar
-                          </button>
-                        )}
+                    <td className="px-3 py-3">
+                      {r.pagado
+                        ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-green-50 border border-green-200 text-green-700">Saldada</span>
+                        : <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 border border-amber-200 text-amber-700">Pendiente</span>}
+                    </td>
+                    <td className="px-3 py-3 flex items-center gap-1.5">
+                      {r.status !== "creada" && (
                         <button
-                          onClick={() => { setEditing(r); setCompletarMode(false); setDrawerOpen(true); }}
-                          className="px-3 py-1.5 text-xs font-medium text-gray-500 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
+                          onClick={() => { setEditing(r); setCompletarMode(true); setDrawerOpen(true); }}
+                          title="Completar remisión"
+                          className="px-2.5 py-1 text-[11px] font-semibold text-white bg-[#CC2229] hover:bg-[#B01E24] rounded-lg transition-colors cursor-pointer"
                         >
-                          Editar
+                          Completar
                         </button>
-                        <button
-                          onClick={() => openPreview(r)}
-                          title="Vista previa / PDF"
-                          className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
-                        >
-                          <Printer size={15} />
-                        </button>
-                      </div>
+                      )}
+                      <button
+                        onClick={() => openPreview(r)}
+                        title="Vista previa / PDF"
+                        className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
+                      >
+                        <Printer size={15} />
+                      </button>
                     </td>
                   </tr>
                 ))
@@ -812,6 +968,7 @@ export default function RemisionesPage() {
         clientes={clientes}
         operadores={operadores}
         crOptions={crOptions}
+        productos={productos}
         nextNoRemision={nextNoRemision}
         defaultPlanta={defaultPlanta}
       />
