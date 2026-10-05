@@ -704,8 +704,8 @@ export default function EmpleadosPage() {
       vencimientoContrato: f.vencimientoContrato, tipoLicencia: f.tipoLicencia,
       vencimientoLicencia: f.vencimientoLicencia, vencimientoCredencial: f.vencimientoCredencial,
       contactosEmergencia: f.contactosEmergencia.trim(),
-      fotoUrl: f.fotoUrl || undefined,
-      documentos: docs.length > 0 ? docs : undefined,
+      ...(f.fotoUrl ? { fotoUrl: f.fotoUrl } : {}),
+      ...(docs.length > 0 ? { documentos: docs } : {}),
     };
     const { id: _id, ...data } = next;
     try {
