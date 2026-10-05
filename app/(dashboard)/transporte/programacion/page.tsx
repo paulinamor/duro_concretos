@@ -10,7 +10,7 @@ import type { ExcelProg } from "./ExcelView";
 import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
 import ModuleLoading from "@/components/ModuleLoading";
-import { getCollectionDocs, getDocument, subscribeToCollection, upsertDocument, deleteDocument, COLLECTIONS, type SolicitudAutorizacion, type Notificacion, getAllUserProfiles } from "@/lib/db";
+import { getCollectionDocs, getDocument, subscribeToCollection, upsertDocument, deleteDocument, COLLECTIONS, type SolicitudAutorizacion, type Notificacion, getAllUserProfiles, where } from "@/lib/db";
 import { filterByPlanta, getStoredSession, withPlantaTag, getCapturePlanta } from "@/lib/auth";
 import { tdBomToBombeo } from "@/lib/sgp";
 import { todayCST, localISODate } from "@/lib/dateUtils";
@@ -2311,7 +2311,7 @@ export default function ProgramacionPage() {
   // Static data — load once
   useEffect(() => {
     Promise.all([
-      getCollectionDocs<Operador>(COLLECTIONS.operadores),
+      getCollectionDocs<Operador>(COLLECTIONS.operadores, [where("baja", "==", "")]),
       getCollectionDocs<Cliente>(COLLECTIONS.clientes),
       getCollectionDocs<{ tipoUnidad: string; noEconomico: string; unidadId: string }>(COLLECTIONS.seguros),
       getCollectionDocs<Unidad>(COLLECTIONS.unidades),
@@ -2341,13 +2341,21 @@ export default function ProgramacionPage() {
       setClientesList(Array.from(new Set(fromClientes)).sort());
     }).catch((err) => console.error("Error cargando datos estáticos:", err));
     getCollectionDocs<Obra>(COLLECTIONS.obras).then(setObrasData).catch(() => {});
-    getCollectionDocs<{ id: string; receiptNumber: number; cliente: string; fecha: string }>(COLLECTIONS.remisiones)
-      .then((docs) => setRecibosData(docs.filter((r) => r.receiptNumber != null)))
-      .catch(() => {});
+    const yearAgo = new Date(); yearAgo.setFullYear(yearAgo.getFullYear() - 1);
+    getCollectionDocs<{ id: string; receiptNumber: number; cliente: string; fecha: string }>(
+      COLLECTIONS.remisiones,
+      [where("fecha", ">=", yearAgo.toISOString().slice(0, 10))]
+    ).then((docs) => setRecibosData(docs.filter((r) => r.receiptNumber != null))).catch(() => {});
   }, []);
 
   // Real-time programaciones subscription
   useEffect(() => {
+    // Limitar a últimos 6 meses + filtro server-side de planta para Pesquería
+    const sixMonthsAgo = new Date(); sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    const cutoff = sixMonthsAgo.toISOString().slice(0, 10);
+    const subConstraints = plantaActiva === "Pesquería"
+      ? [where("planta", "==", "Pesquería"), where("dia", ">=", cutoff)]
+      : [where("dia", ">=", cutoff)];
     const unsub = subscribeToCollection<Programacion>(
       COLLECTIONS.programaciones,
       (progs) => {
@@ -2382,7 +2390,8 @@ export default function ProgramacionPage() {
           }
 
         }
-      }
+      },
+      subConstraints
     );
     return unsub;
   }, []);

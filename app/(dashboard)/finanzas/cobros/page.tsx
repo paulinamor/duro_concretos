@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ArrowLeft, BadgeCheck, ChevronRight, Clock, Loader2, Plus, Search, Trash2, X } from "lucide-react";
 import AppSelect from "@/components/AppSelect";
-import { upsertDocument, deleteDocument, getCollectionDocs, COLLECTIONS, subscribeToCollection } from "@/lib/db";
+import { upsertDocument, deleteDocument, getCollectionDocs, COLLECTIONS, subscribeToCollection, where } from "@/lib/db";
 import { currency } from "@/lib/formatters";
-import { filterByPlanta, withPlantaTag } from "@/lib/auth";
+import { filterByPlanta, withPlantaTag, getStoredSession } from "@/lib/auth";
 import { todayCST } from "@/lib/dateUtils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -96,14 +96,18 @@ export default function CobrosPage() {
       if (loadedPagos && loadedProgs && loadedClientes) setLoading(false);
     }
 
+    // Server-side planta filter for Pesquería — Allende/Todas still do client-side filter
+    const planta = getStoredSession()?.planta;
+    const plantaQ = planta === "Pesquería" ? [where("planta", "==", "Pesquería")] : [];
+
     const unsubPagos = subscribeToCollection<Pago>(COLLECTIONS.pagos, (docs) => {
       setPagos(filterByPlanta(docs).sort((a, b) => b.fecha.localeCompare(a.fecha)));
       if (!loadedPagos) { loadedPagos = true; checkDone(); }
-    });
+    }, plantaQ);
     const unsubProgs = subscribeToCollection<Prog>(COLLECTIONS.programaciones, (docs) => {
       setProgs(filterByPlanta(docs));
       if (!loadedProgs) { loadedProgs = true; checkDone(); }
-    });
+    }, plantaQ);
 
     getCollectionDocs<ClienteDoc>(COLLECTIONS.clientes).then((cl) => {
       setClientesList(cl.sort((a, b) => a.razonSocial.localeCompare(b.razonSocial, "es")));

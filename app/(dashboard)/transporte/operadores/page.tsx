@@ -12,7 +12,8 @@ import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
 import PlantaRequired from "@/components/PlantaRequired";
 import { diasDesdeIngreso, docsProximos, operadoresActivos, type DocEmpleado, type Operador } from "@/lib/operadores";
-import { COLLECTIONS, deleteDocument, getDocument, subscribeToCollection, upsertDocument } from "@/lib/db";
+import { COLLECTIONS, deleteDocument, getDocument, subscribeToCollection, upsertDocument, where } from "@/lib/db";
+import { getStoredSession } from "@/lib/auth";
 import { normalizeKey } from "@/lib/duplicateCheck";
 import DuplicateWarningModal from "@/components/DuplicateWarningModal";
 import { matchesQuery } from "@/lib/search";
@@ -631,11 +632,13 @@ export default function EmpleadosPage() {
   }, [loading]);
 
   useEffect(() => {
+    const planta = getStoredSession()?.planta;
+    const plantaQ = planta === "Pesquería" ? [where("planta", "==", "Pesquería")] : [];
     const unsub = subscribeToCollection<Operador>(COLLECTIONS.operadores, (ops) => {
       const seen = new Set<string>();
       setOperadores(ops.filter((op) => { if (seen.has(op.id)) return false; seen.add(op.id); return true; }));
       setLoading(false);
-    });
+    }, plantaQ);
     return unsub;
   }, []);
 
