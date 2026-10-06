@@ -690,19 +690,20 @@ export default function InventarioPage() {
     [remByPlanta, periodo],
   );
 
-  const consumoPeriodo = useMemo(() => {
-    const result = {} as Record<MatKey, number>;
-    INVENTARIO_MATERIALES.forEach(({ key }) => { result[key] = 0; });
-    return result;
-  }, []);
-
   const entradasNetoPeriodo = useMemo(() => {
     const entries = entByPlanta.filter((e) => e.categoria === "inventario" && inPeriod(e.fecha, periodo));
     const result = {} as Record<MatKey, number>;
     INVENTARIO_MATERIALES.forEach(({ key }) => {
-      const ent = entries.filter((e) => e.material === key && e.tipo === "entrada").reduce((s, e) => s + e.cantidad, 0);
-      const sal = entries.filter((e) => e.material === key && e.tipo === "salida").reduce((s, e) => s + e.cantidad, 0);
-      result[key] = ent - sal;
+      result[key] = entries.filter((e) => e.material === key && e.tipo === "entrada").reduce((s, e) => s + e.cantidad, 0);
+    });
+    return result;
+  }, [entByPlanta, periodo]);
+
+  const consumoPeriodo = useMemo(() => {
+    const entries = entByPlanta.filter((e) => e.categoria === "inventario" && inPeriod(e.fecha, periodo));
+    const result = {} as Record<MatKey, number>;
+    INVENTARIO_MATERIALES.forEach(({ key }) => {
+      result[key] = entries.filter((e) => e.material === key && e.tipo === "salida").reduce((s, e) => s + e.cantidad, 0);
     });
     return result;
   }, [entByPlanta, periodo]);
