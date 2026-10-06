@@ -54,10 +54,15 @@ interface ExistenciaInicial {
 
 type MatKey = "cemento" | "grava" | "arena4" | "arena5" | "aditivo" | "hr25" | "imper" | "costalFibra" | "colorCubetas";
 
+interface MaterialRow {
+  material: string; cantidad: string; unidad: string;
+}
+
 interface EntradaFormState {
-  fecha: string; categoria: "inventario" | "almacen"; material: string;
-  tipo: "entrada" | "salida"; cantidad: string; unidad: string;
+  fecha: string; categoria: "inventario" | "almacen";
+  tipo: "entrada" | "salida";
   proveedor: string; noFactura: string; observaciones: string;
+  materiales: MaterialRow[];
 }
 type MovRow =
   | { _source: "manual"; data: EntradaMaterial }
@@ -210,42 +215,64 @@ function MaterialCard({ row }: { row: StockRow }) {
 
 // ─── EntradaDrawer ────────────────────────────────────────────────────────────
 
+function emptyMaterialRow(): MaterialRow { return { material: "", cantidad: "", unidad: "" }; }
+
 function EntradaDrawer({ open, onClose, onSave, remisionesDespacho }: {
-  open: boolean; onClose: () => void; onSave: (e: EntradaMaterial) => Promise<void>;
+  open: boolean; onClose: () => void; onSave: (entries: EntradaMaterial[]) => Promise<void>;
   remisionesDespacho: RemisionDespacho[];
 }) {
-  const emptyForm = (): EntradaFormState => ({ fecha: todayISO(), categoria: "inventario", material: "", tipo: "entrada", cantidad: "", unidad: "", proveedor: "", noFactura: "", observaciones: "" });
+  const emptyForm = (): EntradaFormState => ({
+    fecha: todayISO(), categoria: "inventario", tipo: "entrada",
+    proveedor: "", noFactura: "", observaciones: "",
+    materiales: [emptyMaterialRow()],
+  });
   const [form, setForm] = useState<EntradaFormState>(emptyForm);
   const [selectedRemisionId, setSelectedRemisionId] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => { if (open) { setForm(emptyForm()); setSelectedRemisionId(""); } }, [open]);
-  const set = (k: keyof EntradaFormState, v: string) => setForm((p) => ({ ...p, [k]: v }));
 
-  useEffect(() => {
-    if (form.categoria === "inventario" && form.material) {
-      const mat = INVENTARIO_MATERIALES.find((m) => m.key === form.material);
-      if (mat) setForm((p) => ({ ...p, unidad: mat.unidad }));
-    }
-  }, [form.material, form.categoria]);
+  const setHeader = (k: Exclude<keyof EntradaFormState, "materiales">, v: string) =>
+    setForm((p) => ({ ...p, [k]: v }));
+
+  const setRow = (i: number, k: keyof MaterialRow, v: string) =>
+    setForm((p) => {
+      const mats = [...p.materiales];
+      mats[i] = { ...mats[i], [k]: v };
+      if (k === "material" && p.categoria === "inventario") {
+        const mat = INVENTARIO_MATERIALES.find((m) => m.key === v);
+        if (mat) mats[i] = { ...mats[i], unidad: mat.unidad };
+      }
+      return { ...p, materiales: mats };
+    });
+
+  const addRow = () => setForm((p) => ({ ...p, materiales: [...p.materiales, emptyMaterialRow()] }));
+  const removeRow = (i: number) => setForm((p) => ({ ...p, materiales: p.materiales.filter((_, j) => j !== i) }));
 
   const selectedRemision = remisionesDespacho.find((r) => r.id === selectedRemisionId);
-
   const showRemisionSelector = form.categoria === "inventario" && form.tipo === "salida";
 
+  const validRows = form.materiales.filter((r) => r.material.trim() && r.cantidad);
+  const canSave = validRows.length > 0;
+
   const handleSave = async () => {
-    if (!form.material.trim() || !form.cantidad) return;
+    if (!canSave) return;
     setSaving(true);
     try {
-      await onSave({
-        fecha: isoToDisplay(form.fecha), material: form.material.trim(),
-        cantidad: num(form.cantidad), unidad: form.unidad.trim(),
-        tipo: form.tipo, proveedor: form.proveedor.trim(),
-        noFactura: form.noFactura.trim(), observaciones: form.observaciones.trim(),
+      const entries: EntradaMaterial[] = validRows.map((row) => ({
+        fecha: isoToDisplay(form.fecha),
+        material: row.material.trim(),
+        cantidad: num(row.cantidad),
+        unidad: row.unidad.trim(),
+        tipo: form.tipo,
+        proveedor: form.proveedor.trim(),
+        noFactura: form.noFactura.trim(),
+        observaciones: form.observaciones.trim(),
         categoria: form.categoria,
-        ...(selectedRemision?.id       ? { remisionId:    selectedRemision.id }          : {}),
+        ...(selectedRemision?.id         ? { remisionId:    selectedRemision.id }          : {}),
         ...(selectedRemision?.noRemision ? { noRemisionRef: selectedRemision.noRemision } : {}),
-      });
+      }));
+      await onSave(entries);
       onClose();
     } finally { setSaving(false); }
   };
@@ -254,57 +281,110 @@ function EntradaDrawer({ open, onClose, onSave, remisionesDespacho }: {
   return (
     <div className="fixed inset-0 z-[100] flex">
       <button className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} aria-label="Cerrar" />
-      <div className="relative ml-auto flex h-full w-full max-w-md flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden">
+      <div className="relative ml-auto flex h-full w-full max-w-lg flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden">
         <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-4 shrink-0">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600"><ArrowDownToLine size={18} /></div>
           <div>
-            <h2 className="text-sm font-semibold text-gray-900">Registrar entrada de material</h2>
-            <p className="text-xs text-gray-500">Recepción de proveedor o ajuste</p>
+            <h2 className="text-sm font-semibold text-gray-900">Registrar movimiento de materiales</h2>
+            <p className="text-xs text-gray-500">Agrega uno o más materiales en una sola operación</p>
           </div>
           <button onClick={onClose} className="ml-auto rounded-xl p-2 text-gray-400 hover:bg-gray-100 transition-colors cursor-pointer"><X size={16} /></button>
         </div>
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
-          <div>
-            <label className={lbl}>Tipo de registro</label>
-            <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
-              {(["inventario", "almacen"] as const).map((c) => (
-                <button key={c} type="button" onClick={() => { set("categoria", c); set("material", ""); set("unidad", ""); setSelectedRemisionId(""); }}
-                  className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${form.categoria === c ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
-                  {c === "inventario" ? "Producción" : "Almacén"}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label className={lbl}>Movimiento</label>
-            <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
-              {(["entrada", "salida"] as const).map((t) => (
-                <button key={t} type="button" onClick={() => { set("tipo", t); setSelectedRemisionId(""); }}
-                  className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${form.tipo === t ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
-                  {t === "entrada" ? "↓ Entrada" : "↑ Salida / Ajuste"}
-                </button>
-              ))}
-            </div>
-          </div>
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+
+          {/* Tipo de registro + movimiento */}
           <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2">
-              <label className={lbl}>Material <span className="text-[#CC2229]">*</span></label>
-              {form.categoria === "inventario" ? (
-                <AppSelect value={form.material} onChange={(e) => set("material", e.target.value)}>
-                  <option value="">Seleccionar material…</option>
-                  {INVENTARIO_MATERIALES.map((m) => <option key={m.key} value={m.key}>{m.label}{m.unidad ? ` (${m.unidad})` : ""}</option>)}
-                </AppSelect>
-              ) : (
-                <input type="text" value={form.material} onChange={(e) => set("material", e.target.value)} placeholder="Ej: Diesel, Lubricante…" className={inp} />
-              )}
+            <div>
+              <label className={lbl}>Tipo de registro</label>
+              <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+                {(["inventario", "almacen"] as const).map((c) => (
+                  <button key={c} type="button"
+                    onClick={() => {
+                      setForm((p) => ({
+                        ...p,
+                        categoria: c,
+                        materiales: p.materiales.map(() => emptyMaterialRow()),
+                      }));
+                      setSelectedRemisionId("");
+                    }}
+                    className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${form.categoria === c ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+                    {c === "inventario" ? "Producción" : "Almacén"}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div><label className={lbl}>Cantidad <span className="text-[#CC2229]">*</span></label><input type="number" step="0.001" min="0" value={form.cantidad} onChange={(e) => set("cantidad", e.target.value)} placeholder="0" className={inp} /></div>
-            <div><label className={lbl}>Unidad</label><input type="text" value={form.unidad} onChange={(e) => set("unidad", e.target.value)} placeholder="kg, L, ton…" className={inp} /></div>
-            <div><label className={lbl}>Fecha</label><input type="date" value={form.fecha} onChange={(e) => set("fecha", e.target.value)} className={inp} /></div>
-            <div><label className={lbl}>No. Factura</label><input type="text" value={form.noFactura} onChange={(e) => set("noFactura", e.target.value)} placeholder="—" className={inp} /></div>
-            <div className="col-span-2"><label className={lbl}>Proveedor</label><input type="text" value={form.proveedor} onChange={(e) => set("proveedor", e.target.value)} placeholder="Nombre del proveedor" className={inp} /></div>
+            <div>
+              <label className={lbl}>Movimiento</label>
+              <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+                {(["entrada", "salida"] as const).map((t) => (
+                  <button key={t} type="button" onClick={() => { setHeader("tipo", t); setSelectedRemisionId(""); }}
+                    className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${form.tipo === t ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+                    {t === "entrada" ? "↓ Entrada" : "↑ Salida"}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
+          {/* Fecha + Factura */}
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className={lbl}>Fecha</label><input type="date" value={form.fecha} onChange={(e) => setHeader("fecha", e.target.value)} className={inp} /></div>
+            <div><label className={lbl}>No. Factura</label><input type="text" value={form.noFactura} onChange={(e) => setHeader("noFactura", e.target.value)} placeholder="—" className={inp} /></div>
+            <div className="col-span-2"><label className={lbl}>Proveedor</label><input type="text" value={form.proveedor} onChange={(e) => setHeader("proveedor", e.target.value)} placeholder="Nombre del proveedor" className={inp} /></div>
+          </div>
+
+          {/* Materiales list */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className={lbl + " mb-0"}>Materiales <span className="text-[#CC2229]">*</span></label>
+              <span className="text-[10px] text-gray-400">{validRows.length} de {form.materiales.length} válido{validRows.length !== 1 ? "s" : ""}</span>
+            </div>
+            <div className="space-y-2">
+              {form.materiales.map((row, i) => (
+                <div key={i} className="flex items-start gap-2 p-3 bg-gray-50 rounded-xl border border-gray-200">
+                  <div className="flex-1 space-y-2">
+                    {form.categoria === "inventario" ? (
+                      <AppSelect value={row.material} onChange={(e) => setRow(i, "material", e.target.value)}>
+                        <option value="">Seleccionar material…</option>
+                        {INVENTARIO_MATERIALES.map((m) => <option key={m.key} value={m.key}>{m.label}{m.unidad ? ` (${m.unidad})` : ""}</option>)}
+                      </AppSelect>
+                    ) : (
+                      <input type="text" value={row.material} onChange={(e) => setRow(i, "material", e.target.value)} placeholder="Ej: Diesel, Lubricante…" className={inp} />
+                    )}
+                    <div className={`grid gap-2 ${form.categoria === "almacen" ? "grid-cols-2" : "grid-cols-1"}`}>
+                      <div className="flex items-end gap-2">
+                        <div className="flex-1">
+                          <label className={lbl}>Cantidad <span className="text-[#CC2229]">*</span></label>
+                          <input type="number" step="0.001" min="0" value={row.cantidad} onChange={(e) => setRow(i, "cantidad", e.target.value)} placeholder="0" className={inp} />
+                        </div>
+                        {form.categoria === "inventario" && row.unidad && (
+                          <span className="mb-px px-3 py-2.5 text-xs font-semibold text-gray-500 bg-gray-100 border border-gray-200 rounded-xl whitespace-nowrap">
+                            {row.unidad}
+                          </span>
+                        )}
+                      </div>
+                      {form.categoria === "almacen" && (
+                        <div>
+                          <label className={lbl}>Unidad</label>
+                          <input type="text" value={row.unidad} onChange={(e) => setRow(i, "unidad", e.target.value)} placeholder="kg, L, pzas…" className={inp} />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  {form.materiales.length > 1 && (
+                    <button onClick={() => removeRow(i)} className="mt-1 p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer shrink-0" title="Quitar material">
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+              ))}
+              <button onClick={addRow} className="flex items-center gap-1.5 text-xs text-[#CC2229] font-medium hover:text-[#B01E24] transition-colors cursor-pointer py-1">
+                <Plus size={14} /> Agregar otro material
+              </button>
+            </div>
+          </div>
+
+          {/* Remisión selector (salida de producción) */}
           {showRemisionSelector && (
             <div>
               <label className={lbl}>Remisión (opcional)</label>
@@ -335,12 +415,23 @@ function EntradaDrawer({ open, onClose, onSave, remisionesDespacho }: {
               )}
             </div>
           )}
+
+          {/* Observaciones */}
+          <div>
+            <label className={lbl}>Observaciones</label>
+            <input type="text" value={form.observaciones} onChange={(e) => setHeader("observaciones", e.target.value)} placeholder="Notas adicionales…" className={inp} />
+          </div>
         </div>
-        <div className="shrink-0 border-t border-gray-100 px-6 py-4 flex justify-end gap-3">
-          <button onClick={onClose} className="px-4 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 border border-gray-200 rounded-xl transition-colors cursor-pointer">Cancelar</button>
-          <button onClick={handleSave} disabled={saving || !form.material.trim() || !form.cantidad} className="px-5 py-2.5 text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition-colors disabled:opacity-60 cursor-pointer">
-            {saving ? "Guardando…" : "Registrar entrada"}
-          </button>
+        <div className="shrink-0 border-t border-gray-100 px-6 py-4 flex items-center justify-between gap-3">
+          <p className="text-xs text-gray-400">
+            {validRows.length > 0 ? `${validRows.length} material${validRows.length !== 1 ? "es" : ""} a registrar` : "Completa al menos un material"}
+          </p>
+          <div className="flex gap-3">
+            <button onClick={onClose} className="px-4 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 border border-gray-200 rounded-xl transition-colors cursor-pointer">Cancelar</button>
+            <button onClick={handleSave} disabled={saving || !canSave} className="px-5 py-2.5 text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition-colors disabled:opacity-60 cursor-pointer">
+              {saving ? "Guardando…" : `Registrar${validRows.length > 1 ? ` ${validRows.length} materiales` : ""}`}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -651,10 +742,24 @@ export default function InventarioPage() {
   const totalM3 = remisionesPeriodo.reduce((s, r) => s + (r.m3 || 0), 0);
 
   // ── Handlers ──────────────────────────────────────────────────────────────────
-  const handleSaveEntrada = async (e: EntradaMaterial) => {
-    const id = `em-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    await upsertDocument(COLLECTIONS.entradasMaterial, id, { ...e, planta: localPlanta });
-    setEntradasMaterial((prev) => [{ ...e, id, planta: localPlanta }, ...prev]);
+  const handleSaveEntrada = async (entries: EntradaMaterial[]) => {
+    const ts = Date.now();
+    const saved = await Promise.all(
+      entries.map(async (e, i) => {
+        const id = `em-${ts}-${i}-${Math.random().toString(36).slice(2, 6)}`;
+        await upsertDocument(COLLECTIONS.entradasMaterial, id, { ...e, planta: localPlanta });
+        return { ...e, id, planta: localPlanta } as EntradaMaterial;
+      })
+    );
+    setEntradasMaterial((prev) => [...saved.reverse(), ...prev]);
+    window.dispatchEvent(new CustomEvent("duro:toast", {
+      detail: {
+        type: "success",
+        message: saved.length === 1
+          ? `${saved[0].tipo === "entrada" ? "Entrada" : "Salida"} registrada: ${saved[0].material}.`
+          : `${saved.length} materiales registrados (${saved[0].tipo === "entrada" ? "entrada" : "salida"}).`,
+      },
+    }));
   };
 
   const handleDeleteMovimiento = async (e: EntradaMaterial) => {
