@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle, ArrowDownToLine, ArrowUpToLine,
-  BarChart2, Clock, Edit2,
+  BarChart2, Edit2,
   Info, Package, Plus, Search, Trash2, X,
   Layers, TrendingDown, CheckCircle2, Shield, XCircle,
 } from "lucide-react";
@@ -187,11 +187,6 @@ function MaterialCard({ row }: { row: StockRow }) {
           </div>
           <div className="flex items-center justify-between mt-1.5">
             <p className="text-[10px] text-gray-400">{pct.toFixed(0)}% disponible</p>
-            {diasRestantes !== null && final > 0 && (
-              <p className={`flex items-center gap-1 text-[10px] font-medium ${diasRestantes < 7 ? "text-amber-600" : "text-gray-400"}`}>
-                <Clock size={9} /> ~{diasRestantes} días
-              </p>
-            )}
           </div>
         </div>
       )}
@@ -723,8 +718,7 @@ export default function InventarioPage() {
     const pct = inicial > 0 ? (final / total) * 100 : 0;
     const estado: StockRow["estado"] = final < 0 ? "deficit" : (inicial > 0 && pct < 20) ? "bajo" : "ok";
     const consumoDiario = consumo / diasConProduccion;
-    const diasRestantes = consumoDiario > 0 && final > 0 ? Math.round(final / consumoDiario) : null;
-    return { key, label, unidad, dot, inicial, entradas, consumo, final, estado, diasRestantes };
+    return { key, label, unidad, dot, inicial, entradas, consumo, final, estado, diasRestantes: null };
   }), [existenciaInicial, entradasNetoPeriodo, consumoPeriodo, diasConProduccion]);
 
   const almacenStock = useMemo(() => {
