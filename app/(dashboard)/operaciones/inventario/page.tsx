@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle, ArrowDownToLine, ArrowUpToLine,
-  BarChart2, Edit2,
+  BarChart2, Camera, Edit2,
   Info, Package, Plus, Search, Trash2, X,
   Layers, TrendingDown, CheckCircle2, Shield, XCircle,
 } from "lucide-react";
@@ -14,6 +14,8 @@ import AppSelect from "@/components/AppSelect";
 import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS, type SolicitudAutorizacion } from "@/lib/db";
 import { filterByPlanta, getActivePlanta, getStoredSession } from "@/lib/auth";
 import { todayCST, currentMonthCST } from "@/lib/dateUtils";
+import { storage } from "@/lib/firebase";
+import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -43,6 +45,9 @@ interface EntradaMaterial {
   tipo: "entrada" | "salida"; proveedor: string; noFactura: string; observaciones: string;
   categoria: "inventario" | "almacen"; planta?: string;
   remisionId?: string; noRemisionRef?: string;
+  remision?: string;
+  fotoUrl?: string;
+  fotoPath?: string;
 }
 interface ExistenciaInicial {
   id?: string; periodo: string;
@@ -56,6 +61,10 @@ type MatKey = "cemento" | "grava" | "arena4" | "arena5" | "aditivo" | "hr25" | "
 
 interface MaterialRow {
   material: string; cantidad: string; unidad: string;
+  remision?: string;
+  fotoUrl?: string;
+  fotoPath?: string;
+  uploading?: boolean;
 }
 
 interface EntradaFormState {
@@ -230,12 +239,12 @@ function EntradaDrawer({ open, onClose, onSave, remisionesDespacho }: {
   const setHeader = (k: Exclude<keyof EntradaFormState, "materiales">, v: string) =>
     setForm((p) => ({ ...p, [k]: v }));
 
-  const setRow = (i: number, k: keyof MaterialRow, v: string) =>
+  const setRow = (i: number, patch: Partial<MaterialRow>) =>
     setForm((p) => {
       const mats = [...p.materiales];
-      mats[i] = { ...mats[i], [k]: v };
-      if (k === "material" && p.categoria === "inventario") {
-        const mat = INVENTARIO_MATERIALES.find((m) => m.key === v);
+      mats[i] = { ...mats[i], ...patch };
+      if (patch.material !== undefined && p.categoria === "inventario") {
+        const mat = INVENTARIO_MATERIALES.find((m) => m.key === patch.material);
         if (mat) mats[i] = { ...mats[i], unidad: mat.unidad };
       }
       return { ...p, materiales: mats };
@@ -243,6 +252,19 @@ function EntradaDrawer({ open, onClose, onSave, remisionesDespacho }: {
 
   const addRow = () => setForm((p) => ({ ...p, materiales: [...p.materiales, emptyMaterialRow()] }));
   const removeRow = (i: number) => setForm((p) => ({ ...p, materiales: p.materiales.filter((_, j) => j !== i) }));
+
+  const fileInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  const handleFoto = async (i: number, file: File) => {
+    if (!storage) return;
+    setRow(i, { uploading: true });
+    try {
+      const path = `inventario/materiales/${Date.now()}_${file.name.replace(/\s+/g, "_")}`;
+      const snap = await uploadBytes(storageRef(storage, path), file);
+      const url  = await getDownloadURL(snap.ref);
+      setRow(i, { fotoUrl: url, fotoPath: path, uploading: false });
+    } catch { setRow(i, { uploading: false }); }
+  };
 
   const selectedRemision = remisionesDespacho.find((r) => r.id === selectedRemisionId);
   const showRemisionSelector = form.categoria === "inventario" && form.tipo === "salida";
@@ -264,6 +286,9 @@ function EntradaDrawer({ open, onClose, onSave, remisionesDespacho }: {
         noFactura: form.noFactura.trim(),
         observaciones: form.observaciones.trim(),
         categoria: form.categoria,
+        ...(row.remision?.trim()          ? { remision:      row.remision.trim() }          : {}),
+        ...(row.fotoUrl                   ? { fotoUrl:        row.fotoUrl }                  : {}),
+        ...(row.fotoPath                  ? { fotoPath:       row.fotoPath }                 : {}),
         ...(selectedRemision?.id         ? { remisionId:    selectedRemision.id }          : {}),
         ...(selectedRemision?.noRemision ? { noRemisionRef: selectedRemision.noRemision } : {}),
       }));
@@ -339,18 +364,18 @@ function EntradaDrawer({ open, onClose, onSave, remisionesDespacho }: {
                 <div key={i} className="flex items-start gap-2 p-3 bg-gray-50 rounded-xl border border-gray-200">
                   <div className="flex-1 space-y-2">
                     {form.categoria === "inventario" ? (
-                      <AppSelect value={row.material} onChange={(e) => setRow(i, "material", e.target.value)}>
+                      <AppSelect value={row.material} onChange={(e) => setRow(i, { material: e.target.value })}>
                         <option value="">Seleccionar material…</option>
                         {INVENTARIO_MATERIALES.map((m) => <option key={m.key} value={m.key}>{m.label}{m.unidad ? ` (${m.unidad})` : ""}</option>)}
                       </AppSelect>
                     ) : (
-                      <input type="text" value={row.material} onChange={(e) => setRow(i, "material", e.target.value)} placeholder="Ej: Diesel, Lubricante…" className={inp} />
+                      <input type="text" value={row.material} onChange={(e) => setRow(i, { material: e.target.value })} placeholder="Ej: Diesel, Lubricante…" className={inp} />
                     )}
                     <div className={`grid gap-2 ${form.categoria === "almacen" ? "grid-cols-2" : "grid-cols-1"}`}>
                       <div className="flex items-end gap-2">
                         <div className="flex-1">
                           <label className={lbl}>Cantidad <span className="text-[#CC2229]">*</span></label>
-                          <input type="number" step="0.001" min="0" value={row.cantidad} onChange={(e) => setRow(i, "cantidad", e.target.value)} placeholder="0" className={inp} />
+                          <input type="number" step="0.001" min="0" value={row.cantidad} onChange={(e) => setRow(i, { cantidad: e.target.value })} placeholder="0" className={inp} />
                         </div>
                         {form.categoria === "inventario" && row.unidad && (
                           <span className="mb-px px-3 py-2.5 text-xs font-semibold text-gray-500 bg-gray-100 border border-gray-200 rounded-xl whitespace-nowrap">
@@ -361,9 +386,37 @@ function EntradaDrawer({ open, onClose, onSave, remisionesDespacho }: {
                       {form.categoria === "almacen" && (
                         <div>
                           <label className={lbl}>Unidad</label>
-                          <input type="text" value={row.unidad} onChange={(e) => setRow(i, "unidad", e.target.value)} placeholder="kg, L, pzas…" className={inp} />
+                          <input type="text" value={row.unidad} onChange={(e) => setRow(i, { unidad: e.target.value })} placeholder="kg, L, pzas…" className={inp} />
                         </div>
                       )}
+                    </div>
+                    {/* Remisión + Foto por material */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className={lbl}>No. Remisión</label>
+                        <input type="text" value={row.remision ?? ""} onChange={(e) => setRow(i, { remision: e.target.value })} placeholder="—" className={inp} />
+                      </div>
+                      <div>
+                        <label className={lbl}>Foto</label>
+                        <input
+                          type="file" accept="image/*" className="hidden"
+                          ref={(el) => { fileInputRefs.current[i] = el; }}
+                          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFoto(i, f); }}
+                        />
+                        {row.fotoUrl ? (
+                          <div className="relative">
+                            <a href={row.fotoUrl} target="_blank" rel="noopener noreferrer">
+                              <img src={row.fotoUrl} alt="foto" className="w-full h-16 object-cover rounded-xl border border-gray-200" />
+                            </a>
+                            <button onClick={() => setRow(i, { fotoUrl: undefined, fotoPath: undefined })} className="absolute top-1 right-1 bg-white rounded-full p-0.5 text-gray-500 hover:text-red-500 shadow cursor-pointer"><X size={10} /></button>
+                          </div>
+                        ) : (
+                          <button type="button" onClick={() => fileInputRefs.current[i]?.click()} disabled={row.uploading}
+                            className="w-full h-10 flex items-center justify-center gap-1.5 text-xs text-gray-500 bg-white border border-dashed border-gray-300 rounded-xl hover:border-gray-400 transition-colors cursor-pointer disabled:opacity-50">
+                            {row.uploading ? "Subiendo…" : <><Camera size={13} /> Adjuntar foto</>}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                   {form.materiales.length > 1 && (
@@ -775,6 +828,41 @@ export default function InventarioPage() {
     });
   };
 
+  const [importando, setImportando] = useState(false);
+  const handleImportarMesAnterior = async () => {
+    setImportando(true);
+    try {
+      const prevPeriodo = adjMonth(periodo, -1);
+      const prevExi = existenciasIniciales.find(
+        (e) => e.periodo === prevPeriodo && (!e.planta || e.planta === localPlanta),
+      ) ?? null;
+      const prevMovs = entradasMaterial.filter(
+        (e) => (!e.planta || e.planta === localPlanta || e.planta === "Todas") && inPeriod(e.fecha, prevPeriodo),
+      );
+
+      const newVals = {} as Record<MatKey, number>;
+      INVENTARIO_MATERIALES.forEach(({ key }) => {
+        const ini = prevExi?.[key] ?? 0;
+        const ent = prevMovs.filter((e) => e.categoria === "inventario" && e.material === key && e.tipo === "entrada").reduce((s, e) => s + e.cantidad, 0);
+        const sal = prevMovs.filter((e) => e.categoria === "inventario" && e.material === key && e.tipo === "salida").reduce((s, e) => s + e.cantidad, 0);
+        newVals[key] = Math.max(0, ini + ent - sal);
+      });
+
+      const almacenMap = new Map<string, number>(Object.entries(prevExi?.almacenMateriales ?? {}));
+      prevMovs.filter((e) => e.categoria === "almacen").forEach((e) => {
+        const cur = almacenMap.get(e.material) ?? 0;
+        almacenMap.set(e.material, e.tipo === "entrada" ? cur + e.cantidad : cur - e.cantidad);
+      });
+      const almacenMateriales: Record<string, number> = {};
+      almacenMap.forEach((v, k) => { if (v > 0) almacenMateriales[k] = v; });
+
+      await handleSaveExistencia({ periodo, ...newVals, almacenMateriales });
+      window.dispatchEvent(new CustomEvent("duro:toast", {
+        detail: { type: "success", message: `Existencia inicial importada desde ${periodLabel(prevPeriodo)}.` },
+      }));
+    } finally { setImportando(false); }
+  };
+
   // ── Edit authorization handlers ───────────────────────────────────────────────
   const solicitudesEdicionPendientes = useMemo(
     () => solicitudesEdicion.filter((s) => s.status === "pendiente" && (!s.planta || s.planta === localPlanta)),
@@ -952,13 +1040,27 @@ export default function InventarioPage() {
           {!existenciaInicial && (
             <div className="flex items-start gap-3 px-5 py-4 bg-amber-50 border border-amber-200 rounded-xl">
               <AlertTriangle size={16} className="text-amber-500 shrink-0 mt-0.5" />
-              <div>
+              <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-amber-800">Sin existencia inicial · {localPlanta} · {periodLabel(periodo)}</p>
-                <p className="text-xs text-amber-600 mt-0.5">
-                  {isSuperAdmin
-                    ? 'Usa el botón "Existencia inicial" para cargar el stock del inicio del período.'
-                    : "El cálculo de stock final parte de cero. Contacta al administrador para configurarlo."}
-                </p>
+                {isSuperAdmin ? (
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                    <button
+                      onClick={() => setShowExistenciaForm(true)}
+                      className="px-3 py-1.5 text-xs font-semibold bg-white border border-amber-300 text-amber-700 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                    >
+                      Capturar manualmente
+                    </button>
+                    <button
+                      onClick={handleImportarMesAnterior}
+                      disabled={importando}
+                      className="px-3 py-1.5 text-xs font-semibold bg-white border border-amber-300 text-amber-700 hover:bg-amber-50 rounded-lg transition-colors disabled:opacity-60 cursor-pointer"
+                    >
+                      {importando ? "Importando…" : `← Traer stock de ${periodLabel(adjMonth(periodo, -1))}`}
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-xs text-amber-600 mt-0.5">El cálculo de stock final parte de cero. Contacta al administrador para configurarlo.</p>
+                )}
               </div>
             </div>
           )}

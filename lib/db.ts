@@ -81,7 +81,7 @@ export interface UserProfile {
 // Solicitudes de autorización para acciones sensibles
 export interface SolicitudAutorizacion {
   id?: string;
-  tipo: "eliminar_programacion" | "editar_inventario" | "nuevo_cliente";
+  tipo: "eliminar_programacion" | "editar_inventario" | "nuevo_cliente" | "editar_pago" | "eliminar_pago";
   // eliminar_programacion
   programacionId?: string;
   folio?: string;

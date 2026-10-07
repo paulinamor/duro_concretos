@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowLeft, Building2, ChevronRight, GitMerge, Loader2, Plus, Search, Trash2, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Building2, CheckCircle2, ChevronRight, GitMerge, Loader2, Pencil, Plus, Search, Shield, Trash2, X, XCircle } from "lucide-react";
+import type { SolicitudAutorizacion } from "@/lib/db";
 import type { ConcreteReceipt } from "@/lib/concreteReceipts";
 import { calculateConcreteReceiptTotal } from "@/lib/concreteReceipts";
 import type { RemisionDespacho } from "@/app/(dashboard)/ventas/remisiones/page";
@@ -87,6 +88,13 @@ export default function CobrosPage() {
   const [pagoAElim, setPagoAElim]   = useState<Pago | null>(null);
   const [eliminando, setEliminando] = useState(false);
   const [prefillClienteId, setPrefillClienteId] = useState<string | null>(null);
+  const [editPago, setEditPago]     = useState<Pago | null>(null);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [solicitudesPagos, setSolicitudesPagos] = useState<SolicitudAutorizacion[]>([]);
+  useEffect(() => {
+    const session = getStoredSession();
+    setIsSuperAdmin(session?.email?.toLowerCase() === "leonardo@lpsoft.mx");
+  }, []);
 
   // Recibos de concreto globales — para calcular saldo correcto en el landing
   const [todosRecibos, setTodosRecibos]     = useState<ConcreteReceipt[]>([]);
@@ -164,6 +172,55 @@ export default function CobrosPage() {
     } finally {
       setEliminando(false);
     }
+  }
+
+  async function handleSolicitarEditPago(
+    pago: Pago,
+    propuestos: { fecha?: string; cantidad?: number; tipoPago?: string; banco?: string; observaciones?: string },
+    motivo: string,
+  ) {
+    const session = getStoredSession();
+    if (isSuperAdmin) {
+      await upsertDocument(COLLECTIONS.pagos, pago.id, propuestos);
+      setPagos((prev) => prev.map((p) => p.id === pago.id ? { ...p, ...propuestos } : p));
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: "Pago actualizado." } }));
+    } else {
+      const id = `sa-pago-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      const sol: SolicitudAutorizacion = {
+        tipo: "editar_pago",
+        documentoId: pago.id,
+        camposActuales: { fecha: pago.fecha, cantidad: pago.cantidad, tipoPago: pago.tipoPago, banco: pago.banco, observaciones: pago.observaciones },
+        camposPropuestos: propuestos,
+        materialLabel: `Pago ${pago.cliente} — ${currency(pago.cantidad)}`,
+        motivo,
+        solicitanteNombre: session?.name ?? session?.email ?? "—",
+        solicitanteEmail: session?.email ?? "",
+        status: "pendiente",
+        creadoEn: new Date().toISOString(),
+      };
+      await upsertDocument(COLLECTIONS.solicitudesAutorizacion, id, sol);
+      setSolicitudesPagos((prev) => [{ ...sol, id }, ...prev]);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: "Solicitud enviada. Pendiente de autorización." } }));
+    }
+    setEditPago(null);
+  }
+
+  async function handleAprobarpagosol(sol: SolicitudAutorizacion) {
+    if (!sol.id || !sol.documentoId) return;
+    await upsertDocument(COLLECTIONS.pagos, sol.documentoId, sol.camposPropuestos as Record<string, unknown>);
+    setPagos((prev) => prev.map((p) => p.id === sol.documentoId ? { ...p, ...sol.camposPropuestos } : p));
+    const upd = { status: "aprobada" as const, resueltoPor: getStoredSession()?.email ?? "", resueltaEn: new Date().toISOString() };
+    await upsertDocument(COLLECTIONS.solicitudesAutorizacion, sol.id, upd);
+    setSolicitudesPagos((prev) => prev.map((s) => s.id === sol.id ? { ...s, ...upd } : s));
+    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: "Edición de pago aprobada." } }));
+  }
+
+  async function handleRechazarPagosol(sol: SolicitudAutorizacion) {
+    if (!sol.id) return;
+    const upd = { status: "rechazada" as const, resueltoPor: getStoredSession()?.email ?? "", resueltaEn: new Date().toISOString() };
+    await upsertDocument(COLLECTIONS.solicitudesAutorizacion, sol.id, upd);
+    setSolicitudesPagos((prev) => prev.map((s) => s.id === sol.id ? { ...s, ...upd } : s));
+    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "info", message: "Solicitud rechazada." } }));
   }
 
   function onAbonosUpdated(updated: Pago, progUpdates: { id: string; montoPagado: number }[]) {
@@ -293,12 +350,28 @@ export default function CobrosPage() {
         onNuevoPago={(cid) => { setPrefillClienteId(cid); setView("new"); }}
         onSaldarRemision={setSaldarRemision}
         onMerge={handleMergeClientes}
+        isSuperAdmin={isSuperAdmin}
+        solicitudesPagos={solicitudesPagos}
+        onEditPago={setEditPago}
+        onEliminarPago={setPagoAElim}
+        onAprobarpagosol={handleAprobarpagosol}
+        onRechazarPagosol={handleRechazarPagosol}
       />
       {saldarRemision && (
         <SaldarRemisionModal
           remision={saldarRemision}
           onClose={() => setSaldarRemision(null)}
           onConfirm={(data) => handleSaldarRemision(saldarRemision, data)}
+        />
+      )}
+
+      {/* Modal editar pago */}
+      {editPago && (
+        <EditPagoModal
+          pago={editPago}
+          isSuperAdmin={isSuperAdmin}
+          onClose={() => setEditPago(null)}
+          onSubmit={handleSolicitarEditPago}
         />
       )}
 
@@ -435,6 +508,7 @@ function SaldarRemisionModal({
 function CuentaClienteView({
   clientesList, progs, pagos, todosRecibos, cuentaCliente, cuentaRecibos, cuentaRemisiones, cuentaLoading,
   cuentaTab, onSelectCliente, onCuentaTab, onNuevoPago, onSaldarRemision, onMerge,
+  isSuperAdmin, solicitudesPagos, onEditPago, onEliminarPago, onAprobarpagosol, onRechazarPagosol,
 }: {
   clientesList: ClienteDoc[];
   progs: Prog[];
@@ -450,6 +524,12 @@ function CuentaClienteView({
   onNuevoPago: (clienteId: string | null) => void;
   onSaldarRemision: (r: RemisionDespacho) => void;
   onMerge: (fuentes: string[], canonico: string) => Promise<void>;
+  isSuperAdmin: boolean;
+  solicitudesPagos: SolicitudAutorizacion[];
+  onEditPago: (p: Pago) => void;
+  onEliminarPago: (p: Pago) => void;
+  onAprobarpagosol: (sol: SolicitudAutorizacion) => Promise<void>;
+  onRechazarPagosol: (sol: SolicitudAutorizacion) => Promise<void>;
 }) {
   const [search, setSearch] = useState("");
   const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
@@ -499,7 +579,7 @@ function CuentaClienteView({
         cartera = cp.reduce((s, p) => s + (p.total ?? 0), 0);
         const cobradoRecibos = clienteRecibos.reduce((s, r) => s + calculateConcreteReceiptTotal(r).total, 0);
         const cobradoPagos   = pagos.filter((p) => norm(p.cliente) === norm(nombre)).reduce((s, p) => s + p.cantidad, 0);
-        saldo = Math.max(0, cartera - cobradoRecibos - cobradoPagos);
+        saldo = cartera - cobradoRecibos - cobradoPagos;
       } else {
         // Modelo efectivo parcial: cartera=recibo.total, saldo=recibo.resta
         cartera = clienteRecibos.reduce((s, r) => s + calculateConcreteReceiptTotal(r).total, 0);
@@ -539,7 +619,8 @@ function CuentaClienteView({
 
   const totalPagos = esClienteRecibo ? totalCobrado : (totalEfectivo + totalPagosAd);
   const compras    = esClienteRecibo ? totalFacturado : totalCompras;
-  const saldo      = esClienteRecibo ? totalResta : Math.max(0, totalCompras - totalEfectivo - totalPagosAd);
+  const saldo      = esClienteRecibo ? totalResta : totalCompras - totalEfectivo - totalPagosAd;
+  const saldoAFavor = saldo < -0.01;
 
   const clienteDoc = clientesList.find((c) => norm(c.razonSocial) === norm(cuentaCliente));
 
@@ -609,6 +690,8 @@ function CuentaClienteView({
                     <td className="px-5 py-3.5 text-right">
                       {sd > 0.01
                         ? <span className="inline-block font-semibold text-red-600 bg-red-50 rounded-full px-2.5 py-0.5 text-xs">{currency(sd)}</span>
+                        : sd < -0.01
+                        ? <span className="inline-block font-semibold text-blue-600 bg-blue-50 rounded-full px-2.5 py-0.5 text-xs">+{currency(Math.abs(sd))} a favor</span>
                         : <span className="text-xs text-green-600 font-medium">Al corriente</span>}
                     </td>
                     <td className="pr-4 text-right">
@@ -691,17 +774,18 @@ function CuentaClienteView({
           },
           {
             label: "Saldo",
-            value: currency(saldo),
-            color: saldo > 0.01 ? "text-red-600" : "text-green-600",
-            badge: saldo > 0.01 ? "Por cobrar" : "Al corriente",
+            value: saldoAFavor ? `+${currency(Math.abs(saldo))}` : currency(saldo),
+            color: saldo > 0.01 ? "text-red-600" : saldoAFavor ? "text-blue-600" : "text-green-600",
+            badge: saldo > 0.01 ? "Por cobrar" : saldoAFavor ? "Saldo a favor" : "Al corriente",
+            badgeColor: saldo > 0.01 ? "bg-red-50 text-red-600" : saldoAFavor ? "bg-blue-50 text-blue-600" : "bg-green-50 text-green-600",
           },
         ].map((k) => (
-          <div key={k.label} className="bg-white rounded-2xl border border-gray-100 p-5">
+          <div key={k.label} className={`bg-white rounded-2xl border p-5 ${saldoAFavor && k.label === "Saldo" ? "border-blue-200 bg-blue-50/30" : "border-gray-100"}`}>
             <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">{k.label}</p>
             <p className={`text-2xl font-bold mt-1 ${k.color}`}>{k.value}</p>
             {k.sub && <p className="text-xs text-gray-400 mt-1">{k.sub}</p>}
             {k.badge && (
-              <span className={`inline-block mt-2 text-xs font-semibold rounded-full px-2 py-0.5 ${saldo > 0.01 ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"}`}>
+              <span className={`inline-block mt-2 text-xs font-semibold rounded-full px-2 py-0.5 ${"badgeColor" in k ? k.badgeColor : ""}`}>
                 {k.badge}
               </span>
             )}
@@ -866,37 +950,166 @@ function CuentaClienteView({
 
       {/* Tab: Pagos adicionales */}
       {cuentaTab === "pagos" && (
-        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-          {clientePagos.length === 0 ? (
-            <p className="text-center text-sm text-gray-400 py-10">Sin pagos registrados</p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 bg-gray-50/50">
-                  {["Fecha","Tipo","Banco","Cantidad","Anticipo"].map((h) => (
-                    <th key={h} className={`px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider ${h === "Cantidad" ? "text-right" : h === "Anticipo" ? "text-center" : "text-left"}`}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {clientePagos.map((p) => (
-                  <tr key={p.id} className="hover:bg-gray-50/50 transition-colors">
-                    <td className="px-4 py-3 text-[#CC2229] font-medium">{fmtDate(p.fecha)}</td>
-                    <td className="px-4 py-3 text-gray-600">{p.tipoPago || "—"}</td>
-                    <td className="px-4 py-3 text-gray-500">{p.banco || "—"}</td>
-                    <td className="px-4 py-3 text-right font-semibold text-gray-900">{currency(p.cantidad)}</td>
-                    <td className="px-4 py-3 text-center text-xs">
-                      <span className={p.anticipo ? "text-blue-600 font-medium" : "text-gray-300"}>
-                        {p.anticipo ? "Sí" : "No"}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <div className="space-y-3">
+          {/* Solicitudes pendientes — solo superadmin */}
+          {isSuperAdmin && solicitudesPagos.filter((s) => s.status === "pendiente").length > 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl overflow-hidden">
+              <div className="flex items-center gap-2 px-5 py-3 border-b border-amber-200">
+                <Shield size={14} className="text-amber-600" />
+                <p className="text-sm font-semibold text-amber-900">Solicitudes de edición de pagos</p>
+                <span className="ml-auto text-xs font-bold px-2 py-0.5 rounded-full bg-amber-200 text-amber-800">{solicitudesPagos.filter((s) => s.status === "pendiente").length}</span>
+              </div>
+              {solicitudesPagos.filter((s) => s.status === "pendiente").map((sol) => {
+                const act = sol.camposActuales as Record<string, unknown> | undefined;
+                const prop = sol.camposPropuestos as Record<string, unknown> | undefined;
+                return (
+                  <div key={sol.id} className="px-5 py-4 flex items-start justify-between gap-3 border-b border-amber-100 last:border-0">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900">{sol.materialLabel}</p>
+                      <p className="text-xs text-gray-500 mt-0.5 font-mono">
+                        {prop?.fecha != null && <span>Fecha: <span className="line-through text-gray-400">{String(act?.fecha ?? "—")}</span> → <span className="text-amber-700 font-semibold">{String(prop.fecha)}</span> · </span>}
+                        {prop?.cantidad != null && <span>Monto: <span className="line-through text-gray-400">{currency(Number(act?.cantidad ?? 0))}</span> → <span className="text-amber-700 font-semibold">{currency(Number(prop.cantidad))}</span></span>}
+                      </p>
+                      <p className="text-xs text-gray-600 mt-1 italic">"{sol.motivo}"</p>
+                      <p className="text-[10px] text-gray-400 mt-1">Por {sol.solicitanteNombre}</p>
+                    </div>
+                    <div className="flex gap-2 shrink-0">
+                      <button onClick={() => onAprobarpagosol(sol)} className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 rounded-lg transition-colors cursor-pointer"><CheckCircle2 size={12} /> Aprobar</button>
+                      <button onClick={() => onRechazarPagosol(sol)} className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-red-600 bg-white border border-red-200 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"><XCircle size={12} /> Rechazar</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           )}
+          <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+            {clientePagos.length === 0 ? (
+              <p className="text-center text-sm text-gray-400 py-10">Sin pagos registrados</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50/50">
+                    {["Fecha","Tipo","Banco","Cantidad","Anticipo",""].map((h) => (
+                      <th key={h} className={`px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider ${h === "Cantidad" ? "text-right" : h === "Anticipo" ? "text-center" : "text-left"}`}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {clientePagos.map((p) => (
+                    <tr key={p.id} className="hover:bg-gray-50/50 transition-colors">
+                      <td className="px-4 py-3 text-[#CC2229] font-medium">{fmtDate(p.fecha)}</td>
+                      <td className="px-4 py-3 text-gray-600">{p.tipoPago || "—"}</td>
+                      <td className="px-4 py-3 text-gray-500">{p.banco || "—"}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-gray-900">{currency(p.cantidad)}</td>
+                      <td className="px-4 py-3 text-center text-xs">
+                        <span className={p.anticipo ? "text-blue-600 font-medium" : "text-gray-300"}>{p.anticipo ? "Sí" : "No"}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1 justify-end">
+                          <button onClick={() => onEditPago(p)} className="p-1.5 text-gray-400 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer" title="Editar pago"><Pencil size={13} /></button>
+                          <button onClick={() => onEliminarPago(p)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer" title="Eliminar pago"><Trash2 size={13} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Edit Pago Modal ─────────────────────────────────────────────────────────
+
+const lbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5";
+const inp = "w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-900 text-sm placeholder-gray-400 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors";
+
+function EditPagoModal({ pago, isSuperAdmin, onClose, onSubmit }: {
+  pago: Pago;
+  isSuperAdmin: boolean;
+  onClose: () => void;
+  onSubmit: (pago: Pago, propuestos: Record<string, unknown>, motivo: string) => Promise<void>;
+}) {
+  const [fecha, setFecha]     = useState(pago.fecha);
+  const [cantidad, setCantidad] = useState(String(pago.cantidad));
+  const [tipoPago, setTipoPago] = useState(pago.tipoPago);
+  const [banco, setBanco]     = useState(pago.banco);
+  const [obs, setObs]         = useState(pago.observaciones ?? "");
+  const [motivo, setMotivo]   = useState("");
+  const [saving, setSaving]   = useState(false);
+
+  const canSubmit = isSuperAdmin || motivo.trim().length >= 10;
+
+  const handleSubmit = async () => {
+    if (!canSubmit) return;
+    const propuestos: Record<string, unknown> = {};
+    if (fecha !== pago.fecha) propuestos.fecha = fecha;
+    const cant = parseFloat(cantidad);
+    if (!isNaN(cant) && cant !== pago.cantidad) propuestos.cantidad = cant;
+    if (tipoPago !== pago.tipoPago) propuestos.tipoPago = tipoPago;
+    if (banco !== pago.banco) propuestos.banco = banco;
+    if (obs !== (pago.observaciones ?? "")) propuestos.observaciones = obs;
+    if (Object.keys(propuestos).length === 0) { onClose(); return; }
+    setSaving(true);
+    try { await onSubmit(pago, propuestos, motivo.trim()); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <button className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden max-h-[90vh]">
+        <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 shrink-0">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600"><Shield size={18} /></div>
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">{isSuperAdmin ? "Editar pago" : "Solicitar edición"}</h2>
+            <p className="text-xs text-gray-500">{pago.cliente} · {currency(pago.cantidad)}</p>
+          </div>
+          <button onClick={onClose} className="ml-auto p-2 text-gray-400 hover:bg-gray-100 rounded-xl cursor-pointer"><X size={16} /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className={lbl}>Fecha</label><input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className={inp} /></div>
+            <div><label className={lbl}>Cantidad</label><input type="number" step="0.01" min="0" value={cantidad} onChange={(e) => setCantidad(e.target.value)} className={inp} /></div>
+            <div>
+              <label className={lbl}>Tipo</label>
+              <select value={tipoPago} onChange={(e) => setTipoPago(e.target.value)} className={inp}>
+                {METODOS.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={lbl}>Banco</label>
+              <select value={banco} onChange={(e) => setBanco(e.target.value)} className={inp}>
+                <option value="">—</option>
+                {BANCOS.map((b) => <option key={b} value={b}>{b}</option>)}
+              </select>
+            </div>
+            <div className="col-span-2"><label className={lbl}>Observaciones</label><input type="text" value={obs} onChange={(e) => setObs(e.target.value)} placeholder="—" className={inp} /></div>
+          </div>
+          {!isSuperAdmin && (
+            <>
+              <div>
+                <label className={lbl}>Motivo del cambio <span className="text-[#CC2229]">*</span></label>
+                <textarea value={motivo} onChange={(e) => setMotivo(e.target.value)} rows={3} placeholder="Describe por qué se necesita este cambio…" className={`${inp} resize-none`} />
+                <p className="text-[10px] text-gray-400 mt-1">{motivo.length < 10 ? `Mínimo 10 caracteres · ${motivo.length} escritos` : `✓ ${motivo.length} caracteres`}</p>
+              </div>
+              <div className="flex items-start gap-2 px-3.5 py-3 bg-amber-50 border border-amber-200 rounded-xl">
+                <AlertTriangle size={14} className="text-amber-500 shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-700">El cambio quedará <strong>pendiente de autorización</strong> hasta que el administrador lo apruebe.</p>
+              </div>
+            </>
+          )}
+        </div>
+        <div className="shrink-0 border-t border-gray-100 px-6 py-4 flex justify-end gap-3">
+          <button onClick={onClose} className="px-4 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 cursor-pointer">Cancelar</button>
+          <button onClick={handleSubmit} disabled={saving || !canSubmit} className="px-5 py-2.5 text-sm font-semibold bg-amber-600 hover:bg-amber-700 text-white rounded-xl disabled:opacity-60 cursor-pointer">
+            {saving ? "Guardando…" : isSuperAdmin ? "Guardar cambios" : "Enviar solicitud"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
