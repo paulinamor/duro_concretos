@@ -87,7 +87,8 @@ export default function CobrosPage() {
 
   const [pagoAElim, setPagoAElim]   = useState<Pago | null>(null);
   const [eliminando, setEliminando] = useState(false);
-  const [prefillClienteId, setPrefillClienteId] = useState<string | null>(null);
+  const [prefillClienteId, setPrefillClienteId]       = useState<string | null>(null);
+  const [prefillClienteNombre, setPrefillClienteNombre] = useState<string>("");
   const [editPago, setEditPago]     = useState<Pago | null>(null);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [solicitudesPagos, setSolicitudesPagos] = useState<SolicitudAutorizacion[]>([]);
@@ -318,7 +319,8 @@ export default function CobrosPage() {
       clientesList={clientesList}
       progs={progs}
       prefillClienteId={prefillClienteId ?? undefined}
-      onBack={() => { setView("list"); setPrefillClienteId(null); }}
+      prefillClienteNombre={prefillClienteNombre || undefined}
+      onBack={() => { setView("list"); setPrefillClienteId(null); setPrefillClienteNombre(""); }}
       onCreated={onPagoCreated}
     />
   );
@@ -347,7 +349,7 @@ export default function CobrosPage() {
         cuentaTab={cuentaTab}
         onSelectCliente={(n) => { loadCuentaCliente(n); setCuentaTab("entregas"); }}
         onCuentaTab={setCuentaTab}
-        onNuevoPago={(cid) => { setPrefillClienteId(cid); setView("new"); }}
+        onNuevoPago={(cid, nombre) => { setPrefillClienteId(cid); setPrefillClienteNombre(nombre ?? ""); setView("new"); }}
         onSaldarRemision={setSaldarRemision}
         onMerge={handleMergeClientes}
         isSuperAdmin={isSuperAdmin}
@@ -521,7 +523,7 @@ function CuentaClienteView({
   cuentaTab: "entregas" | "remisiones" | "programaciones" | "pagos";
   onSelectCliente: (nombre: string) => void;
   onCuentaTab: (t: "entregas" | "remisiones" | "programaciones" | "pagos") => void;
-  onNuevoPago: (clienteId: string | null) => void;
+  onNuevoPago: (clienteId: string | null, nombre?: string) => void;
   onSaldarRemision: (r: RemisionDespacho) => void;
   onMerge: (fuentes: string[], canonico: string) => Promise<void>;
   isSuperAdmin: boolean;
@@ -750,7 +752,7 @@ function CuentaClienteView({
           <p className="text-xs text-gray-400">Estado de cuenta</p>
         </div>
         <button
-          onClick={() => onNuevoPago(clienteDoc?.id ?? null)}
+          onClick={() => onNuevoPago(clienteDoc?.id ?? null, cuentaCliente)}
           className="flex items-center gap-2 px-4 py-2 bg-[#CC2229] hover:bg-[#B01E24] text-white text-sm font-semibold rounded-xl transition-colors cursor-pointer">
           <Plus size={14} /> Registrar pago
         </button>
@@ -1230,19 +1232,22 @@ function MergeClientesModal({
 
 // ─── Nuevo Pago ───────────────────────────────────────────────────────────────
 
-function NuevoPagoView({ clientesList, progs, prefillClienteId, onBack, onCreated }: {
+function NuevoPagoView({ clientesList, progs, prefillClienteId, prefillClienteNombre, onBack, onCreated }: {
   clientesList: ClienteDoc[];
   progs: Prog[];
   prefillClienteId?: string;
+  prefillClienteNombre?: string;
   onBack: () => void;
   onCreated: (pago: Pago) => void;
 }) {
   const [fecha, setFecha]               = useState(todayCST());
   const [clienteId, setClienteId]       = useState(prefillClienteId ?? "");
   const [cliente, setCliente]           = useState(() => {
-    if (!prefillClienteId) return "";
-    const found = clientesList.find((c) => c.id === prefillClienteId);
-    return found ? norm(found.razonSocial) : "";
+    if (prefillClienteId) {
+      const found = clientesList.find((c) => c.id === prefillClienteId);
+      if (found) return norm(found.razonSocial);
+    }
+    return prefillClienteNombre ? norm(prefillClienteNombre) : "";
   });
   const [cantidad, setCantidad]         = useState("");
   const [tipoPago, setTipoPago]         = useState("");
@@ -1272,7 +1277,7 @@ function NuevoPagoView({ clientesList, progs, prefillClienteId, onBack, onCreate
   const needsBanco = tipoPago === "Transferencia" || tipoPago === "Cheque";
 
   async function handleSave() {
-    if (!fecha || !clienteId || !cantidad || parseFloat(cantidad) <= 0 || !tipoPago) {
+    if (!fecha || !cliente.trim() || !cantidad || parseFloat(cantidad) <= 0 || !tipoPago) {
       setErr("Completa los campos requeridos: cliente, cantidad y tipo de pago.");
       return;
     }
