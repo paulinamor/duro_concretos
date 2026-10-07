@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowLeft, Building2, CheckCircle2, ChevronRight, GitMerge, Loader2, Pencil, Plus, Search, Shield, Trash2, X, XCircle } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Building2, CheckCircle2, ChevronRight, GitMerge, Link2, Loader2, Pencil, Plus, Search, Shield, Trash2, X, XCircle } from "lucide-react";
 import type { SolicitudAutorizacion } from "@/lib/db";
 import type { ConcreteReceipt } from "@/lib/concreteReceipts";
 import { calculateConcreteReceiptTotal } from "@/lib/concreteReceipts";
@@ -17,6 +17,7 @@ import { todayCST } from "@/lib/dateUtils";
 interface ClienteDoc {
   id: string;
   razonSocial: string;
+  nombreComercial?: string;
 }
 
 interface Pago {
@@ -264,6 +265,23 @@ export default function CobrosPage() {
     );
   }
 
+  async function handleVincularCliente(nombre: string, clienteId: string, newDoc?: ClienteDoc) {
+    const progTargets = progs.filter((p) => norm(p.cliente) === norm(nombre));
+    const pagoTargets = pagos.filter((p) => norm(p.cliente) === norm(nombre));
+    await Promise.all([
+      ...progTargets.map((p) => upsertDocument(COLLECTIONS.programaciones, p.id, { clienteId })),
+      ...pagoTargets.map((p) => upsertDocument(COLLECTIONS.pagos, p.id, { clienteId })),
+    ]);
+    const rems = await getCollectionDocs<{ id?: string }>(COLLECTIONS.remisiones, [where("cliente", "==", nombre)]);
+    await Promise.all(rems.filter((r) => r.id).map((r) => upsertDocument(COLLECTIONS.remisiones, r.id!, { clienteId })));
+    setProgs((prev) => prev.map((p) => norm(p.cliente) === norm(nombre) ? { ...p, clienteId } : p));
+    setPagos((prev) => prev.map((p) => norm(p.cliente) === norm(nombre) ? { ...p, clienteId } : p));
+    if (newDoc) {
+      setClientesList((prev) => [...prev, newDoc].sort((a, b) => a.razonSocial.localeCompare(b.razonSocial, "es")));
+    }
+    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: "Cliente vinculado al CRM correctamente." } }));
+  }
+
   async function loadCuentaCliente(nombre: string) {
     setCuentaCliente(nombre);
     setCuentaRecibos([]);
@@ -358,6 +376,7 @@ export default function CobrosPage() {
         onEliminarPago={setPagoAElim}
         onAprobarpagosol={handleAprobarpagosol}
         onRechazarPagosol={handleRechazarPagosol}
+        onVincular={handleVincularCliente}
       />
       {saldarRemision && (
         <SaldarRemisionModal
@@ -510,7 +529,7 @@ function SaldarRemisionModal({
 function CuentaClienteView({
   clientesList, progs, pagos, todosRecibos, cuentaCliente, cuentaRecibos, cuentaRemisiones, cuentaLoading,
   cuentaTab, onSelectCliente, onCuentaTab, onNuevoPago, onSaldarRemision, onMerge,
-  isSuperAdmin, solicitudesPagos, onEditPago, onEliminarPago, onAprobarpagosol, onRechazarPagosol,
+  isSuperAdmin, solicitudesPagos, onEditPago, onEliminarPago, onAprobarpagosol, onRechazarPagosol, onVincular,
 }: {
   clientesList: ClienteDoc[];
   progs: Prog[];
@@ -532,10 +551,12 @@ function CuentaClienteView({
   onEliminarPago: (p: Pago) => void;
   onAprobarpagosol: (sol: SolicitudAutorizacion) => Promise<void>;
   onRechazarPagosol: (sol: SolicitudAutorizacion) => Promise<void>;
+  onVincular: (nombre: string, clienteId: string, newDoc?: ClienteDoc) => Promise<void>;
 }) {
   const [search, setSearch] = useState("");
   const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
   const [mergeOpen, setMergeOpen] = useState(false);
+  const [vincularOpen, setVincularOpen] = useState(false);
 
   function toggleSel(nombre: string) {
     setSeleccionados((prev) => {
@@ -624,7 +645,9 @@ function CuentaClienteView({
   const saldo      = esClienteRecibo ? totalResta : totalCompras - totalEfectivo - totalPagosAd;
   const saldoAFavor = saldo < -0.01;
 
-  const clienteDoc = clientesList.find((c) => norm(c.razonSocial) === norm(cuentaCliente));
+  const clienteDoc = clientesList.find(
+    (c) => norm(c.razonSocial) === norm(cuentaCliente) || norm(c.nombreComercial) === norm(cuentaCliente)
+  );
 
   if (!cuentaCliente) {
     return (
@@ -749,7 +772,22 @@ function CuentaClienteView({
         </button>
         <div className="flex-1">
           <h2 className="text-lg font-bold text-gray-900">{cuentaCliente}</h2>
-          <p className="text-xs text-gray-400">Estado de cuenta</p>
+          <div className="flex items-center gap-2 mt-0.5">
+            <p className="text-xs text-gray-400">Estado de cuenta</p>
+            {cuentaCliente && !clienteDoc && (
+              <button
+                onClick={() => setVincularOpen(true)}
+                className="flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 hover:bg-amber-100 transition-colors cursor-pointer"
+              >
+                <Link2 size={9} /> Sin vincular al CRM
+              </button>
+            )}
+            {cuentaCliente && clienteDoc && (
+              <span className="flex items-center gap-1 text-[10px] font-semibold text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5">
+                <CheckCircle2 size={9} /> Vinculado
+              </span>
+            )}
+          </div>
         </div>
         <button
           onClick={() => onNuevoPago(clienteDoc?.id ?? null, cuentaCliente)}
@@ -1020,6 +1058,126 @@ function CuentaClienteView({
           </div>
         </div>
       )}
+
+      {vincularOpen && (
+        <VincularClienteModal
+          nombre={cuentaCliente}
+          clientesList={clientesList}
+          onClose={() => setVincularOpen(false)}
+          onConfirm={async (clienteId, newDoc) => {
+            await onVincular(cuentaCliente, clienteId, newDoc);
+            setVincularOpen(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Vincular Cliente Modal ───────────────────────────────────────────────────
+
+function VincularClienteModal({
+  nombre, clientesList, onClose, onConfirm,
+}: {
+  nombre: string;
+  clientesList: ClienteDoc[];
+  onClose: () => void;
+  onConfirm: (clienteId: string, newDoc?: ClienteDoc) => Promise<void>;
+}) {
+  const [busqueda, setBusqueda] = useState(nombre);
+  const [saving, setSaving]    = useState(false);
+
+  const filtrados = useMemo(() => {
+    const q = norm(busqueda);
+    return clientesList.filter(
+      (c) => norm(c.razonSocial).includes(q) || norm(c.nombreComercial).includes(q)
+    ).slice(0, 8);
+  }, [busqueda, clientesList]);
+
+  const handleSeleccionar = async (c: ClienteDoc) => {
+    setSaving(true);
+    try { await onConfirm(c.id); }
+    finally { setSaving(false); }
+  };
+
+  const handleCrearNuevo = async () => {
+    setSaving(true);
+    try {
+      const id = `cl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      const newDoc: ClienteDoc = { id, razonSocial: nombre, nombreComercial: "" };
+      await upsertDocument(COLLECTIONS.clientes, id, {
+        razonSocial: nombre, nombreComercial: "", rfc: "", status: "Activo",
+        alta: todayCST(), domicilio: "", colonia: "", municipio: "", estado: "",
+        cp: "", contacto: "", telefono: "", correo: "", vendedor: "",
+      });
+      await onConfirm(id, newDoc);
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <button className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden max-h-[80vh]">
+        <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 shrink-0">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600">
+            <Link2 size={18} />
+          </div>
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">Vincular al CRM</h2>
+            <p className="text-xs text-gray-500 truncate max-w-[260px]">{nombre}</p>
+          </div>
+          <button onClick={onClose} className="ml-auto p-2 text-gray-400 hover:bg-gray-100 rounded-xl cursor-pointer"><X size={16} /></button>
+        </div>
+
+        <div className="px-6 pt-4 shrink-0">
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              autoFocus
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              placeholder="Buscar cliente en el CRM…"
+              className="w-full pl-8 pr-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors"
+            />
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1">
+          {filtrados.length === 0 && (
+            <p className="text-center text-xs text-gray-400 py-6">Sin resultados</p>
+          )}
+          {filtrados.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => handleSeleccionar(c)}
+              disabled={saving}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 transition-colors cursor-pointer text-left disabled:opacity-60"
+            >
+              <div className="w-8 h-8 rounded-full bg-[#CC2229]/10 flex items-center justify-center shrink-0">
+                <span className="text-xs font-bold text-[#CC2229]">{c.razonSocial.charAt(0)}</span>
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-gray-800 truncate">{c.razonSocial}</p>
+                {c.nombreComercial && c.nombreComercial !== c.razonSocial && (
+                  <p className="text-[11px] text-gray-400 truncate">{c.nombreComercial}</p>
+                )}
+              </div>
+            </button>
+          ))}
+        </div>
+
+        <div className="shrink-0 border-t border-gray-100 px-6 py-4 space-y-2">
+          <p className="text-[10px] text-gray-400 text-center">¿No existe en el CRM?</p>
+          <button
+            onClick={handleCrearNuevo}
+            disabled={saving}
+            className="w-full py-2.5 text-sm font-semibold text-gray-700 bg-gray-50 border border-gray-200 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
+          >
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+            Crear "{nombre}" en el CRM
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
