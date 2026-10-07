@@ -360,7 +360,6 @@ function PedidoDrawer({
     const missing: string[] = [];
     if (!form.cliente.trim()) missing.push("Cliente");
     if (!form.telefono.trim()) missing.push("Teléfono");
-    if (!form.direccion.trim()) missing.push("Dirección / Obra");
     if (!form.m3Totales) missing.push("M³ solicitados");
     if (!form.horaEntrega) missing.push("Hora de entrega");
     if (!form.tdBom) missing.push("T / D / BOM");
@@ -762,7 +761,7 @@ function PedidoDrawer({
 
           {/* Dirección / Maps */}
           <div>
-            <label className={lbl}>Dirección o link de Maps <span className="text-[#CC2229]">*</span></label>
+            <label className={lbl}>Dirección o link de Maps</label>
             <input
               value={form.direccion}
               onChange={(e) => { set("direccion", e.target.value); setCopied(false); }}
