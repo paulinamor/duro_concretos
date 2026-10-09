@@ -46,8 +46,10 @@ interface EntradaMaterial {
   categoria: "inventario" | "almacen"; planta?: string;
   remisionId?: string; noRemisionRef?: string;
   remision?: string;
-  fotoUrl?: string;
+  fotoUrl?: string;   // legacy — single photo (backward compat)
   fotoPath?: string;
+  fotoUrls?: string[]; // multi-photo (new)
+  fotoPaths?: string[];
 }
 interface ExistenciaInicial {
   id?: string; periodo: string;
@@ -62,6 +64,8 @@ type MatKey = "cemento" | "grava" | "arena4" | "arena5" | "aditivo" | "hr25" | "
 interface MaterialRow {
   material: string; cantidad: string; unidad: string;
   remision?: string;
+  proveedor?: string;
+  noFactura?: string;
   fotoUrl?: string;
   fotoPath?: string;
   uploading?: boolean;
@@ -70,7 +74,7 @@ interface MaterialRow {
 interface EntradaFormState {
   fecha: string; categoria: "inventario" | "almacen";
   tipo: "entrada" | "salida";
-  proveedor: string; noFactura: string; observaciones: string;
+  observaciones: string;
   materiales: MaterialRow[];
 }
 type MovRow =
@@ -227,7 +231,7 @@ function EntradaDrawer({ open, onClose, onSave, remisionesDespacho }: {
 }) {
   const emptyForm = (): EntradaFormState => ({
     fecha: todayISO(), categoria: "inventario", tipo: "entrada",
-    proveedor: "", noFactura: "", observaciones: "",
+    observaciones: "",
     materiales: [emptyMaterialRow()],
   });
   const [form, setForm] = useState<EntradaFormState>(emptyForm);
@@ -255,15 +259,24 @@ function EntradaDrawer({ open, onClose, onSave, remisionesDespacho }: {
 
   const fileInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  const handleFoto = async (i: number, file: File) => {
-    if (!storage) return;
+  const handleFoto = async (i: number, file: File, inputEl?: HTMLInputElement | null) => {
+    if (!storage) {
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", title: "Sin almacenamiento", message: "Firebase Storage no está configurado." } }));
+      return;
+    }
     setRow(i, { uploading: true });
     try {
       const path = `inventario/materiales/${Date.now()}_${file.name.replace(/\s+/g, "_")}`;
       const snap = await uploadBytes(storageRef(storage, path), file);
       const url  = await getDownloadURL(snap.ref);
+      if (inputEl) inputEl.value = "";
       setRow(i, { fotoUrl: url, fotoPath: path, uploading: false });
-    } catch { setRow(i, { uploading: false }); }
+    } catch (err) {
+      console.error("Error subiendo foto:", err);
+      if (inputEl) inputEl.value = "";
+      setRow(i, { uploading: false });
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", title: "Error al subir foto", message: "No se pudo subir la imagen. Intenta de nuevo." } }));
+    }
   };
 
   const selectedRemision = remisionesDespacho.find((r) => r.id === selectedRemisionId);
@@ -282,13 +295,13 @@ function EntradaDrawer({ open, onClose, onSave, remisionesDespacho }: {
         cantidad: num(row.cantidad),
         unidad: row.unidad.trim(),
         tipo: form.tipo,
-        proveedor: form.proveedor.trim(),
-        noFactura: form.noFactura.trim(),
+        proveedor: (row.proveedor ?? "").trim(),
+        noFactura: (row.noFactura ?? "").trim(),
         observaciones: form.observaciones.trim(),
         categoria: form.categoria,
-        ...(row.remision?.trim()          ? { remision:      row.remision.trim() }          : {}),
-        ...(row.fotoUrl                   ? { fotoUrl:        row.fotoUrl }                  : {}),
-        ...(row.fotoPath                  ? { fotoPath:       row.fotoPath }                 : {}),
+        ...(row.remision?.trim() ? { remision:  row.remision.trim() } : {}),
+        ...(row.fotoUrl         ? { fotoUrl:   row.fotoUrl }         : {}),
+        ...(row.fotoPath        ? { fotoPath:  row.fotoPath }        : {}),
         ...(selectedRemision?.id         ? { remisionId:    selectedRemision.id }          : {}),
         ...(selectedRemision?.noRemision ? { noRemisionRef: selectedRemision.noRemision } : {}),
       }));
@@ -346,11 +359,10 @@ function EntradaDrawer({ open, onClose, onSave, remisionesDespacho }: {
             </div>
           </div>
 
-          {/* Fecha + Factura */}
-          <div className="grid grid-cols-2 gap-3">
-            <div><label className={lbl}>Fecha</label><input type="date" value={form.fecha} onChange={(e) => setHeader("fecha", e.target.value)} className={inp} /></div>
-            <div><label className={lbl}>No. Factura</label><input type="text" value={form.noFactura} onChange={(e) => setHeader("noFactura", e.target.value)} placeholder="—" className={inp} /></div>
-            <div className="col-span-2"><label className={lbl}>Proveedor</label><input type="text" value={form.proveedor} onChange={(e) => setHeader("proveedor", e.target.value)} placeholder="Nombre del proveedor" className={inp} /></div>
+          {/* Fecha */}
+          <div>
+            <label className={lbl}>Fecha</label>
+            <input type="date" value={form.fecha} onChange={(e) => setHeader("fecha", e.target.value)} className={inp} />
           </div>
 
           {/* Materiales list */}
@@ -390,33 +402,42 @@ function EntradaDrawer({ open, onClose, onSave, remisionesDespacho }: {
                         </div>
                       )}
                     </div>
-                    {/* Remisión + Foto por material */}
+                    {/* Proveedor + No. Factura */}
                     <div className="grid grid-cols-2 gap-2">
+                      <div className="col-span-2">
+                        <label className={lbl}>Proveedor</label>
+                        <input type="text" value={row.proveedor ?? ""} onChange={(e) => setRow(i, { proveedor: e.target.value })} placeholder="Nombre del proveedor" className={inp} />
+                      </div>
+                      <div>
+                        <label className={lbl}>No. Factura</label>
+                        <input type="text" value={row.noFactura ?? ""} onChange={(e) => setRow(i, { noFactura: e.target.value })} placeholder="—" className={inp} />
+                      </div>
                       <div>
                         <label className={lbl}>No. Remisión</label>
                         <input type="text" value={row.remision ?? ""} onChange={(e) => setRow(i, { remision: e.target.value })} placeholder="—" className={inp} />
                       </div>
-                      <div>
-                        <label className={lbl}>Foto</label>
-                        <input
-                          type="file" accept="image/*" className="hidden"
-                          ref={(el) => { fileInputRefs.current[i] = el; }}
-                          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFoto(i, f); }}
-                        />
-                        {row.fotoUrl ? (
-                          <div className="relative">
-                            <a href={row.fotoUrl} target="_blank" rel="noopener noreferrer">
-                              <img src={row.fotoUrl} alt="foto" className="w-full h-16 object-cover rounded-xl border border-gray-200" />
-                            </a>
-                            <button onClick={() => setRow(i, { fotoUrl: undefined, fotoPath: undefined })} className="absolute top-1 right-1 bg-white rounded-full p-0.5 text-gray-500 hover:text-red-500 shadow cursor-pointer"><X size={10} /></button>
-                          </div>
-                        ) : (
-                          <button type="button" onClick={() => fileInputRefs.current[i]?.click()} disabled={row.uploading}
-                            className="w-full h-10 flex items-center justify-center gap-1.5 text-xs text-gray-500 bg-white border border-dashed border-gray-300 rounded-xl hover:border-gray-400 transition-colors cursor-pointer disabled:opacity-50">
-                            {row.uploading ? "Subiendo…" : <><Camera size={13} /> Adjuntar foto</>}
-                          </button>
-                        )}
-                      </div>
+                    </div>
+                    {/* Foto */}
+                    <div>
+                      <label className={lbl}>Foto</label>
+                      <input
+                        type="file" accept="image/*" className="hidden"
+                        ref={(el) => { fileInputRefs.current[i] = el; }}
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFoto(i, f, e.target); }}
+                      />
+                      {row.fotoUrl ? (
+                        <div className="relative">
+                          <a href={row.fotoUrl} target="_blank" rel="noopener noreferrer">
+                            <img src={row.fotoUrl} alt="foto" className="w-full h-20 object-cover rounded-xl border border-gray-200 hover:opacity-80 transition-opacity" />
+                          </a>
+                          <button type="button" onClick={() => setRow(i, { fotoUrl: undefined, fotoPath: undefined })} className="absolute top-1 right-1 bg-white rounded-full p-0.5 text-gray-500 hover:text-red-500 shadow cursor-pointer"><X size={10} /></button>
+                        </div>
+                      ) : (
+                        <button type="button" onClick={() => fileInputRefs.current[i]?.click()} disabled={row.uploading}
+                          className="w-full h-10 flex items-center justify-center gap-1.5 text-xs text-gray-500 bg-white border border-dashed border-gray-300 rounded-xl hover:border-gray-400 transition-colors cursor-pointer disabled:opacity-50">
+                          {row.uploading ? "Subiendo…" : <><Camera size={13} /> Adjuntar foto</>}
+                        </button>
+                      )}
                     </div>
                   </div>
                   {form.materiales.length > 1 && (
@@ -1256,14 +1277,14 @@ export default function InventarioPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  {["Fecha", "Tipo", "Categoría", "Material", "Cantidad", "Proveedor", "Factura", ""].map((h) => (
+                  {["Fecha", "Tipo", "Categoría", "Material", "Cantidad", "Proveedor", "Factura", "Foto", ""].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filteredMovimientos.length === 0
-                  ? <tr><td colSpan={8} className="px-4 py-16 text-center text-sm text-gray-400">Sin movimientos en {periodLabel(periodo)}</td></tr>
+                  ? <tr><td colSpan={9} className="px-4 py-16 text-center text-sm text-gray-400">Sin movimientos en {periodLabel(periodo)}</td></tr>
                   : filteredMovimientos.map((row, idx) => {
                     if (row._source === "existencia") return (
                       <tr key={`exi-${row.material}`} className="hover:bg-gray-50 transition-colors">
@@ -1274,6 +1295,7 @@ export default function InventarioPage() {
                         <td className="px-4 py-3 text-gray-900 font-mono font-semibold">{fmt(row.cantidad)}{row.unidad ? ` ${row.unidad}` : ""}</td>
                         <td className="px-4 py-3 text-gray-400">—</td>
                         <td className="px-4 py-3 text-gray-400 text-xs capitalize">{periodLabel(periodo)}</td>
+                        <td className="px-4 py-3 text-gray-400">—</td>
                         <td className="px-4 py-3">
                           {isSuperAdmin && (
                             <button
@@ -1297,6 +1319,15 @@ export default function InventarioPage() {
                         <td className="px-4 py-3 text-gray-900 font-mono font-semibold">{fmt(e.cantidad)}{e.unidad ? ` ${e.unidad}` : ""}</td>
                         <td className="px-4 py-3 text-gray-500 text-sm">{e.proveedor || "—"}</td>
                         <td className="px-4 py-3 text-gray-400 text-xs font-mono">{e.noFactura || "—"}</td>
+                        <td className="px-4 py-3">
+                          {e.fotoUrl ? (
+                            <a href={e.fotoUrl} target="_blank" rel="noopener noreferrer" title="Ver foto">
+                              <img src={e.fotoUrl} alt="foto" className="w-10 h-8 object-cover rounded-lg border border-gray-200 hover:opacity-80 transition-opacity" />
+                            </a>
+                          ) : (
+                            <span className="text-gray-300">—</span>
+                          )}
+                        </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1">
                             <button onClick={() => setEditTarget(e)} className="p-1.5 text-gray-400 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer" title="Solicitar edición"><Edit2 size={12} /></button>

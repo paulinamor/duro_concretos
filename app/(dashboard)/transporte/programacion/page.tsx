@@ -80,6 +80,7 @@ interface Programacion {
   total: number | null;
   recibo: string;
   recibos?: string[];
+  recibosMontos?: { [folio: string]: number };
   credito: string;
   fact: string;
   pagado: string;
@@ -141,7 +142,9 @@ interface FormState {
   factorBomba: string; aplicarFactorBomba: boolean;
   ltoAcelr: string; kiloFibra: string; m3Imper: string;
   aditivo: string; tuberiaExtra: string; permisosOC: string;
-  recibos: string[]; recibo: string; credito: string; fact: string; pagado: string;
+  recibos: string[];
+  recibosMontos: { [folio: string]: number };
+  recibo: string; credito: string; fact: string; pagado: string;
   montoPagado: string;
   metodoPago: string; fechaPago: string;
   exhibiciones: "" | "1" | "2";
@@ -264,7 +267,7 @@ function emptyForm(dia: string): FormState {
     precioM3: "", precioM3Bomba: "", factorBomba: "1.16", aplicarFactorBomba: false,
     ltoAcelr: "", kiloFibra: "", m3Imper: "",
     aditivo: "", tuberiaExtra: "", permisosOC: "",
-    recibos: [], recibo: "", credito: "", fact: "", pagado: "", montoPagado: "", metodoPago: "", fechaPago: "",
+    recibos: [], recibosMontos: {}, recibo: "", credito: "", fact: "", pagado: "", montoPagado: "", metodoPago: "", fechaPago: "",
     exhibiciones: "", montoPago2: "", fechaPago2: "", metodoPago2: "",
     notas: "", notasVendedor: "", rowColor: "", obraNombre: "",
   };
@@ -320,7 +323,9 @@ function formFromProg(p: Programacion): FormState {
     aditivo: p.aditivo ?? "",
     tuberiaExtra: p.tuberiaExtra != null ? String(p.tuberiaExtra) : "",
     permisosOC: p.permisosOC != null ? String(p.permisosOC) : "",
-    recibos: p.recibos ?? (p.recibo ? [p.recibo] : []), recibo: p.recibo ?? "", credito: p.credito ?? "", fact: p.fact ?? "", pagado: p.pagado ?? "",
+    recibos: p.recibos ?? (p.recibo ? [p.recibo] : []),
+    recibosMontos: p.recibosMontos ?? {},
+    recibo: p.recibo ?? "", credito: p.credito ?? "", fact: p.fact ?? "", pagado: p.pagado ?? "",
     montoPagado: p.montoPagado != null ? String(p.montoPagado) : "",
     metodoPago: p.metodoPago ?? "", fechaPago: p.fechaPago ?? "",
     exhibiciones: p.exhibiciones ?? "",
@@ -642,7 +647,7 @@ function FormDrawer({
   revolveList: string[];
   obrasData: Obra[];
   rawClientes: Cliente[];
-  recibosDisponibles: { id: string; receiptNumber: number; cliente: string; fecha: string; total?: number; anticipo?: number }[];
+  recibosDisponibles: { id: string; receiptNumber: number; cliente: string; fecha: string; total?: number; anticipo?: number; remaining?: number }[];
 }) {
   const [form, setForm] = useState<FormState>(() => emptyForm(dia));
   const [saving, setSaving] = useState(false);
@@ -872,6 +877,7 @@ function FormDrawer({
         total: totalAuto,
         recibo: form.recibos[0] ?? (form.recibo ?? "").trim(),
         recibos: form.recibos,
+        recibosMontos: form.recibosMontos,
         credito: (form.credito ?? "").trim(),
         fact: (form.fact ?? "").trim(),
         pagado: (form.pagado ?? "").trim(),
@@ -1363,40 +1369,48 @@ function FormDrawer({
                     const recDato = recibosDisponibles.find(
                       (r) => `#${String(r.receiptNumber).padStart(4, "0")}` === folio
                     );
-                    const fmt = (n: number) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(n);
+                    const fmtMX = (n: number) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(n);
                     const anticipo = recDato?.anticipo ?? 0;
-                    const total = recDato?.total ?? 0;
-                    const resta = total > 0 ? Math.max(0, total - anticipo) : 0;
-                    const esParcial = resta > 0.01;
+                    const remaining = recDato?.remaining;
+                    const montoAplicado = form.recibosMontos[folio] ?? anticipo;
+                    const maxMonto = remaining != null ? remaining + montoAplicado : anticipo;
                     return (
-                      <div key={folio} className={`flex items-center gap-2 border rounded-xl px-3.5 py-2 ${esParcial ? "bg-amber-50 border-amber-200" : "bg-gray-50 border-gray-200"}`}>
-                        <span className="font-mono text-sm font-semibold text-gray-800">{folio}</span>
-                        {recDato && (
-                          <span className="text-xs text-gray-400 truncate">
-                            {recDato.fecha}
-                          </span>
-                        )}
-                        {esParcial && (
-                          <span className="text-[10px] font-medium text-amber-600 bg-amber-100 border border-amber-200 rounded px-1.5 py-0.5 shrink-0">
-                            parcial
-                          </span>
-                        )}
-                        <div className="ml-auto flex items-baseline gap-1 shrink-0">
-                          {anticipo > 0 && (
-                            <span className="text-sm font-semibold text-emerald-700">{fmt(anticipo)}</span>
+                      <div key={folio} className="bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-sm font-semibold text-gray-800">{folio}</span>
+                          {recDato && <span className="text-xs text-gray-400">{recDato.fecha}</span>}
+                          {remaining != null && remaining < anticipo - 0.01 && (
+                            <span className="text-[10px] font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5 shrink-0">
+                              saldo {fmtMX(remaining + montoAplicado - montoAplicado)} disp.
+                            </span>
                           )}
-                          {esParcial && total > 0 && (
-                            <span className="text-[11px] text-gray-400">/ {fmt(total)}</span>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => setForm((p) => {
+                              const { [folio]: _, ...rest } = p.recibosMontos;
+                              return { ...p, recibos: p.recibos.filter((r) => r !== folio), recibosMontos: rest };
+                            })}
+                            className="ml-auto p-1 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer shrink-0"
+                            title="Quitar recibo"
+                          >
+                            <X size={13} />
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => setForm((p) => ({ ...p, recibos: p.recibos.filter((r) => r !== folio) }))}
-                          className="p-1 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer shrink-0"
-                          title="Quitar recibo"
-                        >
-                          <X size={13} />
-                        </button>
+                        {anticipo > 0 && (
+                          <div className="flex items-center gap-2">
+                            <label className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 whitespace-nowrap">Monto a aplicar</label>
+                            <input
+                              type="number" min={0} max={maxMonto} step={100}
+                              value={montoAplicado || ""}
+                              onChange={(e) => {
+                                const v = Math.min(parseFloat(e.target.value) || 0, maxMonto);
+                                setForm((p) => ({ ...p, recibosMontos: { ...p.recibosMontos, [folio]: v } }));
+                              }}
+                              className="flex-1 bg-white border border-gray-200 rounded-xl px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20"
+                            />
+                            <span className="text-xs text-gray-400 shrink-0">/ {fmtMX(maxMonto)}</span>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -1406,10 +1420,11 @@ function FormDrawer({
               {/* Indicador de cobertura */}
               {(() => {
                 if (totalAuto == null || totalAuto <= 0 || form.recibos.length === 0) return null;
-                const recibosTotal = form.recibos.reduce((sum, folio) => {
-                  const r = recibosDisponibles.find((rc) => `#${String(rc.receiptNumber).padStart(4, "0")}` === folio);
-                  return sum + (r?.anticipo ?? r?.total ?? 0);
-                }, 0);
+                const recibosTotal = Object.values(form.recibosMontos).reduce((s, v) => s + v, 0)
+                  || form.recibos.reduce((sum, folio) => {
+                    const r = recibosDisponibles.find((rc) => `#${String(rc.receiptNumber).padStart(4, "0")}` === folio);
+                    return sum + (r?.anticipo ?? r?.total ?? 0);
+                  }, 0);
                 if (recibosTotal <= 0) return null;
                 const falta = totalAuto - recibosTotal;
                 const pct = Math.min(100, (recibosTotal / totalAuto) * 100);
@@ -1445,7 +1460,16 @@ function FormDrawer({
                     if (recibo?.fecha && !form.fechaPago) set("fechaPago", recibo.fecha);
                     if (!form.metodoPago) set("metodoPago", "Efectivo");
                   }
-                  setForm((p) => ({ ...p, recibos: [...p.recibos, folio] }));
+                  const anticipo = recibo?.anticipo ?? 0;
+                  const available = recibo?.remaining ?? anticipo;
+                  const currentSum = Object.values(form.recibosMontos).reduce((s, v) => s + v, 0);
+                  const needed = (totalAuto ?? 0) - currentSum;
+                  const defaultMonto = anticipo > 0 ? Math.min(available, needed > 0 ? needed : available) : 0;
+                  setForm((p) => ({
+                    ...p,
+                    recibos: [...p.recibos, folio],
+                    recibosMontos: defaultMonto > 0 ? { ...p.recibosMontos, [folio]: defaultMonto } : p.recibosMontos,
+                  }));
                 }}
               >
                 <option value="">+ Agregar recibo…</option>
@@ -1460,12 +1484,12 @@ function FormDrawer({
                   .sort((a, b) => b.receiptNumber - a.receiptNumber)
                   .map((r) => {
                     const folio = `#${String(r.receiptNumber).padStart(4, "0")}`;
-                    const pagado = r.anticipo ?? r.total ?? 0;
-                    const total = r.total ?? 0;
-                    const esParcial = total > 0 && pagado < total - 0.01;
                     const fmtMX = (n: number) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(n);
-                    const monto = pagado > 0
-                      ? ` · ${fmtMX(pagado)}${esParcial ? ` (de ${fmtMX(total)})` : ""}`
+                    const anticipo = r.anticipo ?? r.total ?? 0;
+                    const available = r.remaining ?? anticipo;
+                    const esParc = available < anticipo - 0.01;
+                    const monto = anticipo > 0
+                      ? ` · ${fmtMX(available)}${esParc ? ` disponible de ${fmtMX(anticipo)}` : ""}`
                       : "";
                     return (
                       <option key={r.id} value={folio}>
@@ -3288,16 +3312,31 @@ export default function ProgramacionPage() {
         revolveList={revolveList}
         obrasData={obrasData}
         rawClientes={rawClientesTransporte}
-        recibosDisponibles={recibosData.filter((r) => {
-          const folioUsado = `#${String(r.receiptNumber).padStart(4, "0")}`;
-          const yaLigado = programaciones.some((p) => {
-            if (p.id === editing?.id) return false;
-            if (p.recibo === folioUsado) return true;
-            if (p.recibos?.includes(folioUsado)) return true;
-            return false;
-          });
-          return !yaLigado;
-        })}
+        recibosDisponibles={recibosData
+          .map((r) => {
+            const folio = `#${String(r.receiptNumber).padStart(4, "0")}`;
+            const anticipo = r.anticipo ?? 0;
+            const consumed = programaciones
+              .filter((p) => p.id !== editing?.id)
+              .reduce((sum, p) => {
+                const ligado = p.recibo === folio || p.recibos?.includes(folio);
+                if (!ligado) return sum;
+                const monto = p.recibosMontos?.[folio];
+                return sum + (monto != null ? monto : anticipo);
+              }, 0);
+            const remaining = anticipo > 0 ? Math.max(0, anticipo - consumed) : undefined;
+            return { ...r, remaining };
+          })
+          .filter((r) => {
+            const folio = `#${String(r.receiptNumber).padStart(4, "0")}`;
+            if (r.anticipo == null || r.anticipo <= 0) {
+              return !programaciones.some((p) => {
+                if (p.id === editing?.id) return false;
+                return p.recibo === folio || p.recibos?.includes(folio);
+              });
+            }
+            return (r.remaining ?? 0) > 0.01;
+          })}
       />
 
       {/* Modal: solicitud de autorización para eliminar */}
