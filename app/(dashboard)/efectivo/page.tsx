@@ -727,6 +727,172 @@ function SalidasTab({ formOpen, onFormClose }: { formOpen: boolean; onFormClose:
   );
 }
 
+// ─── PrintReciboConcreto ──────────────────────────────────────────────────────
+
+function PrintReciboConcreto({ recibo, onClose }: { recibo: Recibo; onClose: () => void }) {
+  const folioStr     = `#${String(recibo.folio).padStart(4, "0")}`;
+  const importeLetra = recibo.importe ? numeroEnLetras(recibo.importe) : "";
+
+  function handlePrint() {
+    const w = window.open("", "_blank", "width=820,height=700");
+    if (!w) return;
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>Recibo ${folioStr}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,sans-serif;background:#fff;color:#111;padding:40px 48px}
+  .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #CC2229;padding-bottom:14px;margin-bottom:22px}
+  .empresa{font-size:22px;font-weight:900;color:#CC2229;letter-spacing:-0.5px}
+  .empresa-sub{font-size:11px;color:#666;margin-top:3px}
+  .folio-box{text-align:right}
+  .folio-label{font-size:9px;text-transform:uppercase;letter-spacing:2px;color:#888;font-weight:700}
+  .folio-num{font-size:30px;font-weight:900;color:#CC2229;font-family:monospace}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 28px;margin-bottom:18px}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px 28px;margin-bottom:18px}
+  .field-label{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#888;font-weight:700;display:block;margin-bottom:4px}
+  .field-val{font-size:13px;color:#111;font-weight:600;border-bottom:1px solid #e5e7eb;padding-bottom:4px;min-height:22px}
+  .importe-box{border:2px solid #CC2229;border-radius:8px;padding:16px 20px;margin:18px 0;background:#fff8f8}
+  .importe-label{font-size:9px;text-transform:uppercase;letter-spacing:2px;color:#888;font-weight:700}
+  .importe-valor{font-size:34px;font-weight:900;color:#CC2229;margin:4px 0}
+  .importe-letra{font-size:11px;color:#555;font-style:italic;margin-top:5px;line-height:1.5}
+  .section-title{font-size:9px;text-transform:uppercase;letter-spacing:2px;color:#888;font-weight:700;margin-bottom:12px;border-bottom:1px solid #e5e7eb;padding-bottom:6px}
+  .notas-box{border:1px solid #e5e7eb;border-radius:6px;padding:12px 16px;margin-bottom:28px}
+  .badge-entregado{display:inline-block;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;background:#d1fae5;color:#065f46;border:1px solid #6ee7b7}
+  .badge-pendiente{display:inline-block;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;background:#fef3c7;color:#92400e;border:1px solid #fcd34d}
+  .firmas{display:grid;grid-template-columns:1fr 1fr;gap:48px;margin-top:48px}
+  .firma{border-top:1.5px solid #111;padding-top:8px;text-align:center}
+  .firma-label{font-size:10px;color:#555}
+  @media print{body{padding:24px 32px}@page{margin:10mm}}
+</style></head><body>
+<div class="header">
+  <div><div class="empresa">DURO CONCRETOS</div><div class="empresa-sub">Recibo de Concreto</div></div>
+  <div class="folio-box"><div class="folio-label">Folio</div><div class="folio-num">${folioStr}</div></div>
+</div>
+<div class="grid">
+  <div><span class="field-label">Fecha</span><div class="field-val">${fmtFecha(recibo.fecha)}</div></div>
+  <div><span class="field-label">Estado</span><div class="field-val">${recibo.entregado ? '<span class="badge-entregado">Entregado</span>' : '<span class="badge-pendiente">Pendiente</span>'}</div></div>
+  <div style="grid-column:span 2"><span class="field-label">Cliente</span><div class="field-val">${recibo.cliente || "—"}</div></div>
+</div>
+<p class="section-title">Datos del concreto</p>
+<div class="grid3">
+  <div><span class="field-label">m³</span><div class="field-val">${recibo.metros != null ? `${recibo.metros} m³` : "—"}</div></div>
+  <div><span class="field-label">Precio / m³</span><div class="field-val">${recibo.precio != null ? currency(recibo.precio) : "—"}</div></div>
+  <div><span class="field-label">Cemento</span><div class="field-val">${recibo.cemento || "—"}</div></div>
+  <div><span class="field-label">Resistencia</span><div class="field-val">${recibo.resistencia || "—"}</div></div>
+  <div><span class="field-label">Tipo de tiro</span><div class="field-val">${recibo.tipoDeTiro || "—"}</div></div>
+</div>
+<div style="margin-bottom:18px"><span class="field-label">Dirección de la obra</span><div class="field-val">${recibo.direccionObra || "—"}</div></div>
+<div class="importe-box">
+  <div class="importe-label">Importe Total</div>
+  <div class="importe-valor">${currency(recibo.importe)}</div>
+  ${importeLetra ? `<div class="importe-letra">${importeLetra}</div>` : ""}
+</div>
+${recibo.notas ? `<div class="notas-box"><p class="section-title" style="margin-bottom:6px">Notas</p><p style="font-size:13px;color:#333;line-height:1.6">${recibo.notas}</p></div>` : ""}
+<div class="firmas">
+  <div class="firma"><div class="firma-label">Entregó</div></div>
+  <div class="firma"><div class="firma-label">Recibió</div></div>
+</div>
+</body></html>`);
+    w.document.close();
+    setTimeout(() => { w.focus(); w.print(); }, 300);
+  }
+
+  return (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+      <button className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        {/* Barra de acción */}
+        <div className="sticky top-0 flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200 rounded-t-2xl z-10">
+          <p className="text-sm font-semibold text-gray-800">Vista previa — Recibo {folioStr}</p>
+          <div className="flex items-center gap-2">
+            <button onClick={handlePrint} className="flex items-center gap-2 px-4 py-2 bg-[#CC2229] hover:bg-[#B01E24] text-white text-sm font-semibold rounded-xl transition-colors cursor-pointer">
+              <Printer size={14} /> Imprimir / PDF
+            </button>
+            <button onClick={onClose} className="p-2 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"><X size={16} /></button>
+          </div>
+        </div>
+
+        {/* Contenido */}
+        <div className="px-10 py-8 text-gray-900">
+          {/* Header */}
+          <div className="flex justify-between items-start border-b-4 border-[#CC2229] pb-5 mb-6">
+            <div>
+              <p className="text-2xl font-black text-[#CC2229] tracking-tight">DURO CONCRETOS</p>
+              <p className="text-xs text-gray-500 mt-0.5">Recibo de Concreto</p>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] uppercase tracking-widest text-gray-400 font-bold">Folio</p>
+              <p className="text-4xl font-black text-[#CC2229] font-mono">{folioStr}</p>
+            </div>
+          </div>
+
+          {/* Datos principales */}
+          <div className="grid grid-cols-2 gap-x-8 gap-y-4 mb-5">
+            {[
+              { label: "Fecha",   val: fmtFecha(recibo.fecha) },
+              { label: "Estado",  val: recibo.entregado ? "✓ Entregado" : "⏳ Pendiente" },
+            ].map(({ label, val }) => (
+              <div key={label}>
+                <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-1">{label}</p>
+                <p className="text-sm font-semibold text-gray-900 border-b border-gray-200 pb-1">{val}</p>
+              </div>
+            ))}
+            <div className="col-span-2">
+              <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-1">Cliente</p>
+              <p className="text-sm font-semibold text-gray-900 border-b border-gray-200 pb-1">{recibo.cliente || "—"}</p>
+            </div>
+          </div>
+
+          {/* Datos del concreto */}
+          <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-3 border-b border-gray-200 pb-2">Datos del concreto</p>
+          <div className="grid grid-cols-3 gap-x-6 gap-y-4 mb-4">
+            {[
+              { label: "m³",         val: recibo.metros != null ? `${recibo.metros} m³` : "—" },
+              { label: "Precio / m³", val: recibo.precio != null ? currency(recibo.precio) : "—" },
+              { label: "Cemento",     val: recibo.cemento || "—" },
+              { label: "Resistencia", val: recibo.resistencia || "—" },
+              { label: "Tipo de tiro", val: recibo.tipoDeTiro || "—" },
+            ].map(({ label, val }) => (
+              <div key={label}>
+                <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-1">{label}</p>
+                <p className="text-sm font-semibold text-gray-900 border-b border-gray-200 pb-1">{val}</p>
+              </div>
+            ))}
+          </div>
+          <div className="mb-5">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-1">Dirección de la obra</p>
+            <p className="text-sm font-semibold text-gray-900 border-b border-gray-200 pb-1">{recibo.direccionObra || "—"}</p>
+          </div>
+
+          {/* Importe */}
+          <div className="border-2 border-[#CC2229] rounded-xl p-5 my-5 bg-red-50">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-1">Importe Total</p>
+            <p className="text-4xl font-black text-[#CC2229]">{currency(recibo.importe)}</p>
+            {importeLetra && <p className="text-xs text-gray-600 italic mt-2 leading-relaxed">{importeLetra}</p>}
+          </div>
+
+          {/* Notas */}
+          {recibo.notas && (
+            <div className="border border-gray-200 rounded-xl p-4 mb-8">
+              <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-2">Notas</p>
+              <p className="text-sm text-gray-800 leading-relaxed">{recibo.notas}</p>
+            </div>
+          )}
+
+          {/* Firmas */}
+          <div className="grid grid-cols-2 gap-16 mt-12">
+            {["Entregó", "Recibió"].map((f) => (
+              <div key={f} className="border-t-2 border-gray-900 pt-2 text-center">
+                <p className="text-xs text-gray-500">{f}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 type MainTab = "recibos" | "salidas";
@@ -745,6 +911,7 @@ export default function EfectivoPage() {
   const [showForm, setShowForm]       = useState(false);
   const [editing, setEditing]         = useState<Recibo | undefined>();
   const [confirmDelete, setConfirmDelete] = useState<Recibo | undefined>();
+  const [printingRecibo, setPrintingRecibo] = useState<Recibo | undefined>();
   const [salidaFormOpen, setSalidaFormOpen] = useState(false);
 
   useEffect(() => {
@@ -944,14 +1111,16 @@ export default function EfectivoPage() {
                           </button>
                         </td>
                         <td className="px-4 py-3">
-                          {r.origenConcreto ? (
-                            <span className="text-[10px] text-gray-600 italic">Ventas → Recibos</span>
-                          ) : (
-                            <div className="flex items-center gap-1">
-                              <button onClick={() => openEdit(r)} className="rounded-lg p-2 text-gray-400 hover:bg-[#1A1A1A] hover:text-white transition-colors cursor-pointer"><Pencil size={14} /></button>
-                              <button onClick={() => setConfirmDelete(r)} className="rounded-lg p-2 text-gray-400 hover:bg-[#1A1A1A] hover:text-[#CC2229] transition-colors cursor-pointer"><Trash2 size={14} /></button>
-                            </div>
-                          )}
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => setPrintingRecibo(r)} className="rounded-lg p-2 text-gray-400 hover:bg-[#1A1A1A] hover:text-white transition-colors cursor-pointer" title="Imprimir recibo"><Printer size={14} /></button>
+                            {!r.origenConcreto && (
+                              <>
+                                <button onClick={() => openEdit(r)} className="rounded-lg p-2 text-gray-400 hover:bg-[#1A1A1A] hover:text-white transition-colors cursor-pointer" title="Editar"><Pencil size={14} /></button>
+                                <button onClick={() => setConfirmDelete(r)} className="rounded-lg p-2 text-gray-400 hover:bg-[#1A1A1A] hover:text-[#CC2229] transition-colors cursor-pointer" title="Eliminar"><Trash2 size={14} /></button>
+                              </>
+                            )}
+                            {r.origenConcreto && <span className="text-[10px] text-gray-600 italic ml-1">Ventas</span>}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -962,6 +1131,8 @@ export default function EfectivoPage() {
           </div>
 
           <FormDrawer open={showForm} onClose={() => setShowForm(false)} onSave={handleSave} initial={editing} nextFolio={nextFolio} clientesList={clientesList} />
+
+          {printingRecibo && <PrintReciboConcreto recibo={printingRecibo} onClose={() => setPrintingRecibo(undefined)} />}
 
           {confirmDelete && (
             <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">

@@ -307,7 +307,14 @@ export default function RecibosConcretoPage() {
     if (err) { window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: err } })); return; }
     setSaving(true);
     try {
-      await persistReceipt(false);
+      const saved = await persistReceipt(false);
+      // Fix: after saving, Firestore onSnapshot increments nextReceiptNum before window.print().
+      // flushSync pins receipt.receiptNumber to the actually-saved number so effectiveReceiptNumber
+      // doesn't jump to the next available folio during the print render.
+      flushSync(() => {
+        setReceipt(saved);
+        setIsLoadedReceipt(true);
+      });
       window.print();
       window.setTimeout(resetToNew, 0);
     } finally {
