@@ -50,6 +50,7 @@ export interface ExcelProg {
   totalXM3: number | null;
   total: number | null;
   recibo: string;
+  recibos?: string[];
   fact: string;
   pagado: string;
   montoPagado: number | null;
@@ -417,7 +418,16 @@ export default function ExcelView({
 
                       {/* RECIBO */}
                       <td className={`${td} text-blue-400 font-semibold ${tx}`}>
-                        {isFirst ? prog.recibo : ""}
+                        {isFirst
+                          ? (() => {
+                              const lista = prog.recibos && prog.recibos.length > 0
+                                ? prog.recibos
+                                : prog.recibo ? [prog.recibo] : [];
+                              return lista.map((r, i) => (
+                                <span key={r} className={i > 0 ? "block text-blue-300" : ""}>{r}</span>
+                              ));
+                            })()
+                          : ""}
                       </td>
                       {/* FACT. */}
                       <td className={`${td} text-gray-400 ${tx}`}>

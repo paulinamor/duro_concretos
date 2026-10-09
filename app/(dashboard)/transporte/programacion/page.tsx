@@ -2247,12 +2247,14 @@ function TrackingModal({
 
         {/* ── Resumen ── */}
         <div className="px-6 py-5 space-y-4">
-          {(prog.total != null || prog.recibo || prog.fact || prog.pagado) && (
+          {(prog.total != null || prog.recibo || (prog.recibos && prog.recibos.length > 0) || prog.fact || prog.pagado) && (
             <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
               {prog.total != null && <span style={{ color: t, fontSize: 24, fontWeight: 700 }}>${prog.total.toLocaleString("es-MX")}</span>}
               {prog.pagado === "Sí" && <span style={{ color: "#059669", fontSize: 13, fontWeight: 600 }}>Pagado</span>}
               {prog.credito && <span style={{ color: ts, fontSize: 13 }}>{prog.credito}</span>}
-              {prog.recibo && <span style={{ color: ts, fontSize: 13 }}>Recibo {prog.recibo}</span>}
+              {(prog.recibos && prog.recibos.length > 0 ? prog.recibos : prog.recibo ? [prog.recibo] : []).map((r) => (
+                <span key={r} style={{ color: ts, fontSize: 13 }}>Recibo {r}</span>
+              ))}
               {prog.fact && <span style={{ color: ts, fontSize: 13 }}>Fact. {prog.fact}</span>}
             </div>
           )}
