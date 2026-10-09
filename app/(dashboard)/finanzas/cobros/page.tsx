@@ -600,7 +600,7 @@ function CuentaClienteView({
       if (hasProgs) {
         // Modelo crédito: COMPRAS=progs, PAGOS=recibos(total)+pagos
         cartera = cp.reduce((s, p) => s + (p.total ?? 0), 0);
-        const cobradoRecibos = clienteRecibos.reduce((s, r) => s + calculateConcreteReceiptTotal(r).total, 0);
+        const cobradoRecibos = clienteRecibos.reduce((s, r) => s + (r.anticipo ?? 0), 0);
         const cobradoPagos   = pagos.filter((p) => norm(p.cliente) === norm(nombre)).reduce((s, p) => s + p.cantidad, 0);
         saldo = cartera - cobradoRecibos - cobradoPagos;
       } else {
@@ -632,7 +632,7 @@ function CuentaClienteView({
 
   // Modelo crédito: COMPRAS=progs, PAGOS=recibos.total+pagos
   const totalCompras   = useMemo(() => clienteProgs.reduce((s, p) => s + (p.total ?? 0), 0), [clienteProgs]);
-  const totalEfectivo  = useMemo(() => cuentaRecibos.reduce((s, r) => s + calculateConcreteReceiptTotal(r).total, 0), [cuentaRecibos]);
+  const totalEfectivo  = useMemo(() => cuentaRecibos.reduce((s, r) => s + (r.anticipo ?? 0), 0), [cuentaRecibos]);
   const totalPagosAd   = useMemo(() => clientePagos.reduce((s, p) => s + p.cantidad, 0), [clientePagos]);
 
   // Modelo efectivo parcial: FACTURADO=recibos.total, COBRADO=recibos.anticipo, POR COBRAR=recibos.resta

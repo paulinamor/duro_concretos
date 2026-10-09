@@ -79,6 +79,7 @@ interface Programacion {
   totalXM3: number | null;
   total: number | null;
   recibo: string;
+  recibos?: string[];
   credito: string;
   fact: string;
   pagado: string;
@@ -140,7 +141,7 @@ interface FormState {
   factorBomba: string; aplicarFactorBomba: boolean;
   ltoAcelr: string; kiloFibra: string; m3Imper: string;
   aditivo: string; tuberiaExtra: string; permisosOC: string;
-  recibo: string; credito: string; fact: string; pagado: string;
+  recibos: string[]; recibo: string; credito: string; fact: string; pagado: string;
   montoPagado: string;
   metodoPago: string; fechaPago: string;
   exhibiciones: "" | "1" | "2";
@@ -263,7 +264,7 @@ function emptyForm(dia: string): FormState {
     precioM3: "", precioM3Bomba: "", factorBomba: "1.16", aplicarFactorBomba: false,
     ltoAcelr: "", kiloFibra: "", m3Imper: "",
     aditivo: "", tuberiaExtra: "", permisosOC: "",
-    recibo: "", credito: "", fact: "", pagado: "", montoPagado: "", metodoPago: "", fechaPago: "",
+    recibos: [], recibo: "", credito: "", fact: "", pagado: "", montoPagado: "", metodoPago: "", fechaPago: "",
     exhibiciones: "", montoPago2: "", fechaPago2: "", metodoPago2: "",
     notas: "", notasVendedor: "", rowColor: "", obraNombre: "",
   };
@@ -319,7 +320,7 @@ function formFromProg(p: Programacion): FormState {
     aditivo: p.aditivo ?? "",
     tuberiaExtra: p.tuberiaExtra != null ? String(p.tuberiaExtra) : "",
     permisosOC: p.permisosOC != null ? String(p.permisosOC) : "",
-    recibo: p.recibo ?? "", credito: p.credito ?? "", fact: p.fact ?? "", pagado: p.pagado ?? "",
+    recibos: p.recibos ?? (p.recibo ? [p.recibo] : []), recibo: p.recibo ?? "", credito: p.credito ?? "", fact: p.fact ?? "", pagado: p.pagado ?? "",
     montoPagado: p.montoPagado != null ? String(p.montoPagado) : "",
     metodoPago: p.metodoPago ?? "", fechaPago: p.fechaPago ?? "",
     exhibiciones: p.exhibiciones ?? "",
@@ -641,7 +642,7 @@ function FormDrawer({
   revolveList: string[];
   obrasData: Obra[];
   rawClientes: Cliente[];
-  recibosDisponibles: { id: string; receiptNumber: number; cliente: string; fecha: string }[];
+  recibosDisponibles: { id: string; receiptNumber: number; cliente: string; fecha: string; total?: number }[];
 }) {
   const [form, setForm] = useState<FormState>(() => emptyForm(dia));
   const [saving, setSaving] = useState(false);
@@ -869,7 +870,8 @@ function FormDrawer({
         permisosOC: n(form.permisosOC),
         totalXM3: totalXM3Auto,
         total: totalAuto,
-        recibo: (form.recibo ?? "").trim(),
+        recibo: form.recibos[0] ?? (form.recibo ?? "").trim(),
+        recibos: form.recibos,
         credito: (form.credito ?? "").trim(),
         fact: (form.fact ?? "").trim(),
         pagado: (form.pagado ?? "").trim(),
@@ -907,6 +909,7 @@ function FormDrawer({
           ["total",         "Total"],
           ["pagado",        "Pagado"],
           ["recibo",        "Recibo"],
+          ["recibos",       "Recibos"],
           ["fact",          "Fact."],
           ["vendedor",      "Vendedor"],
           ["direccion",     "Dirección"],
@@ -1350,56 +1353,110 @@ function FormDrawer({
 
           <Sec title="Pago" />
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={lbl}>Recibo</label>
-              {/* Si ya hay recibo guardado (editing), mostrarlo bloqueado — no se puede quitar sin acción explícita */}
-              {form.recibo ? (
-                <div className="flex items-center gap-2">
-                  <div className={`${inp} flex-1 bg-gray-50 text-gray-700 font-medium`}>{form.recibo}</div>
-                  <button
-                    type="button"
-                    title="Quitar recibo (requiere confirmación)"
-                    onClick={() => {
-                      if (window.confirm(`¿Seguro que quieres quitar el recibo ${form.recibo} de esta programación?`)) {
-                        set("recibo", "");
-                      }
-                    }}
-                    className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer shrink-0"
-                  >
-                    <X size={14} />
-                  </button>
+            <div className="col-span-2">
+              <label className={lbl}>Recibos de concreto</label>
+
+              {/* Lista de recibos ya seleccionados */}
+              {form.recibos.length > 0 && (
+                <div className="space-y-1.5 mb-2">
+                  {form.recibos.map((folio) => {
+                    const recDato = recibosDisponibles.find(
+                      (r) => `#${String(r.receiptNumber).padStart(4, "0")}` === folio
+                    );
+                    return (
+                      <div key={folio} className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2">
+                        <span className="font-mono text-sm font-semibold text-gray-800">{folio}</span>
+                        {recDato && (
+                          <span className="text-xs text-gray-400 truncate">
+                            {recDato.cliente} · {recDato.fecha}
+                          </span>
+                        )}
+                        {recDato?.total != null && recDato.total > 0 && (
+                          <span className="ml-auto text-sm font-semibold text-emerald-700 shrink-0">
+                            {new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(recDato.total)}
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setForm((p) => ({ ...p, recibos: p.recibos.filter((r) => r !== folio) }))}
+                          className="p-1 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer shrink-0"
+                          title="Quitar recibo"
+                        >
+                          <X size={13} />
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
-              ) : (
-                <AppSelect
-                  value=""
-                  onChange={(e) => {
-                    const folio = e.target.value;
-                    if (!folio) return;
-                    // Auto-fill fecha y método pago desde el recibo seleccionado
-                    const recibo = recibosDisponibles.find((r) => `#${String(r.receiptNumber).padStart(4, "0")}` === folio);
-                    set("recibo", folio);
+              )}
+
+              {/* Indicador de cobertura */}
+              {(() => {
+                if (totalAuto == null || totalAuto <= 0 || form.recibos.length === 0) return null;
+                const recibosTotal = form.recibos.reduce((sum, folio) => {
+                  const r = recibosDisponibles.find((rc) => `#${String(rc.receiptNumber).padStart(4, "0")}` === folio);
+                  return sum + (r?.total ?? 0);
+                }, 0);
+                if (recibosTotal <= 0) return null;
+                const falta = totalAuto - recibosTotal;
+                const pct = Math.min(100, (recibosTotal / totalAuto) * 100);
+                const cubierto = falta <= 0.01;
+                const fmt = (n: number) =>
+                  new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(n);
+                return (
+                  <div className={`rounded-xl border px-4 py-3 mb-2 ${cubierto ? "bg-emerald-50 border-emerald-200" : "bg-amber-50 border-amber-200"}`}>
+                    <div className="flex items-center justify-between mb-1.5 text-xs font-semibold">
+                      <span className={cubierto ? "text-emerald-700" : "text-amber-700"}>
+                        {cubierto ? "✓ Pago cubierto" : `Falta ${fmt(falta)}`}
+                      </span>
+                      <span className="text-gray-500">{fmt(recibosTotal)} / {fmt(totalAuto)}</span>
+                    </div>
+                    <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${cubierto ? "bg-emerald-500" : "bg-amber-500"}`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Dropdown para agregar recibo */}
+              <AppSelect
+                value=""
+                onChange={(e) => {
+                  const folio = e.target.value;
+                  if (!folio || form.recibos.includes(folio)) return;
+                  const recibo = recibosDisponibles.find((r) => `#${String(r.receiptNumber).padStart(4, "0")}` === folio);
+                  if (form.recibos.length === 0) {
                     if (recibo?.fecha && !form.fechaPago) set("fechaPago", recibo.fecha);
                     if (!form.metodoPago) set("metodoPago", "Efectivo");
-                  }}
-                >
-                  <option value="">Seleccionar recibo…</option>
-                  {recibosDisponibles
-                    .filter((r) => {
-                      if (!form.cliente) return true;
-                      const normCliente = (s: string) => s.trim().toUpperCase().replace(/\s+/g, " ");
-                      return normCliente(r.cliente) === normCliente(form.cliente);
-                    })
-                    .sort((a, b) => b.receiptNumber - a.receiptNumber)
-                    .map((r) => {
-                      const folio = `#${String(r.receiptNumber).padStart(4, "0")}`;
-                      return (
-                        <option key={r.id} value={folio}>
-                          {folio} — {r.cliente} ({r.fecha})
-                        </option>
-                      );
-                    })}
-                </AppSelect>
-              )}
+                  }
+                  setForm((p) => ({ ...p, recibos: [...p.recibos, folio] }));
+                }}
+              >
+                <option value="">+ Agregar recibo…</option>
+                {recibosDisponibles
+                  .filter((r) => {
+                    const folio = `#${String(r.receiptNumber).padStart(4, "0")}`;
+                    if (form.recibos.includes(folio)) return false;
+                    if (!form.cliente) return true;
+                    const normCl = (s: string) => s.trim().toUpperCase().replace(/\s+/g, " ");
+                    return normCl(r.cliente) === normCl(form.cliente);
+                  })
+                  .sort((a, b) => b.receiptNumber - a.receiptNumber)
+                  .map((r) => {
+                    const folio = `#${String(r.receiptNumber).padStart(4, "0")}`;
+                    const monto = r.total != null && r.total > 0
+                      ? ` · ${new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(r.total)}`
+                      : "";
+                    return (
+                      <option key={r.id} value={folio}>
+                        {folio} — {r.cliente} ({r.fecha}){monto}
+                      </option>
+                    );
+                  })}
+              </AppSelect>
             </div>
             <div>
               <label className={lbl}>Fact</label>
@@ -2285,7 +2342,7 @@ export default function ProgramacionPage() {
   const [revolveList, setRevolveList] = useState<string[]>([]);
   const [obrasData, setObrasData] = useState<Obra[]>([]);
   const [rawClientesTransporte, setRawClientesTransporte] = useState<Cliente[]>([]);
-  const [recibosData, setRecibosData] = useState<{ id: string; receiptNumber: number; cliente: string; fecha: string }[]>([]);
+  const [recibosData, setRecibosData] = useState<{ id: string; receiptNumber: number; cliente: string; fecha: string; total?: number }[]>([]);
   const [clientesSet, setClientesSet] = useState<Set<string>>(new Set());
   const [diaActivo, setDiaActivo] = useState(todayISO);
   const [viewMode, setViewMode] = useState<ViewMode>("dia");
@@ -2346,7 +2403,7 @@ export default function ProgramacionPage() {
     }).catch((err) => console.error("Error cargando datos estáticos:", err));
     getCollectionDocs<Obra>(COLLECTIONS.obras).then(setObrasData).catch(() => {});
     const yearAgo = new Date(); yearAgo.setFullYear(yearAgo.getFullYear() - 1);
-    getCollectionDocs<{ id: string; receiptNumber: number; cliente: string; fecha: string }>(
+    getCollectionDocs<{ id: string; receiptNumber: number; cliente: string; fecha: string; total?: number }>(
       COLLECTIONS.remisiones,
       [where("fecha", ">=", yearAgo.toISOString().slice(0, 10))]
     ).then((docs) => setRecibosData(docs.filter((r) => r.receiptNumber != null))).catch(() => {});
@@ -3214,7 +3271,12 @@ export default function ProgramacionPage() {
         rawClientes={rawClientesTransporte}
         recibosDisponibles={recibosData.filter((r) => {
           const folioUsado = `#${String(r.receiptNumber).padStart(4, "0")}`;
-          const yaLigado = programaciones.some((p) => p.recibo === folioUsado && p.id !== editing?.id);
+          const yaLigado = programaciones.some((p) => {
+            if (p.id === editing?.id) return false;
+            if (p.recibo === folioUsado) return true;
+            if (p.recibos?.includes(folioUsado)) return true;
+            return false;
+          });
           return !yaLigado;
         })}
       />
