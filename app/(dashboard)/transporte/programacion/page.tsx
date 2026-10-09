@@ -642,7 +642,7 @@ function FormDrawer({
   revolveList: string[];
   obrasData: Obra[];
   rawClientes: Cliente[];
-  recibosDisponibles: { id: string; receiptNumber: number; cliente: string; fecha: string; total?: number }[];
+  recibosDisponibles: { id: string; receiptNumber: number; cliente: string; fecha: string; total?: number; anticipo?: number }[];
 }) {
   const [form, setForm] = useState<FormState>(() => emptyForm(dia));
   const [saving, setSaving] = useState(false);
@@ -1363,19 +1363,32 @@ function FormDrawer({
                     const recDato = recibosDisponibles.find(
                       (r) => `#${String(r.receiptNumber).padStart(4, "0")}` === folio
                     );
+                    const fmt = (n: number) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(n);
+                    const anticipo = recDato?.anticipo ?? 0;
+                    const total = recDato?.total ?? 0;
+                    const resta = total > 0 ? Math.max(0, total - anticipo) : 0;
+                    const esParcial = resta > 0.01;
                     return (
-                      <div key={folio} className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2">
+                      <div key={folio} className={`flex items-center gap-2 border rounded-xl px-3.5 py-2 ${esParcial ? "bg-amber-50 border-amber-200" : "bg-gray-50 border-gray-200"}`}>
                         <span className="font-mono text-sm font-semibold text-gray-800">{folio}</span>
                         {recDato && (
                           <span className="text-xs text-gray-400 truncate">
-                            {recDato.cliente} · {recDato.fecha}
+                            {recDato.fecha}
                           </span>
                         )}
-                        {recDato?.total != null && recDato.total > 0 && (
-                          <span className="ml-auto text-sm font-semibold text-emerald-700 shrink-0">
-                            {new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(recDato.total)}
+                        {esParcial && (
+                          <span className="text-[10px] font-medium text-amber-600 bg-amber-100 border border-amber-200 rounded px-1.5 py-0.5 shrink-0">
+                            parcial
                           </span>
                         )}
+                        <div className="ml-auto flex items-baseline gap-1 shrink-0">
+                          {anticipo > 0 && (
+                            <span className="text-sm font-semibold text-emerald-700">{fmt(anticipo)}</span>
+                          )}
+                          {esParcial && total > 0 && (
+                            <span className="text-[11px] text-gray-400">/ {fmt(total)}</span>
+                          )}
+                        </div>
                         <button
                           type="button"
                           onClick={() => setForm((p) => ({ ...p, recibos: p.recibos.filter((r) => r !== folio) }))}
@@ -1395,7 +1408,7 @@ function FormDrawer({
                 if (totalAuto == null || totalAuto <= 0 || form.recibos.length === 0) return null;
                 const recibosTotal = form.recibos.reduce((sum, folio) => {
                   const r = recibosDisponibles.find((rc) => `#${String(rc.receiptNumber).padStart(4, "0")}` === folio);
-                  return sum + (r?.total ?? 0);
+                  return sum + (r?.anticipo ?? r?.total ?? 0);
                 }, 0);
                 if (recibosTotal <= 0) return null;
                 const falta = totalAuto - recibosTotal;
@@ -1447,8 +1460,12 @@ function FormDrawer({
                   .sort((a, b) => b.receiptNumber - a.receiptNumber)
                   .map((r) => {
                     const folio = `#${String(r.receiptNumber).padStart(4, "0")}`;
-                    const monto = r.total != null && r.total > 0
-                      ? ` · ${new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(r.total)}`
+                    const pagado = r.anticipo ?? r.total ?? 0;
+                    const total = r.total ?? 0;
+                    const esParcial = total > 0 && pagado < total - 0.01;
+                    const fmtMX = (n: number) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(n);
+                    const monto = pagado > 0
+                      ? ` · ${fmtMX(pagado)}${esParcial ? ` (de ${fmtMX(total)})` : ""}`
                       : "";
                     return (
                       <option key={r.id} value={folio}>
@@ -2342,7 +2359,7 @@ export default function ProgramacionPage() {
   const [revolveList, setRevolveList] = useState<string[]>([]);
   const [obrasData, setObrasData] = useState<Obra[]>([]);
   const [rawClientesTransporte, setRawClientesTransporte] = useState<Cliente[]>([]);
-  const [recibosData, setRecibosData] = useState<{ id: string; receiptNumber: number; cliente: string; fecha: string; total?: number }[]>([]);
+  const [recibosData, setRecibosData] = useState<{ id: string; receiptNumber: number; cliente: string; fecha: string; total?: number; anticipo?: number }[]>([]);
   const [clientesSet, setClientesSet] = useState<Set<string>>(new Set());
   const [diaActivo, setDiaActivo] = useState(todayISO);
   const [viewMode, setViewMode] = useState<ViewMode>("dia");
@@ -2403,7 +2420,7 @@ export default function ProgramacionPage() {
     }).catch((err) => console.error("Error cargando datos estáticos:", err));
     getCollectionDocs<Obra>(COLLECTIONS.obras).then(setObrasData).catch(() => {});
     const yearAgo = new Date(); yearAgo.setFullYear(yearAgo.getFullYear() - 1);
-    getCollectionDocs<{ id: string; receiptNumber: number; cliente: string; fecha: string; total?: number }>(
+    getCollectionDocs<{ id: string; receiptNumber: number; cliente: string; fecha: string; total?: number; anticipo?: number }>(
       COLLECTIONS.remisiones,
       [where("fecha", ">=", yearAgo.toISOString().slice(0, 10))]
     ).then((docs) => setRecibosData(docs.filter((r) => r.receiptNumber != null))).catch(() => {});
