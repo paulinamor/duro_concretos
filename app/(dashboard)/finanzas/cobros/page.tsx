@@ -54,6 +54,8 @@ interface Prog {
   origenRecibo?: boolean;
   reciboId?: string;
   reciboFolio?: string;
+  recibo?: string;
+  recibos?: string[];
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -373,6 +375,7 @@ export default function CobrosPage() {
         isSuperAdmin={isSuperAdmin}
         solicitudesPagos={solicitudesPagos}
         onEditPago={setEditPago}
+        onDetallePago={(p) => { setSelected(p); setView("detail"); }}
         onEliminarPago={setPagoAElim}
         onAprobarpagosol={handleAprobarpagosol}
         onRechazarPagosol={handleRechazarPagosol}
@@ -529,7 +532,7 @@ function SaldarRemisionModal({
 function CuentaClienteView({
   clientesList, progs, pagos, todosRecibos, cuentaCliente, cuentaRecibos, cuentaRemisiones, cuentaLoading,
   cuentaTab, onSelectCliente, onCuentaTab, onNuevoPago, onSaldarRemision, onMerge,
-  isSuperAdmin, solicitudesPagos, onEditPago, onEliminarPago, onAprobarpagosol, onRechazarPagosol, onVincular,
+  isSuperAdmin, solicitudesPagos, onEditPago, onDetallePago, onEliminarPago, onAprobarpagosol, onRechazarPagosol, onVincular,
 }: {
   clientesList: ClienteDoc[];
   progs: Prog[];
@@ -548,12 +551,14 @@ function CuentaClienteView({
   isSuperAdmin: boolean;
   solicitudesPagos: SolicitudAutorizacion[];
   onEditPago: (p: Pago) => void;
+  onDetallePago: (p: Pago) => void;
   onEliminarPago: (p: Pago) => void;
   onAprobarpagosol: (sol: SolicitudAutorizacion) => Promise<void>;
   onRechazarPagosol: (sol: SolicitudAutorizacion) => Promise<void>;
   onVincular: (nombre: string, clienteId: string, newDoc?: ClienteDoc) => Promise<void>;
 }) {
   const [search, setSearch] = useState("");
+  const [saldoFilter, setSaldoFilter] = useState<"todos" | "pendiente" | "al_corriente" | "a_favor">("todos");
   const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
   const [mergeOpen, setMergeOpen] = useState(false);
   const [vincularOpen, setVincularOpen] = useState(false);
@@ -617,6 +622,13 @@ function CuentaClienteView({
   const totalPorCobrar = useMemo(() => clientesData.reduce((s, c) => s + c.saldo, 0), [clientesData]);
   const numConSaldo    = useMemo(() => clientesData.filter((c) => c.saldo > 0.01).length, [clientesData]);
 
+  const clientesDataFiltrados = useMemo(() => {
+    if (saldoFilter === "pendiente")    return clientesData.filter((c) => c.saldo > 0.01);
+    if (saldoFilter === "al_corriente") return clientesData.filter((c) => c.saldo <= 0.01 && c.saldo >= -0.01);
+    if (saldoFilter === "a_favor")      return clientesData.filter((c) => c.saldo < -0.01);
+    return clientesData;
+  }, [clientesData, saldoFilter]);
+
   // Datos del cliente seleccionado
   const clienteProgs = useMemo(() =>
     progs.filter((p) => norm(p.cliente) === norm(cuentaCliente) && !p.origenRecibo),
@@ -671,17 +683,36 @@ function CuentaClienteView({
           </div>
         </div>
 
-        {/* Buscador */}
-        <div className="relative">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar cliente…"
-            className="w-full pl-8 pr-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:border-[#CC2229]/60 bg-white" />
+        {/* Buscador + filtros */}
+        <div className="flex gap-3 items-center">
+          <div className="relative flex-1">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar cliente…"
+              className="w-full pl-8 pr-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:border-[#CC2229]/60 bg-white" />
+          </div>
+          <div className="flex gap-1.5">
+            {([
+              { key: "todos",        label: "Todos",        count: clientesData.length },
+              { key: "pendiente",    label: "Pendiente",    count: clientesData.filter((c) => c.saldo > 0.01).length },
+              { key: "al_corriente", label: "Al corriente", count: clientesData.filter((c) => c.saldo <= 0.01 && c.saldo >= -0.01).length },
+              { key: "a_favor",      label: "A favor",      count: clientesData.filter((c) => c.saldo < -0.01).length },
+            ] as const).map(({ key, label, count }) => (
+              <button key={key} onClick={() => setSaldoFilter(key)}
+                className={`px-3 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap border ${
+                  saldoFilter === key
+                    ? "bg-gray-100 border-gray-300 text-gray-900"
+                    : "bg-white border-gray-200 text-gray-400 hover:text-gray-600 hover:bg-gray-50"
+                }`}>
+                {label} ({count})
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Tabla de clientes */}
         <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-          {clientesData.length === 0 ? (
-            <p className="px-5 py-10 text-center text-sm text-gray-400">Sin clientes con actividad</p>
+          {clientesDataFiltrados.length === 0 ? (
+            <p className="px-5 py-10 text-center text-sm text-gray-400">Sin clientes en esta categoría</p>
           ) : (
             <table className="w-full text-sm">
               <thead>
@@ -695,7 +726,7 @@ function CuentaClienteView({
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {clientesData.map(({ nombre, numProgs, cartera, saldo: sd }) => (
+                {clientesDataFiltrados.map(({ nombre, numProgs, cartera, saldo: sd }) => (
                   <tr key={nombre} onClick={() => onSelectCliente(nombre)}
                     className={`hover:bg-gray-50 transition-colors cursor-pointer ${seleccionados.has(nombre) ? "bg-red-50/30" : ""}`}>
                     <td className="pl-4 pr-2 py-3.5" onClick={(e) => { e.stopPropagation(); toggleSel(nombre); }}>
@@ -925,23 +956,36 @@ function CuentaClienteView({
                         : <span className="bg-amber-50 border border-amber-200 text-amber-700 rounded-full px-2 py-0.5 text-[11px] font-semibold">Pendiente</span>}
                     </td>
                     <td className="px-4 py-3">
-                      {r.pagado
-                        ? <span className="bg-green-50 border border-green-200 text-green-700 rounded-full px-2 py-0.5 text-[11px] font-semibold">Saldada</span>
-                        : <span className="bg-red-50 border border-red-200 text-red-600 rounded-full px-2 py-0.5 text-[11px] font-semibold">Por cobrar</span>}
+                      {(() => {
+                        const progVinculada = r.programacionId ? progs.find((p) => p.id === r.programacionId) : undefined;
+                        const tieneRecibo = !!(progVinculada?.reciboFolio || progVinculada?.recibo || (progVinculada?.recibos?.length ?? 0) > 0);
+                        const saldadaPorProg = progVinculada ? (saldoPendiente(progVinculada) <= 0.01 || tieneRecibo) : false;
+                        const esSaldada = r.pagado || saldadaPorProg;
+                        return esSaldada
+                          ? <span className="bg-green-50 border border-green-200 text-green-700 rounded-full px-2 py-0.5 text-[11px] font-semibold">Saldada</span>
+                          : <span className="bg-red-50 border border-red-200 text-red-600 rounded-full px-2 py-0.5 text-[11px] font-semibold">Por cobrar</span>;
+                      })()}
                     </td>
                     <td className="px-4 py-3">
-                      {!r.pagado && r.monto && r.monto > 0 && (
-                        <button onClick={() => onSaldarRemision(r)}
-                          className="px-3 py-1.5 text-xs font-semibold text-white bg-[#CC2229] hover:bg-[#B01E24] rounded-lg transition-colors cursor-pointer">
-                          Saldar
-                        </button>
-                      )}
-                      {!r.pagado && (!r.monto || r.monto === 0) && (
-                        <span className="text-xs text-gray-400">Sin monto</span>
-                      )}
-                      {r.pagado && r.montoPagado && (
-                        <span className="text-xs text-green-700 font-medium">{currency(r.montoPagado)}</span>
-                      )}
+                      {(() => {
+                        const progVinculada = r.programacionId ? progs.find((p) => p.id === r.programacionId) : undefined;
+                        const tieneRecibo = !!(progVinculada?.reciboFolio || progVinculada?.recibo || (progVinculada?.recibos?.length ?? 0) > 0);
+                        const saldadaPorProg = progVinculada ? (saldoPendiente(progVinculada) <= 0.01 || tieneRecibo) : false;
+                        const esSaldada = r.pagado || saldadaPorProg;
+                        if (esSaldada) {
+                          const monto = r.montoPagado ?? progVinculada?.montoPagado ?? null;
+                          return monto ? <span className="text-xs text-green-700 font-medium">{currency(monto)}</span> : null;
+                        }
+                        if (r.monto && r.monto > 0) {
+                          return (
+                            <button onClick={() => onSaldarRemision(r)}
+                              className="px-3 py-1.5 text-xs font-semibold text-white bg-[#CC2229] hover:bg-[#B01E24] rounded-lg transition-colors cursor-pointer">
+                              Saldar
+                            </button>
+                          );
+                        }
+                        return <span className="text-xs text-gray-400">Sin monto</span>;
+                      })()}
                     </td>
                   </tr>
                 ))}
@@ -1046,6 +1090,7 @@ function CuentaClienteView({
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1 justify-end">
+                          <button onClick={() => onDetallePago(p)} className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer" title="Aplicar a programaciones"><ChevronRight size={13} /></button>
                           <button onClick={() => onEditPago(p)} className="p-1.5 text-gray-400 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer" title="Editar pago"><Pencil size={13} /></button>
                           <button onClick={() => onEliminarPago(p)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer" title="Eliminar pago"><Trash2 size={13} /></button>
                         </div>
@@ -1697,8 +1742,8 @@ function DetallePagoView({ pago, progs, onBack, onUpdated }: {
       </div>
 
       {/* Banner */}
-      <div className="bg-[#CC2229] rounded-2xl p-5">
-        <p className="text-[10px] text-white/60 font-semibold uppercase tracking-widest text-center mb-4">Pago a múltiples remisiones</p>
+      <div className="bg-[#1A1A1A] rounded-2xl p-5">
+        <p className="text-[10px] text-white/40 font-semibold uppercase tracking-widest text-center mb-4">Pago a múltiples remisiones</p>
         <div className="grid grid-cols-3 gap-4 text-center">
           {[
             { label: "Cantidad de abono", val: currency(pagoLocal.cantidad) },
@@ -1706,13 +1751,13 @@ function DetallePagoView({ pago, progs, onBack, onUpdated }: {
             { label: "Restante", val: currency(restante) },
           ].map((k) => (
             <div key={k.label}>
-              <p className="text-[10px] text-white/60 uppercase tracking-widest mb-1">{k.label}</p>
+              <p className="text-[10px] text-white/40 uppercase tracking-widest mb-1">{k.label}</p>
               <p className="text-2xl font-bold text-white">{k.val}</p>
             </div>
           ))}
         </div>
-        <div className="mt-4 bg-white/20 rounded-full h-1.5">
-          <div className="h-1.5 rounded-full bg-white transition-all" style={{ width: `${Math.min(pct, 100)}%` }} />
+        <div className="mt-4 bg-white/10 rounded-full h-1.5">
+          <div className="h-1.5 rounded-full bg-[#CC2229] transition-all" style={{ width: `${Math.min(pct, 100)}%` }} />
         </div>
       </div>
 
@@ -1775,7 +1820,7 @@ function DetallePagoView({ pago, progs, onBack, onUpdated }: {
           <div className="flex border-b border-gray-100">
             {(["pendientes", "pagadas"] as const).map((t) => (
               <button key={t} onClick={() => setRemTab(t)}
-                className={`flex-1 py-3 text-xs font-semibold transition-colors cursor-pointer capitalize ${remTab === t ? "bg-[#CC2229] text-white" : "text-gray-400 hover:bg-gray-50"}`}>
+                className={`flex-1 py-3 text-xs font-semibold transition-colors cursor-pointer capitalize ${remTab === t ? "bg-[#1A1A1A] text-white" : "text-gray-400 hover:bg-gray-50"}`}>
                 {t === "pendientes" ? `Pendientes (${pendientes.length})` : `Pagadas (${pagadas.length})`}
               </button>
             ))}
