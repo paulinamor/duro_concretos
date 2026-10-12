@@ -1446,11 +1446,12 @@ function NuevoPagoView({ clientesList, progs, prefillClienteId, prefillClienteNo
   const [fecha, setFecha]               = useState(todayCST());
   const [clienteId, setClienteId]       = useState(prefillClienteId ?? "");
   const [cliente, setCliente]           = useState(() => {
+    if (prefillClienteNombre) return norm(prefillClienteNombre);
     if (prefillClienteId) {
       const found = clientesList.find((c) => c.id === prefillClienteId);
       if (found) return norm(found.razonSocial);
     }
-    return prefillClienteNombre ? norm(prefillClienteNombre) : "";
+    return "";
   });
   const [cantidad, setCantidad]         = useState("");
   const [tipoPago, setTipoPago]         = useState("");
