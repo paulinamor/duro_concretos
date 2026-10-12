@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ArrowLeft, Building2, CheckCircle2, ChevronRight, GitMerge, Link2, Loader2, Pencil, Plus, Search, Shield, Trash2, X, XCircle } from "lucide-react";
 import type { SolicitudAutorizacion } from "@/lib/db";
 import type { ConcreteReceipt } from "@/lib/concreteReceipts";
@@ -1460,6 +1460,7 @@ function NuevoPagoView({ clientesList, progs, prefillClienteId, prefillClienteNo
   const [observaciones, setObservaciones] = useState("");
   const [saving, setSaving]             = useState(false);
   const [err, setErr]                   = useState("");
+  const [selProgs, setSelProgs]         = useState<Set<string>>(new Set());
 
   // Coladas pendientes del cliente seleccionado
   const progsCliente = useMemo(() => {
@@ -1469,13 +1470,32 @@ function NuevoPagoView({ clientesList, progs, prefillClienteId, prefillClienteNo
       .sort((a, b) => a.dia.localeCompare(b.dia));
   }, [progs, cliente]);
 
-  const totalPendiente = progsCliente.reduce((s, p) => s + saldoPendiente(p), 0);
+  // Al cambiar la lista de pendientes, seleccionar todas por defecto
+  const prevClienteRef = useRef("");
+  if (prevClienteRef.current !== cliente) {
+    prevClienteRef.current = cliente;
+    const allIds = new Set(progsCliente.map((p) => p.id));
+    setSelProgs(allIds);
+  }
+
+  const progsSeleccionadas = progsCliente.filter((p) => selProgs.has(p.id));
+  const totalSeleccionado  = progsSeleccionadas.reduce((s, p) => s + saldoPendiente(p), 0);
+  const totalPendiente     = progsCliente.reduce((s, p) => s + saldoPendiente(p), 0);
+
+  function toggleProg(id: string) {
+    setSelProgs((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
 
   function handleClienteChange(id: string) {
     setClienteId(id);
     const found = clientesList.find((c) => c.id === id);
     setCliente(found ? norm(found.razonSocial) : "");
     setCantidad("");
+    setSelProgs(new Set());
   }
 
   const needsBanco = tipoPago === "Transferencia" || tipoPago === "Cheque";
@@ -1549,26 +1569,51 @@ function NuevoPagoView({ clientesList, progs, prefillClienteId, prefillClienteNo
           </div>
         </div>
 
-        {/* Resumen saldo cliente */}
+        {/* Coladas pendientes — seleccionables */}
         {cliente && progsCliente.length > 0 && (
-          <div className="rounded-xl bg-amber-50 border border-amber-100 px-4 py-3 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-semibold text-amber-700">{progsCliente.length} colada{progsCliente.length !== 1 ? "s" : ""} pendiente{progsCliente.length !== 1 ? "s" : ""}</p>
-              <p className="text-xs text-amber-600 mt-0.5">
-                {progsCliente.map((p) => p.reciboFolio || p.folio || p.id.slice(-6)).join(", ")}
-              </p>
+          <div className="rounded-xl border border-amber-100 overflow-hidden">
+            <div className="bg-amber-50 px-4 py-2.5 flex items-center justify-between border-b border-amber-100">
+              <div className="flex items-center gap-2">
+                <input type="checkbox"
+                  checked={selProgs.size === progsCliente.length}
+                  ref={(el) => { if (el) el.indeterminate = selProgs.size > 0 && selProgs.size < progsCliente.length; }}
+                  onChange={() => setSelProgs(selProgs.size === progsCliente.length ? new Set() : new Set(progsCliente.map((p) => p.id)))}
+                  className="w-3.5 h-3.5 accent-amber-600 cursor-pointer" />
+                <p className="text-xs font-semibold text-amber-700">
+                  {progsCliente.length} colada{progsCliente.length !== 1 ? "s" : ""} pendiente{progsCliente.length !== 1 ? "s" : ""}
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <p className="text-xs text-amber-600 font-medium">{selProgs.size} seleccionada{selProgs.size !== 1 ? "s" : ""} · {currency(totalSeleccionado)}</p>
+                {totalSeleccionado > 0 && (
+                  <button type="button" onClick={() => setCantidad(totalSeleccionado.toFixed(2))}
+                    className="text-[11px] font-semibold text-amber-700 underline cursor-pointer">
+                    Usar monto
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="text-right">
-              <p className="text-xs text-amber-600">Saldo total</p>
-              <p className="text-lg font-bold text-amber-700">{currency(totalPendiente)}</p>
-              <button
-                type="button"
-                onClick={() => setCantidad(totalPendiente.toFixed(2))}
-                className="text-[11px] text-amber-700 underline cursor-pointer mt-0.5"
-              >
-                Usar este monto
-              </button>
-            </div>
+            <ul className="divide-y divide-amber-50 bg-white max-h-48 overflow-y-auto">
+              {progsCliente.map((p) => {
+                const sp = saldoPendiente(p);
+                return (
+                  <li key={p.id} onClick={() => toggleProg(p.id)}
+                    className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${selProgs.has(p.id) ? "bg-amber-50/60" : "hover:bg-gray-50"}`}>
+                    <input type="checkbox" checked={selProgs.has(p.id)} onChange={() => toggleProg(p.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-3.5 h-3.5 accent-amber-600 cursor-pointer shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-gray-700">{p.reciboFolio || p.folio || p.id.slice(-6)}</p>
+                      {p.nombreObra && <p className="text-[11px] text-gray-400 truncate">{p.nombreObra}</p>}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-xs font-bold text-amber-700">{currency(sp)}</p>
+                      <p className="text-[11px] text-gray-400">{fmtDate(p.dia)}</p>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         )}
         {cliente && progsCliente.length === 0 && (
