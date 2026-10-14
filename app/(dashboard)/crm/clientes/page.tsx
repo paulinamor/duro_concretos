@@ -1023,7 +1023,7 @@ export default function CrmClientesPage() {
                       <td className="px-4 py-3">
                         {c.limiteCredito > 0 ? (
                           <div>
-                            <p className="text-gray-300 text-sm whitespace-nowrap">${c.limiteCredito.toLocaleString()}</p>
+                            <p className="text-gray-300 text-sm whitespace-nowrap">${(c.limiteCredito ?? 0).toLocaleString()}</p>
                             <div className="mt-1 h-1 w-20 rounded-full bg-[#1A1A1A] overflow-hidden">
                               <div className={`h-full rounded-full ${pct > 90 ? "bg-red-500" : pct > 70 ? "bg-amber-500" : "bg-emerald-500"}`} style={{ width: `${Math.min(pct, 100)}%` }} />
                             </div>
@@ -1033,9 +1033,9 @@ export default function CrmClientesPage() {
                         )}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
-                        <span className={`text-sm font-semibold ${c.saldoPendiente > 0 ? "text-amber-300" : "text-green-400"}`}>${c.saldoPendiente.toLocaleString()}</span>
+                        <span className={`text-sm font-semibold ${(c.saldoPendiente ?? 0) > 0 ? "text-amber-300" : "text-green-400"}`}>${(c.saldoPendiente ?? 0).toLocaleString()}</span>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap"><StatusBadge status={c.estatus.toLowerCase()} /></td>
+                      <td className="px-4 py-3 whitespace-nowrap"><StatusBadge status={(c.estatus ?? "activo").toLowerCase()} /></td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                           <button onClick={() => openEdit(c)} className="rounded-lg p-2 text-gray-400 hover:bg-[#1A1A1A] hover:text-white transition-colors" aria-label={`Editar ${c.razonSocial}`}>
@@ -1073,7 +1073,7 @@ export default function CrmClientesPage() {
 
             <div className="p-6 space-y-6">
               <div className="flex flex-wrap items-center gap-2">
-                <StatusBadge status={detail.estatus.toLowerCase()} />
+                <StatusBadge status={(detail.estatus ?? "activo").toLowerCase()} />
                 <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${tipoBadge[detail.tipoCliente]}`}>{detail.tipoCliente}</span>
                 <span className="text-gray-500 text-xs ml-auto">Alta: {detail.fechaAlta}</span>
               </div>
@@ -1100,8 +1100,8 @@ export default function CrmClientesPage() {
                 <p className="text-xs font-extrabold uppercase tracking-wider text-gray-500 mb-3">Información comercial</p>
                 <div className="rounded-xl border border-[#3A3A3A] bg-[#111318] p-4 space-y-3">
                   <div className="grid grid-cols-2 gap-3">
-                    <StatBox label="Compras año" value={`$${detail.totalComprasAnio.toLocaleString()}`} color="text-white" />
-                    <StatBox label="m3 acumulados" value={`${detail.m3Acumulados.toLocaleString()} m3`} color="text-blue-300" />
+                    <StatBox label="Compras año" value={`$${(detail.totalComprasAnio ?? 0).toLocaleString()}`} color="text-white" />
+                    <StatBox label="m3 acumulados" value={`${(detail.m3Acumulados ?? 0).toLocaleString()} m3`} color="text-blue-300" />
                     <StatBox label="Última compra" value={detail.ultimaCompra} color="text-gray-300" />
                     <StatBox label="Vendedor" value={detail.vendedorAsignado} color="text-gray-300" />
                   </div>
@@ -1113,8 +1113,8 @@ export default function CrmClientesPage() {
                   <p className="text-xs font-extrabold uppercase tracking-wider text-gray-500 mb-3">Crédito</p>
                   <div className="rounded-xl border border-[#3A3A3A] bg-[#111318] p-4 space-y-3">
                     <div className="grid grid-cols-2 gap-3">
-                      <StatBox label="Límite de crédito" value={`$${detail.limiteCredito.toLocaleString()}`} color="text-white" />
-                      <StatBox label="Saldo pendiente" value={`$${detail.saldoPendiente.toLocaleString()}`} color={detail.saldoPendiente > 0 ? "text-amber-300" : "text-green-400"} />
+                      <StatBox label="Límite de crédito" value={`$${(detail.limiteCredito ?? 0).toLocaleString()}`} color="text-white" />
+                      <StatBox label="Saldo pendiente" value={`$${(detail.saldoPendiente ?? 0).toLocaleString()}`} color={(detail.saldoPendiente ?? 0) > 0 ? "text-amber-300" : "text-green-400"} />
                       <StatBox label="Días de crédito" value={`${detail.diasCredito} días`} color="text-gray-300" />
                       <StatBox label="% utilizado" value={`${creditoUtilizado(detail)}%`} color={creditoUtilizado(detail) > 90 ? "text-red-400" : "text-gray-300"} />
                     </div>
