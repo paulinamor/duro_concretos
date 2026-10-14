@@ -745,7 +745,7 @@ export default function CrmClientesPage() {
   const totalActivos = clientes.filter((c) => c.estatus === "Activo").length;
   const totalCarteraAnio = clientes.reduce((sum, c) => sum + c.totalComprasAnio, 0);
   const totalSaldoPendiente = clientes.reduce((sum, c) => sum + c.saldoPendiente, 0);
-  const nuevosEsteAnio = clientes.filter((c) => c.fechaAlta.startsWith("2026")).length;
+  const nuevosEsteAnio = clientes.filter((c) => c.fechaAlta?.startsWith("2026")).length;
 
   function openCreate() { setSaveError(""); setEditing(null); setShowForm(true); }
   function openEdit(c: Cliente) { setSaveError(""); setDetail(null); setEditing(c); setShowForm(true); }
