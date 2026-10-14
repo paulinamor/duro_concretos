@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ArrowLeft, Building2, CheckCircle2, ChevronRight, GitMerge, Link2, Loader2, Pencil, Plus, Search, Shield, Trash2, X, XCircle } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronRight, GitMerge, Link2, Loader2, Pencil, Plus, Search, Shield, Trash2, X, XCircle } from "lucide-react";
 import type { SolicitudAutorizacion } from "@/lib/db";
 import type { ConcreteReceipt } from "@/lib/concreteReceipts";
 import { calculateConcreteReceiptTotal } from "@/lib/concreteReceipts";
@@ -1470,17 +1470,13 @@ function NuevoPagoView({ clientesList, progs, prefillClienteId, prefillClienteNo
       .sort((a, b) => a.dia.localeCompare(b.dia));
   }, [progs, cliente]);
 
-  // Al cambiar la lista de pendientes, seleccionar todas por defecto
-  const prevClienteRef = useRef("");
-  if (prevClienteRef.current !== cliente) {
-    prevClienteRef.current = cliente;
-    const allIds = new Set(progsCliente.map((p) => p.id));
-    setSelProgs(allIds);
-  }
+  // Al cambiar el cliente, seleccionar todas las coladas por defecto
+  useEffect(() => {
+    setSelProgs(new Set(progsCliente.map((p) => p.id)));
+  }, [cliente]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const progsSeleccionadas = progsCliente.filter((p) => selProgs.has(p.id));
   const totalSeleccionado  = progsSeleccionadas.reduce((s, p) => s + saldoPendiente(p), 0);
-  const totalPendiente     = progsCliente.reduce((s, p) => s + saldoPendiente(p), 0);
 
   function toggleProg(id: string) {
     setSelProgs((prev) => {
