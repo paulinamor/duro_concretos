@@ -35,10 +35,11 @@ import {
   type EstatusCliente,
   type TipoCliente,
 } from "@/lib/crmClientes";
-import { COLLECTIONS, deleteDocument, getCollectionDocs, upsertDocument, where, orderBy, limit } from "@/lib/db";
+import { COLLECTIONS, deleteDocument, getCollectionDocs, upsertDocument, where, orderBy, limit, type SolicitudAutorizacion } from "@/lib/db";
 import { currency } from "@/lib/formatters";
 import { todayCST } from "@/lib/dateUtils";
 import { matchesQuery } from "@/lib/search";
+import { getStoredSession } from "@/lib/auth";
 
 const DEDUP_STARTED_KEY = "duro_dedup_started_ts";
 const DEDUP_DONE_KEY = "duro_dedup_done_ts";
@@ -136,6 +137,7 @@ interface ClienteForm {
   saldoPendiente: string;
   estatus: EstatusCliente;
   notas: string;
+  regimenFiscal: string;
 }
 
 function emptyForm(): ClienteForm {
@@ -145,6 +147,7 @@ function emptyForm(): ClienteForm {
     telefono: "", email: "", tipoCliente: "Constructora",
     vendedorAsignado: "", calificacion: "B", diasCredito: "30",
     limiteCredito: "0", saldoPendiente: "0", estatus: "Activo", notas: "",
+    regimenFiscal: "",
   };
 }
 
@@ -170,6 +173,7 @@ function fromCliente(c: Cliente): ClienteForm {
     saldoPendiente: c.saldoPendiente ? String(c.saldoPendiente) : "0",
     estatus: c.estatus ?? "Activo",
     notas: c.notas ?? "",
+    regimenFiscal: c.regimenFiscal ?? "",
   };
 }
 
@@ -274,6 +278,18 @@ function ClienteDrawer({ open, editing, onClose, onSave, errorMsg, vendedoresLis
               <div>
                 <label className={lbl}>RFC <span className="text-gray-400 normal-case text-[9px] font-normal">(opcional)</span></label>
                 <input type="text" value={form.rfc} onChange={(e) => set("rfc", e.target.value.toUpperCase())} placeholder="RFC" className={`${inp} uppercase`} />
+              </div>
+              <div>
+                <label className={lbl}>Régimen fiscal <span className="text-gray-400 normal-case text-[9px] font-normal">(SAT)</span></label>
+                <select value={form.regimenFiscal} onChange={(e) => set("regimenFiscal", e.target.value)} className={inp}>
+                  <option value="">Sin especificar</option>
+                  <option value="601">601 — General de Ley Personas Morales</option>
+                  <option value="603">603 — Personas Morales sin fines de lucro</option>
+                  <option value="612">612 — Personas Físicas con Actividades Emp.</option>
+                  <option value="616">616 — Sin obligaciones fiscales</option>
+                  <option value="621">621 — Incorporación Fiscal</option>
+                  <option value="626">626 — RESICO</option>
+                </select>
               </div>
             </div>
           </div>
@@ -407,6 +423,11 @@ function ClienteDrawer({ open, editing, onClose, onSave, errorMsg, vendedoresLis
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function CrmClientesPage() {
+  const [session, setSession] = useState<ReturnType<typeof getStoredSession>>(null);
+  const isAdmin = session?.role === "admin";
+
+  useEffect(() => { setSession(getStoredSession()); }, []);
+
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingLong, setLoadingLong] = useState(false);
@@ -772,6 +793,36 @@ export default function CrmClientesPage() {
     );
     if (isDuplicateName) return "Ya existe un cliente con esa razón social.";
 
+    // Non-admin creating a NEW client → send solicitud instead of saving directly
+    if (!isAdmin && !editing) {
+      const sol: Omit<SolicitudAutorizacion, "id"> = {
+        tipo: "nuevo_cliente",
+        clienteData: {
+          razonSocial,
+          nombreComercial: f.nombreComercial || razonSocial,
+          rfc,
+          domicilio: f.domicilio, colonia: f.colonia, municipio: f.municipio,
+          estado: f.estado || "Nuevo León", cp: f.cp,
+          contacto, cargo: f.cargo, telefono: f.telefono, email: f.email,
+          tipoCliente: f.tipoCliente,
+          vendedorAsignado: f.vendedorAsignado.toUpperCase().trim(),
+          limiteCredito: 0, saldoPendiente: 0, diasCredito: Number(f.diasCredito ?? 30),
+          ultimaCompra: "—", totalComprasAnio: 0, m3Acumulados: 0,
+          estatus: "Activo", calificacion: "B", fechaAlta: todayCST(), notas: f.notas,
+        },
+        motivo: `Solicitud de registro de cliente desde CRM. Solicitante: ${session?.name ?? session?.email ?? "—"}.`,
+        solicitanteNombre: session?.name ?? "—",
+        solicitanteEmail: session?.email ?? "—",
+        status: "pendiente",
+        creadoEn: new Date().toISOString(),
+      };
+      await upsertDocument(COLLECTIONS.solicitudesAutorizacion, `sol-cl-${Date.now()}`, sol as Record<string, unknown>);
+      window.dispatchEvent(new CustomEvent("duro:toast", {
+        detail: { type: "info", title: "Solicitud enviada", message: `El registro de ${razonSocial} está pendiente de autorización.` },
+      }));
+      return;
+    }
+
     const id = editing?.id ?? `CL-${Date.now()}`;
     const next: Cliente = {
       id,
@@ -799,6 +850,7 @@ export default function CrmClientesPage() {
       calificacion: f.calificacion,
       fechaAlta: editing?.fechaAlta ?? todayCST(),
       notas: f.notas,
+      regimenFiscal: f.regimenFiscal.trim() || undefined,
     };
 
     setClientes((current) =>

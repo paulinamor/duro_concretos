@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   AlertCircle, AlertTriangle, CheckCircle2, Clock, Download,
   Loader2, RefreshCw, Route, Search, Truck, X,
@@ -39,10 +39,12 @@ type ChoferResult = {
   cycle?: TripCycle;
   status: "ok" | "leve" | "tardanza" | "sin_gps" | "sin_prog";
   error?: string;
+  duracionMin?: number; // horaSalida → horaSalidaObra in minutes
 };
 
 type ProgResult = {
   progId: string;
+  dia: string;
   cliente: string;
   obra: string;
   direccion: string;
@@ -76,6 +78,27 @@ function deltaLabel(min?: number): string {
   return `${sign}${abs} min`;
 }
 
+function hhmToMin(hhmm: string): number | null {
+  if (!hhmm || !hhmm.includes(":")) return null;
+  const [h, m] = hhmm.split(":").map(Number);
+  if (isNaN(h) || isNaN(m)) return null;
+  return h * 60 + m;
+}
+
+function fmtDuracion(min?: number): string {
+  if (min == null || min <= 0) return "—";
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+function calcDuracionViaje(horaSalida: string, horaSalidaObra: string): number | undefined {
+  const s = hhmToMin(horaSalida);
+  const e = hhmToMin(horaSalidaObra);
+  if (s == null || e == null || e <= s) return undefined;
+  return e - s;
+}
+
 function statusFromDeltas(choferes: ChoferResult[]): ChoferResult["status"] {
   if (choferes.every((c) => c.status === "sin_gps")) return "sin_gps";
   const maxDelta = Math.max(...choferes.flatMap((c) =>
@@ -96,130 +119,175 @@ const STATUS_ICON = {
 };
 const STATUS_LABEL = { ok: "A tiempo", leve: "Leve retraso", tardanza: "Tardanza", sin_gps: "Sin GPS hoy", sin_prog: "Sin programación" };
 
+async function analizarDia(
+  date: string,
+  gpsEnabled: boolean,
+): Promise<ProgResult[]> {
+  const progs = await getCollectionDocs<Programacion>(COLLECTIONS.programaciones, [
+    where("dia", "==", date),
+  ]);
+
+  if (progs.length === 0) return [];
+
+  const gpsMap = new Map<string, TripCycle[]>();
+
+  if (gpsEnabled) {
+    const crNames = [...new Set(progs.flatMap((p) => p.choferes?.map((c) => c.cr).filter(Boolean) ?? []))];
+    const vRes  = await fetch("/api/samsara?endpoint=%2Ffleet%2Fvehicles");
+    const vData = vRes.ok ? await vRes.json() : { data: [] };
+    type SamsVeh = { id: string; name: string };
+    const vByName = new Map<string, SamsVeh>((vData.data as SamsVeh[] ?? []).map((v: SamsVeh) => [v.name.trim().toLowerCase(), v]));
+
+    const dayStart = new Date(`${date}T00:00:00`).toISOString();
+    const dayEnd   = new Date(`${date}T23:59:59`).toISOString();
+    const ep       = encodeURIComponent("/fleet/vehicles/stats/history");
+    type GpsPoint  = { latitude: number; longitude: number; time: string; speedMilesPerHour?: number; reverseGeo?: { formattedLocation?: string } };
+    type VehGps    = { id: string; gps?: GpsPoint[] };
+
+    await Promise.allSettled(
+      crNames.map(async (cr) => {
+        const veh = vByName.get(cr.trim().toLowerCase());
+        if (!veh) return;
+        const res  = await fetch(`/api/samsara?endpoint=${ep}&types=gps&vehicleIds=${veh.id}&startTime=${encodeURIComponent(dayStart)}&endTime=${encodeURIComponent(dayEnd)}&limit=500`);
+        const json = res.ok ? await res.json() : {};
+        const vData2 = (json.data as VehGps[] ?? []).find((d) => d.id === veh.id);
+        const pts = (vData2?.gps ?? [])
+          .map((p) => ({ lat: p.latitude, lng: p.longitude, time: p.time, address: p.reverseGeo?.formattedLocation, speedMph: p.speedMilesPerHour ?? 0 }))
+          .filter((p) => typeof p.lat === "number" && typeof p.lng === "number");
+        gpsMap.set(cr.trim().toLowerCase(), detectCycles(pts));
+      })
+    );
+  }
+
+  return progs.map((p) => {
+    const choferes: ChoferResult[] = (p.choferes ?? []).map((c, idx) => {
+      const duracionMin = calcDuracionViaje(c.horaSalida, c.horaSalidaObra);
+
+      if (!gpsEnabled) {
+        return {
+          choferName: c.chofer, cr: c.cr, m3: c.m3,
+          salida:     { scheduled: c.horaSalida },
+          llegada:    { scheduled: c.horaLlegadaObra },
+          salidaObra: { scheduled: c.horaSalidaObra },
+          status: "sin_gps" as const,
+          duracionMin,
+        };
+      }
+
+      const key    = c.cr?.trim().toLowerCase() ?? "";
+      const cycles = gpsMap.get(key);
+      const cycle  = cycles?.[idx] ?? cycles?.[0];
+
+      if (!cycles) {
+        return {
+          choferName: c.chofer, cr: c.cr, m3: c.m3,
+          salida:     { scheduled: c.horaSalida },
+          llegada:    { scheduled: c.horaLlegadaObra },
+          salidaObra: { scheduled: c.horaSalidaObra },
+          status: "sin_gps" as const,
+          duracionMin,
+        };
+      }
+
+      const calcDelta = (scheduled: string, actual?: string): Delta => {
+        const sISO = scheduledToISO(date, scheduled);
+        if (!actual || !sISO) return { scheduled };
+        const dm = minutesDiff(sISO, actual);
+        return { scheduled, actual, deltaMin: dm };
+      };
+
+      const salida    = calcDelta(c.horaSalida,       cycle?.departureTime);
+      const llegada   = calcDelta(c.horaLlegadaObra,  cycle?.obraArrival);
+      const salidaObra = calcDelta(c.horaSalidaObra,  cycle?.obraDeparture);
+
+      const deltas = [salida.deltaMin, llegada.deltaMin, salidaObra.deltaMin].filter((d): d is number => d != null);
+      const maxD   = deltas.length ? Math.max(...deltas) : 0;
+      const status: ChoferResult["status"] = maxD > 30 ? "tardanza" : maxD > 15 ? "leve" : "ok";
+
+      return { choferName: c.chofer, cr: c.cr, m3: c.m3, salida, llegada, salidaObra, cycle, status, duracionMin };
+    });
+
+    return { progId: p.id ?? "", dia: date, cliente: p.cliente, obra: p.nombreObra ?? "—", direccion: p.direccion, choferes };
+  });
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function VerificacionViajesPage() {
-  const [date,    setDate]    = useState(todayISO());
-  const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState<ProgResult[] | null>(null);
-  const [error,   setError]   = useState("");
-  const [search,  setSearch]  = useState("");
+  const [startDate, setStartDate] = useState(todayISO());
+  const [endDate,   setEndDate]   = useState(todayISO());
+  const [loading,   setLoading]   = useState(false);
+  const [results,   setResults]   = useState<ProgResult[] | null>(null);
+  const [error,     setError]     = useState("");
+  const [search,    setSearch]    = useState("");
+  const [filtroOp,  setFiltroOp]  = useState("Todos");
+  const [filtroCR,  setFiltroCR]  = useState("Todos");
+
+  const isSingleDay = startDate === endDate;
 
   const run = useCallback(async () => {
     setLoading(true); setError(""); setResults(null);
     try {
-      // 1. Load programaciones for selected date
-      const progs = await getCollectionDocs<Programacion>(COLLECTIONS.programaciones, [
-        where("dia", "==", date),
-      ]);
-
-      if (progs.length === 0) {
-        setResults([]);
-        return;
+      const dates: string[] = [];
+      const cur = new Date(startDate + "T00:00:00");
+      const end = new Date(endDate   + "T00:00:00");
+      while (cur <= end && dates.length < 31) {
+        dates.push(cur.toISOString().slice(0, 10));
+        cur.setDate(cur.getDate() + 1);
       }
 
-      // 2. Collect unique CR names
-      const crNames = [...new Set(progs.flatMap((p) => p.choferes?.map((c) => c.cr).filter(Boolean) ?? []))];
-
-      // 3. Fetch Samsara vehicle list to get IDs by name
-      const vRes  = await fetch("/api/samsara?endpoint=%2Ffleet%2Fvehicles");
-      const vData = vRes.ok ? await vRes.json() : { data: [] };
-      type SamsVeh = { id: string; name: string };
-      const vByName = new Map<string, SamsVeh>((vData.data as SamsVeh[] ?? []).map((v: SamsVeh) => [v.name.trim().toLowerCase(), v]));
-
-      // 4. Fetch GPS history for each relevant vehicle in parallel
-      const dayStart = new Date(`${date}T00:00:00`).toISOString();
-      const dayEnd   = new Date(`${date}T23:59:59`).toISOString();
-      const ep       = encodeURIComponent("/fleet/vehicles/stats/history");
-
-      type GpsPoint  = { latitude: number; longitude: number; time: string; speedMilesPerHour?: number; reverseGeo?: { formattedLocation?: string } };
-      type VehGps    = { id: string; gps?: GpsPoint[] };
-
-      const gpsMap = new Map<string, TripCycle[]>();
-
-      await Promise.allSettled(
-        crNames.map(async (cr) => {
-          const veh = vByName.get(cr.trim().toLowerCase());
-          if (!veh) return;
-          const res  = await fetch(`/api/samsara?endpoint=${ep}&types=gps&vehicleIds=${veh.id}&startTime=${encodeURIComponent(dayStart)}&endTime=${encodeURIComponent(dayEnd)}&limit=500`);
-          const json = res.ok ? await res.json() : {};
-          const vData2 = (json.data as VehGps[] ?? []).find((d) => d.id === veh.id);
-          const pts = (vData2?.gps ?? [])
-            .map((p) => ({ lat: p.latitude, lng: p.longitude, time: p.time, address: p.reverseGeo?.formattedLocation, speedMph: p.speedMilesPerHour ?? 0 }))
-            .filter((p) => typeof p.lat === "number" && typeof p.lng === "number");
-          gpsMap.set(cr.trim().toLowerCase(), detectCycles(pts));
-        })
-      );
-
-      // 5. Cross-reference
-      const out: ProgResult[] = progs.map((p) => {
-        const choferes: ChoferResult[] = (p.choferes ?? []).map((c, idx) => {
-          const key    = c.cr?.trim().toLowerCase() ?? "";
-          const cycles = gpsMap.get(key);
-          const cycle  = cycles?.[idx] ?? cycles?.[0];
-
-          if (!cycles) {
-            return {
-              choferName: c.chofer, cr: c.cr, m3: c.m3,
-              salida:     { scheduled: c.horaSalida },
-              llegada:    { scheduled: c.horaLlegadaObra },
-              salidaObra: { scheduled: c.horaSalidaObra },
-              status: "sin_gps" as const,
-            };
-          }
-
-          const calcDelta = (scheduled: string, actual?: string): Delta => {
-            const sISO = scheduledToISO(date, scheduled);
-            if (!actual || !sISO) return { scheduled };
-            const dm = minutesDiff(sISO, actual);
-            return { scheduled, actual, deltaMin: dm };
-          };
-
-          const salida    = calcDelta(c.horaSalida,    cycle?.departureTime);
-          const llegada   = calcDelta(c.horaLlegadaObra, cycle?.obraArrival);
-          const salidaObra = calcDelta(c.horaSalidaObra,  cycle?.obraDeparture);
-
-          const deltas = [salida.deltaMin, llegada.deltaMin, salidaObra.deltaMin].filter((d): d is number => d != null);
-          const maxD   = deltas.length ? Math.max(...deltas) : 0;
-          const status: ChoferResult["status"] = maxD > 30 ? "tardanza" : maxD > 15 ? "leve" : "ok";
-
-          return { choferName: c.chofer, cr: c.cr, m3: c.m3, salida, llegada, salidaObra, cycle, status };
-        });
-
-        return {
-          progId:    p.id ?? "",
-          cliente:   p.cliente,
-          obra:      p.nombreObra ?? "—",
-          direccion: p.direccion,
-          choferes,
-        };
-      });
-
-      setResults(out);
+      const all = await Promise.all(dates.map((d) => analizarDia(d, isSingleDay)));
+      setResults(all.flat());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error al cargar datos");
     } finally {
       setLoading(false);
     }
-  }, [date]);
+  }, [startDate, endDate, isSingleDay]);
 
-  const filtered = (results ?? []).filter((r) => {
-    const q = search.trim().toLowerCase();
-    return !q || r.cliente.toLowerCase().includes(q) || r.obra.toLowerCase().includes(q)
-      || r.choferes.some((c) => c.cr.toLowerCase().includes(q) || c.choferName.toLowerCase().includes(q));
-  });
+  // Build filter options from results
+  const { operadores, crs } = useMemo(() => {
+    if (!results) return { operadores: [], crs: [] };
+    const ops = [...new Set(results.flatMap((r) => r.choferes.map((c) => c.choferName).filter(Boolean)))].sort();
+    const crs = [...new Set(results.flatMap((r) => r.choferes.map((c) => c.cr).filter(Boolean)))].sort();
+    return { operadores: ops, crs };
+  }, [results]);
 
-  const allChoferes = filtered.flatMap((r) => r.choferes);
+  const filtered = useMemo(() => {
+    if (!results) return [];
+    return results
+      .map((r) => {
+        let choferes = r.choferes;
+        if (filtroOp !== "Todos") choferes = choferes.filter((c) => c.choferName === filtroOp);
+        if (filtroCR !== "Todos") choferes = choferes.filter((c) => c.cr === filtroCR);
+        return { ...r, choferes };
+      })
+      .filter((r) => {
+        if (r.choferes.length === 0) return false;
+        const q = search.trim().toLowerCase();
+        return !q || r.cliente.toLowerCase().includes(q) || r.obra.toLowerCase().includes(q)
+          || r.choferes.some((c) => c.cr.toLowerCase().includes(q) || c.choferName.toLowerCase().includes(q));
+      });
+  }, [results, filtroOp, filtroCR, search]);
+
+  const allChoferes  = filtered.flatMap((r) => r.choferes);
   const countOk      = allChoferes.filter((c) => c.status === "ok").length;
   const countLeve    = allChoferes.filter((c) => c.status === "leve").length;
   const countTardanza = allChoferes.filter((c) => c.status === "tardanza").length;
   const countSinGps  = allChoferes.filter((c) => c.status === "sin_gps").length;
+  const totalM3      = allChoferes.reduce((s, c) => s + (c.m3 ?? 0), 0);
+  const avgDurMin    = (() => {
+    const withDur = allChoferes.filter((c) => c.duracionMin != null && c.duracionMin > 0);
+    if (!withDur.length) return null;
+    return Math.round(withDur.reduce((s, c) => s + (c.duracionMin ?? 0), 0) / withDur.length);
+  })();
 
   const exportCsv = () => {
     if (!results) return;
-    const headers = ["Cliente","Obra","Dirección","Conductor","CR","m³","Salida prog","Salida real","Δ salida","Llegada obra prog","Llegada obra real","Δ llegada","Salida obra prog","Salida obra real","Δ salida obra","Estado"];
-    const rows = results.flatMap((r) => r.choferes.map((c) => [
-      r.cliente, r.obra, r.direccion, c.choferName, c.cr, c.m3 ?? "",
+    const headers = ["Fecha","Cliente","Obra","Dirección","Conductor","CR","m³","Duración viaje","Salida prog","Salida real","Δ salida","Llegada obra prog","Llegada obra real","Δ llegada","Salida obra prog","Salida obra real","Δ salida obra","Estado"];
+    const rows = filtered.flatMap((r) => r.choferes.map((c) => [
+      r.dia, r.cliente, r.obra, r.direccion, c.choferName, c.cr, c.m3 ?? "",
+      c.duracionMin != null ? fmtDuracion(c.duracionMin) : "",
       c.salida.scheduled, c.salida.actual ? fmtHHMM(c.salida.actual) : "", c.salida.deltaMin != null ? c.salida.deltaMin : "",
       c.llegada.scheduled, c.llegada.actual ? fmtHHMM(c.llegada.actual) : "", c.llegada.deltaMin != null ? c.llegada.deltaMin : "",
       c.salidaObra.scheduled, c.salidaObra.actual ? fmtHHMM(c.salidaObra.actual) : "", c.salidaObra.deltaMin != null ? c.salidaObra.deltaMin : "",
@@ -228,9 +296,11 @@ export default function VerificacionViajesPage() {
     const csv  = [headers, ...rows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
     const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
     const url  = URL.createObjectURL(blob);
-    Object.assign(document.createElement("a"), { href: url, download: `verificacion_${date}.csv` }).click();
+    Object.assign(document.createElement("a"), { href: url, download: `verificacion_${startDate}_${endDate}.csv` }).click();
     URL.revokeObjectURL(url);
   };
+
+  const selCls = "rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#CC2229]/20 focus:border-[#CC2229]/40 bg-white cursor-pointer";
 
   return (
     <div className="min-h-screen bg-slate-50 p-6">
@@ -248,40 +318,49 @@ export default function VerificacionViajesPage() {
       {/* Controls */}
       <div className="bg-white rounded-2xl border border-slate-200 p-4 mb-5 flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
-          <label className="text-xs font-semibold text-slate-500 whitespace-nowrap">Fecha</label>
-          <input
-            type="date"
-            value={date}
-            max={todayISO()}
-            onChange={(e) => setDate(e.target.value)}
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#CC2229]/20 focus:border-[#CC2229]/40"
-          />
+          <label className="text-xs font-semibold text-slate-500 whitespace-nowrap">Desde</label>
+          <input type="date" value={startDate} max={todayISO()} onChange={(e) => setStartDate(e.target.value)}
+            className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#CC2229]/20 focus:border-[#CC2229]/40" />
         </div>
-        <button
-          onClick={run}
-          disabled={loading}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#CC2229] text-white text-sm font-semibold hover:bg-[#b01e24] cursor-pointer disabled:opacity-50 transition-colors"
-        >
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-semibold text-slate-500 whitespace-nowrap">Hasta</label>
+          <input type="date" value={endDate} min={startDate} max={todayISO()} onChange={(e) => setEndDate(e.target.value)}
+            className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#CC2229]/20 focus:border-[#CC2229]/40" />
+        </div>
+        {!isSingleDay && (
+          <span className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1">
+            Rango: solo programaciones (sin GPS)
+          </span>
+        )}
+        <button onClick={run} disabled={loading}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#CC2229] text-white text-sm font-semibold hover:bg-[#b01e24] cursor-pointer disabled:opacity-50 transition-colors">
           {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
           {loading ? "Analizando…" : "Cargar"}
         </button>
 
         {results && (
-          <div className="flex items-center gap-2 ml-auto">
+          <div className="flex flex-wrap items-center gap-2 ml-auto">
+            {operadores.length > 0 && (
+              <select value={filtroOp} onChange={(e) => setFiltroOp(e.target.value)} className={selCls}>
+                <option value="Todos">Todos operadores</option>
+                {operadores.map((o) => <option key={o} value={o}>{o}</option>)}
+              </select>
+            )}
+            {crs.length > 0 && (
+              <select value={filtroCR} onChange={(e) => setFiltroCR(e.target.value)} className={selCls}>
+                <option value="Todos">Todas unidades</option>
+                {crs.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            )}
             <div className="relative">
               <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
+              <input value={search} onChange={(e) => setSearch(e.target.value)}
                 placeholder="Buscar cliente, CR, conductor…"
-                className="rounded-lg border border-slate-200 pl-8 pr-3 py-2 text-xs text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#CC2229]/20 w-56"
-              />
+                className="rounded-lg border border-slate-200 pl-8 pr-3 py-2 text-xs text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#CC2229]/20 w-52" />
               {search && <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 cursor-pointer"><X size={11} /></button>}
             </div>
-            <button
-              onClick={exportCsv}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-600 text-xs font-semibold hover:bg-slate-100 cursor-pointer"
-            >
+            <button onClick={exportCsv}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-600 text-xs font-semibold hover:bg-slate-100 cursor-pointer">
               <Download size={12} />CSV
             </button>
           </div>
@@ -296,54 +375,66 @@ export default function VerificacionViajesPage() {
 
       {/* KPI Summary */}
       {results && allChoferes.length > 0 && (
-        <div className="grid grid-cols-4 gap-3 mb-5">
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 mb-5">
           {[
             ["text-emerald-600", String(countOk),       "A tiempo",     "bg-emerald-50 border-emerald-100"],
             ["text-amber-600",   String(countLeve),      "Leve retraso", "bg-amber-50 border-amber-100"],
             ["text-red-600",     String(countTardanza),  "Tardanza",     "bg-red-50 border-red-100"],
             ["text-slate-400",   String(countSinGps),    "Sin GPS",      "bg-slate-50 border-slate-100"],
+            ["text-blue-600",    totalM3 > 0 ? `${totalM3.toFixed(1)} m³` : "—", "Total m³", "bg-blue-50 border-blue-100"],
+            ["text-violet-600",  avgDurMin != null ? fmtDuracion(avgDurMin) : "—", "Dur. prom.", "bg-violet-50 border-violet-100"],
           ].map(([cls, val, lbl, bg]) => (
             <div key={lbl} className={`rounded-2xl p-4 border text-center ${bg}`}>
-              <p className={`text-3xl font-bold tabular-nums ${cls}`}>{val}</p>
+              <p className={`text-2xl font-bold tabular-nums ${cls}`}>{val}</p>
               <p className="text-slate-400 text-xs mt-1">{lbl}</p>
             </div>
           ))}
         </div>
       )}
 
-      {/* Results */}
+      {/* Empty states */}
       {results === null && !loading && (
         <div className="flex flex-col items-center justify-center py-24 text-slate-400">
           <Route size={40} className="mb-4 opacity-30" />
-          <p className="text-sm font-medium">Selecciona una fecha y presiona Cargar</p>
+          <p className="text-sm font-medium">Selecciona un rango y presiona Cargar</p>
         </div>
       )}
-
       {results?.length === 0 && (
         <div className="text-center py-16 text-slate-400 text-sm">
-          Sin programaciones para {date}
+          Sin programaciones para el periodo seleccionado
         </div>
       )}
 
+      {/* Results */}
       {filtered.length > 0 && (
         <div className="flex flex-col gap-4">
           {filtered.map((prog) => (
-            <div key={prog.progId} className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+            <div key={`${prog.progId}-${prog.dia}`} className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
               {/* Prog header */}
               <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
                 <div>
                   <p className="font-bold text-slate-900 text-sm">{prog.cliente}</p>
-                  <p className="text-slate-500 text-xs mt-0.5">{prog.obra !== "—" && <><span className="font-medium">{prog.obra}</span> · </>}{prog.direccion}</p>
+                  <p className="text-slate-500 text-xs mt-0.5">
+                    {!isSingleDay && <span className="font-semibold text-slate-600 mr-1">{prog.dia} ·</span>}
+                    {prog.obra !== "—" && <><span className="font-medium">{prog.obra}</span> · </>}{prog.direccion}
+                  </p>
                 </div>
-                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
-                  statusFromDeltas(prog.choferes) === "ok"       ? "bg-emerald-100 text-emerald-700 border-emerald-200" :
-                  statusFromDeltas(prog.choferes) === "leve"     ? "bg-amber-100 text-amber-700 border-amber-200" :
-                  statusFromDeltas(prog.choferes) === "tardanza" ? "bg-red-100 text-red-700 border-red-200" :
-                                                                   "bg-slate-100 text-slate-500 border-slate-200"
-                }`}>
-                  {STATUS_ICON[statusFromDeltas(prog.choferes)]}
-                  {STATUS_LABEL[statusFromDeltas(prog.choferes)]}
-                </span>
+                <div className="flex items-center gap-2 shrink-0">
+                  {prog.choferes.length > 0 && (
+                    <span className="text-xs font-bold text-blue-600 bg-blue-50 border border-blue-100 rounded-full px-2 py-0.5">
+                      {prog.choferes.reduce((s, c) => s + (c.m3 ?? 0), 0).toFixed(1)} m³
+                    </span>
+                  )}
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
+                    statusFromDeltas(prog.choferes) === "ok"       ? "bg-emerald-100 text-emerald-700 border-emerald-200" :
+                    statusFromDeltas(prog.choferes) === "leve"     ? "bg-amber-100 text-amber-700 border-amber-200" :
+                    statusFromDeltas(prog.choferes) === "tardanza" ? "bg-red-100 text-red-700 border-red-200" :
+                                                                     "bg-slate-100 text-slate-500 border-slate-200"
+                  }`}>
+                    {STATUS_ICON[statusFromDeltas(prog.choferes)]}
+                    {STATUS_LABEL[statusFromDeltas(prog.choferes)]}
+                  </span>
+                </div>
               </div>
 
               {/* Choferes table */}
@@ -356,6 +447,7 @@ export default function VerificacionViajesPage() {
                       <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wide whitespace-nowrap">Llegada obra</th>
                       <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wide whitespace-nowrap">Salida obra</th>
                       <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wide whitespace-nowrap">m³</th>
+                      <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wide whitespace-nowrap">Dur. viaje</th>
                       <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wide whitespace-nowrap">Estado</th>
                     </tr>
                   </thead>
@@ -366,14 +458,16 @@ export default function VerificacionViajesPage() {
                           <p className="font-semibold text-slate-900 text-sm">{c.cr || "—"}</p>
                           <p className="text-slate-400 text-xs mt-0.5 flex items-center gap-1"><Truck size={9} />{c.choferName || "—"}</p>
                         </td>
-                        {/* Salida */}
                         <DeltaCell d={c.salida} />
-                        {/* Llegada obra */}
                         <DeltaCell d={c.llegada} />
-                        {/* Salida obra */}
                         <DeltaCell d={c.salidaObra} />
                         <td className="px-4 py-3 text-slate-700 text-sm font-semibold tabular-nums">
                           {c.m3 != null ? c.m3 : <span className="text-slate-300">—</span>}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-sm font-semibold tabular-nums text-violet-700">
+                            {fmtDuracion(c.duracionMin)}
+                          </span>
                         </td>
                         <td className="px-4 py-3">
                           <span className={`flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border w-fit ${

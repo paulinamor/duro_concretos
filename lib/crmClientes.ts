@@ -28,6 +28,7 @@ export interface Cliente {
   calificacion: CalificacionCliente;
   fechaAlta: string;
   notas: string;
+  regimenFiscal?: string;
 }
 
 export const tiposCliente: TipoCliente[] = ["Constructora", "Gobierno", "Particular", "Inmobiliaria", "Industrial"];

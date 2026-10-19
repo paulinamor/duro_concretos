@@ -110,6 +110,10 @@ type VForm = {
   tdBom: string;
   precioM3: string;
   precioM3Bomba: string;
+  kiloFibra: string;
+  m3Imper: string;
+  tuberiaExtra: string;
+  permisosOC: string;
 };
 
 function emptyForm(dia: string): VForm {
@@ -118,6 +122,7 @@ function emptyForm(dia: string): VForm {
     obraNombre: "", direccion: "",
     m3Totales: "", resistencia: "", extras: "", tdBom: "",
     precioM3: "", precioM3Bomba: "",
+    kiloFibra: "", m3Imper: "", tuberiaExtra: "", permisosOC: "",
   };
 }
 
@@ -136,6 +141,10 @@ function formFromProg(p: Programacion): VForm {
     tdBom: p.tdBom ?? "",
     precioM3: p.precioM3 != null ? String(p.precioM3) : "",
     precioM3Bomba: p.precioM3Bomba != null ? String(p.precioM3Bomba) : "",
+    kiloFibra: p.kiloFibra != null ? String(p.kiloFibra) : "",
+    m3Imper: p.m3Imper != null ? String(p.m3Imper) : "",
+    tuberiaExtra: p.tuberiaExtra != null ? String(p.tuberiaExtra) : "",
+    permisosOC: p.permisosOC != null ? String(p.permisosOC) : "",
   };
 }
 
@@ -893,9 +902,52 @@ function PedidoDrawer({
 
           {/* Extras */}
           <div>
-            <label className={lbl}>Extras</label>
-            <input value={form.extras} onChange={(e) => set("extras", e.target.value)}
-              placeholder="Fibra, impermeabilizante, acelerante…" className={inp} />
+            <p className={lbl}>Extras</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Fibra (kg/m³)</label>
+                <div className="relative">
+                  <input type="number" min="0" step="0.01" value={form.kiloFibra}
+                    onChange={(e) => set("kiloFibra", e.target.value)}
+                    placeholder="0.00" className={inp}
+                    onWheel={(e) => e.currentTarget.blur()} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Impermeabilizante (m³)</label>
+                <div className="relative">
+                  <input type="number" min="0" step="0.01" value={form.m3Imper}
+                    onChange={(e) => set("m3Imper", e.target.value)}
+                    placeholder="0.00" className={inp}
+                    onWheel={(e) => e.currentTarget.blur()} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Tubería extra ($)</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                  <input type="number" min="0" step="0.01" value={form.tuberiaExtra}
+                    onChange={(e) => set("tuberiaExtra", e.target.value)}
+                    placeholder="0.00" className={`${inp} pl-7`}
+                    onWheel={(e) => e.currentTarget.blur()} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Permisos OC ($/m³)</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                  <input type="number" min="0" step="0.01" value={form.permisosOC}
+                    onChange={(e) => set("permisosOC", e.target.value)}
+                    placeholder="0.00" className={`${inp} pl-7`}
+                    onWheel={(e) => e.currentTarget.blur()} />
+                </div>
+              </div>
+            </div>
+            <div className="mt-2">
+              <label className="block text-xs text-gray-500 mb-1">Notas extras</label>
+              <input value={form.extras} onChange={(e) => set("extras", e.target.value)}
+                placeholder="Aditivo, acelerante, otras observaciones…" className={inp} />
+            </div>
           </div>
 
           {/* Precios por m3 */}
@@ -1198,6 +1250,18 @@ export default function VentasProgramacionPage() {
     const m3 = parseFloat(form.m3Totales) || null;
     const precioM3 = form.precioM3 ? parseFloat(form.precioM3) : null;
     const precioM3Bomba = form.precioM3Bomba ? parseFloat(form.precioM3Bomba) : null;
+    const kiloFibra = form.kiloFibra ? parseFloat(form.kiloFibra) : null;
+    const m3Imper = form.m3Imper ? parseFloat(form.m3Imper) : null;
+    const tuberiaExtra = form.tuberiaExtra ? parseFloat(form.tuberiaExtra) : null;
+    const permisosOC = form.permisosOC ? parseFloat(form.permisosOC) : null;
+
+    // Calculate total: (precioM3 + precioM3Bomba + kiloFibra + m3Imper + permisosOC) * m3 + tuberiaExtra
+    function calcTotal(): number | null {
+      if (!m3 || !precioM3) return null;
+      const txm3 = (precioM3 ?? 0) + (precioM3Bomba ?? 0) + (kiloFibra ?? 0) + (m3Imper ?? 0) + (permisosOC ?? 0);
+      const t = txm3 * m3 + (tuberiaExtra ?? 0);
+      return t > 0 ? t : null;
+    }
     if (existingId) {
       const current = allProgs.find((p) => p.id === existingId);
       if (!current) return;
@@ -1223,6 +1287,8 @@ export default function VentasProgramacionPage() {
         telefono: form.telefono.trim(), direccion: form.direccion.trim(),
         m3Totales: m3, resistencia: form.resistencia.trim(), extras: form.extras.trim(),
         tdBom: form.tdBom.trim(), hora: form.horaEntrega.trim(), precioM3, precioM3Bomba,
+        kiloFibra, m3Imper, tuberiaExtra, permisosOC,
+        total: calcTotal(),
         nombreObra: form.obraNombre.trim() || rest.nombreObra || "",
       };
       const cambios = TRACKED
@@ -1275,8 +1341,8 @@ export default function VentasProgramacionPage() {
         precioM3,
         precioM3Bomba,
         factorBomba: null, aplicarFactorBomba: false, ltoAcelr: null,
-        kiloFibra: null, m3Imper: null, tuberiaExtra: null, permisosOC: null,
-        totalXM3: null, total: null,
+        kiloFibra, m3Imper, tuberiaExtra, permisosOC,
+        totalXM3: null, total: calcTotal(),
         montoPagado: null,
         folio,
         fase: "Creado",
@@ -1726,9 +1792,28 @@ export default function VentasProgramacionPage() {
                   </div>
                 )}
               </div>
+              {(timelineProg.kiloFibra || timelineProg.m3Imper || timelineProg.tuberiaExtra || timelineProg.permisosOC) && (
+                <div className="border-t border-[#3A3A3A] pt-2.5">
+                  <p className="text-gray-600 mb-1.5">Extras (costos adicionales)</p>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
+                    {timelineProg.kiloFibra != null && timelineProg.kiloFibra > 0 && (
+                      <div className="flex justify-between"><span className="text-gray-500">Fibra</span><span className="text-white font-medium">${timelineProg.kiloFibra}/kg/m³</span></div>
+                    )}
+                    {timelineProg.m3Imper != null && timelineProg.m3Imper > 0 && (
+                      <div className="flex justify-between"><span className="text-gray-500">Impermeabilizante</span><span className="text-white font-medium">${timelineProg.m3Imper}/m³</span></div>
+                    )}
+                    {timelineProg.tuberiaExtra != null && timelineProg.tuberiaExtra > 0 && (
+                      <div className="flex justify-between"><span className="text-gray-500">Tubería extra</span><span className="text-white font-medium">${timelineProg.tuberiaExtra}</span></div>
+                    )}
+                    {timelineProg.permisosOC != null && timelineProg.permisosOC > 0 && (
+                      <div className="flex justify-between"><span className="text-gray-500">Permisos OC</span><span className="text-white font-medium">${timelineProg.permisosOC}/m³</span></div>
+                    )}
+                  </div>
+                </div>
+              )}
               {timelineProg.extras && (
                 <div className="border-t border-[#3A3A3A] pt-2.5">
-                  <p className="text-gray-600 mb-0.5">Extras</p>
+                  <p className="text-gray-600 mb-0.5">Notas extras</p>
                   <p className="text-gray-300">{timelineProg.extras}</p>
                 </div>
               )}

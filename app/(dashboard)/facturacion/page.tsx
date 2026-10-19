@@ -329,6 +329,7 @@ function EmitirDrawer({
   const [paso, setPaso] = useState<"form" | "preview" | "timbrado">("form");
   const [cfdiTimbrado, setCfdiTimbrado] = useState<CfdiEmitido | null>(null);
   const [enviandoCxc, setEnviandoCxc] = useState(false);
+  const [productosDB, setProductosDB] = useState<{ id: string; codigo: string; descripcion: string }[]>([]);
 
   useEffect(() => {
     if (!open) return;
@@ -336,6 +337,9 @@ function EmitirDrawer({
     setError(""); setFieldErrors({});
     getCollectionDocs<EmisorFm>("emisoresFm")
       .then((docs) => setEmisoresFm(docs.filter((d) => d.activo !== false)))
+      .catch(() => {});
+    getCollectionDocs<{ id: string; codigo: string; descripcion: string }>(COLLECTIONS.productos)
+      .then((docs) => setProductosDB(docs))
       .catch(() => {});
     // Auto-increment folio
     getCollectionDocs<{ folio: number | string }>(COLLECTIONS.cfdiEmitidos, [orderBy("createdAt", "desc"), limit(1)])
@@ -353,14 +357,14 @@ function EmitirDrawer({
     if (clean.length < 12) return;
     setRfcLookupLoading(true);
     try {
-      const clientes = await getCollectionDocs<{ rfc: string; nombre: string; regimenFiscal?: string; codigoPostal?: string }>(
+      const clientes = await getCollectionDocs<{ rfc?: string; razonSocial?: string; regimenFiscal?: string; cp?: string }>(
         COLLECTIONS.clientes, [],
       );
       const match = clientes.find((c) => c.rfc?.toUpperCase() === clean);
       if (match) {
-        if (match.nombre)         setNombre(match.nombre);
-        if (match.regimenFiscal)  setRegimen(match.regimenFiscal);
-        if (match.codigoPostal)   setCp(match.codigoPostal);
+        if (match.razonSocial)   setNombre(match.razonSocial);
+        if (match.regimenFiscal) setRegimen(match.regimenFiscal);
+        if (match.cp)            setCp(match.cp);
       }
     } catch { /* ignore */ } finally { setRfcLookupLoading(false); }
   }
@@ -706,7 +710,20 @@ function EmitirDrawer({
               {conceptos.map((c, i) => (
                 <div key={i} className="bg-gray-50 border border-gray-200 rounded-xl p-4">
                   <div className="flex items-start gap-2 mb-3">
-                    <div className="flex-1">
+                    <div className="flex-1 space-y-2">
+                      {productosDB.length > 0 && (
+                        <Field label="Producto del catálogo">
+                          <AppSelect value="" onChange={(e) => {
+                            const prod = productosDB.find((p) => p.id === e.target.value);
+                            if (prod) { updConcepto(i, "descripcion", prod.descripcion); setFieldErrors((p) => ({ ...p, [`desc_${i}`]: "" })); }
+                          }}>
+                            <option value="">Seleccionar producto…</option>
+                            {productosDB.map((p) => (
+                              <option key={p.id} value={p.id}>{p.codigo} — {p.descripcion}</option>
+                            ))}
+                          </AppSelect>
+                        </Field>
+                      )}
                       <Field label="Descripción *">
                         <input
                           value={c.descripcion}

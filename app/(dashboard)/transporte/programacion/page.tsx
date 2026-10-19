@@ -419,7 +419,8 @@ function ChoferCard({
   revolveList: string[];
 }) {
   const set = (k: keyof ChoferFormEntry, v: string) => onChange({ ...entry, [k]: v });
-  const tiempoAuto = calcTiempoDescarga(entry.horaLlegadaObra, entry.horaFinalDescarga);
+  const tiempoAuto      = calcTiempoDescarga(entry.horaLlegadaObra, entry.horaFinalDescarga);
+  const tiempoTotalViaje = calcTiempoDescarga(entry.horaSalida,      entry.horaSalidaObra);
 
   return (
     <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
@@ -499,6 +500,10 @@ function ChoferCard({
         <div>
           <label className={lbl}>Tiempo descarga <span className="text-emerald-600 normal-case font-normal">(auto)</span></label>
           <input type="text" value={tiempoAuto || "—"} readOnly className={`${roInp} text-emerald-700`} />
+        </div>
+        <div>
+          <label className={lbl}>Duración total colado <span className="text-violet-600 normal-case font-normal">(auto)</span></label>
+          <input type="text" value={tiempoTotalViaje || "—"} readOnly className={`${roInp} text-violet-700`} />
         </div>
       </div>
     </div>
@@ -1198,8 +1203,15 @@ function FormDrawer({
               <input type="time" value={form.hsr} onChange={(e) => set("hsr", e.target.value)} className={inp} />
             </div>
             <div>
-              <label className={lbl}>Tiempo extra descarga</label>
-              <input type="text" value={form.tiempoExtraDescarga} onChange={(e) => set("tiempoExtraDescarga", e.target.value)} placeholder="—" className={inp} />
+              <label className={lbl}>Costo tiempo extra descarga ($)</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">$</span>
+                <input type="number" min="0" step="0.01"
+                  value={form.tiempoExtraDescarga}
+                  onChange={(e) => set("tiempoExtraDescarga", e.target.value)}
+                  placeholder="0.00" className={`${inp} pl-7`}
+                  onWheel={(e) => e.currentTarget.blur()} />
+              </div>
             </div>
           </div>
 

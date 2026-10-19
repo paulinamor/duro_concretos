@@ -34,6 +34,7 @@ interface Pago {
   saldoAplicado: number;
   planta?: string;
   creadoEn: string;
+  _isRecibo?: boolean;
 }
 
 interface AbonoAplicado {
@@ -320,6 +321,12 @@ export default function CobrosPage() {
     }
   }
 
+  async function handleDeleteRecibo(r: ConcreteReceipt) {
+    await deleteDocument(COLLECTIONS.remisiones, r.id!);
+    setCuentaRecibos((prev) => prev.filter((x) => x.id !== r.id));
+    setTodosRecibos((prev) => prev.filter((x) => x.id !== r.id));
+  }
+
   function handleSaldarRemision(remision: RemisionDespacho, data: { montoPagado: number; fechaPago: string; metodoPago: string }) {
     const updated = { ...remision, pagado: true, ...data };
     upsertDocument(COLLECTIONS.remisiones, remision.id!, { pagado: true, montoPagado: data.montoPagado, fechaPago: data.fechaPago, metodoPago: data.metodoPago })
@@ -380,6 +387,7 @@ export default function CobrosPage() {
         onAprobarpagosol={handleAprobarpagosol}
         onRechazarPagosol={handleRechazarPagosol}
         onVincular={handleVincularCliente}
+        onDeleteRecibo={handleDeleteRecibo}
       />
       {saldarRemision && (
         <SaldarRemisionModal
@@ -532,7 +540,7 @@ function SaldarRemisionModal({
 function CuentaClienteView({
   clientesList, progs, pagos, todosRecibos, cuentaCliente, cuentaRecibos, cuentaRemisiones, cuentaLoading,
   cuentaTab, onSelectCliente, onCuentaTab, onNuevoPago, onSaldarRemision, onMerge,
-  isSuperAdmin, solicitudesPagos, onEditPago, onDetallePago, onEliminarPago, onAprobarpagosol, onRechazarPagosol, onVincular,
+  isSuperAdmin, solicitudesPagos, onEditPago, onDetallePago, onEliminarPago, onAprobarpagosol, onRechazarPagosol, onVincular, onDeleteRecibo,
 }: {
   clientesList: ClienteDoc[];
   progs: Prog[];
@@ -556,12 +564,15 @@ function CuentaClienteView({
   onAprobarpagosol: (sol: SolicitudAutorizacion) => Promise<void>;
   onRechazarPagosol: (sol: SolicitudAutorizacion) => Promise<void>;
   onVincular: (nombre: string, clienteId: string, newDoc?: ClienteDoc) => Promise<void>;
+  onDeleteRecibo: (r: ConcreteReceipt) => Promise<void>;
 }) {
   const [search, setSearch] = useState("");
   const [saldoFilter, setSaldoFilter] = useState<"todos" | "pendiente" | "al_corriente" | "a_favor">("todos");
   const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
   const [mergeOpen, setMergeOpen] = useState(false);
   const [vincularOpen, setVincularOpen] = useState(false);
+  const [reciboAElim, setReciboAElim] = useState<ConcreteReceipt | null>(null);
+  const [eliminandoRecibo, setEliminandoRecibo] = useState(false);
 
   function toggleSel(nombre: string) {
     setSeleccionados((prev) => {
@@ -870,7 +881,7 @@ function CuentaClienteView({
           ["entregas",       `Efectivo (${cuentaRecibos.length})`],
           ["remisiones",     `Remisiones (${cuentaRemisiones.length})`],
           ["programaciones", `Programaciones (${clienteProgs.length})`],
-          ["pagos",          `Pagos (${clientePagos.length})`],
+          ["pagos",          `Pagos (${clientePagos.length + cuentaRecibos.length})`],
         ] as const).map(([t, label]) => (
           <button key={t} onClick={() => onCuentaTab(t)}
             className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors cursor-pointer -mb-px ${cuentaTab === t ? "border-[#CC2229] text-[#CC2229]" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
@@ -1067,18 +1078,65 @@ function CuentaClienteView({
             </div>
           )}
           <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-            {clientePagos.length === 0 ? (
+            {clientePagos.length === 0 && cuentaRecibos.length === 0 ? (
               <p className="text-center text-sm text-gray-400 py-10">Sin pagos registrados</p>
             ) : (
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50/50">
-                    {["Fecha","Tipo","Banco","Cantidad","Anticipo",""].map((h) => (
+                    {["Fecha","Tipo","Referencia","Cantidad","Anticipo",""].map((h) => (
                       <th key={h} className={`px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider ${h === "Cantidad" ? "text-right" : h === "Anticipo" ? "text-center" : "text-left"}`}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
+                  {/* Recibos de concreto (efectivo) */}
+                  {[...cuentaRecibos].sort((a, b) => b.fecha.localeCompare(a.fecha)).map((r) => (
+                    <tr key={`rec-${r.id}`} className="hover:bg-gray-50/50 transition-colors bg-green-50/30">
+                      <td className="px-4 py-3 text-[#CC2229] font-medium">{fmtDate(r.fecha)}</td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-100 border border-green-200 rounded-full px-2 py-0.5">Recibo efectivo</span>
+                      </td>
+                      <td className="px-4 py-3 text-gray-500 font-mono text-xs">#{String(r.receiptNumber).padStart(4, "0")}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-gray-900">{currency(r.anticipo ?? 0)}</td>
+                      <td className="px-4 py-3 text-center text-xs"><span className="text-gray-300">—</span></td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1 justify-end">
+                          <button
+                            onClick={() => {
+                              const folio = `#${String(r.receiptNumber).padStart(4, "0")}`;
+                              const linkedProg = progs.find((p) =>
+                                (p.reciboId && p.reciboId === r.id) ||
+                                p.reciboFolio === folio ||
+                                p.recibo === folio ||
+                                p.recibos?.includes(folio)
+                              );
+                              const preAbonos: AbonoAplicado[] = linkedProg
+                                ? [{ programacionId: linkedProg.id, folio: linkedProg.folio ?? linkedProg.id.slice(-6), monto: linkedProg.montoPagado ?? (r.anticipo ?? 0) }]
+                                : [];
+                              const preAplicado = preAbonos.reduce((s, a) => s + a.monto, 0);
+                              onDetallePago({
+                                id: r.id,
+                                fecha: r.fecha,
+                                cliente: r.cliente,
+                                cantidad: r.anticipo ?? 0,
+                                tipoPago: "Efectivo",
+                                banco: "",
+                                anticipo: false,
+                                observaciones: `Recibo #${String(r.receiptNumber).padStart(4, "0")}`,
+                                abonos: preAbonos,
+                                saldoAplicado: preAplicado,
+                                creadoEn: r.fecha,
+                                _isRecibo: true,
+                              });
+                            }}
+                            className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer" title="Aplicar a programaciones"><ChevronRight size={13} /></button>
+                          <button onClick={() => setReciboAElim(r)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer" title="Eliminar recibo"><Trash2 size={13} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {/* Pagos adicionales (crédito) */}
                   {clientePagos.map((p) => (
                     <tr key={p.id} className="hover:bg-gray-50/50 transition-colors">
                       <td className="px-4 py-3 text-[#CC2229] font-medium">{fmtDate(p.fecha)}</td>
@@ -1114,6 +1172,35 @@ function CuentaClienteView({
             setVincularOpen(false);
           }}
         />
+      )}
+
+      {reciboAElim && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full mx-4">
+            <h3 className="font-semibold text-gray-900 text-base mb-1">Eliminar recibo</h3>
+            <p className="text-sm text-gray-500 mb-4">
+              ¿Eliminar el recibo <span className="font-semibold text-gray-800">#{String(reciboAElim.receiptNumber).padStart(4,"0")}</span> por{" "}
+              <span className="font-semibold text-gray-800">{currency(reciboAElim.anticipo ?? 0)}</span>?
+              Esta acción no se puede deshacer.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setReciboAElim(null)} disabled={eliminandoRecibo}
+                className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors cursor-pointer">
+                Cancelar
+              </button>
+              <button
+                disabled={eliminandoRecibo}
+                onClick={async () => {
+                  setEliminandoRecibo(true);
+                  try { await onDeleteRecibo(reciboAElim); }
+                  finally { setEliminandoRecibo(false); setReciboAElim(null); }
+                }}
+                className="px-4 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors cursor-pointer disabled:opacity-50">
+                {eliminandoRecibo ? "Eliminando…" : "Eliminar"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -1703,8 +1790,16 @@ function DetallePagoView({ pago, progs, onBack, onUpdated }: {
 
   const aplicadosIds = new Set(pagoLocal.abonos.map((a) => a.programacionId));
 
-  const pendientes = progsCliente.filter((p) => saldoPendiente(p) > 0.01 && !aplicadosIds.has(p.id));
-  const pagadas    = progsCliente.filter((p) => aplicadosIds.has(p.id) || saldoPendiente(p) <= 0.01);
+  function progTieneRecibo(p: Prog) {
+    return !!(p.reciboFolio || p.recibo || (p.recibos?.length ?? 0) > 0);
+  }
+  function progRecibosLabel(p: Prog): string {
+    const lista = p.recibos && p.recibos.length > 0 ? p.recibos : p.recibo ? [p.recibo] : p.reciboFolio ? [p.reciboFolio] : [];
+    return lista.join(", ");
+  }
+
+  const pendientes = progsCliente.filter((p) => saldoPendiente(p) > 0.01 && !aplicadosIds.has(p.id) && !progTieneRecibo(p));
+  const pagadas    = progsCliente.filter((p) => aplicadosIds.has(p.id) || saldoPendiente(p) <= 0.01 || progTieneRecibo(p));
 
   const selectedProg = progsCliente.find((p) => p.id === selectedProgId);
   const saldoRem     = selectedProg ? saldoPendiente(selectedProg) : 0;
@@ -1734,14 +1829,17 @@ function DetallePagoView({ pago, progs, onBack, onUpdated }: {
       const prog         = selectedProg!;
       const nuevoPagado  = (prog.montoPagado ?? 0) + monto;
 
-      await Promise.all([
-        upsertDocument(COLLECTIONS.pagos, pagoLocal.id, { abonos: updatedAbonos, saldoAplicado: nuevoSaldo }),
+      const saves: Promise<unknown>[] = [
         upsertDocument(COLLECTIONS.programaciones, selectedProgId, {
           montoPagado: nuevoPagado,
           fechaPago: pagoLocal.fecha,
           metodoPago: pagoLocal.tipoPago,
         }),
-      ]);
+      ];
+      if (!pagoLocal._isRecibo) {
+        saves.push(upsertDocument(COLLECTIONS.pagos, pagoLocal.id, { abonos: updatedAbonos, saldoAplicado: nuevoSaldo }));
+      }
+      await Promise.all(saves);
 
       // Update local progs
       setProgsLocal((prev) =>
@@ -1766,9 +1864,9 @@ function DetallePagoView({ pago, progs, onBack, onUpdated }: {
           <ArrowLeft size={18} />
         </button>
         <div>
-          <p className="text-xs text-gray-400">Pagos / {fmtDate(pagoLocal.fecha)}</p>
+          <p className="text-xs text-gray-400">{pagoLocal._isRecibo ? "Recibos" : "Pagos"} / {fmtDate(pagoLocal.fecha)}</p>
           <h1 className="text-xl font-bold text-gray-900">
-            Pago de cliente <span className="text-[#CC2229]">{pagoLocal.cliente}</span> por {currency(pagoLocal.cantidad)}
+            {pagoLocal._isRecibo ? "Recibo" : "Pago"} de cliente <span className="text-[#CC2229]">{pagoLocal.cliente}</span> por {currency(pagoLocal.cantidad)}
           </h1>
         </div>
       </div>
@@ -1873,17 +1971,25 @@ function DetallePagoView({ pago, progs, onBack, onUpdated }: {
             )}
             {(remTab === "pendientes" ? pendientes : pagadas).map((p) => {
               const sp = saldoPendiente(p);
+              const conRecibo = progTieneRecibo(p);
+              const recibosLabel = progRecibosLabel(p);
               return (
                 <li key={p.id} className="px-4 py-3 text-xs">
                   <div className="flex justify-between gap-2">
                     <div>
                       <p className="font-semibold text-gray-700 flex items-center gap-1">
-                        <span className={`inline-block w-2 h-2 rounded-full ${sp > 0.01 ? "bg-[#CC2229]" : "bg-green-400"}`} />
+                        <span className={`inline-block w-2 h-2 rounded-full ${conRecibo || sp <= 0.01 ? "bg-green-400" : "bg-[#CC2229]"}`} />
                         Remisión: {p.reciboFolio || p.folio || p.id.slice(-6)}
                       </p>
                       <p className="text-gray-400 mt-0.5">Cantidad {currency(p.total ?? 0)}</p>
-                      <p className="text-gray-400">Abonado {currency(p.montoPagado ?? 0)}</p>
-                      <p className="text-gray-400">Restante {currency(sp)}</p>
+                      {conRecibo ? (
+                        <p className="text-green-600 font-medium mt-0.5">Pagado con recibo{recibosLabel ? `: ${recibosLabel}` : ""}</p>
+                      ) : (
+                        <>
+                          <p className="text-gray-400">Abonado {currency(p.montoPagado ?? 0)}</p>
+                          <p className="text-gray-400">Restante {currency(sp)}</p>
+                        </>
+                      )}
                       {p.nombreObra && <p className="text-gray-300 mt-0.5">{p.nombreObra}</p>}
                     </div>
                     <p className="text-gray-300 shrink-0">{fmtDate(p.dia)}</p>
