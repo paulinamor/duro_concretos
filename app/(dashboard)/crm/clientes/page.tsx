@@ -40,6 +40,7 @@ import { currency } from "@/lib/formatters";
 import { todayCST } from "@/lib/dateUtils";
 import { matchesQuery } from "@/lib/search";
 import { getStoredSession } from "@/lib/auth";
+import { REGIMEN_FISCAL, USO_CFDI } from "@/lib/sat-catalogs";
 
 const DEDUP_STARTED_KEY = "duro_dedup_started_ts";
 const DEDUP_DONE_KEY = "duro_dedup_done_ts";
@@ -138,6 +139,7 @@ interface ClienteForm {
   estatus: EstatusCliente;
   notas: string;
   regimenFiscal: string;
+  usoCfdi: string;
 }
 
 function emptyForm(): ClienteForm {
@@ -147,7 +149,7 @@ function emptyForm(): ClienteForm {
     telefono: "", email: "", tipoCliente: "Constructora",
     vendedorAsignado: "", calificacion: "B", diasCredito: "30",
     limiteCredito: "0", saldoPendiente: "0", estatus: "Activo", notas: "",
-    regimenFiscal: "",
+    regimenFiscal: "", usoCfdi: "",
   };
 }
 
@@ -174,6 +176,7 @@ function fromCliente(c: Cliente): ClienteForm {
     estatus: c.estatus ?? "Activo",
     notas: c.notas ?? "",
     regimenFiscal: c.regimenFiscal ?? "",
+    usoCfdi: c.usoCfdi ?? "",
   };
 }
 
@@ -282,13 +285,19 @@ function ClienteDrawer({ open, editing, onClose, onSave, errorMsg, vendedoresLis
               <div>
                 <label className={lbl}>Régimen fiscal <span className="text-gray-400 normal-case text-[9px] font-normal">(SAT)</span></label>
                 <select value={form.regimenFiscal} onChange={(e) => set("regimenFiscal", e.target.value)} className={inp}>
-                  <option value="">Sin especificar</option>
-                  <option value="601">601 — General de Ley Personas Morales</option>
-                  <option value="603">603 — Personas Morales sin fines de lucro</option>
-                  <option value="612">612 — Personas Físicas con Actividades Emp.</option>
-                  <option value="616">616 — Sin obligaciones fiscales</option>
-                  <option value="621">621 — Incorporación Fiscal</option>
-                  <option value="626">626 — RESICO</option>
+                  <option value="">— Sin especificar —</option>
+                  {REGIMEN_FISCAL.map((r) => (
+                    <option key={r.clave} value={r.clave}>{r.clave} — {r.desc}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={lbl}>Uso de CFDI <span className="text-gray-400 normal-case text-[9px] font-normal">(SAT)</span></label>
+                <select value={form.usoCfdi} onChange={(e) => set("usoCfdi", e.target.value)} className={inp}>
+                  <option value="">— Sin especificar —</option>
+                  {USO_CFDI.map((u) => (
+                    <option key={u.clave} value={u.clave}>{u.clave} — {u.desc}</option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -850,7 +859,8 @@ export default function CrmClientesPage() {
       calificacion: f.calificacion,
       fechaAlta: editing?.fechaAlta ?? todayCST(),
       notas: f.notas,
-      regimenFiscal: f.regimenFiscal.trim() || undefined,
+      ...(f.regimenFiscal.trim() ? { regimenFiscal: f.regimenFiscal.trim() } : {}),
+      ...(f.usoCfdi.trim()      ? { usoCfdi:       f.usoCfdi.trim()      } : {}),
     };
 
     setClientes((current) =>

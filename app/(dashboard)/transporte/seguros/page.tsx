@@ -80,6 +80,7 @@ interface FormState {
   // ── Identificación ──
   tipoUnidad: string;
   noEconomico: string;
+  samsaraNombre: string;
   placa: string;
   estadoPlaca: string;
   marca: string;
@@ -172,6 +173,7 @@ function emptyForm(u?: Unidad): FormState {
     // Unit identification — from Unidad
     tipoUnidad: "Revolvedora",
     noEconomico: u?.noEconomico ?? "",
+    samsaraNombre: u?.samsaraNombre ?? "",
     placa: u?.placa ?? "",
     estadoPlaca: "Nuevo León",
     marca: u?.marca ?? "",
@@ -206,6 +208,7 @@ function formFromRecord(s: Seguro, u?: Unidad): FormState {
     verificacion: u?.verificacion ?? "",
     tipoUnidad: s.tipoUnidad,
     noEconomico: s.noEconomico,
+    samsaraNombre: u?.samsaraNombre ?? "",
     placa: s.placa,
     estadoPlaca: s.estadoPlaca,
     marca: s.marca,
@@ -608,7 +611,7 @@ function FormDrawer({
   const [fetchingSamsara, setFetchingSamsara] = useState(false);
 
   async function loadSamsaraData() {
-    const name = form.noEconomico.trim();
+    const name = (form.samsaraNombre.trim() || form.noEconomico.trim());
     if (!name) return;
     setFetchingSamsara(true);
     setSamsaraData(null);
@@ -622,13 +625,21 @@ function FormDrawer({
       const [vData, sData, aData] = await Promise.all([
         vRes.json(), sRes.json(), aRes.ok ? aRes.json() : { data: [] },
       ]);
-      const match = (vData.data ?? []).find((v: { name: string; id: string }) =>
-        v.name.trim().toLowerCase() === name.toLowerCase()
-      );
+      const vehicles: { id: string; name: string; licensePlate?: string; make?: string; model?: string; year?: number }[] = vData.data ?? [];
+      // 1. exact match
+      let match = vehicles.find((v) => v.name.trim().toLowerCase() === name.toLowerCase());
+      // 2. fallback: trailing number (e.g. "CR 116" → "116" matches "DR 116")
+      if (!match) {
+        const num = name.trim().match(/\d+$/)?.[0];
+        if (num) {
+          const candidates = vehicles.filter((v) => v.name.trim().match(/\d+$/)?.[0] === num);
+          if (candidates.length === 1) match = candidates[0];
+        }
+      }
       if (!match) { setSamsaraError("No encontrada en Samsara"); return; }
-      const stat  = (sData.data ?? []).find((s: { id: string }) => s.id === match.id);
+      const stat  = (sData.data ?? []).find((s: { id: string; obdOdometerMeters?: { value: number }; gpsOdometerMeters?: { value: number } }) => s.id === match.id);
       const asgn  = (aData.data ?? []).find((a: { id: string }) => a.id === match.id);
-      const odom  = stat?.obdOdometerMeters?.[0]?.value ?? stat?.gpsOdometerMeters?.[0]?.value;
+      const odom  = stat?.obdOdometerMeters?.value ?? stat?.gpsOdometerMeters?.value;
       setSamsaraData({
         placa:     match.licensePlate,
         marca:     match.make,
@@ -667,6 +678,7 @@ function FormDrawer({
       const unidadDoc: Unidad = {
         id: unidadId,
         noEconomico: form.noEconomico.trim().toUpperCase(),
+        ...(form.samsaraNombre.trim() ? { samsaraNombre: form.samsaraNombre.trim() } : {}),
         placa: form.placa.trim().toUpperCase(),
         marca: form.marca.trim(),
         modelo: form.modelo.trim(),
@@ -763,6 +775,11 @@ function FormDrawer({
               <label className={lbl}>No. Económico <span className="text-[#CC2229]">*</span></label>
               <input type="text" value={form.noEconomico} onChange={(e) => set("noEconomico", e.target.value)}
                 placeholder="DC-01" className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Nombre en Samsara <span className="text-gray-400 normal-case text-[9px] font-normal">(si es diferente al No. Eco)</span></label>
+              <input type="text" value={form.samsaraNombre} onChange={(e) => set("samsaraNombre", e.target.value)}
+                placeholder="Ej. DR 116" className={inp} />
             </div>
             <div>
               <label className={lbl}>Tipo de unidad</label>

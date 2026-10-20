@@ -29,6 +29,7 @@ export interface Cliente {
   fechaAlta: string;
   notas: string;
   regimenFiscal?: string;
+  usoCfdi?: string;
 }
 
 export const tiposCliente: TipoCliente[] = ["Constructora", "Gobierno", "Particular", "Inmobiliaria", "Industrial"];

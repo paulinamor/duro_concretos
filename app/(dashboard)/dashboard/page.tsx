@@ -103,10 +103,13 @@ export default function DashboardPage() {
       router.replace(first?.href ?? "/");
       return;
     }
+    // Cargar 6 meses para el chart "Ventas por mes" y los últimos 15 días del gráfico diario
+    const hace6Meses = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+    const histStart = `${hace6Meses.getFullYear()}-${String(hace6Meses.getMonth() + 1).padStart(2, "0")}-01`;
     const mesStart = `${mesActual}-01`;
     const mesEnd = `${mesActual}-31`;
     Promise.all([
-      getCollectionDocs<Programacion>(COLLECTIONS.programaciones, [where("dia", ">=", mesStart), where("dia", "<=", mesEnd)]),
+      getCollectionDocs<Programacion>(COLLECTIONS.programaciones, [where("dia", ">=", histStart), where("dia", "<=", mesEnd)]),
       getCollectionDocs<Recibo>(COLLECTIONS.efectivo, [where("fecha", ">=", mesStart), where("fecha", "<=", mesEnd)]),
       getCollectionDocs<Cuenta>(COLLECTIONS.cuentasPorCobrar),
       getCollectionDocs<Cuenta>(COLLECTIONS.cuentasPorPagar),

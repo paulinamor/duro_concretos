@@ -6,6 +6,7 @@ import {
   Link2, Link2Off, MapPin, RefreshCw, Search, X,
 } from "lucide-react";
 import { upsertDocument, getCollectionDocs, COLLECTIONS } from "@/lib/db";
+import { deleteField } from "firebase/firestore";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -298,12 +299,12 @@ export default function GeocercasPage() {
       const center = geocercaCenter(selected);
       if (pendingObra) {
         const obra = obras.find((o) => o.id === pendingObra);
-        if (obra) await upsertDocument(COLLECTIONS.obras, pendingObra, { ...obra, samsaraAddressId: selected.id, samsaraLat: center?.lat, samsaraLng: center?.lng, samsaraRadiusM: selected.geofence?.circle?.radiusMeters });
+        if (obra) await upsertDocument(COLLECTIONS.obras, pendingObra, { ...obra, samsaraAddressId: selected.id, samsaraLat: center?.lat ?? null, samsaraLng: center?.lng ?? null, samsaraRadiusM: selected.geofence?.circle?.radiusMeters ?? null });
         const prev = obrasById.get(selected.id);
-        if (prev && prev.id !== pendingObra) await upsertDocument(COLLECTIONS.obras, prev.id, { ...prev, samsaraAddressId: undefined, samsaraLat: undefined, samsaraLng: undefined, samsaraRadiusM: undefined });
+        if (prev && prev.id !== pendingObra) await upsertDocument(COLLECTIONS.obras, prev.id, { ...prev, samsaraAddressId: deleteField(), samsaraLat: deleteField(), samsaraLng: deleteField(), samsaraRadiusM: deleteField() });
       } else {
         const prev = obrasById.get(selected.id);
-        if (prev) await upsertDocument(COLLECTIONS.obras, prev.id, { ...prev, samsaraAddressId: undefined, samsaraLat: undefined, samsaraLng: undefined, samsaraRadiusM: undefined });
+        if (prev) await upsertDocument(COLLECTIONS.obras, prev.id, { ...prev, samsaraAddressId: deleteField(), samsaraLat: deleteField(), samsaraLng: deleteField(), samsaraRadiusM: deleteField() });
       }
       await loadObras();
       setShowLink(false);
@@ -311,7 +312,7 @@ export default function GeocercasPage() {
   };
 
   const desvincular = async (obra: Obra) => {
-    await upsertDocument(COLLECTIONS.obras, obra.id, { ...obra, samsaraAddressId: undefined, samsaraLat: undefined, samsaraLng: undefined, samsaraRadiusM: undefined });
+    await upsertDocument(COLLECTIONS.obras, obra.id, { ...obra, samsaraAddressId: deleteField(), samsaraLat: deleteField(), samsaraLng: deleteField(), samsaraRadiusM: deleteField() });
     await loadObras();
   };
 

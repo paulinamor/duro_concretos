@@ -243,10 +243,12 @@ function FormDrawer({
     bancoPago: "",
     notas: "",
     categoria: "",
+    progId: "",
   });
 
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const rawProgs = useCollectionRaw<{ id: string; folio?: string; cliente?: string; fecha?: string }>(COLLECTIONS.programaciones);
 
   useEffect(() => {
     if (!open) return;
@@ -272,6 +274,7 @@ function FormDrawer({
         bancoPago: initial.bancoPago ?? "",
         notas: initial.notas ?? "",
         categoria: initial.categoria ?? "",
+        progId: initial.programacionId ?? "",
       });
     } else {
       setForm(emptyForm());
@@ -303,6 +306,7 @@ function FormDrawer({
         subtotal: subtotalNum,
         iva: ivaNum,
         ...(isCxp && { retenidoIVA: retenidoIVANum, retenidoISR: retenidoISRNum, ish: ishNum, bancoPago: form.bancoPago, categoria: form.categoria || "" }),
+        ...(!isCxp && form.progId ? { programacionId: form.progId } : {}),
         total: totalNum,
         formaPago: form.formaPago,
         banco: form.banco,
@@ -482,6 +486,19 @@ function FormDrawer({
             <label className={lbl}>Notas</label>
             <input type="text" value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} placeholder="Opcional" className={inp} />
           </div>
+          {!isCxp && (
+            <div>
+              <label className={lbl}>Programación vinculada <span className="normal-case text-gray-400 font-normal">(opcional)</span></label>
+              <select value={form.progId} onChange={(e) => setForm({ ...form, progId: e.target.value })} className={inp}>
+                <option value="">— Sin vincular —</option>
+                {rawProgs.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.folio ? `#${p.folio}` : p.id.slice(-6)} · {p.cliente ?? "—"} · {p.fecha ?? ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           {isCxp && (
             <div>
               <label className={lbl}>Categoría (Rubro)</label>
@@ -2150,7 +2167,15 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
     };
     const id = cuenta.id!;
     const { id: _cid, ...cuentaData } = updatedCuenta;
-    await upsertDocument(collection, id, withPlantaTag(cuentaData));
+    const saves: Promise<unknown>[] = [upsertDocument(collection, id, withPlantaTag(cuentaData))];
+    if (isCxc && cuenta.programacionId) {
+      saves.push(upsertDocument(COLLECTIONS.programaciones, cuenta.programacionId, {
+        montoPagado: nuevoMontoPagado,
+        fechaPago: abonos[abonos.length - 1].fecha,
+        metodoPago: abonos[abonos.length - 1].referencia ?? "CXC",
+      }));
+    }
+    await Promise.all(saves);
     const label = abonos.length > 1
       ? `${abonos.length} exhibiciones · ${currency(montoTotal)}`
       : currency(abonos[0].monto);
@@ -2170,7 +2195,13 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
       status: computeStatus({ ...cuenta, montoPagado: nuevoMontoPagado }),
     };
     const { id, ...data } = updatedCuenta;
-    await upsertDocument(collection, id!, withPlantaTag(data));
+    const saves: Promise<unknown>[] = [upsertDocument(collection, id!, withPlantaTag(data))];
+    if (isCxc && cuenta.programacionId) {
+      saves.push(upsertDocument(COLLECTIONS.programaciones, cuenta.programacionId, {
+        montoPagado: nuevoMontoPagado,
+      }));
+    }
+    await Promise.all(saves);
     showToast("success", isCxc ? "Cobro revertido" : "Pago revertido", `${currency(abono.monto)} · ${cuenta.contraparte}`);
   }
 
@@ -2185,7 +2216,15 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
       status: computeStatus({ ...cuenta, montoPagado: nuevoMontoPagado }),
     };
     const { id, ...data } = updatedCuenta;
-    await upsertDocument(collection, id!, withPlantaTag(data));
+    const saves: Promise<unknown>[] = [upsertDocument(collection, id!, withPlantaTag(data))];
+    if (isCxc && cuenta.programacionId) {
+      saves.push(upsertDocument(COLLECTIONS.programaciones, cuenta.programacionId, {
+        montoPagado: nuevoMontoPagado,
+        fechaPago: updatedAbono.fecha,
+        metodoPago: updatedAbono.referencia ?? "CXC",
+      }));
+    }
+    await Promise.all(saves);
     showToast("success", isCxc ? "Cobro actualizado" : "Pago actualizado", `${currency(updatedAbono.monto)} · ${cuenta.contraparte}`);
   }
 

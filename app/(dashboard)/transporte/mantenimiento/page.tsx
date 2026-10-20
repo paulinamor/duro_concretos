@@ -559,6 +559,7 @@ function RegistroDrawer({
   onClose,
   onSave,
   editing,
+  samsaraNameByUnidad,
 }: {
   open: boolean;
   unidadesList: string[];
@@ -566,6 +567,7 @@ function RegistroDrawer({
   onClose: () => void;
   onSave: (ev: EventoRaw) => Promise<void>;
   editing?: Evento | null;
+  samsaraNameByUnidad?: Map<string, string>;
 }) {
   const [tipo, setTipo] = useState<EventoTipo>("Mantenimiento");
   const [form, setForm] = useState<Record<string, string>>({});
@@ -585,6 +587,7 @@ function RegistroDrawer({
     setFetchingSamsara(true);
     setSamsaraKm(null);
     setSamsaraFound(null);
+    const samsaraName = samsaraNameByUnidad?.get(unidad) ?? unidad;
     try {
       const [vRes, sRes] = await Promise.all([
         fetch("/api/samsara?endpoint=%2Ffleet%2Fvehicles"),
@@ -592,12 +595,20 @@ function RegistroDrawer({
       ]);
       if (!vRes.ok || !sRes.ok) { setSamsaraFound(false); return; }
       const [vData, sData] = await Promise.all([vRes.json(), sRes.json()]);
-      const match = (vData.data ?? []).find((v: { name: string }) =>
-        v.name.trim().toLowerCase() === unidad.trim().toLowerCase()
-      );
+      const vehicles: { id: string; name: string }[] = vData.data ?? [];
+      // 1. exact match (or configured samsaraNombre)
+      let match = vehicles.find((v) => v.name.trim().toLowerCase() === samsaraName.trim().toLowerCase());
+      // 2. fallback: match by trailing number (e.g. "CR 116" → "116" matches "DR 116")
+      if (!match) {
+        const num = samsaraName.trim().match(/\d+$/)?.[0];
+        if (num) {
+          const candidates = vehicles.filter((v) => v.name.trim().match(/\d+$/)?.[0] === num);
+          if (candidates.length === 1) match = candidates[0];
+        }
+      }
       if (!match) { setSamsaraFound(false); return; }
-      const stat = (sData.data ?? []).find((s: { id: string }) => s.id === match.id);
-      const odom = stat?.obdOdometerMeters?.[0]?.value ?? stat?.gpsOdometerMeters?.[0]?.value;
+      const stat = (sData.data ?? []).find((s: { id: string; obdOdometerMeters?: { value: number }; gpsOdometerMeters?: { value: number } }) => s.id === match.id);
+      const odom = stat?.obdOdometerMeters?.value ?? stat?.gpsOdometerMeters?.value;
       if (odom == null) { setSamsaraFound(false); return; }
       setSamsaraKm(Math.round(odom / 1000));
       setSamsaraFound(true);
@@ -1104,6 +1115,12 @@ export default function MantenimientoPage() {
     load();
   }, []);
 
+  const samsaraNameByUnidad = useMemo(() => {
+    const map = new Map<string, string>();
+    unidades.forEach((u) => { if (u.noEconomico && u.samsaraNombre) map.set(u.noEconomico.trim(), u.samsaraNombre.trim()); });
+    return map;
+  }, [unidades]);
+
   // Build per-unit summaries
   const unitSummaries = useMemo<UnitSummary[]>(() => {
     return unidades.map((u) => {
@@ -1548,6 +1565,7 @@ export default function MantenimientoPage() {
         onClose={() => { setShowDrawer(false); setPreselectedUnidad(""); setEditingEvento(null); }}
         onSave={handleSave}
         editing={editingEvento}
+        samsaraNameByUnidad={samsaraNameByUnidad}
       />
 
       {confirmDeleteEvento && (

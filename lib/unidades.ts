@@ -18,6 +18,7 @@ export interface Unidad {
   verificacion: string;
   observaciones: string;
   planta?: string;
+  samsaraNombre?: string;
 }
 
 export const unidades: Unidad[] = [

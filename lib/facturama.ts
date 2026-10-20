@@ -101,6 +101,33 @@ export type FmItem = {
   Discount?: number;
 };
 
+// ─── Complemento de Pago types ────────────────────────────────────────────────
+
+export type FmDoctoRelacionado = {
+  TaxObject: "01" | "02";
+  Uuid: string;
+  Serie?: string;
+  Folio?: string;
+  Currency: string;
+  PaymentMethod: "PPD";
+  PartialityNumber: number;
+  PreviousBalanceAmount: number;
+  AmountPaid: number;
+  ImpSaldoInsoluto: number;
+};
+
+export type FmPayment = {
+  Date: string;           // ISO 8601 con hora: "2024-01-15T12:00:00"
+  PaymentForm: string;    // clave SAT forma de pago: "03", "01", etc.
+  Currency: string;       // "MXN"
+  Amount: number;
+  RelatedDocuments: FmDoctoRelacionado[];
+};
+
+export type FmComplement = {
+  Payments: FmPayment[];
+};
+
 export type FmCfdiPayload = {
   Serie?: string;
   Folio?: string;
@@ -115,6 +142,7 @@ export type FmCfdiPayload = {
   Receiver: FmReceptor;
   Items: FmItem[];
   LogoB64?: string;
+  Complement?: FmComplement;
 };
 
 export type FmCfdiResponse = {
@@ -195,6 +223,90 @@ export type EmitirFacturaInput = {
   formaPago: string;
   conceptos: ConceptoFactura[];
 };
+
+export type EmitirComplementoInput = {
+  emisorRfc: string;
+  emisorNombre: string;
+  emisorRegimen: string;
+  emisorCp: string;
+  clienteRfc: string;
+  clienteNombre: string;
+  clienteRegimenFiscal: string;
+  clienteCp: string;
+  // Pago
+  fechaPago: string;          // ISO 8601: "2024-01-15T12:00:00"
+  formaPago: string;          // clave SAT
+  monto: number;
+  // Factura relacionada
+  facturaUuid: string;
+  facturaSerie?: string;
+  facturaFolio?: string;
+  facturaCurrency: string;
+  facturaMontoTotal: number;  // total original de la factura
+  facturaMontoAnterior: number; // saldo antes de este pago
+  numeroParcialidad: number;
+  // Meta
+  serie?: string;
+  folio?: string;
+  logoB64?: string;
+};
+
+export function buildComplementoPayload(input: EmitirComplementoInput): FmCfdiPayload {
+  const saldoInsoluto = Math.max(0, Math.round((input.facturaMontoAnterior - input.monto) * 100) / 100);
+
+  return {
+    CfdiType: "P",
+    Date: new Date().toISOString().replace(/\.\d{3}Z$/, ""),
+    ExpeditionPlace: input.emisorCp,
+    Currency: "XXX",
+    Serie: input.serie,
+    Folio: input.folio,
+    Issuer: {
+      Rfc: input.emisorRfc,
+      Name: input.emisorNombre,
+      FiscalRegime: input.emisorRegimen,
+    },
+    Receiver: {
+      Rfc: input.clienteRfc,
+      Name: input.clienteNombre,
+      CfdiUse: "CP01",
+      TaxZipCode: input.clienteCp,
+      FiscalRegime: input.clienteRegimenFiscal,
+    },
+    Items: [{
+      ProductCode: "84111506",
+      Description: "Pago",
+      Unit: "Actividad",
+      UnitCode: "ACT",
+      UnitPrice: 0,
+      Quantity: 1,
+      Subtotal: 0,
+      TaxObject: "01",
+      Total: 0,
+    }],
+    ...(input.logoB64 ? { LogoB64: input.logoB64 } : {}),
+    Complement: {
+      Payments: [{
+        Date: input.fechaPago,
+        PaymentForm: input.formaPago,
+        Currency: input.facturaCurrency,
+        Amount: input.monto,
+        RelatedDocuments: [{
+          TaxObject: "02",
+          Uuid: input.facturaUuid,
+          Serie: input.facturaSerie,
+          Folio: input.facturaFolio,
+          Currency: input.facturaCurrency,
+          PaymentMethod: "PPD",
+          PartialityNumber: input.numeroParcialidad,
+          PreviousBalanceAmount: input.facturaMontoAnterior,
+          AmountPaid: input.monto,
+          ImpSaldoInsoluto: saldoInsoluto,
+        }],
+      }],
+    },
+  };
+}
 
 export type TimbrarNominaInput = {
   // Emisor (Multiemisor — obligatorio)

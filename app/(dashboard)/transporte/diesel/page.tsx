@@ -7,8 +7,8 @@ import {
 } from "recharts";
 import {
   AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
-  DollarSign, Download, Fuel, Gauge, MapPin, MessageSquare,
-  Pencil, Plus, Receipt, Search, Shield, Trash2, Truck, X,
+  DollarSign, Download, Fuel, Gauge, Loader2, MapPin, MessageSquare,
+  Pencil, Plus, Receipt, Satellite, Search, Shield, Trash2, Truck, X,
 } from "lucide-react";
 import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
@@ -119,16 +119,83 @@ const emptyForm = (): FormState => ({
 
 type UnidadGrupo = { tipo: string; label: string; items: string[] };
 
-function FormDrawer({ open, onClose, onSave, unidadesAgrupadas, editing, lastKmByUnidad }: {
+function FormDrawer({ open, onClose, onSave, unidadesAgrupadas, editing, lastKmByUnidad, samsaraNameByUnidad }: {
   open: boolean; onClose: () => void;
   onSave: (carga: CargaDiesel) => Promise<void>;
   unidadesAgrupadas: UnidadGrupo[]; editing?: CargaDiesel | null;
   lastKmByUnidad: Map<string, number>;
+  samsaraNameByUnidad: Map<string, string>;
 }) {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
   const [autoKm, setAutoKm] = useState<number | null>(null);
+  const [samsaraKm, setSamsaraKm] = useState<number | null>(null);
+  const [samsaraFound, setSamsaraFound] = useState<boolean | null>(null);
+  const [fetchingSamsara, setFetchingSamsara] = useState(false);
+  const [samsaraVehicles, setSamsaraVehicles] = useState<{ id: string; name: string; odomKm: number | null }[]>([]);
+  const [samsaraError, setSamsaraError] = useState<string>("");
+
+  async function loadSamsaraKm(unidad: string) {
+    if (!unidad) return;
+    setFetchingSamsara(true); setSamsaraKm(null); setSamsaraFound(null); setSamsaraVehicles([]); setSamsaraError("");
+    const samsaraName = samsaraNameByUnidad.get(unidad) ?? unidad;
+    try {
+      const [vRes, sRes] = await Promise.all([
+        fetch("/api/samsara?endpoint=%2Ffleet%2Fvehicles"),
+        fetch("/api/samsara?endpoint=%2Ffleet%2Fvehicles%2Fstats&types=obdOdometerMeters%2CgpsOdometerMeters"),
+      ]);
+      if (!vRes.ok || !sRes.ok) {
+        const errText = await (vRes.ok ? sRes : vRes).text().catch(() => `HTTP ${vRes.status}`);
+        setSamsaraError(`API error: ${errText.slice(0, 120)}`);
+        setSamsaraFound(false); return;
+      }
+      const [vData, sData] = await Promise.all([vRes.json(), sRes.json()]);
+      const vehicles: { id: string; name: string }[] = vData.data ?? [];
+      const stats: { id: string; obdOdometerMeters?: { value: number }; gpsOdometerMeters?: { value: number } }[] = sData.data ?? [];
+
+      // build lookup for odometer by vehicle id
+      const odomById = new Map<string, number | null>();
+      for (const s of stats) {
+        const v = s.obdOdometerMeters?.value ?? s.gpsOdometerMeters?.value;
+        odomById.set(s.id, v != null ? Math.round(v / 1000) : null);
+      }
+
+      // 1. exact match (or configured samsaraNombre)
+      let match = vehicles.find((v) => v.name.trim().toLowerCase() === samsaraName.trim().toLowerCase());
+      // 2. fallback: trailing number unique match
+      if (!match) {
+        const num = samsaraName.trim().match(/\d+$/)?.[0];
+        if (num) {
+          const candidates = vehicles.filter((v) => v.name.trim().match(/\d+$/)?.[0] === num);
+          if (candidates.length === 1) match = candidates[0];
+        }
+      }
+
+      if (match) {
+        const odom = odomById.get(match.id);
+        if (odom == null) { setSamsaraFound(false); return; }
+        setSamsaraKm(odom);
+        setSamsaraFound(true);
+      } else {
+        // no match — store vehicle list sorted for manual selection
+        const sorted = [...vehicles]
+          .sort((a, b) => a.name.localeCompare(b.name, "es"))
+          .map((v) => ({ id: v.id, name: v.name, odomKm: odomById.get(v.id) ?? null }));
+        setSamsaraVehicles(sorted);
+        setSamsaraFound(false);
+      }
+    } catch (e) { setSamsaraError(e instanceof Error ? e.message : String(e)); setSamsaraFound(false); }
+    finally { setFetchingSamsara(false); }
+  }
+
+  function pickSamsaraVehicle(vehicleId: string) {
+    const v = samsaraVehicles.find((v) => v.id === vehicleId);
+    if (!v || v.odomKm == null) return;
+    setSamsaraKm(v.odomKm);
+    setSamsaraFound(true);
+    setSamsaraVehicles([]);
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -319,8 +386,54 @@ function FormDrawer({ open, onClose, onSave, unidadesAgrupadas, editing, lastKmB
                 )}
               </div>
               <div>
-                <label className={lbl}>Km nuevo</label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className={lbl} style={{ marginBottom: 0 }}>Km nuevo</label>
+                  {form.unidad && (
+                    <button type="button"
+                      onClick={() => loadSamsaraKm(form.unidad)}
+                      disabled={fetchingSamsara}
+                      className="flex items-center gap-1 text-[10px] font-semibold text-sky-600 hover:text-sky-700 disabled:opacity-50 cursor-pointer transition-colors">
+                      {fetchingSamsara ? <Loader2 size={10} className="animate-spin" /> : <Satellite size={10} />}
+                      GPS
+                    </button>
+                  )}
+                </div>
                 <input type="number" step="0.1" min="0" value={form.kmNuevo} onChange={(e) => set("kmNuevo", e.target.value)} placeholder="0" className={inp()} onWheel={(e) => e.currentTarget.blur()} />
+                {samsaraFound === true && samsaraKm != null && (
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <span className="flex items-center gap-1 text-[10px] bg-sky-50 border border-sky-200 text-sky-700 rounded-full px-2.5 py-1 font-semibold">
+                      <Satellite size={9} /> {samsaraKm.toLocaleString("es-MX")} km
+                    </span>
+                    <button type="button" onClick={() => set("kmNuevo", String(samsaraKm))}
+                      className="text-[10px] font-semibold text-[#CC2229] hover:underline cursor-pointer">
+                      Usar
+                    </button>
+                  </div>
+                )}
+                {samsaraFound === false && samsaraVehicles.length === 0 && (
+                  <p className="mt-1 text-[10px] text-red-400 flex items-center gap-1 break-all">
+                    <Satellite size={9} /> {samsaraError || "No encontrado en Samsara"}
+                  </p>
+                )}
+                {samsaraFound === false && samsaraVehicles.length > 0 && (
+                  <div className="mt-1.5 space-y-1">
+                    <p className="text-[10px] text-amber-400 flex items-center gap-1">
+                      <Satellite size={9} /> No encontrado automático — selecciona manualmente:
+                    </p>
+                    <select
+                      defaultValue=""
+                      onChange={(e) => pickSamsaraVehicle(e.target.value)}
+                      className="w-full bg-[#1A1A1A] border border-amber-500/40 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:border-amber-400/60"
+                    >
+                      <option value="" disabled>— Buscar en Samsara —</option>
+                      {samsaraVehicles.map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {v.name}{v.odomKm != null ? ` · ${v.odomKm.toLocaleString("es-MX")} km` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
               <div>
                 <label className={lbl}>Km recorridos</label>
@@ -628,8 +741,14 @@ export default function DieselPage() {
     return map;
   }, [segurosRaw]);
 
+  const samsaraNameByUnidad = useMemo(() => {
+    const map = new Map<string, string>();
+    unidades.forEach((u) => { if (u.noEconomico && u.samsaraNombre) map.set(u.noEconomico.trim(), u.samsaraNombre.trim()); });
+    return map;
+  }, [unidades]);
+
   const unidadesAgrupadas = useMemo((): UnidadGrupo[] => {
-    const noEcos = unidades.map((u) => u.noEconomico).filter(Boolean);
+    const noEcos = [...new Set(unidades.map((u) => u.noEconomico).filter(Boolean))];
     noEcos.sort(naturalCmp);
     const groups = new Map<string, string[]>();
     for (const noEco of noEcos) {
@@ -994,7 +1113,8 @@ export default function DieselPage() {
 
       <FormDrawer open={showForm} onClose={() => { setShowForm(false); setEditingCarga(null); }} onSave={handleSave} editing={editingCarga}
         unidadesAgrupadas={unidadesAgrupadas}
-        lastKmByUnidad={lastKmByUnidad} />
+        lastKmByUnidad={lastKmByUnidad}
+        samsaraNameByUnidad={samsaraNameByUnidad} />
 
       {confirmDelete && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center">

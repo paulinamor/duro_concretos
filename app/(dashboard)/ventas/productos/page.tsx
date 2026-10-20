@@ -15,6 +15,11 @@ interface Producto {
   descripcion: string;
   categoria?: string;
   planta?: string;
+  // Datos fiscales SAT (para facturación)
+  claveProdServ?: string;
+  claveUnidad?: string;
+  tasaIVA?: number;
+  precio?: number;
 }
 
 // ─── Category inference ───────────────────────────────────────────────────────
@@ -45,7 +50,36 @@ function inferCategoria(codigo: string): string {
   return "General";
 }
 
+// ─── Catálogos SAT para el modal ──────────────────────────────────────────────
+
+const CLAVES_PROD_SERV = [
+  { clave: "30161801", desc: "Concreto premezclado" },
+  { clave: "30161802", desc: "Concreto para pavimentos" },
+  { clave: "30161700", desc: "Mortero y cemento" },
+  { clave: "30111500", desc: "Materiales de construcción" },
+  { clave: "30102100", desc: "Varilla y acero de construcción" },
+  { clave: "78102200", desc: "Servicios de transporte de carga" },
+  { clave: "72131702", desc: "Servicios de construcción" },
+  { clave: "80131500", desc: "Arrendamiento de maquinaria y equipo" },
+  { clave: "84111506", desc: "Servicios de gestión administrativa" },
+  { clave: "15101505", desc: "Diesel" },
+  { clave: "15101507", desc: "Gasolina" },
+];
+
+const CLAVES_UNIDAD = [
+  { clave: "E48", desc: "Unidad de servicio" },
+  { clave: "MTQ", desc: "Metro cúbico (m³)" },
+  { clave: "H87", desc: "Pieza" },
+  { clave: "KGM", desc: "Kilogramo" },
+  { clave: "LTR", desc: "Litro" },
+  { clave: "MTR", desc: "Metro" },
+  { clave: "ACT", desc: "Actividad" },
+  { clave: "TNE", desc: "Tonelada" },
+];
+
 // ─── Modal ────────────────────────────────────────────────────────────────────
+
+type SaveProductoPayload = { codigo: string; descripcion: string; claveProdServ?: string; claveUnidad?: string; tasaIVA?: number; precio?: number };
 
 function ProductoModal({
   open,
@@ -55,18 +89,26 @@ function ProductoModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onSave: (codigo: string, descripcion: string) => Promise<void>;
+  onSave: (p: SaveProductoPayload) => Promise<void>;
   initial?: Producto | null;
 }) {
-  const [codigo, setCodigo]       = useState("");
-  const [descripcion, setDescr]   = useState("");
-  const [saving, setSaving]       = useState(false);
-  const [err, setErr]             = useState("");
+  const [codigo,        setCodigo]    = useState("");
+  const [descripcion,   setDescr]     = useState("");
+  const [claveProd,     setClaveProd] = useState("30161801");
+  const [claveUnidad,   setClaveUni]  = useState("E48");
+  const [tasaIVA,       setTasaIVA]   = useState("0.16");
+  const [precio,        setPrecio]    = useState("");
+  const [saving,        setSaving]    = useState(false);
+  const [err,           setErr]       = useState("");
 
   useEffect(() => {
     if (open) {
       setCodigo(initial?.codigo ?? "");
       setDescr(initial?.descripcion ?? "");
+      setClaveProd(initial?.claveProdServ ?? "30161801");
+      setClaveUni(initial?.claveUnidad ?? "E48");
+      setTasaIVA(String(initial?.tasaIVA ?? 0.16));
+      setPrecio(initial?.precio != null ? String(initial.precio) : "");
       setErr("");
     }
   }, [open, initial]);
@@ -77,7 +119,14 @@ function ProductoModal({
     if (!codigo.trim() || !descripcion.trim()) { setErr("Código y descripción son obligatorios."); return; }
     setSaving(true);
     try {
-      await onSave(codigo.trim().toUpperCase(), descripcion.trim());
+      await onSave({
+        codigo: codigo.trim().toUpperCase(),
+        descripcion: descripcion.trim(),
+        claveProdServ: claveProd || undefined,
+        claveUnidad:   claveUnidad || undefined,
+        tasaIVA:       parseFloat(tasaIVA),
+        precio:        precio.trim() ? parseFloat(precio) : undefined,
+      });
       onClose();
     } catch {
       setErr("No se pudo guardar el producto.");
@@ -87,25 +136,60 @@ function ProductoModal({
   }
 
   const inp = "w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#CC2229]/30 focus:border-[#CC2229]";
-  const lbl = "block text-sm text-gray-600 mb-1 font-medium";
+  const lbl = "block text-xs font-semibold uppercase tracking-widest text-gray-500 mb-1.5";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden">
+      <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <h2 className="text-sm font-semibold text-gray-900">{initial ? "Editar producto" : "Nuevo producto"}</h2>
           <button onClick={onClose} className="rounded-xl p-1.5 text-gray-400 hover:bg-gray-100 cursor-pointer"><X size={16} /></button>
         </div>
         <div className="px-6 py-5 space-y-4">
           {err && <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600">{err}</p>}
-          <div>
-            <label className={lbl}>Código <span className="text-[#CC2229]">*</span></label>
-            <input value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="ACEL48H60%" className={`${inp} uppercase`} />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={lbl}>Código <span className="text-[#CC2229]">*</span></label>
+              <input value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="ACEL48H60%" className={`${inp} uppercase`} />
+            </div>
+            <div>
+              <label className={lbl}>Precio por defecto <span className="text-gray-400 normal-case font-normal">(opcional)</span></label>
+              <input type="number" value={precio} onChange={(e) => setPrecio(e.target.value)} placeholder="0.00" min={0} step={0.01} className={inp} />
+            </div>
           </div>
           <div>
             <label className={lbl}>Descripción <span className="text-[#CC2229]">*</span></label>
-            <textarea value={descripcion} onChange={(e) => setDescr(e.target.value)} rows={3} placeholder="Descripción completa del producto o servicio" className={`${inp} resize-none`} />
+            <textarea value={descripcion} onChange={(e) => setDescr(e.target.value)} rows={2} placeholder="Descripción completa del producto o servicio" className={`${inp} resize-none`} />
+          </div>
+          <div className="border-t border-gray-100 pt-3">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-3">Datos fiscales SAT (para facturación)</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={lbl}>Clave producto SAT</label>
+                <select value={claveProd} onChange={(e) => setClaveProd(e.target.value)} className={inp}>
+                  {CLAVES_PROD_SERV.map((c) => (
+                    <option key={c.clave} value={c.clave}>{c.clave} — {c.desc}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={lbl}>Clave unidad SAT</label>
+                <select value={claveUnidad} onChange={(e) => setClaveUni(e.target.value)} className={inp}>
+                  {CLAVES_UNIDAD.map((u) => (
+                    <option key={u.clave} value={u.clave}>{u.clave} — {u.desc}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={lbl}>Tasa IVA</label>
+                <select value={tasaIVA} onChange={(e) => setTasaIVA(e.target.value)} className={inp}>
+                  <option value="0.16">16%</option>
+                  <option value="0.08">8%</option>
+                  <option value="0">0% (Exento)</option>
+                </select>
+              </div>
+            </div>
           </div>
           <p className="text-xs text-gray-400">Categoría: <span className="font-medium text-gray-600">{codigo.trim() ? inferCategoria(codigo.trim()) : "—"}</span></p>
         </div>
@@ -165,13 +249,21 @@ export default function ProductosPage() {
 
   // ─── Handlers ─────────────────────────────────────────────────────────────
 
-  async function handleSave(codigo: string, descripcion: string) {
+  async function handleSave(payload: SaveProductoPayload) {
+    const { codigo, descripcion, claveProdServ, claveUnidad, tasaIVA, precio } = payload;
     const categoria = inferCategoria(codigo);
+    const data = withPlantaTag({
+      codigo, descripcion, categoria,
+      ...(claveProdServ ? { claveProdServ } : {}),
+      ...(claveUnidad   ? { claveUnidad }   : {}),
+      ...(tasaIVA != null ? { tasaIVA }     : {}),
+      ...(precio != null  ? { precio }      : {}),
+    });
     if (editTarget?.id) {
-      await upsertDocument(COLLECTIONS.productos, editTarget.id, withPlantaTag({ codigo, descripcion, categoria }));
+      await upsertDocument(COLLECTIONS.productos, editTarget.id, data);
     } else {
       const id = `prod-${Date.now()}`;
-      await upsertDocument(COLLECTIONS.productos, id, withPlantaTag({ codigo, descripcion, categoria }));
+      await upsertDocument(COLLECTIONS.productos, id, data);
     }
     setEditTarget(null);
     window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `Producto ${codigo} guardado.` } }));
@@ -302,6 +394,7 @@ export default function ProductosPage() {
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Código</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Descripción</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide hidden sm:table-cell">Categoría</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide hidden lg:table-cell">Fiscal SAT</th>
                 <th className="px-4 py-3 w-20"></th>
               </tr>
             </thead>
@@ -314,6 +407,15 @@ export default function ProductosPage() {
                     <span className="inline-block rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
                       {p.categoria ?? inferCategoria(p.codigo)}
                     </span>
+                  </td>
+                  <td className="px-4 py-3 hidden lg:table-cell">
+                    {p.claveProdServ ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] font-medium text-emerald-700" title={`${p.claveProdServ} · ${p.claveUnidad} · IVA ${((p.tasaIVA ?? 0.16) * 100).toFixed(0)}%`}>
+                        ✓ {p.claveProdServ}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-300">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">

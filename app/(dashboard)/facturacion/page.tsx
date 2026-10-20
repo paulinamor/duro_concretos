@@ -11,38 +11,11 @@ import KPICard from "@/components/KPICard";
 import StatusBadge from "@/components/StatusBadge";
 import { getCollectionDocs, getDocument, upsertDocument, deleteDocument, COLLECTIONS, orderBy, limit } from "@/lib/db";
 import { useCollectionRaw } from "@/lib/useCollection";
-import { withPlantaTag, getStoredSession, DEVELOPER_EMAIL } from "@/lib/auth";
+import { withPlantaTag, filterByPlanta, getStoredSession, DEVELOPER_EMAIL } from "@/lib/auth";
+import { REGIMEN_FISCAL, USO_CFDI } from "@/lib/sat-catalogs";
+import type { EmitirComplementoInput } from "@/lib/facturama";
 
 // ─── Catálogos SAT ────────────────────────────────────────────────────────────
-
-// ─── Catálogos SAT completos ──────────────────────────────────────────────────
-
-const USO_CFDI = [
-  { clave: "G01",  desc: "Adquisición de mercancias" },
-  { clave: "G02",  desc: "Devoluciones, descuentos o bonificaciones" },
-  { clave: "G03",  desc: "Gastos en general" },
-  { clave: "I01",  desc: "Construcciones" },
-  { clave: "I02",  desc: "Mobilario y equipo de oficina por actividades" },
-  { clave: "I03",  desc: "Equipo de transporte" },
-  { clave: "I04",  desc: "Equipo de cómputo y accesorios" },
-  { clave: "I05",  desc: "Dados, troqueles, moldes, matrices y herramental" },
-  { clave: "I06",  desc: "Comunicaciones telefónicas" },
-  { clave: "I07",  desc: "Comunicaciones satelitales" },
-  { clave: "I08",  desc: "Otra maquinaria y equipo" },
-  { clave: "D01",  desc: "Honorarios médicos, dentales y gastos hospitalarios" },
-  { clave: "D02",  desc: "Gastos médicos por incapacidad o discapacidad" },
-  { clave: "D03",  desc: "Gastos funerales" },
-  { clave: "D04",  desc: "Donativos" },
-  { clave: "D05",  desc: "Intereses reales pagados por créditos hipotecarios (casa habitación)" },
-  { clave: "D06",  desc: "Aportaciones voluntarias al SAR" },
-  { clave: "D07",  desc: "Primas por seguros de gastos médicos" },
-  { clave: "D08",  desc: "Gastos de transportación escolar obligatoria" },
-  { clave: "D09",  desc: "Depósitos en cuentas para el ahorro, primas de pensiones" },
-  { clave: "D10",  desc: "Pagos por servicios educativos (colegiaturas)" },
-  { clave: "S01",  desc: "Sin efectos fiscales" },
-  { clave: "CP01", desc: "Pagos" },
-  { clave: "CN01", desc: "Nómina" },
-];
 
 const FORMA_PAGO = [
   { clave: "01", desc: "Efectivo" },
@@ -69,28 +42,6 @@ const FORMA_PAGO = [
   { clave: "99", desc: "Por definir" },
 ];
 
-const REGIMEN_FISCAL = [
-  { clave: "601", desc: "General de Ley Personas Morales" },
-  { clave: "603", desc: "Personas Morales con Fines no Lucrativos" },
-  { clave: "605", desc: "Sueldos y Salarios e Ingresos Asimilados a Salarios" },
-  { clave: "606", desc: "Arrendamiento" },
-  { clave: "607", desc: "Régimen de Enajenación o Adquisición de Bienes" },
-  { clave: "608", desc: "Demás ingresos" },
-  { clave: "609", desc: "Consolidación" },
-  { clave: "610", desc: "Residentes en el Extranjero sin Establecimiento Permanente en México" },
-  { clave: "611", desc: "Ingresos por Dividendos (socios y accionistas)" },
-  { clave: "612", desc: "Personas Físicas con Actividades Empresariales y Profesionales" },
-  { clave: "614", desc: "Ingresos por intereses" },
-  { clave: "615", desc: "Régimen de los ingresos por obtención de premios" },
-  { clave: "616", desc: "Sin obligaciones fiscales" },
-  { clave: "620", desc: "Sociedades Cooperativas de Producción que optan por diferir sus ingresos" },
-  { clave: "621", desc: "Incorporación Fiscal" },
-  { clave: "622", desc: "Actividades Agrícolas, Ganaderas, Silvícolas y Pesqueras" },
-  { clave: "623", desc: "Opcional para Grupos de Sociedades" },
-  { clave: "624", desc: "Coordinados" },
-  { clave: "625", desc: "Régimen de las Actividades Empresariales con ingresos a través de Plataformas Tecnológicas" },
-  { clave: "626", desc: "Régimen Simplificado de Confianza (RESICO)" },
-];
 
 const CLAVE_UNIDAD = [
   // Volumen / construcción
@@ -214,7 +165,7 @@ const CLAVE_PRODUCTO_SUGERIDAS = [
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
-type TipoCFDI = "I" | "E" | "T";
+type TipoCFDI = "I" | "E" | "T" | "P";
 type MetodoPago = "PUE" | "PPD";
 type StatusCFDI = "valid" | "cancelled" | "draft";
 
@@ -247,6 +198,7 @@ interface CfdiEmitido {
   createdAt:     string;
   creadoPor?:    string;
   emisorRfc?:    string;
+  clienteCp?:    string;
 }
 
 interface DescargaSAT {
@@ -270,7 +222,7 @@ const fmt = (n: number) =>
 const fmtDate = (s: string) =>
   s ? new Date(s).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" }) : "—";
 
-const TIPO_LABEL: Record<TipoCFDI, string> = { I: "Ingreso", E: "Egreso", T: "Traslado" };
+const TIPO_LABEL: Record<TipoCFDI, string> = { I: "Ingreso", E: "Egreso", T: "Traslado", P: "Pago" };
 const STATUS_TONE: Record<StatusCFDI | string, string> = { valid: "aprobado", cancelled: "cancelado", draft: "pendiente" };
 const STATUS_LABEL: Record<StatusCFDI | string, string> = { valid: "Vigente", cancelled: "Cancelado", draft: "Borrador" };
 
@@ -329,16 +281,16 @@ function EmitirDrawer({
   const [paso, setPaso] = useState<"form" | "preview" | "timbrado">("form");
   const [cfdiTimbrado, setCfdiTimbrado] = useState<CfdiEmitido | null>(null);
   const [enviandoCxc, setEnviandoCxc] = useState(false);
-  const [productosDB, setProductosDB] = useState<{ id: string; codigo: string; descripcion: string }[]>([]);
+  const [productosDB, setProductosDB] = useState<{ id: string; codigo: string; descripcion: string; claveProdServ?: string; claveUnidad?: string; tasaIVA?: number; precio?: number }[]>([]);
 
   useEffect(() => {
     if (!open) return;
     setPaso("form");
     setError(""); setFieldErrors({});
     getCollectionDocs<EmisorFm>("emisoresFm")
-      .then((docs) => setEmisoresFm(docs.filter((d) => d.activo !== false)))
+      .then((docs) => setEmisoresFm(filterByPlanta(docs.filter((d) => d.activo !== false))))
       .catch(() => {});
-    getCollectionDocs<{ id: string; codigo: string; descripcion: string }>(COLLECTIONS.productos)
+    getCollectionDocs<{ id: string; codigo: string; descripcion: string; claveProdServ?: string; claveUnidad?: string; tasaIVA?: number; precio?: number }>(COLLECTIONS.productos)
       .then((docs) => setProductosDB(docs))
       .catch(() => {});
     // Auto-increment folio
@@ -357,7 +309,7 @@ function EmitirDrawer({
     if (clean.length < 12) return;
     setRfcLookupLoading(true);
     try {
-      const clientes = await getCollectionDocs<{ rfc?: string; razonSocial?: string; regimenFiscal?: string; cp?: string }>(
+      const clientes = await getCollectionDocs<{ rfc?: string; razonSocial?: string; regimenFiscal?: string; cp?: string; email?: string; usoCfdi?: string }>(
         COLLECTIONS.clientes, [],
       );
       const match = clientes.find((c) => c.rfc?.toUpperCase() === clean);
@@ -365,6 +317,8 @@ function EmitirDrawer({
         if (match.razonSocial)   setNombre(match.razonSocial);
         if (match.regimenFiscal) setRegimen(match.regimenFiscal);
         if (match.cp)            setCp(match.cp);
+        if (match.email)         setEmail(match.email);
+        if (match.usoCfdi)       setUso(match.usoCfdi);
       }
     } catch { /* ignore */ } finally { setRfcLookupLoading(false); }
   }
@@ -410,6 +364,20 @@ function EmitirDrawer({
     setError("");
     const emisorSel = emisoresFm.find((e) => e.rfc === emisorRfcSel);
 
+    // Cargar logo en base64 para incluirlo en el PDF
+    let logoB64: string | undefined;
+    try {
+      const logoRes = await fetch("/LOGO_DC.png");
+      if (logoRes.ok) {
+        const blob = await logoRes.blob();
+        logoB64 = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => { const r = reader.result as string; resolve(r.includes(",") ? r.split(",")[1] : r); };
+          reader.readAsDataURL(blob);
+        });
+      }
+    } catch { /* logo opcional */ }
+
     setLoading(true);
     try {
       const resp = await fetch("/api/facturama/timbrar", {
@@ -420,6 +388,7 @@ function EmitirDrawer({
           emisorNombre: emisorSel!.nombre,
           emisorRegimen: emisorSel!.regimen,
           emisorCp:     emisorSel!.cp ?? "",
+          logoB64,
           tipoComprobante: tipo,
           serie,
           folio,
@@ -715,7 +684,17 @@ function EmitirDrawer({
                         <Field label="Producto del catálogo">
                           <AppSelect value="" onChange={(e) => {
                             const prod = productosDB.find((p) => p.id === e.target.value);
-                            if (prod) { updConcepto(i, "descripcion", prod.descripcion); setFieldErrors((p) => ({ ...p, [`desc_${i}`]: "" })); }
+                            if (prod) {
+                              setConceptos((prev) => prev.map((c, idx) => idx !== i ? c : {
+                                ...c,
+                                descripcion:    prod.descripcion,
+                                claveProducto:  prod.claveProdServ ?? c.claveProducto,
+                                claveUnidad:    prod.claveUnidad   ?? c.claveUnidad,
+                                tasaIVA:        prod.tasaIVA       ?? c.tasaIVA,
+                                precio:         prod.precio        ?? c.precio,
+                              }));
+                              setFieldErrors((p) => ({ ...p, [`desc_${i}`]: "", [`precio_${i}`]: "" }));
+                            }
                           }}>
                             <option value="">Seleccionar producto…</option>
                             {productosDB.map((p) => (
@@ -994,7 +973,7 @@ function EmitirDrawer({
 
 // ─── Tab: Emisores Facturama ──────────────────────────────────────────────────
 
-type EmisorFm = { id?: string; rfc: string; nombre: string; regimen: string; cp?: string; activo?: boolean };
+type EmisorFm = { id?: string; rfc: string; nombre: string; regimen: string; cp?: string; activo?: boolean; planta?: string };
 
 const satInpDark = "w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-xl px-3.5 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-all";
 const satLblDark = "block text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5";
@@ -1021,7 +1000,7 @@ function EmisorasTab() {
 
   useEffect(() => {
     getCollectionDocs<EmisorFm>("emisoresFm")
-      .then((docs) => setEmisores(docs.filter((d) => d.activo !== false)))
+      .then((docs) => setEmisores(filterByPlanta(docs.filter((d) => d.activo !== false))))
       .finally(() => setLoadingList(false));
   }, []);
 
@@ -1082,7 +1061,7 @@ function EmisorasTab() {
         }
       }
 
-      await upsertDocument("emisoresFm", rfcUp, { rfc: rfcUp, nombre: fNombre, regimen: fRegimen, cp: fCp, activo: true });
+      await upsertDocument("emisoresFm", rfcUp, withPlantaTag({ rfc: rfcUp, nombre: fNombre, regimen: fRegimen, cp: fCp, activo: true }));
       setEmisores((prev) => [...prev.filter((e) => e.rfc !== rfcUp), { rfc: rfcUp, nombre: fNombre, regimen: fRegimen, cp: fCp, activo: true }]);
       setMsg({ type: "ok", text: `CSD de ${rfcUp} registrado exitosamente` });
       setShowForm(false); setFRfc(""); setFNombre(""); setFRegimen("601"); setFCp(""); setFPwd(""); setCerFile(null); setKeyFile(null);
@@ -2143,9 +2122,202 @@ function FoliosDevTab({ cfdiList }: { cfdiList: CfdiEmitido[] }) {
   );
 }
 
+// ─── Tab: Complementos de pago ────────────────────────────────────────────────
+
+function ComplementoPagoTab({ cfdiList, onEmitido }: { cfdiList: CfdiEmitido[]; onEmitido: (c: CfdiEmitido) => void }) {
+  const ppd = cfdiList.filter((f) => f.tipo === "I" && f.status === "valid");
+  const [sel, setSel]           = useState<CfdiEmitido | null>(null);
+  const [monto, setMonto]       = useState("");
+  const [forma, setForma]       = useState("03");
+  const [fecha, setFecha]       = useState(() => new Date().toISOString().slice(0, 10));
+  const [parcialidad, setParcialidad] = useState("1");
+  const [saldoAnterior, setSaldoAnterior] = useState("");
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState("");
+  const [ok, setOk]             = useState("");
+  const [emisoresFm, setEmisoresFm] = useState<EmisorFm[]>([]);
+  const [emisorRfc, setEmisorRfc] = useState("");
+
+  useEffect(() => {
+    getCollectionDocs<EmisorFm>("emisoresFm")
+      .then((docs) => {
+        const filtered = filterByPlanta(docs.filter((d) => d.activo !== false));
+        setEmisoresFm(filtered);
+        if (filtered.length === 1) setEmisorRfc(filtered[0].rfc);
+      })
+      .catch(() => {});
+  }, []);
+
+  const inpCls = "w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-xl px-3.5 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-[#CC2229]/60 transition-colors";
+  const lblCls = "block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5";
+
+  async function handleEmitir() {
+    if (!sel || !monto || !emisorRfc) { setError("Selecciona factura, emisor y monto."); return; }
+    const emisorSel = emisoresFm.find((e) => e.rfc === emisorRfc);
+    if (!emisorSel) { setError("Emisor no encontrado."); return; }
+    setLoading(true); setError(""); setOk("");
+    try {
+      const body: EmitirComplementoInput = {
+        emisorRfc:    emisorSel.rfc,
+        emisorNombre: emisorSel.nombre,
+        emisorRegimen: emisorSel.regimen,
+        emisorCp:     emisorSel.cp ?? "",
+        clienteRfc:   sel.clienteRfc,
+        clienteNombre: sel.clienteNombre,
+        clienteRegimenFiscal: "601",
+        clienteCp:    sel.clienteCp ?? "64000",
+        fechaPago:    `${fecha}T12:00:00`,
+        formaPago:    forma,
+        monto:        parseFloat(monto),
+        facturaUuid:  sel.uuid,
+        facturaSerie: sel.serie ?? undefined,
+        facturaFolio: String(sel.folio ?? ""),
+        facturaCurrency: "MXN",
+        facturaMontoTotal: sel.total,
+        facturaMontoAnterior: saldoAnterior.trim() ? parseFloat(saldoAnterior) : sel.total,
+        numeroParcialidad: parseInt(parcialidad, 10) || 1,
+      };
+      const resp = await fetch("/api/facturama/complemento", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await resp.json();
+      if (!resp.ok) { setError(data.error ?? "Error al timbrar complemento"); return; }
+      setOk(`Complemento timbrado: ${data.uuid}`);
+      const nuevo: CfdiEmitido = {
+        uuid: data.uuid, facturamaId: data.facturamaId, tipo: "P" as TipoCFDI,
+        clienteNombre: sel.clienteNombre, clienteRfc: sel.clienteRfc,
+        folio: data.folio ?? 0, serie: "P", total: parseFloat(monto), subtotal: 0, impuestos: 0,
+        fechaTimbrado: new Date().toISOString(), status: "valid",
+        pdfUrl: `/api/facturama/download?id=${data.facturamaId}&format=pdf`,
+        xmlUrl: `/api/facturama/download?id=${data.facturamaId}&format=xml`,
+        planta: "", createdAt: new Date().toISOString(),
+      };
+      onEmitido(nuevo);
+      setSel(null); setMonto(""); setSaldoAnterior(""); setParcialidad("1");
+    } catch (e) { setError(e instanceof Error ? e.message : "Error inesperado"); }
+    finally { setLoading(false); }
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center gap-2 rounded-xl bg-blue-500/10 border border-blue-500/20 px-4 py-3">
+        <Receipt size={14} className="text-blue-400 shrink-0" />
+        <p className="text-xs text-blue-300">
+          Un complemento de pago (CFDI tipo P) documenta el cobro de una factura emitida con método <strong>PPD</strong>.
+          Selecciona la factura, ingresa el monto cobrado y timbra.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {/* Panel izquierdo: selección */}
+        <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-[#3A3A3A]">
+            <p className="text-sm font-semibold text-white">Facturas vigentes</p>
+            <p className="text-xs text-gray-500 mt-0.5">Selecciona la factura que se está pagando</p>
+          </div>
+          {ppd.length === 0 ? (
+            <p className="px-4 py-8 text-center text-xs text-gray-600">No hay facturas de ingreso vigentes.</p>
+          ) : (
+            <div className="divide-y divide-[#3A3A3A] max-h-80 overflow-y-auto">
+              {ppd.map((f) => (
+                <button
+                  key={f.uuid}
+                  onClick={() => { setSel(f); setSaldoAnterior(String(f.total)); setMonto(String(f.total)); }}
+                  className={`w-full text-left px-4 py-3 transition-colors cursor-pointer ${sel?.uuid === f.uuid ? "bg-[#CC2229]/10 border-l-2 border-[#CC2229]" : "hover:bg-white/5"}`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-semibold text-white">{f.clienteNombre}</p>
+                      <p className="text-[10px] text-gray-500 font-mono mt-0.5">{f.serie}{f.folio} · {f.uuid.slice(0, 12)}…</p>
+                    </div>
+                    <p className="text-sm font-bold text-white shrink-0">{fmt(f.total)}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Panel derecho: datos del complemento */}
+        <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl p-4 space-y-4">
+          <p className="text-sm font-semibold text-white">Datos del pago</p>
+
+          {emisoresFm.length === 0 ? (
+            <p className="text-xs text-amber-400">Sin emisores registrados. Ve a la pestaña Emisores.</p>
+          ) : (
+            <div>
+              <label className={lblCls}>Empresa emisora</label>
+              <select value={emisorRfc} onChange={(e) => setEmisorRfc(e.target.value)} className={inpCls}>
+                <option value="">— Seleccionar —</option>
+                {emisoresFm.map((e) => <option key={e.rfc} value={e.rfc}>{e.rfc} — {e.nombre}</option>)}
+              </select>
+            </div>
+          )}
+
+          <div>
+            <label className={lblCls}>Factura seleccionada</label>
+            {sel ? (
+              <div className="rounded-xl bg-[#1A1A1A] border border-[#3A3A3A] px-3 py-2.5 text-xs text-gray-300">
+                {sel.clienteNombre} · {sel.serie}{sel.folio} · {fmt(sel.total)}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-600 py-2">Selecciona una factura de la lista</p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={lblCls}>Fecha de pago</label>
+              <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className={inpCls} />
+            </div>
+            <div>
+              <label className={lblCls}>Forma de pago SAT</label>
+              <select value={forma} onChange={(e) => setForma(e.target.value)} className={inpCls}>
+                {FORMA_PAGO.map((f) => <option key={f.clave} value={f.clave}>{f.clave} — {f.desc}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={lblCls}>Monto cobrado</label>
+              <input type="number" value={monto} onChange={(e) => setMonto(e.target.value)} min={0.01} step={0.01} placeholder="0.00" className={inpCls} />
+            </div>
+            <div>
+              <label className={lblCls}>Saldo anterior</label>
+              <input type="number" value={saldoAnterior} onChange={(e) => setSaldoAnterior(e.target.value)} min={0} step={0.01} placeholder="Total original" className={inpCls} />
+            </div>
+            <div>
+              <label className={lblCls}>Número de parcialidad</label>
+              <input type="number" value={parcialidad} onChange={(e) => setParcialidad(e.target.value)} min={1} step={1} className={inpCls} />
+            </div>
+          </div>
+
+          {error && (
+            <div className="flex items-center gap-2 rounded-xl bg-red-500/10 border border-red-500/20 px-3 py-2.5 text-xs text-red-400">
+              <AlertCircle size={13} /> {error}
+            </div>
+          )}
+          {ok && (
+            <div className="flex items-center gap-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-3 py-2.5 text-xs text-emerald-400">
+              <CheckCircle2 size={13} /> {ok}
+            </div>
+          )}
+
+          <button
+            onClick={handleEmitir}
+            disabled={loading || !sel || !monto}
+            className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#CC2229] hover:bg-[#B01E24] px-4 py-2.5 text-sm font-semibold text-white transition-colors disabled:opacity-50 cursor-pointer"
+          >
+            {loading ? <><Loader2 size={14} className="animate-spin" /> Timbrando…</> : <><Send size={14} /> Timbrar complemento</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Página principal ─────────────────────────────────────────────────────────
 
-type Tab = "historial" | "emisores" | "descarga" | "folios";
+type Tab = "historial" | "complemento" | "emisores" | "descarga" | "folios";
 
 export default function FacturacionPage() {
   const [tab, setTab]               = useState<Tab>("historial");
@@ -2179,10 +2351,11 @@ export default function FacturacionPage() {
   const cancelados      = merged.filter((f) => f.status === "cancelled").length;
 
   const TABS: { key: Tab; label: string; icon: React.ElementType; devOnly?: boolean }[] = [
-    { key: "historial", label: "CFDIs Emitidos", icon: FileText },
-    { key: "emisores",  label: "Emisores",        icon: Building2 },
-    { key: "descarga",  label: "Descarga CFDI",   icon: CloudDownload },
-    { key: "folios",    label: "Folios",           icon: BarChart3, devOnly: true },
+    { key: "historial",   label: "CFDIs Emitidos",      icon: FileText },
+    { key: "complemento", label: "Complementos de Pago", icon: Receipt },
+    { key: "emisores",    label: "Emisores",              icon: Building2 },
+    { key: "descarga",    label: "Descarga CFDI",         icon: CloudDownload },
+    { key: "folios",      label: "Folios",                icon: BarChart3, devOnly: true },
   ];
 
   return (
@@ -2305,6 +2478,7 @@ export default function FacturacionPage() {
         </div>
       )}
 
+      {tab === "complemento" && <ComplementoPagoTab cfdiList={cfdiList} onEmitido={(cfdi) => setCfdiList((prev) => [cfdi, ...prev])} />}
       {tab === "emisores" && <EmisorasTab />}
       {tab === "descarga" && <DescargaFacturamaTab />}
       {tab === "folios"   && isDev && <FoliosDevTab cfdiList={cfdiList} />}
