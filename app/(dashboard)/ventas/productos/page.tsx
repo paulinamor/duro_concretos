@@ -141,7 +141,7 @@ function ProductoModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden">
+      <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden" style={{ colorScheme: 'light' }}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <h2 className="text-sm font-semibold text-gray-900">{initial ? "Editar producto" : "Nuevo producto"}</h2>
           <button onClick={onClose} className="rounded-xl p-1.5 text-gray-400 hover:bg-gray-100 cursor-pointer"><X size={16} /></button>
@@ -322,14 +322,14 @@ export default function ProductosPage() {
 
       {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="rounded-2xl border border-gray-200 bg-white px-5 py-4 shadow-sm">
+        <div className="rounded-2xl border border-[#3A3A3A] bg-[#242424] px-5 py-4">
           <p className="text-xs text-gray-500 font-medium">Total productos</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{productos.length}</p>
+          <p className="text-2xl font-bold text-white mt-1">{productos.length}</p>
         </div>
         {byCategory.slice(0, 3).map(([cat, n]) => (
-          <div key={cat} className="rounded-2xl border border-gray-200 bg-white px-5 py-4 shadow-sm">
+          <div key={cat} className="rounded-2xl border border-[#3A3A3A] bg-[#242424] px-5 py-4">
             <p className="text-xs text-gray-500 font-medium">{cat}</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{n}</p>
+            <p className="text-2xl font-bold text-white mt-1">{n}</p>
           </div>
         ))}
       </div>
@@ -342,14 +342,14 @@ export default function ProductosPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar por código o descripción…"
-            className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#CC2229]/30 focus:border-[#CC2229]"
+            className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-[#3A3A3A] bg-[#1A1A1A] text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-[#CC2229]/30 focus:border-[#CC2229]"
           />
         </div>
 
         <select
           value={catFilter}
           onChange={(e) => setCatFilter(e.target.value)}
-          className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#CC2229]/30 cursor-pointer"
+          className="rounded-xl border border-[#3A3A3A] bg-[#1A1A1A] px-3 py-2.5 text-sm text-gray-300 focus:outline-none focus:ring-2 focus:ring-[#CC2229]/30 cursor-pointer"
         >
           {categorias.map((c) => <option key={c}>{c}</option>)}
         </select>
@@ -358,7 +358,7 @@ export default function ProductosPage() {
         <button
           onClick={() => fileRef.current?.click()}
           disabled={importing}
-          className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 border border-gray-200 bg-white rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-60 cursor-pointer whitespace-nowrap"
+          className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-300 border border-[#3A3A3A] bg-[#242424] rounded-xl hover:bg-[#2A2A2A] hover:text-white transition-colors disabled:opacity-60 cursor-pointer whitespace-nowrap"
         >
           <Upload size={14} />
           {importing ? "Importando…" : "Importar Excel"}
@@ -381,47 +381,47 @@ export default function ProductosPage() {
       )}
 
       {/* Table */}
-      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+      <div className="rounded-xl border border-[#3A3A3A] bg-[#242424] overflow-hidden">
         {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-gray-400 gap-3">
-            <Package size={32} className="opacity-30" />
-            <p className="text-sm">{productos.length === 0 ? "Sin productos. Importa desde Excel o crea uno manualmente." : "Sin resultados para esta búsqueda."}</p>
+          <div className="flex flex-col items-center justify-center py-16 text-gray-600 gap-3">
+            <Package size={32} className="opacity-40" />
+            <p className="text-sm text-gray-500">{productos.length === 0 ? "Sin productos. Importa desde Excel o crea uno manualmente." : "Sin resultados para esta búsqueda."}</p>
           </div>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-100 bg-gray-50">
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Código</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Descripción</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide hidden sm:table-cell">Categoría</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide hidden lg:table-cell">Fiscal SAT</th>
+              <tr className="border-b border-[#3A3A3A] bg-[#1A1A1A]">
+                <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-400">Código</th>
+                <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-400">Descripción</th>
+                <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-400 hidden sm:table-cell">Categoría</th>
+                <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-400 hidden lg:table-cell">Fiscal SAT</th>
                 <th className="px-4 py-3 w-20"></th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-[#3A3A3A]">
               {filtered.map((p) => (
-                <tr key={p.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors">
-                  <td className="px-4 py-3 font-mono font-medium text-gray-900 text-xs">{p.codigo}</td>
-                  <td className="px-4 py-3 text-gray-700 max-w-xs">{p.descripcion}</td>
+                <tr key={p.id} className="hover:bg-white/5 transition-colors">
+                  <td className="px-4 py-3 font-mono font-semibold text-[#CC2229] text-xs">{p.codigo}</td>
+                  <td className="px-4 py-3 text-gray-300 max-w-xs">{p.descripcion}</td>
                   <td className="px-4 py-3 hidden sm:table-cell">
-                    <span className="inline-block rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
+                    <span className="inline-block rounded-full bg-[#3A3A3A] px-2.5 py-0.5 text-xs font-medium text-gray-400">
                       {p.categoria ?? inferCategoria(p.codigo)}
                     </span>
                   </td>
                   <td className="px-4 py-3 hidden lg:table-cell">
                     {p.claveProdServ ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] font-medium text-emerald-700" title={`${p.claveProdServ} · ${p.claveUnidad} · IVA ${((p.tasaIVA ?? 0.16) * 100).toFixed(0)}%`}>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-medium text-emerald-400" title={`${p.claveProdServ} · ${p.claveUnidad} · IVA ${((p.tasaIVA ?? 0.16) * 100).toFixed(0)}%`}>
                         ✓ {p.claveProdServ}
                       </span>
                     ) : (
-                      <span className="text-xs text-gray-300">—</span>
+                      <span className="text-xs text-gray-600">—</span>
                     )}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
                       <button
                         onClick={() => { setEditTarget(p); setModalOpen(true); }}
-                        className="rounded-lg p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
+                        className="rounded-lg p-1.5 text-gray-500 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
                         title="Editar"
                       >
                         <Edit2 size={13} />
@@ -429,7 +429,7 @@ export default function ProductosPage() {
                       {isSuperadmin && (
                         <button
                           onClick={() => setDeleteId(p.id)}
-                          className="rounded-lg p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                          className="rounded-lg p-1.5 text-gray-500 hover:text-[#CC2229] hover:bg-[#CC2229]/10 transition-colors cursor-pointer"
                           title="Eliminar"
                         >
                           <Trash2 size={13} />
@@ -458,7 +458,7 @@ export default function ProductosPage() {
       {deleteId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setDeleteId(null)} />
-          <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-gray-200 p-6 space-y-4">
+          <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-gray-200 p-6 space-y-4" style={{ colorScheme: 'light' }}>
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-50 text-red-600">
                 <AlertTriangle size={20} />

@@ -368,7 +368,7 @@ function RemisionDrawer({
   return (
     <div className="fixed inset-0 z-[100] flex">
       <button className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} aria-label="Cerrar" />
-      <div className="relative ml-auto flex h-full w-full max-w-lg flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden">
+      <div className="relative ml-auto flex h-full w-full max-w-lg flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden" style={{ colorScheme: 'light' }}>
         <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-4 shrink-0">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#CC2229]/10 text-[#CC2229]">
             <FileText size={18} />
@@ -857,17 +857,17 @@ export default function RemisionesPage() {
       {/* ── Header ─────────────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-3">
         {/* Month nav */}
-        <div className="flex items-center bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
-          <button onClick={() => setMonth(adjMonth(month, -1))} className="px-3 py-2 text-gray-400 hover:text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer text-lg leading-none">‹</button>
-          <span className="text-gray-800 text-sm font-medium capitalize min-w-[140px] text-center py-2 select-none">{monthLabel(month)}</span>
-          <button onClick={() => setMonth(adjMonth(month, +1))} className="px-3 py-2 text-gray-400 hover:text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer text-lg leading-none">›</button>
+        <div className="flex items-center bg-[#242424] border border-[#3A3A3A] rounded-lg overflow-hidden">
+          <button onClick={() => setMonth(adjMonth(month, -1))} className="px-3 py-2 text-gray-500 hover:text-white hover:bg-white/10 transition-colors cursor-pointer text-lg leading-none">‹</button>
+          <span className="text-gray-300 text-sm font-medium capitalize min-w-[140px] text-center py-2 select-none">{monthLabel(month)}</span>
+          <button onClick={() => setMonth(adjMonth(month, +1))} className="px-3 py-2 text-gray-500 hover:text-white hover:bg-white/10 transition-colors cursor-pointer text-lg leading-none">›</button>
         </div>
 
         {/* Planta filter */}
-        <div className="flex items-center bg-gray-100 rounded-lg p-1 gap-0.5">
+        <div className="flex items-center bg-[#242424] border border-[#3A3A3A] rounded-lg p-1 gap-0.5">
           {(["Todas", "Allende", "Pesquería"] as const).map((p) => (
             <button key={p} onClick={() => setPlantaFilter(p)}
-              className={`px-3 py-1.5 rounded-md text-xs font-bold tracking-wide transition-all cursor-pointer ${plantaFilter === p ? "bg-[#CC2229] text-white shadow-md" : "text-gray-500 hover:text-gray-700"}`}>
+              className={`px-3 py-1.5 rounded-md text-xs font-bold tracking-wide transition-all cursor-pointer ${plantaFilter === p ? "bg-[#CC2229] text-white shadow-md" : "text-gray-500 hover:text-white"}`}>
               {p}
             </button>
           ))}
@@ -877,7 +877,7 @@ export default function RemisionesPage() {
           <button
             onClick={() => { setEmpresaForm(empresa); setEmpresaModal(true); }}
             title="Datos de empresa para PDF"
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-500 bg-white border border-gray-200 rounded-lg hover:border-gray-300 hover:text-gray-700 transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-400 bg-[#242424] border border-[#3A3A3A] rounded-lg hover:border-gray-500 hover:text-white transition-colors cursor-pointer"
           >
             <Settings size={14} /> Empresa
           </button>
@@ -893,20 +893,20 @@ export default function RemisionesPage() {
       </div>
 
       {/* ── Table ──────────────────────────────────────────────────────────────── */}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+      <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
         {loading && <ModuleLoading label="Cargando remisiones…" />}
         {!loading && (<>
-        <div className="px-5 py-4 border-b border-gray-100 flex flex-wrap items-center gap-3">
-          <p className="text-sm font-semibold text-gray-900">
+        <div className="px-5 py-4 border-b border-[#3A3A3A] flex flex-wrap items-center gap-3">
+          <p className="text-sm font-semibold text-white">
             {filtered.length} {filtered.length !== 1 ? "remisiones" : "remisión"}
           </p>
           <div className="ml-auto relative">
-            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="No. remisión, cliente, operador…"
-              className="bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-lg pl-7 pr-8 py-1.5 w-64 focus:outline-none focus:border-[#CC2229]/60 placeholder-gray-400"
+              className="bg-[#1A1A1A] border border-[#3A3A3A] text-gray-300 text-xs rounded-lg pl-7 pr-8 py-1.5 w-64 focus:outline-none focus:border-[#CC2229]/60 placeholder-gray-600"
             />
             {search && (
               <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer">
@@ -919,49 +919,49 @@ export default function RemisionesPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-100">
+              <tr className="bg-[#1A1A1A] border-b border-[#3A3A3A]">
                 {["Fecha", "No. Remisión", "Cliente", "Obra", "M³", "Monto", "Mezcla", "CR", "Estado", "Pago", ""].map((h) => (
-                  <th key={h} className="px-3 py-3 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                  <th key={h} className="px-3 py-3 text-left text-[10px] font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-[#3A3A3A]">
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={12} className="px-4 py-16 text-center">
                     <div className="flex flex-col items-center gap-3">
-                      <FileText size={32} className="text-gray-300" />
+                      <FileText size={32} className="text-gray-600" />
                       <p className="text-sm text-gray-500">Sin remisiones para este período</p>
-                      <p className="text-xs text-gray-400">Las remisiones se generan automáticamente desde Programación</p>
+                      <p className="text-xs text-gray-600">Las remisiones se generan automáticamente desde Programación</p>
                     </div>
                   </td>
                 </tr>
               ) : (
                 filtered.map((r) => (
-                  <tr key={r.id ?? r.noRemision} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-3 py-3 text-gray-400 text-xs font-mono whitespace-nowrap">{r.fecha}</td>
+                  <tr key={r.id ?? r.noRemision} className="hover:bg-white/5 transition-colors">
+                    <td className="px-3 py-3 text-gray-500 text-xs font-mono whitespace-nowrap">{r.fecha}</td>
                     <td className="px-3 py-3 text-[#CC2229] font-mono text-xs font-bold">{r.noRemision}</td>
-                    <td className="px-3 py-3 text-gray-700 text-xs font-medium max-w-[130px] truncate">{r.cliente || <span className="text-gray-400">—</span>}</td>
-                    <td className="px-3 py-3 text-gray-500 text-xs max-w-[100px] truncate">{r.obra || <span className="text-gray-400">—</span>}</td>
-                    <td className="px-3 py-3 text-gray-900 font-bold tabular-nums text-xs whitespace-nowrap">{r.m3} m³</td>
-                    <td className="px-3 py-3 tabular-nums font-semibold text-gray-900 text-xs whitespace-nowrap">
-                      {r.monto ? `$${r.monto.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : <span className="text-gray-300 font-normal">—</span>}
+                    <td className="px-3 py-3 text-gray-300 text-xs font-medium max-w-[130px] truncate">{r.cliente || <span className="text-gray-600">—</span>}</td>
+                    <td className="px-3 py-3 text-gray-500 text-xs max-w-[100px] truncate">{r.obra || <span className="text-gray-600">—</span>}</td>
+                    <td className="px-3 py-3 text-white font-bold tabular-nums text-xs whitespace-nowrap">{r.m3} m³</td>
+                    <td className="px-3 py-3 tabular-nums font-semibold text-white text-xs whitespace-nowrap">
+                      {r.monto ? `$${r.monto.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : <span className="text-gray-600 font-normal">—</span>}
                     </td>
                     <td className="px-3 py-3">
                       {r.mezcla
-                        ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 border border-blue-200 text-blue-700">{r.mezcla}</span>
-                        : <span className="text-gray-400">—</span>}
+                        ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-sky-500/15 border border-sky-500/30 text-sky-400">{r.mezcla}</span>
+                        : <span className="text-gray-600">—</span>}
                     </td>
-                    <td className="px-3 py-3 text-gray-500 text-xs font-mono">{r.cr || <span className="text-gray-400">—</span>}</td>
+                    <td className="px-3 py-3 text-gray-500 text-xs font-mono">{r.cr || <span className="text-gray-600">—</span>}</td>
                     <td className="px-3 py-3">
                       {r.status === "creada"
-                        ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 border border-emerald-200 text-emerald-700">Creada</span>
-                        : <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 border border-amber-200 text-amber-700">Pendiente</span>}
+                        ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">Creada</span>
+                        : <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/15 border border-amber-500/30 text-amber-400">Pendiente</span>}
                     </td>
                     <td className="px-3 py-3">
                       {r.pagado
-                        ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-green-50 border border-green-200 text-green-700">Saldada</span>
-                        : <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 border border-amber-200 text-amber-700">Pendiente</span>}
+                        ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">Saldada</span>
+                        : <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/15 border border-amber-500/30 text-amber-400">Pendiente</span>}
                     </td>
                     <td className="px-3 py-3 flex items-center gap-1.5">
                       {r.status !== "creada" ? (
@@ -976,7 +976,7 @@ export default function RemisionesPage() {
                         <button
                           onClick={() => { setEditing(r); setCompletarMode(false); setDrawerOpen(true); }}
                           title="Editar remisión"
-                          className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
+                          className="p-1.5 text-gray-500 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
                         >
                           <Pencil size={15} />
                         </button>
@@ -984,14 +984,14 @@ export default function RemisionesPage() {
                       <button
                         onClick={() => openPreview(r)}
                         title="Vista previa / PDF"
-                        className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
+                        className="p-1.5 text-gray-500 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
                       >
                         <Printer size={15} />
                       </button>
                       <button
                         onClick={() => setDeleteTarget(r)}
                         title="Eliminar remisión"
-                        className="p-1.5 text-gray-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                        className="p-1.5 text-gray-500 hover:text-[#CC2229] hover:bg-[#CC2229]/10 rounded-lg transition-colors cursor-pointer"
                       >
                         <Trash2 size={15} />
                       </button>
@@ -1033,7 +1033,7 @@ export default function RemisionesPage() {
       {empresaModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center">
           <button className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setEmpresaModal(false)} />
-          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden" style={{ colorScheme: 'light' }}>
             <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100">
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#CC2229]/10">
                 <Settings size={17} className="text-[#CC2229]" />
@@ -1140,7 +1140,7 @@ export default function RemisionesPage() {
       {/* ── Modal confirmar eliminación ──────────────────────────────────────── */}
       {deleteTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" style={{ colorScheme: 'light' }}>
             <div className="bg-red-50 px-6 py-5 flex items-start gap-3">
               <Trash2 size={18} className="text-red-500 shrink-0 mt-0.5" />
               <div>

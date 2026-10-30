@@ -140,6 +140,9 @@ interface ClienteForm {
   notas: string;
   regimenFiscal: string;
   usoCfdi: string;
+  esContratista: boolean;
+  clienteFinalRfc: string;
+  clienteFinalNombre: string;
 }
 
 function emptyForm(): ClienteForm {
@@ -150,6 +153,7 @@ function emptyForm(): ClienteForm {
     vendedorAsignado: "", calificacion: "B", diasCredito: "30",
     limiteCredito: "0", saldoPendiente: "0", estatus: "Activo", notas: "",
     regimenFiscal: "", usoCfdi: "",
+    esContratista: false, clienteFinalRfc: "", clienteFinalNombre: "",
   };
 }
 
@@ -177,6 +181,9 @@ function fromCliente(c: Cliente): ClienteForm {
     notas: c.notas ?? "",
     regimenFiscal: c.regimenFiscal ?? "",
     usoCfdi: c.usoCfdi ?? "",
+    esContratista: c.esContratista ?? false,
+    clienteFinalRfc: c.clienteFinalRfc ?? "",
+    clienteFinalNombre: c.clienteFinalNombre ?? "",
   };
 }
 
@@ -238,7 +245,7 @@ function ClienteDrawer({ open, editing, onClose, onSave, errorMsg, vendedoresLis
   return (
     <div className="fixed inset-0 z-[100] flex">
       <button className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} aria-label="Cerrar" />
-      <div className="relative ml-auto flex h-full w-full max-w-xl flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden">
+      <div className="relative ml-auto flex h-full w-full max-w-xl flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden" style={{ colorScheme: 'light' }}>
         <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-4 shrink-0">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#CC2229]/10 text-[#CC2229]">
             <Users size={18} />
@@ -300,6 +307,42 @@ function ClienteDrawer({ open, editing, onClose, onSave, errorMsg, vendedoresLis
                   ))}
                 </select>
               </div>
+              <div className="col-span-2 flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="esContratista"
+                  checked={form.esContratista}
+                  onChange={(e) => set("esContratista", e.target.checked)}
+                  className="h-4 w-4 accent-[#CC2229] cursor-pointer shrink-0"
+                />
+                <label htmlFor="esContratista" className="text-sm text-gray-700 cursor-pointer select-none">
+                  Es contratista / intermediario — la factura va a nombre del cliente final
+                </label>
+              </div>
+              {form.esContratista && (
+                <>
+                  <div>
+                    <label className={lbl}>RFC del cliente final</label>
+                    <input
+                      type="text"
+                      value={form.clienteFinalRfc}
+                      onChange={(e) => set("clienteFinalRfc", e.target.value.toUpperCase())}
+                      placeholder="XAXX010101000"
+                      className={`${inp} uppercase font-mono`}
+                    />
+                  </div>
+                  <div>
+                    <label className={lbl}>Nombre / Razón social del cliente final</label>
+                    <input
+                      type="text"
+                      value={form.clienteFinalNombre}
+                      onChange={(e) => set("clienteFinalNombre", e.target.value)}
+                      placeholder="Empresa S.A. de C.V."
+                      className={inp}
+                    />
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -861,6 +904,9 @@ export default function CrmClientesPage() {
       notas: f.notas,
       ...(f.regimenFiscal.trim() ? { regimenFiscal: f.regimenFiscal.trim() } : {}),
       ...(f.usoCfdi.trim()      ? { usoCfdi:       f.usoCfdi.trim()      } : {}),
+      esContratista: f.esContratista ?? false,
+      ...(f.esContratista && f.clienteFinalRfc.trim()    ? { clienteFinalRfc:    f.clienteFinalRfc.trim().toUpperCase()    } : { clienteFinalRfc:    "" }),
+      ...(f.esContratista && f.clienteFinalNombre.trim() ? { clienteFinalNombre: f.clienteFinalNombre.trim() } : { clienteFinalNombre: "" }),
     };
 
     setClientes((current) =>

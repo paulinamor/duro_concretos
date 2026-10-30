@@ -416,7 +416,7 @@ function CalcularDrawer({ onClose, onGuardar, operadoresList }: CalcularDrawerPr
   return (
     <div className="fixed inset-0 z-50 flex">
       <div className="flex-1 bg-black/50" onClick={onClose} />
-      <div className="w-full max-w-xl bg-white border-l border-gray-200 flex flex-col overflow-hidden shadow-2xl">
+      <div className="w-full max-w-xl bg-white border-l border-gray-200 flex flex-col overflow-hidden shadow-2xl" style={{ colorScheme: 'light' }}>
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <div className="flex items-center gap-3">

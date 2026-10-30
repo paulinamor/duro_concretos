@@ -37,6 +37,7 @@ import {
   ShieldEllipsis,
   CloudDownload,
   CreditCard,
+  LifeBuoy,
 } from "lucide-react";
 import {
   getAllowedModuleSet,
@@ -65,6 +66,7 @@ const navItems = [
 
 const systemItems = [
   { href: "/configuracion",              icon: ShieldCheck,   label: "Configuración" },
+  { href: "/soporte",                    icon: LifeBuoy,      label: "Soporte" },
   { href: "/configuracion/sat-descarga", icon: CloudDownload, label: "Descarga SAT", devOnly: true },
   { href: "/dev",                        icon: Terminal,      label: "Dev Tools",     devOnly: true },
 ];

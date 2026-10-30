@@ -11,7 +11,7 @@ import {
   TrendingUp, Package, CheckCircle2, Download, Search,
   ArrowUpRight, ArrowDownRight, Minus, ClipboardList, CalendarRange,
   AlertCircle, DollarSign, Users, Zap, BarChart3, Banknote, FileWarning, X,
-  ChevronRight,
+  Fuel, Wrench, Truck, SlidersHorizontal,
 } from "lucide-react";
 import { getCollectionDocs, COLLECTIONS, where } from "@/lib/db";
 import AppSelect from "@/components/AppSelect";
@@ -32,6 +32,7 @@ interface Programacion {
   precioM3?: number | null;
   total?: number | null;
   pagado?: string;
+  montoPagado?: number | null;
   metodoPago?: string;
   recibo?: string;
   fact?: string;
@@ -41,15 +42,36 @@ interface Programacion {
 }
 
 type Period = "semana" | "mes" | "mes-anterior" | "trimestre" | "año" | "personalizado";
-type Tab = "ventas" | "operacional" | "cobranza";
-type DrillField = "cliente" | "vendedor" | "resistencia" | "bomba" | "metodoPago" | "dia" | "semana";
+type Tab = "ventas" | "operacional" | "cobranza" | "flota";
 
-interface DrillFilter {
-  field: DrillField;
-  value: string;
-  label: string;
+interface CargaDiesel {
+  id?: string;
+  fecha: string;
+  unidad: string;
+  combustible: string;
+  litros: number;
+  precioL?: number | null;
+  total: number;
+  kmRecorridos?: number | null;
+  rendimiento?: number | null;
+  recibo: string;
+  lugar: string;
+  comentarios?: string;
+  planta?: string;
 }
 
+interface EventoMant {
+  id?: string;
+  fecha: string;
+  unidad: string;
+  tipo: string;
+  subtipo?: string;
+  descripcion: string;
+  costo: number;
+  taller?: string;
+  status: string;
+  planta?: string;
+}
 const PERIOD_LABELS: Record<Period, string> = {
   semana: "Esta semana",
   mes: "Este mes",
@@ -70,6 +92,16 @@ function parseDia(dia: string): Date {
 
 function isPagado(pagado?: string): boolean {
   return /^s[ií]/i.test(pagado?.trim() ?? "");
+}
+
+function isParcial(pagado?: string): boolean {
+  return pagado?.trim().toLowerCase() === "parcial";
+}
+
+function saldoPendiente(r: Programacion): number {
+  if (isPagado(r.pagado)) return 0;
+  if (isParcial(r.pagado)) return Math.max(0, (r.total ?? 0) - (r.montoPagado ?? 0));
+  return r.total ?? 0;
 }
 
 function getRange(p: Period): { start: Date; end: Date } {
@@ -126,26 +158,10 @@ function weekLabel(iso: string): string {
   return mon.toLocaleDateString("es-MX", { day: "2-digit", month: "short" });
 }
 
-function matchDrill(r: Programacion, drill: DrillFilter | null, useSemanal: boolean): boolean {
-  if (!drill) return true;
-  switch (drill.field) {
-    case "cliente":     return r.cliente === drill.value;
-    case "vendedor":    return (r.vendedor?.trim() || "Sin asignar") === drill.value;
-    case "resistencia": return (r.resistencia || "Sin especificar") === drill.value;
-    case "bomba":       return (r.tdBom?.trim() || "Directo") === drill.value;
-    case "metodoPago":  return (r.metodoPago?.trim() || "No especificado") === drill.value;
-    case "dia":         return r.dia === drill.value;
-    case "semana":      return useSemanal
-      ? weekLabel(r.dia) === drill.value
-      : r.dia === drill.value;
-    default:            return true;
-  }
-}
-
 // ─── Components ───────────────────────────────────────────────────────────────
 
 const TT = { backgroundColor: "#1A1A1A", border: "1px solid #3A3A3A", borderRadius: "8px", color: "#fff", fontSize: "12px" };
-const PAGO_COLORS: Record<string, string> = { Pagado: "#10B981", Pendiente: "#F59E0B" };
+const PAGO_COLORS: Record<string, string> = { Pagado: "#10B981", Parcial: "#3B82F6", Pendiente: "#F59E0B" };
 const BOMBA_COLORS = ["#CC2229", "#3B82F6", "#10B981", "#F59E0B", "#8B5CF6"];
 
 function KPICard({ icon: Icon, label, value, sub, color, pct, warn }: {
@@ -193,25 +209,6 @@ function Card({ title, subtitle, children }: { title: string; subtitle?: string;
   );
 }
 
-// ─── Drill breadcrumb ─────────────────────────────────────────────────────────
-
-function DrillBreadcrumb({ drill, onClear }: { drill: DrillFilter; onClear: () => void }) {
-  const fieldLabel: Record<DrillField, string> = {
-    cliente: "Cliente", vendedor: "Vendedor", resistencia: "Resistencia",
-    bomba: "Tipo entrega", metodoPago: "Método pago", dia: "Fecha", semana: "Semana",
-  };
-  return (
-    <div className="flex items-center gap-2 px-4 py-2.5 bg-[#CC2229]/10 border border-[#CC2229]/30 rounded-xl text-sm">
-      <ChevronRight size={13} className="text-[#CC2229] shrink-0" />
-      <span className="text-gray-400 text-xs">{fieldLabel[drill.field]}</span>
-      <span className="text-white font-semibold">{drill.label}</span>
-      <button onClick={onClear} className="ml-auto flex items-center gap-1 text-xs text-gray-400 hover:text-white transition-colors cursor-pointer">
-        <X size={12} /> Quitar filtro
-      </button>
-    </div>
-  );
-}
-
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ReportesPage() {
@@ -224,16 +221,24 @@ export default function ReportesPage() {
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState<"fecha" | "total" | "m3">("fecha");
   const [tab, setTab] = useState<Tab>("ventas");
-  const [drill, setDrill] = useState<DrillFilter | null>(null);
 
-  function applyDrill(field: DrillField, value: string, label?: string) {
-    setDrill((prev) => (prev?.field === field && prev.value === value) ? null : { field, value, label: label ?? value });
-    // Scroll to detail table
-    setTimeout(() => document.getElementById("detalle-table")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
-  }
+  // ── SAP-style filters ─────────────────────────────────────────────────────
+  const [filterCliente, setFilterCliente] = useState("todos");
+  const [filterVendedor, setFilterVendedor] = useState("todos");
+  const [filterResistencia, setFilterResistencia] = useState("todos");
+  const [filterBomba, setFilterBomba] = useState("todos");
 
-  // Clear drill when period or tab changes
-  useEffect(() => { setDrill(null); }, [period, tab]);
+  // ── Flota tab state ────────────────────────────────────────────────────────
+  const [selectedUnidad, setSelectedUnidad] = useState<string>("todas");
+  const [diesel, setDiesel] = useState<CargaDiesel[]>([]);
+  const [mantenimientos, setMantenimientos] = useState<EventoMant[]>([]);
+  const [loadingFlota, setLoadingFlota] = useState(false);
+
+  // Clear filters when period or tab changes
+  useEffect(() => {
+    setFilterCliente("todos"); setFilterVendedor("todos");
+    setFilterResistencia("todos"); setFilterBomba("todos");
+  }, [period, tab]);
 
   useEffect(() => {
     setLoading(true);
@@ -256,6 +261,20 @@ export default function ReportesPage() {
     const t = setTimeout(() => setLoadingLong(true), 3000);
     return () => clearTimeout(t);
   }, [loading]);
+
+  // Load fleet data when flota tab is active (loaded once, filtered client-side)
+  useEffect(() => {
+    if (tab !== "flota" || diesel.length > 0 || mantenimientos.length > 0) return;
+    setLoadingFlota(true);
+    Promise.all([
+      getCollectionDocs<CargaDiesel>(COLLECTIONS.diesel),
+      getCollectionDocs<EventoMant>(COLLECTIONS.mantenimientos),
+    ]).then(([d, m]) => {
+      setDiesel(d);
+      setMantenimientos(filterByPlanta(m));
+    }).finally(() => setLoadingFlota(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   // ── Ranges ────────────────────────────────────────────────────────────────
   const { start, end } = useMemo(() => {
@@ -283,18 +302,25 @@ export default function ReportesPage() {
   // ── Core KPIs ─────────────────────────────────────────────────────────────
   const pagados        = filtered.filter((r) => isPagado(r.pagado));
   const prevPagados    = prevFiltered.filter((r) => isPagado(r.pagado));
+  const parciales      = filtered.filter((r) => isParcial(r.pagado));
   const totalProg      = filtered.length;
   const totalM3        = filtered.reduce((s, r) => s + (r.m3Totales ?? 0), 0);
   const totalIngresos  = filtered.reduce((s, r) => s + (r.total ?? 0), 0);
   const prevIngresos   = prevFiltered.reduce((s, r) => s + (r.total ?? 0), 0);
   const prevM3         = prevFiltered.reduce((s, r) => s + (r.m3Totales ?? 0), 0);
   const prevTotal      = prevFiltered.length;
-  const pctPagados     = totalProg > 0 ? Math.round((pagados.length / totalProg) * 100) : 0;
-  const prevPct        = prevTotal > 0 ? Math.round((prevPagados.length / prevTotal) * 100) : 0;
+  // "cobrado" = fully paid + montoPagado of partials
+  const totalCobrado   = pagados.reduce((s, r) => s + (r.total ?? 0), 0)
+                       + parciales.reduce((s, r) => s + (r.montoPagado ?? 0), 0);
+  const pctPagados     = totalIngresos > 0 ? Math.round((totalCobrado / totalIngresos) * 100) : 0;
+  const prevCobrado    = prevFiltered.filter((r) => isPagado(r.pagado)).reduce((s, r) => s + (r.total ?? 0), 0)
+                       + prevFiltered.filter((r) => isParcial(r.pagado)).reduce((s, r) => s + (r.montoPagado ?? 0), 0);
+  const prevIngresosTot = prevFiltered.reduce((s, r) => s + (r.total ?? 0), 0);
+  const prevPct        = prevIngresosTot > 0 ? Math.round((prevCobrado / prevIngresosTot) * 100) : 0;
   const precioPromM3   = totalM3 > 0 ? totalIngresos / totalM3 : 0;
   const prevPrecioM3   = prevM3 > 0 ? prevIngresos / prevM3 : 0;
-  const carteraPendiente = filtered.filter((r) => !isPagado(r.pagado)).reduce((s, r) => s + (r.total ?? 0), 0);
-  const prevCartera    = prevFiltered.filter((r) => !isPagado(r.pagado)).reduce((s, r) => s + (r.total ?? 0), 0);
+  const carteraPendiente = filtered.reduce((s, r) => s + saldoPendiente(r), 0);
+  const prevCartera    = prevFiltered.reduce((s, r) => s + saldoPendiente(r), 0);
 
   // ── Tendencias ────────────────────────────────────────────────────────────
   const tendenciaDiaria = useMemo(() => {
@@ -333,7 +359,7 @@ export default function ReportesPage() {
         m3:        curr.m3 + (r.m3Totales ?? 0),
         ingresos:  curr.ingresos + (r.total ?? 0),
         pagados:   curr.pagados  + (isPagado(r.pagado) ? 1 : 0),
-        pendiente: curr.pendiente + (isPagado(r.pagado) ? 0 : (r.total ?? 0)),
+        pendiente: curr.pendiente + saldoPendiente(r),
       });
     });
     return Array.from(map.entries())
@@ -383,13 +409,15 @@ export default function ReportesPage() {
   }, [filtered]);
 
   const porEstado = useMemo(() => {
-    const p = filtered.filter((r) => isPagado(r.pagado)).length;
-    const n = filtered.length - p;
+    const nPagado   = pagados.length;
+    const nParcial  = parciales.length;
+    const nPendiente = filtered.filter((r) => !isPagado(r.pagado) && !isParcial(r.pagado)).length;
     const result: { name: string; value: number; amount: number }[] = [];
-    if (p > 0) result.push({ name: "Pagado",    value: p, amount: pagados.reduce((s, r) => s + (r.total ?? 0), 0) });
-    if (n > 0) result.push({ name: "Pendiente", value: n, amount: carteraPendiente });
+    if (nPagado   > 0) result.push({ name: "Pagado",   value: nPagado,   amount: pagados.reduce((s, r) => s + (r.total ?? 0), 0) });
+    if (nParcial  > 0) result.push({ name: "Parcial",  value: nParcial,  amount: parciales.reduce((s, r) => s + (r.montoPagado ?? 0), 0) });
+    if (nPendiente > 0) result.push({ name: "Pendiente", value: nPendiente, amount: filtered.filter((r) => !isPagado(r.pagado) && !isParcial(r.pagado)).reduce((s, r) => s + (r.total ?? 0), 0) });
     return result;
-  }, [filtered, pagados, carteraPendiente]);
+  }, [filtered, pagados, parciales, carteraPendiente]);
 
   const carteraPorCliente = useMemo(() => porCliente.filter((c) => c.pendiente > 0).sort((a, b) => b.pendiente - a.pendiente), [porCliente]);
 
@@ -397,18 +425,21 @@ export default function ReportesPage() {
   const top3Total = top3.reduce((s, c) => s + c.ingresos, 0);
   const top3Pct   = totalIngresos > 0 ? Math.round((top3Total / totalIngresos) * 100) : 0;
 
-  // ── Detail table (with drill + search) ────────────────────────────────────
+  // ── Detail table (with SAP filters + search) ──────────────────────────────
   const tableRows = useMemo(() => {
     const q = query.toLowerCase();
     return filtered
-      .filter((r) => matchDrill(r, drill, useSemanal))
+      .filter((r) => filterCliente === "todos"     || r.cliente === filterCliente)
+      .filter((r) => filterVendedor === "todos"    || (r.vendedor?.trim() || "Sin asignar") === filterVendedor)
+      .filter((r) => filterResistencia === "todos" || (r.resistencia || "Sin especificar") === filterResistencia)
+      .filter((r) => filterBomba === "todos"       || (r.tdBom?.trim() || "Directo") === filterBomba)
       .filter((r) => !q || r.cliente?.toLowerCase().includes(q) || r.recibo?.toLowerCase().includes(q) || r.resistencia?.toLowerCase().includes(q) || r.vendedor?.toLowerCase().includes(q))
       .sort((a, b) => {
         if (sortBy === "total") return (b.total ?? 0) - (a.total ?? 0);
         if (sortBy === "m3") return (b.m3Totales ?? 0) - (a.m3Totales ?? 0);
         return parseDia(b.dia).getTime() - parseDia(a.dia).getTime();
       });
-  }, [filtered, drill, useSemanal, query, sortBy]);
+  }, [filtered, filterCliente, filterVendedor, filterResistencia, filterBomba, query, sortBy]);
 
   // ── Export Excel ──────────────────────────────────────────────────────────
   function exportXLSX() {
@@ -433,7 +464,13 @@ export default function ReportesPage() {
     XLSX.writeFile(wb, `reporte-${period}-${todayCST()}.xlsx`);
   }
 
-  const drillActive = (field: DrillField, value: string) => drill?.field === field && drill.value === value;
+  // ── Filter option lists ───────────────────────────────────────────────────
+  const clienteOpts     = useMemo(() => Array.from(new Set(filtered.map((r) => r.cliente))).filter(Boolean).sort((a, b) => a.localeCompare(b, "es")), [filtered]);
+  const vendedorOpts    = useMemo(() => Array.from(new Set(filtered.map((r) => r.vendedor?.trim() || "Sin asignar"))).filter(Boolean).sort((a, b) => a.localeCompare(b, "es")), [filtered]);
+  const resistenciaOpts = useMemo(() => Array.from(new Set(filtered.map((r) => r.resistencia || "Sin especificar"))).filter(Boolean).sort((a, b) => a.localeCompare(b, "es")), [filtered]);
+  const bombaOpts       = useMemo(() => Array.from(new Set(filtered.map((r) => r.tdBom?.trim() || "Directo"))).filter(Boolean).sort((a, b) => a.localeCompare(b, "es")), [filtered]);
+  const activeFilterCount = [filterCliente, filterVendedor, filterResistencia, filterBomba].filter((f) => f !== "todos").length;
+  function clearFilters() { setFilterCliente("todos"); setFilterVendedor("todos"); setFilterResistencia("todos"); setFilterBomba("todos"); }
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -441,7 +478,7 @@ export default function ReportesPage() {
 
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-gray-500">Análisis operativo y gerencial · click en gráficas para filtrar detalle</p>
+        <p className="text-sm text-gray-500">Análisis operativo y gerencial</p>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg p-0.5">
             {(["semana","mes","mes-anterior","trimestre","año","personalizado"] as Period[]).map((p) => (
@@ -490,7 +527,7 @@ export default function ReportesPage() {
       {/* KPIs */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
         <KPICard icon={ClipboardList} label="Pedidos registrados" value={String(totalProg)}
-          sub={`${pagados.length} pagados`} color="text-blue-400" pct={trendPct(totalProg, prevTotal)} />
+          sub={`${pagados.length} pagados · ${parciales.length} parciales`} color="text-blue-400" pct={trendPct(totalProg, prevTotal)} />
         <KPICard icon={Package} label="M³ programados"
           value={`${totalM3.toLocaleString("es-MX", { maximumFractionDigits: 1 })} m³`}
           sub={totalProg > 0 ? `${(totalM3 / totalProg).toFixed(1)} m³ prom/pedido` : "Sin pedidos"}
@@ -500,7 +537,7 @@ export default function ReportesPage() {
           color="text-green-400" pct={trendPct(totalIngresos, prevIngresos)} />
         <KPICard icon={DollarSign} label="Precio promedio/m³"
           value={precioPromM3 > 0 ? currency(precioPromM3) : "—"}
-          sub={`${pctPagados}% cobrado`} color="text-purple-400" pct={trendPct(precioPromM3, prevPrecioM3)} />
+          sub={`${pctPagados}% cobrado (incl. parciales)`} color="text-purple-400" pct={trendPct(precioPromM3, prevPrecioM3)} />
       </div>
 
       {/* Alerta cartera */}
@@ -510,7 +547,7 @@ export default function ReportesPage() {
             <AlertCircle size={16} className="text-amber-400 shrink-0" />
             <div>
               <span className="text-amber-300 font-semibold text-sm">Cartera pendiente: {currency(carteraPendiente)}</span>
-              <span className="text-amber-500/70 text-xs ml-2">· {filtered.length - pagados.length} pedidos sin cobrar</span>
+              <span className="text-amber-500/70 text-xs ml-2">· {filtered.filter((r) => !isPagado(r.pagado) && !isParcial(r.pagado)).length} sin cobrar · {parciales.length} parciales</span>
             </div>
           </div>
           <button onClick={() => setTab("cobranza")} className="text-xs text-amber-400 hover:text-amber-300 font-medium underline underline-offset-2 cursor-pointer">
@@ -525,6 +562,7 @@ export default function ReportesPage() {
           { key: "ventas",      label: "Ventas",      icon: TrendingUp },
           { key: "operacional", label: "Operacional", icon: Zap        },
           { key: "cobranza",    label: "Cobranza",    icon: Banknote   },
+          { key: "flota",       label: "Flota",       icon: Truck      },
         ] as { key: Tab; label: string; icon: React.ElementType }[]).map(({ key, label, icon: Icon }) => (
           <button key={key} onClick={() => setTab(key)}
             className={`flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-md transition-colors cursor-pointer ${tab === key ? "bg-[#CC2229] text-white" : "text-gray-400 hover:text-white"}`}>
@@ -540,14 +578,11 @@ export default function ReportesPage() {
           {/* Tendencia + Estado de cobro */}
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
             <div className="lg:col-span-3">
-              <Card title={`Total facturado y m³ — tendencia ${useSemanal ? "semanal" : "diaria"}`} subtitle="Click en una barra para filtrar el detalle">
+              <Card title={`Total facturado y m³ — tendencia ${useSemanal ? "semanal" : "diaria"}`}>
                 <div className="p-5">
                   {tendencia.length < 2 ? <EmptyChart /> : (
                     <ResponsiveContainer width="100%" height={230}>
-                      <ComposedChart data={tendencia} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                        onClick={(d: any) => { const p = d?.activePayload?.[0]?.payload; if (p?.rawDia) applyDrill(useSemanal ? "semana" : "dia", p.rawDia, p.dia); }}
-                        style={{ cursor: "pointer" }}>
+                      <ComposedChart data={tendencia} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
                         <defs>
                           <linearGradient id="gI" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="5%" stopColor="#CC2229" stopOpacity={0.3} />
@@ -569,16 +604,14 @@ export default function ReportesPage() {
               </Card>
             </div>
             <div className="lg:col-span-2">
-              <Card title="Estado de cobro" subtitle="Click para filtrar">
+              <Card title="Estado de cobro">
                 <div className="p-5">
                   {porEstado.length === 0 ? <EmptyChart /> : (
                     <>
                       <ResponsiveContainer width="100%" height={150}>
                         <PieChart>
-                          <Pie data={porEstado} cx="50%" cy="50%" innerRadius={50} outerRadius={68} paddingAngle={3} dataKey="value"
-                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                            onClick={(d: any) => d?.name && applyDrill("metodoPago", d.name === "Pagado" ? "pagado" : "pendiente", String(d.name))}>
-                            {porEstado.map((e) => <Cell key={e.name} fill={PAGO_COLORS[e.name] ?? "#6B7280"} style={{ cursor: "pointer" }} />)}
+                          <Pie data={porEstado} cx="50%" cy="50%" innerRadius={50} outerRadius={68} paddingAngle={3} dataKey="value">
+                            {porEstado.map((e) => <Cell key={e.name} fill={PAGO_COLORS[e.name] ?? "#6B7280"} />)}
                           </Pie>
                           <Tooltip contentStyle={TT} formatter={(v, name) => [v, name]} />
                         </PieChart>
@@ -606,19 +639,17 @@ export default function ReportesPage() {
 
           {/* Por vendedor + Por bomba */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Card title="Ingresos por vendedor" subtitle="Click para filtrar detalle">
+            <Card title="Ingresos por vendedor">
               <div className="p-5">
                 {porVendedor.length === 0 ? <EmptyChart /> : (
                   <ResponsiveContainer width="100%" height={220}>
-                    <BarChart data={porVendedor} layout="vertical" margin={{ top: 0, right: 8, bottom: 0, left: 8 }}
-                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                      onClick={(d: any) => d?.activePayload?.[0] && applyDrill("vendedor", d.activePayload[0].payload.vendedor)}>
+                    <BarChart data={porVendedor} layout="vertical" margin={{ top: 0, right: 8, bottom: 0, left: 8 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#2A2A2A" horizontal={false} />
                       <XAxis type="number" stroke="#4B5563" tick={{ fontSize: 10 }} tickFormatter={(v: number) => `$${(v / 1000).toFixed(0)}k`} />
                       <YAxis type="category" dataKey="vendedor" stroke="#4B5563" tick={{ fontSize: 10 }} width={110} />
                       <Tooltip contentStyle={TT} formatter={(v) => [currency(Number(v) || 0), "Ingresos"]} />
-                      <Bar dataKey="ingresos" radius={[0, 4, 4, 0]} name="Ingresos" style={{ cursor: "pointer" }}>
-                        {porVendedor.map((e) => <Cell key={e.vendedor} fill={drillActive("vendedor", e.vendedor) ? "#fff" : "#CC2229"} />)}
+                      <Bar dataKey="ingresos" radius={[0, 4, 4, 0]} name="Ingresos">
+                        {porVendedor.map((e) => <Cell key={e.vendedor} fill={filterVendedor === e.vendedor ? "#fff" : "#CC2229"} />)}
                       </Bar>
                     </BarChart>
                   </ResponsiveContainer>
@@ -626,19 +657,17 @@ export default function ReportesPage() {
               </div>
             </Card>
 
-            <Card title="M³ por tipo de entrega (bomba)" subtitle="Click para filtrar detalle">
+            <Card title="M³ por tipo de entrega (bomba)">
               <div className="p-5">
                 {porBomba.length === 0 ? <EmptyChart /> : (
                   <ResponsiveContainer width="100%" height={220}>
-                    <BarChart data={porBomba} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}
-                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                      onClick={(d: any) => d?.activePayload?.[0] && applyDrill("bomba", d.activePayload[0].payload.tipo)}>
+                    <BarChart data={porBomba} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#2A2A2A" />
                       <XAxis dataKey="tipo" stroke="#4B5563" tick={{ fontSize: 10 }} />
                       <YAxis stroke="#4B5563" tick={{ fontSize: 10 }} />
                       <Tooltip contentStyle={TT} formatter={(v) => [`${Number(v).toLocaleString("es-MX", { maximumFractionDigits: 1 })} m³`, "M³"]} />
-                      <Bar dataKey="m3" radius={[4, 4, 0, 0]} name="M³" style={{ cursor: "pointer" }}>
-                        {porBomba.map((e, i) => <Cell key={e.tipo} fill={drillActive("bomba", e.tipo) ? "#fff" : BOMBA_COLORS[i % BOMBA_COLORS.length]} />)}
+                      <Bar dataKey="m3" radius={[4, 4, 0, 0]} name="M³">
+                        {porBomba.map((e, i) => <Cell key={e.tipo} fill={filterBomba === e.tipo ? "#fff" : BOMBA_COLORS[i % BOMBA_COLORS.length]} />)}
                       </Bar>
                     </BarChart>
                   </ResponsiveContainer>
@@ -648,19 +677,17 @@ export default function ReportesPage() {
           </div>
 
           {/* Por resistencia */}
-          <Card title="M³ por resistencia" subtitle="Top 8 · click para filtrar detalle">
+          <Card title="M³ por resistencia" subtitle="Top 8">
             <div className="p-5">
               {porResistencia.length === 0 ? <EmptyChart /> : (
                 <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={porResistencia} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    onClick={(d: any) => d?.activePayload?.[0] && applyDrill("resistencia", d.activePayload[0].payload.resistencia)}>
+                  <BarChart data={porResistencia} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#2A2A2A" />
                     <XAxis dataKey="resistencia" stroke="#4B5563" tick={{ fontSize: 10 }} />
                     <YAxis stroke="#4B5563" tick={{ fontSize: 10 }} tickFormatter={(v: number) => v.toLocaleString("es-MX")} />
                     <Tooltip contentStyle={TT} formatter={(v) => [`${Number(v).toLocaleString("es-MX", { maximumFractionDigits: 1 })} m³`, "M³"]} />
-                    <Bar dataKey="m3" radius={[4, 4, 0, 0]} name="m3" style={{ cursor: "pointer" }}>
-                      {porResistencia.map((e) => <Cell key={e.resistencia} fill={drillActive("resistencia", e.resistencia) ? "#fff" : "#3B82F6"} />)}
+                    <Bar dataKey="m3" radius={[4, 4, 0, 0]} name="m3">
+                      {porResistencia.map((e) => <Cell key={e.resistencia} fill={filterResistencia === e.resistencia ? "#fff" : "#3B82F6"} />)}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
@@ -670,7 +697,7 @@ export default function ReportesPage() {
 
           {/* Método de pago */}
           {porMetodoPago.length > 0 && (
-            <Card title="Cobros por método de pago" subtitle="Solo pedidos marcados como pagados · click fila para filtrar">
+            <Card title="Cobros por método de pago" subtitle="Solo pedidos marcados como pagados">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead><tr className="bg-[#1A1A1A]">
@@ -682,10 +709,8 @@ export default function ReportesPage() {
                     {porMetodoPago.map((m) => {
                       const totalCobrado = pagados.reduce((s, r) => s + (r.total ?? 0), 0);
                       const pct = totalCobrado > 0 ? Math.round((m.total / totalCobrado) * 100) : 0;
-                      const active = drillActive("metodoPago", m.metodo);
                       return (
-                        <tr key={m.metodo} onClick={() => applyDrill("metodoPago", m.metodo)}
-                          className={`transition-colors cursor-pointer ${active ? "bg-[#CC2229]/10 border-l-2 border-[#CC2229]" : "hover:bg-[#2A2A2A]"}`}>
+                        <tr key={m.metodo} className="hover:bg-[#2A2A2A] transition-colors">
                           <td className="px-4 py-3 text-white font-medium">{m.metodo}</td>
                           <td className="px-4 py-3 text-gray-400">{m.count}</td>
                           <td className="px-4 py-3 text-white font-semibold tabular-nums">{currency(m.total)}</td>
@@ -718,7 +743,7 @@ export default function ReportesPage() {
             <KPICard icon={CheckCircle2} label="Pedidos entregados"   value={String(filtered.filter((r) => r.fase === "Entregado").length)} sub={`de ${totalProg} totales`} color="text-emerald-400" />
           </div>
 
-          <Card title="Ranking de clientes" subtitle="Click en fila para filtrar el detalle de pedidos">
+          <Card title="Ranking de clientes">
             {porCliente.length === 0 ? (
               <p className="px-5 py-10 text-center text-sm text-gray-600">Sin datos.</p>
             ) : (
@@ -733,10 +758,8 @@ export default function ReportesPage() {
                     {porCliente.map((row, i) => {
                       const pct   = row.pedidos > 0 ? Math.round((row.pagados / row.pedidos) * 100) : 0;
                       const share = totalIngresos > 0 ? Math.round((row.ingresos / totalIngresos) * 100) : 0;
-                      const active = drillActive("cliente", row.cliente);
                       return (
-                        <tr key={row.cliente} onClick={() => applyDrill("cliente", row.cliente)}
-                          className={`cursor-pointer transition-colors ${active ? "bg-[#CC2229]/10 border-l-2 border-[#CC2229]" : "hover:bg-[#2A2A2A]"}`}>
+                        <tr key={row.cliente} className="hover:bg-[#2A2A2A] transition-colors">
                           <td className="px-4 py-3 text-gray-500 text-xs font-mono">{i + 1}</td>
                           <td className="px-4 py-3">
                             <div className="text-white font-medium">{row.cliente}</div>
@@ -768,19 +791,17 @@ export default function ReportesPage() {
             )}
           </Card>
 
-          <Card title="M³ por cliente — top 10" subtitle="Click para filtrar detalle">
+          <Card title="M³ por cliente — top 10">
             <div className="p-5">
               {porCliente.length === 0 ? <EmptyChart /> : (
                 <ResponsiveContainer width="100%" height={260}>
-                  <BarChart data={porCliente.slice(0, 10)} layout="vertical" margin={{ top: 0, right: 8, bottom: 0, left: 8 }}
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    onClick={(d: any) => d?.activePayload?.[0] && applyDrill("cliente", d.activePayload[0].payload.cliente)}>
+                  <BarChart data={porCliente.slice(0, 10)} layout="vertical" margin={{ top: 0, right: 8, bottom: 0, left: 8 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#2A2A2A" horizontal={false} />
                     <XAxis type="number" stroke="#4B5563" tick={{ fontSize: 10 }} tickFormatter={(v: number) => v.toLocaleString("es-MX")} />
                     <YAxis type="category" dataKey="cliente" stroke="#4B5563" tick={{ fontSize: 10 }} width={120} />
                     <Tooltip contentStyle={TT} formatter={(v) => [`${Number(v).toLocaleString("es-MX", { maximumFractionDigits: 1 })} m³`, "M³"]} />
-                    <Bar dataKey="m3" radius={[0, 4, 4, 0]} name="M³" style={{ cursor: "pointer" }}>
-                      {porCliente.slice(0, 10).map((e) => <Cell key={e.cliente} fill={drillActive("cliente", e.cliente) ? "#fff" : "#CC2229"} />)}
+                    <Bar dataKey="m3" radius={[0, 4, 4, 0]} name="M³">
+                      {porCliente.slice(0, 10).map((e) => <Cell key={e.cliente} fill={filterCliente === e.cliente ? "#fff" : "#CC2229"} />)}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
@@ -794,13 +815,13 @@ export default function ReportesPage() {
       {tab === "cobranza" && (
         <div className="space-y-4">
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-            <KPICard icon={Banknote}     label="Total cobrado"       value={currency(totalIngresos - carteraPendiente)} sub={`${pagados.length} pedidos`}                color="text-emerald-400" pct={trendPct(totalIngresos - carteraPendiente, prevIngresos - prevCartera)} />
-            <KPICard icon={FileWarning}  label="Cartera pendiente"   value={currency(carteraPendiente)}                 sub={`${filtered.length - pagados.length} pedidos`} color="text-amber-400"   warn={carteraPendiente > 0} pct={trendPct(carteraPendiente, prevCartera)} />
-            <KPICard icon={CheckCircle2} label="% Efectividad cobro" value={`${pctPagados}%`}                           sub="pedidos cobrados"                             color="text-blue-400"   pct={trendPct(pctPagados, prevPct)} />
-            <KPICard icon={AlertCircle}  label="Clientes con saldo"  value={String(carteraPorCliente.length)}           sub="con pedidos sin cobrar"                       color="text-red-400"    warn={carteraPorCliente.length > 0} />
+            <KPICard icon={Banknote}     label="Total cobrado"       value={currency(totalCobrado)}    sub={`${pagados.length} pagados · ${parciales.length} parciales`} color="text-emerald-400" pct={trendPct(totalCobrado, prevCobrado)} />
+            <KPICard icon={FileWarning}  label="Saldo pendiente"    value={currency(carteraPendiente)} sub={`${filtered.filter((r) => !isPagado(r.pagado)).length} con saldo`}     color="text-amber-400"   warn={carteraPendiente > 0} pct={trendPct(carteraPendiente, prevCartera)} />
+            <KPICard icon={CheckCircle2} label="% Efectividad cobro" value={`${pctPagados}%`}          sub="del facturado cobrado"                color="text-blue-400"   pct={trendPct(pctPagados, prevPct)} />
+            <KPICard icon={AlertCircle}  label="Clientes con saldo"  value={String(carteraPorCliente.length)} sub="con saldo pendiente"          color="text-red-400"    warn={carteraPorCliente.length > 0} />
           </div>
 
-          <Card title="Cartera pendiente por cliente" subtitle="Click en fila para ver los pedidos de ese cliente">
+          <Card title="Cartera pendiente por cliente">
             {carteraPorCliente.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-3 py-16">
                 <CheckCircle2 size={36} className="text-emerald-400/50" />
@@ -810,17 +831,15 @@ export default function ReportesPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead><tr className="bg-[#1A1A1A]">
-                    {["Cliente","Pedidos pend.","Monto pendiente","Total generado","% pendiente"].map((h) => (
+                    {["Cliente","Pend./Parcial","Saldo pendiente","Total facturado","% pendiente"].map((h) => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">{h}</th>
                     ))}
                   </tr></thead>
                   <tbody className="divide-y divide-[#2A2A2A]">
                     {carteraPorCliente.map((row) => {
                       const pct = row.ingresos > 0 ? Math.round((row.pendiente / row.ingresos) * 100) : 0;
-                      const active = drillActive("cliente", row.cliente);
                       return (
-                        <tr key={row.cliente} onClick={() => applyDrill("cliente", row.cliente)}
-                          className={`cursor-pointer transition-colors ${active ? "bg-[#CC2229]/10 border-l-2 border-[#CC2229]" : "hover:bg-[#2A2A2A]"}`}>
+                        <tr key={row.cliente} className="hover:bg-[#2A2A2A] transition-colors">
                           <td className="px-4 py-3 text-white font-medium">{row.cliente}</td>
                           <td className="px-4 py-3 text-amber-400 font-semibold">{row.pedidos - row.pagados}</td>
                           <td className="px-4 py-3 text-amber-300 font-bold tabular-nums text-base">{currency(row.pendiente)}</td>
@@ -852,12 +871,12 @@ export default function ReportesPage() {
             )}
           </Card>
 
-          <Card title="Pedidos sin cobrar" subtitle="Detalle · click en fila de deudor arriba para filtrar por cliente">
+          <Card title="Pedidos sin cobrar" subtitle="Detalle · ordenado por saldo descendente">
             <div className="overflow-x-auto max-h-[50vh]">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-10">
                   <tr className="bg-[#1A1A1A]">
-                    {["Fecha","Cliente","Vendedor","Recibo","M³","Total","Resistencia"].map((h) => (
+                    {["Fecha","Cliente","Vendedor","Recibo","M³","Total","Pagado","Saldo pend.","Resistencia"].map((h) => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap bg-[#1A1A1A]">{h}</th>
                     ))}
                   </tr>
@@ -865,8 +884,9 @@ export default function ReportesPage() {
                 <tbody className="divide-y divide-[#2A2A2A]">
                   {filtered
                     .filter((r) => !isPagado(r.pagado))
-                    .filter((r) => matchDrill(r, drill, useSemanal))
-                    .sort((a, b) => (b.total ?? 0) - (a.total ?? 0))
+                    .filter((r) => filterCliente === "todos"     || r.cliente === filterCliente)
+                    .filter((r) => filterVendedor === "todos"    || (r.vendedor?.trim() || "Sin asignar") === filterVendedor)
+                    .sort((a, b) => saldoPendiente(b) - saldoPendiente(a))
                     .map((r, i) => (
                       <tr key={r.id ?? i} className="hover:bg-[#2A2A2A] transition-colors">
                         <td className="px-4 py-2.5 text-gray-500 text-xs whitespace-nowrap">
@@ -876,12 +896,19 @@ export default function ReportesPage() {
                         <td className="px-4 py-2.5 text-gray-500 text-xs">{r.vendedor || "—"}</td>
                         <td className="px-4 py-2.5 text-[#CC2229] font-mono text-xs">{r.recibo || "—"}</td>
                         <td className="px-4 py-2.5 text-gray-300 text-xs tabular-nums">{(r.m3Totales ?? 0).toFixed(1)} m³</td>
-                        <td className="px-4 py-2.5 text-amber-300 font-semibold text-xs tabular-nums">{r.total != null ? currency(r.total) : "—"}</td>
+                        <td className="px-4 py-2.5 text-gray-400 text-xs tabular-nums">{r.total != null ? currency(r.total) : "—"}</td>
+                        <td className="px-4 py-2.5 text-xs">
+                          {isParcial(r.pagado)
+                            ? <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/15 text-blue-300 border border-blue-500/30">Parcial {r.montoPagado != null ? currency(r.montoPagado) : ""}</span>
+                            : <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30">Sin cobrar</span>
+                          }
+                        </td>
+                        <td className="px-4 py-2.5 text-amber-300 font-semibold text-xs tabular-nums">{currency(saldoPendiente(r))}</td>
                         <td className="px-4 py-2.5 text-gray-400 text-xs">{r.resistencia || "—"}</td>
                       </tr>
                     ))}
                   {filtered.filter((r) => !isPagado(r.pagado)).length === 0 && (
-                    <tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-600">Sin pedidos pendientes en el período.</td></tr>
+                    <tr><td colSpan={9} className="px-4 py-12 text-center text-sm text-gray-600">Sin pedidos pendientes en el período. ✓</td></tr>
                   )}
                 </tbody>
               </table>
@@ -890,14 +917,310 @@ export default function ReportesPage() {
         </div>
       )}
 
-      {/* ── Detalle de pedidos ───────────────────────────────────────────────── */}
-      <div id="detalle-table">
-        <Card title="Detalle de pedidos">
-          <div className="px-5 py-3 border-b border-[#3A3A3A] flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-gray-500">{tableRows.length} de {filtered.length} pedidos</span>
-              {drill && <DrillBreadcrumb drill={drill} onClear={() => setDrill(null)} />}
+      {/* ══ TAB: FLOTA ═══════════════════════════════════════════════════════ */}
+      {tab === "flota" && (() => {
+        const isoStart = start.toISOString().slice(0, 10);
+        const isoEnd   = end.toISOString().slice(0, 10);
+
+        // Build unique sorted list of units from actual data
+        const unidadesEnDatos = Array.from(new Set([
+          ...diesel.map((c) => c.unidad),
+          ...mantenimientos.map((m) => m.unidad),
+        ])).filter(Boolean).sort((a, b) => a.localeCompare(b, "es"));
+
+        // Diesel stores fecha as "DD/MM/YYYY" — normalize to "YYYY-MM-DD" for comparison
+        function normFecha(f: string): string {
+          if (!f) return "";
+          if (f.includes("/")) { const [d, m, y] = f.split("/"); return `${y}-${m}-${d}`; }
+          return f;
+        }
+
+        const dieselFiltrado = diesel.filter((c) => {
+          const f = normFecha(c.fecha);
+          return f >= isoStart && f <= isoEnd && (selectedUnidad === "todas" || c.unidad === selectedUnidad);
+        });
+        const mantFiltrado = mantenimientos.filter((m) => {
+          const f = normFecha(m.fecha);
+          return f >= isoStart && f <= isoEnd && (selectedUnidad === "todas" || m.unidad === selectedUnidad);
+        });
+
+        const totalLitros = dieselFiltrado.reduce((s, c) => s + (c.litros ?? 0), 0);
+        const costoDiesel = dieselFiltrado.reduce((s, c) => s + (c.total ?? 0), 0);
+        const costoMant   = mantFiltrado.reduce((s, m) => s + (m.costo ?? 0), 0);
+        const costoTotal  = costoDiesel + costoMant;
+
+        function exportFlotaXLSX() {
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          const XLSX = require("xlsx");
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+            dieselFiltrado.map((c) => ({
+              "Fecha": c.fecha, "Unidad": c.unidad, "Combustible": c.combustible,
+              "Litros": c.litros, "Precio/L": c.precioL ?? "", "Total": c.total,
+              "KM recorridos": c.kmRecorridos ?? "", "Rendimiento": c.rendimiento ?? "",
+              "Recibo": c.recibo, "Lugar": c.lugar, "Comentarios": c.comentarios ?? "",
+            }))
+          ), "Diesel");
+          XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+            mantFiltrado.map((m) => ({
+              "Fecha": m.fecha, "Unidad": m.unidad, "Tipo": m.tipo,
+              "Subtipo": m.subtipo ?? "", "Descripción": m.descripcion,
+              "Costo": m.costo, "Taller": m.taller ?? "", "Status": m.status,
+            }))
+          ), "Mantenimiento");
+          XLSX.writeFile(wb, `reporte-flota-${selectedUnidad}-${todayCST()}.xlsx`);
+        }
+
+        return (
+          <div className="space-y-4">
+            {/* Filtro de unidad */}
+            <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-[#1A1A1A] border border-[#3A3A3A] rounded-xl">
+              <Truck size={14} className="text-[#CC2229] shrink-0" />
+              <label className="text-xs text-gray-500 whitespace-nowrap">Unidad</label>
+              <select
+                value={selectedUnidad}
+                onChange={(e) => setSelectedUnidad(e.target.value)}
+                className="bg-[#242424] border border-[#3A3A3A] text-gray-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[#CC2229]/60 [color-scheme:dark]"
+              >
+                <option value="todas">Todas las unidades</option>
+                {unidadesEnDatos.map((u) => (
+                  <option key={u} value={u}>{u}</option>
+                ))}
+              </select>
+              <span className="text-xs text-gray-600 ml-auto">
+                {dieselFiltrado.length} cargas · {mantFiltrado.length} eventos
+              </span>
+              <button onClick={exportFlotaXLSX} disabled={dieselFiltrado.length === 0 && mantFiltrado.length === 0}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-300 bg-[#242424] border border-[#3A3A3A] rounded-lg hover:border-[#CC2229]/60 transition-colors disabled:opacity-40 cursor-pointer">
+                <Download size={13} /> Exportar Excel
+              </button>
             </div>
+
+            {loadingFlota ? (
+              <div className="flex items-center justify-center py-16 gap-3">
+                <svg className="h-6 w-6 animate-spin text-[#CC2229]" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                  <path className="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+                <span className="text-sm text-gray-400">Cargando datos de flota…</span>
+              </div>
+            ) : (
+              <>
+                {/* KPIs */}
+                <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+                  <KPICard icon={Fuel} label="Litros cargados" value={totalLitros.toLocaleString("es-MX", { maximumFractionDigits: 1 })} sub={`${dieselFiltrado.length} cargas`} color="text-amber-400" />
+                  <KPICard icon={DollarSign} label="Costo combustible" value={currency(costoDiesel)} sub="en el período" color="text-yellow-400" />
+                  <KPICard icon={Wrench} label="Eventos mantenimiento" value={String(mantFiltrado.length)} sub={`${mantFiltrado.filter((m) => m.status === "Completado").length} completados`} color="text-blue-400" />
+                  <KPICard icon={BarChart3} label="Costo mantenimiento" value={currency(costoMant)} sub={`Total flota: ${currency(costoTotal)}`} color="text-purple-400" />
+                </div>
+
+                {/* Diesel table */}
+                <Card title="Cargas de combustible" subtitle={`${dieselFiltrado.length} registros en el período`}>
+                  {dieselFiltrado.length === 0 ? (
+                    <p className="px-5 py-10 text-center text-sm text-gray-600">Sin cargas en el período.</p>
+                  ) : (
+                    <div className="overflow-x-auto max-h-[50vh]">
+                      <table className="w-full text-sm">
+                        <thead className="sticky top-0 z-10">
+                          <tr className="bg-[#1A1A1A]">
+                            {["Fecha","Unidad","Combustible","Litros","Precio/L","Total","KM recorridos","Rendimiento","Recibo","Lugar"].map((h) => (
+                              <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap bg-[#1A1A1A]">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[#2A2A2A]">
+                          {[...dieselFiltrado].sort((a, b) => normFecha(b.fecha).localeCompare(normFecha(a.fecha))).map((c, i) => (
+                            <tr key={c.id ?? i} className="hover:bg-[#2A2A2A] transition-colors">
+                              <td className="px-4 py-2.5 text-gray-500 text-xs whitespace-nowrap">{c.fecha}</td>
+                              <td className="px-4 py-2.5 text-white font-medium text-xs">{c.unidad}</td>
+                              <td className="px-4 py-2.5 text-xs">
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                                  c.combustible === "DIESEL"   ? "bg-amber-500/15 text-amber-400 border-amber-500/30" :
+                                  c.combustible === "GASOLINA" ? "bg-sky-500/15 text-sky-400 border-sky-500/30" :
+                                                                 "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                                }`}>{c.combustible}</span>
+                              </td>
+                              <td className="px-4 py-2.5 text-gray-200 text-xs tabular-nums">{c.litros?.toLocaleString("es-MX", { maximumFractionDigits: 2 })} L</td>
+                              <td className="px-4 py-2.5 text-gray-500 text-xs tabular-nums">{c.precioL != null ? `$${c.precioL.toFixed(2)}` : "—"}</td>
+                              <td className="px-4 py-2.5 text-white font-semibold text-xs tabular-nums">{currency(c.total)}</td>
+                              <td className="px-4 py-2.5 text-gray-400 text-xs tabular-nums">{c.kmRecorridos != null ? `${c.kmRecorridos.toLocaleString("es-MX")} km` : "—"}</td>
+                              <td className="px-4 py-2.5 text-gray-400 text-xs tabular-nums">{c.rendimiento != null ? `${c.rendimiento.toFixed(2)} km/L` : "—"}</td>
+                              <td className="px-4 py-2.5 text-[#CC2229] font-mono text-xs">{c.recibo || "—"}</td>
+                              <td className="px-4 py-2.5 text-gray-400 text-xs">{c.lugar || "—"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr className="bg-[#1A1A1A] border-t border-[#3A3A3A]">
+                            <td className="px-4 py-3 text-white font-semibold text-xs" colSpan={3}>Totales</td>
+                            <td className="px-4 py-3 text-amber-300 font-bold text-xs tabular-nums">{totalLitros.toLocaleString("es-MX", { maximumFractionDigits: 1 })} L</td>
+                            <td />
+                            <td className="px-4 py-3 text-white font-bold text-xs tabular-nums">{currency(costoDiesel)}</td>
+                            <td colSpan={4} />
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  )}
+                </Card>
+
+                {/* Mantenimiento table */}
+                <Card title="Mantenimientos y reparaciones" subtitle={`${mantFiltrado.length} eventos en el período`}>
+                  {mantFiltrado.length === 0 ? (
+                    <p className="px-5 py-10 text-center text-sm text-gray-600">Sin eventos en el período.</p>
+                  ) : (
+                    <div className="overflow-x-auto max-h-[50vh]">
+                      <table className="w-full text-sm">
+                        <thead className="sticky top-0 z-10">
+                          <tr className="bg-[#1A1A1A]">
+                            {["Fecha","Unidad","Tipo","Subtipo","Descripción","Costo","Taller","Status"].map((h) => (
+                              <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap bg-[#1A1A1A]">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[#2A2A2A]">
+                          {[...mantFiltrado].sort((a, b) => normFecha(b.fecha).localeCompare(normFecha(a.fecha))).map((m, i) => (
+                            <tr key={m.id ?? i} className="hover:bg-[#2A2A2A] transition-colors">
+                              <td className="px-4 py-2.5 text-gray-500 text-xs whitespace-nowrap">{m.fecha}</td>
+                              <td className="px-4 py-2.5 text-white font-medium text-xs">{m.unidad}</td>
+                              <td className="px-4 py-2.5 text-xs">
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                                  m.tipo === "Mantenimiento" ? "bg-blue-500/15 text-blue-400 border-blue-500/30" :
+                                  m.tipo === "Reparación"   ? "bg-amber-500/15 text-amber-400 border-amber-500/30" :
+                                                              "bg-red-500/15 text-red-400 border-red-500/30"
+                                }`}>{m.tipo}</span>
+                              </td>
+                              <td className="px-4 py-2.5 text-gray-400 text-xs">{m.subtipo || "—"}</td>
+                              <td className="px-4 py-2.5 text-gray-200 text-xs max-w-[280px] truncate">{m.descripcion}</td>
+                              <td className="px-4 py-2.5 text-white font-semibold text-xs tabular-nums">{m.costo > 0 ? currency(m.costo) : "—"}</td>
+                              <td className="px-4 py-2.5 text-gray-400 text-xs">{m.taller || "—"}</td>
+                              <td className="px-4 py-2.5 text-xs">
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                                  m.status === "Completado" ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" :
+                                  m.status === "En proceso" ? "bg-blue-500/15 text-blue-400 border-blue-500/30" :
+                                                              "bg-gray-500/15 text-gray-400 border-gray-500/30"
+                                }`}>{m.status}</span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr className="bg-[#1A1A1A] border-t border-[#3A3A3A]">
+                            <td className="px-4 py-3 text-white font-semibold text-xs" colSpan={5}>Total mantenimientos</td>
+                            <td className="px-4 py-3 text-white font-bold text-xs tabular-nums">{currency(costoMant)}</td>
+                            <td colSpan={2} />
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  )}
+                </Card>
+
+                {/* Resumen por unidad (solo si es "todas") */}
+                {selectedUnidad === "todas" && (dieselFiltrado.length > 0 || mantFiltrado.length > 0) && (() => {
+                  const resumen = new Map<string, { litros: number; costoDiesel: number; costoMant: number; eventos: number }>();
+                  dieselFiltrado.forEach((c) => {
+                    const r = resumen.get(c.unidad) ?? { litros: 0, costoDiesel: 0, costoMant: 0, eventos: 0 };
+                    resumen.set(c.unidad, { ...r, litros: r.litros + c.litros, costoDiesel: r.costoDiesel + c.total });
+                  });
+                  mantFiltrado.forEach((m) => {
+                    const r = resumen.get(m.unidad) ?? { litros: 0, costoDiesel: 0, costoMant: 0, eventos: 0 };
+                    resumen.set(m.unidad, { ...r, costoMant: r.costoMant + m.costo, eventos: r.eventos + 1 });
+                  });
+                  const rows = Array.from(resumen.entries())
+                    .sort(([, a], [, b]) => (b.costoDiesel + b.costoMant) - (a.costoDiesel + a.costoMant));
+                  return (
+                    <Card title="Resumen por unidad" subtitle="Costo total ordenado de mayor a menor">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-[#1A1A1A]">
+                              {["Unidad","Litros cargados","Costo diesel","Eventos mant.","Costo mant.","Costo total"].map((h) => (
+                                <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-[#2A2A2A]">
+                            {rows.map(([unidad, r]) => (
+                              <tr key={unidad} className="hover:bg-[#2A2A2A] transition-colors cursor-pointer"
+                                onClick={() => setSelectedUnidad(unidad)}>
+                                <td className="px-4 py-3 text-white font-semibold text-xs">{unidad}</td>
+                                <td className="px-4 py-3 text-amber-300 text-xs tabular-nums">{r.litros.toLocaleString("es-MX", { maximumFractionDigits: 1 })} L</td>
+                                <td className="px-4 py-3 text-gray-200 text-xs tabular-nums">{currency(r.costoDiesel)}</td>
+                                <td className="px-4 py-3 text-gray-400 text-xs">{r.eventos}</td>
+                                <td className="px-4 py-3 text-gray-200 text-xs tabular-nums">{r.costoMant > 0 ? currency(r.costoMant) : "—"}</td>
+                                <td className="px-4 py-3 text-white font-bold text-xs tabular-nums">{currency(r.costoDiesel + r.costoMant)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot>
+                            <tr className="bg-[#1A1A1A] border-t border-[#3A3A3A]">
+                              <td className="px-4 py-3 text-white font-semibold text-xs">TOTAL FLOTA</td>
+                              <td className="px-4 py-3 text-amber-300 font-bold text-xs tabular-nums">{totalLitros.toLocaleString("es-MX", { maximumFractionDigits: 1 })} L</td>
+                              <td className="px-4 py-3 text-white font-bold text-xs tabular-nums">{currency(costoDiesel)}</td>
+                              <td className="px-4 py-3 text-gray-300 font-bold text-xs">{mantFiltrado.length}</td>
+                              <td className="px-4 py-3 text-white font-bold text-xs tabular-nums">{currency(costoMant)}</td>
+                              <td className="px-4 py-3 text-[#CC2229] font-bold text-xs tabular-nums">{currency(costoTotal)}</td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    </Card>
+                  );
+                })()}
+              </>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* ── Detalle de pedidos ───────────────────────────────────────────────── */}
+      {tab !== "flota" && <div id="detalle-table">
+        <Card title="Detalle de pedidos">
+          {/* SAP-style filter bar */}
+          <div className="px-5 py-3 border-b border-[#3A3A3A] bg-[#1A1A1A]/60">
+            <div className="flex flex-wrap items-center gap-2">
+              <SlidersHorizontal size={13} className="text-gray-500 shrink-0" />
+              <span className="text-xs font-semibold text-gray-500 mr-1">Filtrar por:</span>
+              <select value={filterCliente} onChange={(e) => setFilterCliente(e.target.value)}
+                className="bg-[#242424] border border-[#3A3A3A] text-gray-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[#CC2229]/60 [color-scheme:dark]">
+                <option value="todos">Todos los clientes</option>
+                {clienteOpts.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <select value={filterVendedor} onChange={(e) => setFilterVendedor(e.target.value)}
+                className="bg-[#242424] border border-[#3A3A3A] text-gray-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[#CC2229]/60 [color-scheme:dark]">
+                <option value="todos">Todos los vendedores</option>
+                {vendedorOpts.map((v) => <option key={v} value={v}>{v}</option>)}
+              </select>
+              <select value={filterResistencia} onChange={(e) => setFilterResistencia(e.target.value)}
+                className="bg-[#242424] border border-[#3A3A3A] text-gray-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[#CC2229]/60 [color-scheme:dark]">
+                <option value="todos">Todas las resistencias</option>
+                {resistenciaOpts.map((r) => <option key={r} value={r}>{r}</option>)}
+              </select>
+              <select value={filterBomba} onChange={(e) => setFilterBomba(e.target.value)}
+                className="bg-[#242424] border border-[#3A3A3A] text-gray-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[#CC2229]/60 [color-scheme:dark]">
+                <option value="todos">Todos los tipos</option>
+                {bombaOpts.map((b) => <option key={b} value={b}>{b}</option>)}
+              </select>
+              {activeFilterCount > 0 && (
+                <>
+                  <span className="text-xs text-[#CC2229] font-semibold ml-1">
+                    {activeFilterCount} filtro{activeFilterCount !== 1 ? "s" : ""} activo{activeFilterCount !== 1 ? "s" : ""}
+                  </span>
+                  <button onClick={clearFilters}
+                    className="flex items-center gap-1 text-xs text-gray-400 hover:text-white transition-colors cursor-pointer">
+                    <X size={12} /> Limpiar
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+          {/* Controls row */}
+          <div className="px-5 py-3 border-b border-[#3A3A3A] flex flex-wrap items-center justify-between gap-3">
+            <span className="text-xs text-gray-500">
+              {tableRows.length} de {filtered.length} pedido{filtered.length !== 1 ? "s" : ""}
+              {activeFilterCount > 0 && <span className="text-[#CC2229]/80"> · {activeFilterCount} filtro{activeFilterCount !== 1 ? "s" : ""} aplicado{activeFilterCount !== 1 ? "s" : ""}</span>}
+            </span>
             <div className="flex items-center gap-2">
               <AppSelect dark compact value={sortBy} onChange={(e) => setSortBy(e.target.value as "fecha" | "total" | "m3")} wrapperClassName="">
                 <option value="fecha">Por fecha</option>
@@ -923,28 +1246,24 @@ export default function ReportesPage() {
               <tbody className="divide-y divide-[#2A2A2A]">
                 {tableRows.length === 0 ? (
                   <tr><td colSpan={10} className="px-4 py-12 text-center text-sm text-gray-600">
-                    {drill ? `Sin pedidos para "${drill.label}".` : filtered.length === 0 ? "Sin pedidos en el período." : "Sin resultados."}
+                    {filtered.length === 0 ? "Sin pedidos en el período." : "Sin resultados para los filtros seleccionados."}
                   </td></tr>
                 ) : tableRows.map((r, i) => (
                   <tr key={r.id ?? i} className="hover:bg-[#2A2A2A] transition-colors">
                     <td className="px-4 py-2.5 text-gray-500 text-xs whitespace-nowrap">
                       {r.dia ? parseDia(r.dia).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
                     </td>
-                    <td className="px-4 py-2.5 cursor-pointer text-gray-200 font-medium text-xs whitespace-nowrap hover:text-white"
-                      onClick={() => applyDrill("cliente", r.cliente)}>{r.cliente}</td>
-                    <td className="px-4 py-2.5 cursor-pointer text-gray-500 text-xs whitespace-nowrap hover:text-gray-300"
-                      onClick={() => r.vendedor && applyDrill("vendedor", r.vendedor.trim() || "Sin asignar")}>{r.vendedor || "—"}</td>
+                    <td className="px-4 py-2.5 text-gray-200 font-medium text-xs whitespace-nowrap">{r.cliente}</td>
+                    <td className="px-4 py-2.5 text-gray-500 text-xs whitespace-nowrap">{r.vendedor || "—"}</td>
                     <td className="px-4 py-2.5 text-[#CC2229] font-mono text-xs">{r.recibo || "—"}</td>
                     <td className="px-4 py-2.5 text-gray-200 text-xs tabular-nums">{(r.m3Totales ?? 0).toLocaleString("es-MX", { maximumFractionDigits: 1 })} m³</td>
                     <td className="px-4 py-2.5 text-gray-500 text-xs tabular-nums">{r.precioM3 != null ? currency(r.precioM3) : "—"}</td>
                     <td className="px-4 py-2.5 text-white font-semibold text-xs tabular-nums">{r.total != null ? currency(r.total) : "—"}</td>
-                    <td className="px-4 py-2.5 cursor-pointer text-gray-400 text-xs hover:text-gray-200"
-                      onClick={() => r.resistencia && applyDrill("resistencia", r.resistencia)}>{r.resistencia || "—"}</td>
-                    <td className="px-4 py-2.5 cursor-pointer text-gray-400 text-xs hover:text-gray-200"
-                      onClick={() => applyDrill("bomba", r.tdBom?.trim() || "Directo")}>{r.tdBom || "—"}</td>
+                    <td className="px-4 py-2.5 text-gray-400 text-xs">{r.resistencia || "—"}</td>
+                    <td className="px-4 py-2.5 text-gray-400 text-xs">{r.tdBom || "—"}</td>
                     <td className="px-4 py-2.5">
-                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${isPagado(r.pagado) ? "bg-emerald-500/15 text-emerald-300" : "bg-amber-500/15 text-amber-300"}`}>
-                        {isPagado(r.pagado) ? "Pagado" : "Pendiente"}
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${isPagado(r.pagado) ? "bg-emerald-500/15 text-emerald-300" : isParcial(r.pagado) ? "bg-blue-500/15 text-blue-300" : "bg-amber-500/15 text-amber-300"}`}>
+                        {isPagado(r.pagado) ? "Pagado" : isParcial(r.pagado) ? "Parcial" : "Pendiente"}
                       </span>
                     </td>
                   </tr>
@@ -953,7 +1272,7 @@ export default function ReportesPage() {
             </table>
           </div>
         </Card>
-      </div>
+      </div>}
 
       </>}
     </div>

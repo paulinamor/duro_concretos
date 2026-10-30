@@ -102,6 +102,8 @@ export default function RecibosConcretoPage() {
   const [obraNewDireccion, setObraNewDireccion] = useState("");
   const obraContainerRef = useRef<HTMLDivElement>(null);
   const [search, setSearch] = useState("");
+  const [abonoReceiptId, setAbonoReceiptId] = useState<string | null>(null);
+  const [abonoMonto, setAbonoMonto] = useState<string>("");
 
   const nextReceiptNum = useMemo(
     () => getNextReceiptNumber(allRemisionesGlobal.filter((r) => r.receiptNumber != null)),
@@ -118,6 +120,16 @@ export default function RecibosConcretoPage() {
     () => savedReceipts.reduce((s, r) => s + calculateConcreteReceiptTotal(r).resta, 0),
     [savedReceipts],
   );
+
+  const pendingReceipts = useMemo(() => {
+    if (!receipt.cliente) return [];
+    const clienteNorm = normCl(receipt.cliente);
+    return savedReceipts.filter((r) => {
+      if (normCl(r.cliente) !== clienteNorm) return false;
+      if (isLoadedReceipt && r.id === receipt.id) return false;
+      return calculateConcreteReceiptTotal(r).resta > 0;
+    });
+  }, [savedReceipts, receipt.cliente, isLoadedReceipt, receipt.id]);
 
   const filteredReceipts = useMemo(() => {
     const sorted = [...savedReceipts].sort((a, b) => b.receiptNumber - a.receiptNumber);
@@ -213,12 +225,16 @@ export default function RecibosConcretoPage() {
     setReceipt(createReceipt([]));
     setIsLoadedReceipt(false);
     setShowForm(true);
+    setAbonoReceiptId(null);
+    setAbonoMonto("");
   }
 
   function resetToNew() {
     setReceipt(createReceipt([]));
     setIsLoadedReceipt(false);
     setShowForm(false);
+    setAbonoReceiptId(null);
+    setAbonoMonto("");
   }
 
   async function persistReceipt(showToast = true) {
@@ -273,6 +289,25 @@ export default function RecibosConcretoPage() {
       origenConcreto: true,
       reciboConcreteId: docId,
     })).catch((err) => console.error("Error sincronizando a efectivo:", err));
+
+    // Apply abono to a previous receipt if the user registered one
+    if (!isLoadedReceipt && abonoReceiptId) {
+      const montoAbono = parseFloat(abonoMonto);
+      if (montoAbono > 0) {
+        const target = savedReceipts.find((r) => r.id === abonoReceiptId);
+        if (target) {
+          const nuevoAbono = { fecha: nextReceipt.fecha, monto: montoAbono, reciboOrigenId: nextReceipt.id };
+          const updatedAbonos = [...(target.abonos ?? []), nuevoAbono];
+          const { resta: nuevaResta } = calculateConcreteReceiptTotal({ ...target, abonos: updatedAbonos });
+          const { id: _tid, planta: _tp, ...targetSaveData } = target as ConcreteReceipt & { planta?: string };
+          await upsertDocument(COLLECTIONS.remisiones, abonoReceiptId, withPlantaTag({
+            ...targetSaveData,
+            abonos: updatedAbonos,
+            resta: nuevaResta,
+          }));
+        }
+      }
+    }
 
     if (showToast) {
       window.dispatchEvent(
@@ -591,7 +626,7 @@ export default function RecibosConcretoPage() {
             onClick={resetToNew}
             aria-label="Cerrar"
           />
-          <div className="relative ml-auto flex h-full w-full max-w-lg flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden">
+          <div className="relative ml-auto flex h-full w-full max-w-lg flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden" style={{ colorScheme: 'light' }}>
             {/* Drawer header */}
             <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-4 shrink-0">
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#CC2229]/10 text-[#CC2229]">
@@ -650,6 +685,7 @@ export default function RecibosConcretoPage() {
                       updateReceipt({ cliente: v, direccionObra: v !== receipt.cliente ? "" : receipt.direccionObra });
                       setObraQuery("");
                       setObraOpen(false);
+                      if (v !== receipt.cliente) { setAbonoReceiptId(null); setAbonoMonto(""); }
                     }}
                   >
                     <option value="">Seleccionar cliente…</option>
@@ -752,6 +788,56 @@ export default function RecibosConcretoPage() {
                   )}
                 </div>
               </div>
+
+              {/* Sección: Abono a saldo pendiente */}
+              {!isLoadedReceipt && pendingReceipts.length > 0 && (
+                <div className="space-y-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-amber-600 border-b border-amber-100 pb-1.5">Saldo pendiente del cliente</p>
+                  <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-3 space-y-3">
+                    <p className="text-xs text-amber-700">
+                      Este cliente tiene <strong>{pendingReceipts.length}</strong> recibo{pendingReceipts.length !== 1 ? "s" : ""} con saldo pendiente. ¿Desea registrar un abono?
+                    </p>
+                    <div>
+                      <label className={lbl}>Recibo a abonar</label>
+                      <AppSelect
+                        value={abonoReceiptId ?? ""}
+                        onChange={(e) => { setAbonoReceiptId(e.target.value || null); setAbonoMonto(""); }}
+                      >
+                        <option value="">Sin abono</option>
+                        {pendingReceipts.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            #{String(r.receiptNumber).padStart(4, "0")} — {money(calculateConcreteReceiptTotal(r).resta)} pendiente
+                          </option>
+                        ))}
+                      </AppSelect>
+                    </div>
+                    {abonoReceiptId && (
+                      <div>
+                        <label className={lbl}>Monto del abono</label>
+                        <input
+                          type="number"
+                          min={0}
+                          value={abonoMonto}
+                          onChange={(e) => setAbonoMonto(e.target.value)}
+                          placeholder="$0.00"
+                          className={inp}
+                          onWheel={(e) => e.currentTarget.blur()}
+                        />
+                        {(() => {
+                          const target = pendingReceipts.find((r) => r.id === abonoReceiptId);
+                          if (!target) return null;
+                          const resta = calculateConcreteReceiptTotal(target).resta;
+                          const m = parseFloat(abonoMonto) || 0;
+                          if (m <= 0) return null;
+                          if (m > resta) return <p className="mt-1 text-xs text-red-500">⚠ El monto supera el saldo pendiente ({money(resta)})</p>;
+                          if (m === resta) return <p className="mt-1 text-xs text-emerald-600 font-semibold">✓ Cubre el total — el recibo quedará liquidado</p>;
+                          return <p className="mt-1 text-xs text-amber-600">Saldo restante: {money(resta - m)}</p>;
+                        })()}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Sección: Concreto */}
               <div className="space-y-3">

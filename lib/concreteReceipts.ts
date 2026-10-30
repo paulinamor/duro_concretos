@@ -33,6 +33,7 @@ export interface ConcreteReceipt {
   extras: ConcreteExtra[];
   total: number;
   resta: number;
+  abonos?: Array<{ fecha: string; monto: number; reciboOrigenId?: string }>;
   viajeFolio?: string;
   planta?: string;
   enviarACobros?: boolean; // default true — si false no se crea entrada en programaciones
@@ -69,16 +70,18 @@ export function calculateConcreteReceiptTotal({
   metrosVaciosPrecio,
   anticipo,
   servicioBombaImporte,
-}: Pick<ConcreteReceipt, "m3" | "precioPorM3" | "metrosVaciosCantidad" | "metrosVaciosPrecio" | "anticipo" | "servicioBombaImporte">) {
+  abonos,
+}: Pick<ConcreteReceipt, "m3" | "precioPorM3" | "metrosVaciosCantidad" | "metrosVaciosPrecio" | "anticipo" | "servicioBombaImporte" | "abonos">) {
   const concreteTotal = m3 * precioPorM3;
   const emptyMetersTotal = metrosVaciosCantidad * metrosVaciosPrecio;
   // Bomba: flat amount, not multiplied. Extras are NOT included in total (shown for reference only).
   const bombaTotal = servicioBombaImporte ?? 0;
   const total = concreteTotal + emptyMetersTotal + bombaTotal;
+  const totalAbonos = (abonos ?? []).reduce((sum, a) => sum + a.monto, 0);
 
   return {
     total,
-    resta: Math.max(total - anticipo, 0),
+    resta: Math.max(total - anticipo - totalAbonos, 0),
   };
 }
 

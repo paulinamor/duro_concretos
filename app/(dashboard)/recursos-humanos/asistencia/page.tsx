@@ -653,7 +653,7 @@ export default function AsistenciaPage() {
       {/* ══ MODAL DETALLE ════════════════════════════════════════════════════ */}
       {detailKey && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" style={{ colorScheme: 'light' }}>
             <div className="px-6 pt-5 pb-4 border-b border-gray-100 flex items-start justify-between gap-3">
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-0.5">Detalle de asistencia</p>

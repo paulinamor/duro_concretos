@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertTriangle, ArrowDownToLine, ArrowUpToLine,
+  AlertTriangle, ArrowDownToLine, ArrowLeftRight, ArrowUpToLine,
   BarChart2, Camera, Edit2,
   Info, Package, Plus, Search, Trash2, X,
   Layers, TrendingDown, CheckCircle2, Shield, XCircle,
@@ -691,9 +691,165 @@ function EditInventarioModal({ open, onClose, entry, onSubmit }: {
   );
 }
 
+// ─── Traspaso ─────────────────────────────────────────────────────────────────
+
+interface Traspaso {
+  id?: string;
+  fecha: string;
+  plantaOrigen: "Allende" | "Pesquería";
+  plantaDestino: "Allende" | "Pesquería";
+  material: MatKey;
+  cantidad: number;
+  unidad: string;
+  notas?: string;
+  creadoPor?: string;
+  creadoEn: string;
+}
+
+function TraspasoDrawer({
+  open, onClose, localPlanta, onSave,
+}: {
+  open: boolean;
+  onClose: () => void;
+  localPlanta: "Allende" | "Pesquería";
+  onSave: (t: Omit<Traspaso, "id" | "creadoEn">) => Promise<void>;
+}) {
+  const otra: "Allende" | "Pesquería" = localPlanta === "Allende" ? "Pesquería" : "Allende";
+  const [fecha, setFecha] = useState(todayISO);
+  const [origen, setOrigen] = useState<"Allende" | "Pesquería">(localPlanta);
+  const [material, setMaterial] = useState<MatKey>("cemento");
+  const [cantidad, setCantidad] = useState("");
+  const [notas, setNotas] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setFecha(todayISO());
+    setOrigen(localPlanta);
+    setMaterial("cemento");
+    setCantidad("");
+    setNotas("");
+  }, [open, localPlanta]);
+
+  const destino: "Allende" | "Pesquería" = origen === localPlanta ? otra : localPlanta;
+  const matInfo = INVENTARIO_MATERIALES.find((m) => m.key === material)!;
+  const cantNum = parseFloat(cantidad) || 0;
+
+  async function handleSave() {
+    if (cantNum <= 0) return;
+    setSaving(true);
+    try {
+      await onSave({ fecha, plantaOrigen: origen, plantaDestino: destino, material, cantidad: cantNum, unidad: matInfo.unidad, notas: notas.trim() || undefined });
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex">
+      <button className="absolute inset-0 bg-black/50 backdrop-blur-sm cursor-default" onClick={onClose} />
+      <div className="relative ml-auto flex h-full w-full max-w-md flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-4 shrink-0">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#CC2229]/10 text-[#CC2229]">
+            <ArrowLeftRight size={18} />
+          </div>
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">Traspaso entre plantas</h2>
+            <p className="text-xs text-gray-500">Mueve material de una planta a otra</p>
+          </div>
+          <button onClick={onClose} className="ml-auto rounded-xl p-2 text-gray-400 hover:bg-gray-100 cursor-pointer">
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+          {/* Fecha */}
+          <div>
+            <label className={lbl}>Fecha</label>
+            <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className={inp} />
+          </div>
+
+          {/* Dirección del traspaso */}
+          <div>
+            <label className={lbl}>Dirección</label>
+            <div className="flex gap-2">
+              {(["Allende", "Pesquería"] as const).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setOrigen(p)}
+                  className={`flex-1 py-2.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${origen === p ? "bg-[#CC2229] border-[#CC2229] text-white" : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"}`}
+                >
+                  {p} → {p === "Allende" ? "Pesquería" : "Allende"}
+                </button>
+              ))}
+            </div>
+            <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">
+              <span className="font-semibold text-gray-700">{origen}</span>
+              <ArrowLeftRight size={12} className="text-[#CC2229]" />
+              <span className="font-semibold text-gray-700">{destino}</span>
+            </div>
+          </div>
+
+          {/* Material */}
+          <div>
+            <label className={lbl}>Material</label>
+            <AppSelect value={material} onChange={(e) => setMaterial(e.target.value as MatKey)}>
+              {INVENTARIO_MATERIALES.map((m) => (
+                <option key={m.key} value={m.key}>{m.label}{m.unidad ? ` (${m.unidad})` : ""}</option>
+              ))}
+            </AppSelect>
+          </div>
+
+          {/* Cantidad */}
+          <div>
+            <label className={lbl}>Cantidad {matInfo.unidad ? `(${matInfo.unidad})` : ""}</label>
+            <input
+              type="number"
+              min={0}
+              step="any"
+              value={cantidad}
+              onChange={(e) => setCantidad(e.target.value)}
+              placeholder="0"
+              className={inp}
+              onWheel={(e) => e.currentTarget.blur()}
+            />
+          </div>
+
+          {/* Notas */}
+          <div>
+            <label className={lbl}>Notas <span className="font-normal normal-case text-gray-400">(opcional)</span></label>
+            <textarea rows={2} value={notas} onChange={(e) => setNotas(e.target.value)} className={`${inp} resize-none`} />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="shrink-0 border-t border-gray-100 px-6 py-4 flex items-center gap-3">
+          <button type="button" onClick={onClose} className="flex-1 px-4 py-2.5 text-sm text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors cursor-pointer">
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving || cantNum <= 0}
+            className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-[#CC2229] hover:bg-[#B01E24] rounded-xl transition-colors disabled:opacity-40 cursor-pointer"
+          >
+            {saving ? "Guardando…" : "Registrar traspaso"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-type Tab = "stock" | "remisiones" | "movimientos";
+type Tab = "stock" | "remisiones" | "movimientos" | "traspasos";
 
 export default function InventarioPage() {
   const [tab, setTab] = useState<Tab>("stock");
@@ -710,6 +866,9 @@ export default function InventarioPage() {
   const [entradasMaterial, setEntradasMaterial] = useState<EntradaMaterial[]>([]);
   const [existenciasIniciales, setExistenciasIniciales] = useState<ExistenciaInicial[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const [traspasos, setTraspasos] = useState<Traspaso[]>([]);
+  const [showTraspasoForm, setShowTraspasoForm] = useState(false);
 
   // ── UI ───────────────────────────────────────────────────────────────────────
   const [showEntradaForm, setShowEntradaForm] = useState(false);
@@ -731,11 +890,13 @@ export default function InventarioPage() {
       getCollectionDocs<EntradaMaterial>(COLLECTIONS.entradasMaterial),
       getCollectionDocs<ExistenciaInicial>(COLLECTIONS.existenciasIniciales),
       getCollectionDocs<SolicitudAutorizacion>(COLLECTIONS.solicitudesAutorizacion),
-    ]).then(([rem, ent, exi, sols]) => {
+      getCollectionDocs<Traspaso>(COLLECTIONS.traspasos),
+    ]).then(([rem, ent, exi, sols, tras]) => {
       setRemisionesDespacho(filterByPlanta(rem).filter((r) => r.tipo === "despacho"));
       setEntradasMaterial(filterByPlanta(ent));
       setExistenciasIniciales(filterByPlanta(exi));
       setSolicitudesEdicion(sols.filter((s) => s.tipo === "editar_inventario"));
+      setTraspasos(tras);
     }).finally(() => setLoading(false));
   }, []);
 
@@ -937,6 +1098,57 @@ export default function InventarioPage() {
     window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "info", message: "Solicitud rechazada." } }));
   };
 
+  async function handleSaveTraspaso(t: Omit<Traspaso, "id" | "creadoEn">) {
+    const session = getStoredSession();
+    const id = `traspaso-${Date.now()}`;
+    const nuevo: Traspaso = { ...t, id, creadoEn: new Date().toISOString(), creadoPor: session?.email };
+    const { id: _id, ...data } = nuevo;
+    await upsertDocument(COLLECTIONS.traspasos, id, data);
+
+    // Crea los dos movimientos de inventario: salida en origen, entrada en destino
+    const [dd, mm, yy] = todayISO().split("-");
+    const fechaDisplay = `${yy.padStart(2, "0")}/${mm}/${dd}`;
+    // Convert ISO date (yyyy-mm-dd) to display (dd/mm/yyyy)
+    const [fy, fm, fdDay] = t.fecha.split("-");
+    const fechaMov = `${fdDay}/${fm}/${fy}`;
+
+    const salida: EntradaMaterial = {
+      fecha: fechaMov, material: t.material, cantidad: t.cantidad, unidad: t.unidad,
+      tipo: "salida", proveedor: "", noFactura: "",
+      observaciones: `Traspaso a ${t.plantaDestino}${t.notas ? ` — ${t.notas}` : ""}`,
+      categoria: "inventario", planta: t.plantaOrigen,
+    };
+    const entrada: EntradaMaterial = {
+      fecha: fechaMov, material: t.material, cantidad: t.cantidad, unidad: t.unidad,
+      tipo: "entrada", proveedor: "", noFactura: "",
+      observaciones: `Traspaso desde ${t.plantaOrigen}${t.notas ? ` — ${t.notas}` : ""}`,
+      categoria: "inventario", planta: t.plantaDestino,
+    };
+
+    const salidaId = `inv-traspaso-sal-${id}`;
+    const entradaId = `inv-traspaso-ent-${id}`;
+    await Promise.all([
+      upsertDocument(COLLECTIONS.entradasMaterial, salidaId, salida),
+      upsertDocument(COLLECTIONS.entradasMaterial, entradaId, entrada),
+    ]);
+
+    setTraspasos((prev) => [nuevo, ...prev]);
+    setEntradasMaterial((prev) => [
+      { ...salida, id: salidaId },
+      { ...entrada, id: entradaId },
+      ...prev,
+    ]);
+    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `Traspaso registrado: ${t.material} de ${t.plantaOrigen} a ${t.plantaDestino}.` } }));
+    void fechaDisplay;
+  }
+
+  const traspasosFiltrados = useMemo(
+    () => traspasos
+      .filter((t) => t.plantaOrigen === localPlanta || t.plantaDestino === localPlanta)
+      .sort((a, b) => b.creadoEn.localeCompare(a.creadoEn)),
+    [traspasos, localPlanta],
+  );
+
   // ── Filtered lists ────────────────────────────────────────────────────────────
   const filteredRemisionesDespacho = useMemo(() => {
     let rows = remByPlanta.filter((r) => inPeriod(r.fecha, periodo));
@@ -1016,6 +1228,13 @@ export default function InventarioPage() {
               <Plus size={15} /> Registrar entrada
             </button>
           )}
+          {tab === "traspasos" && (
+            <button
+              onClick={() => setShowTraspasoForm(true)}
+              className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#B01E24] text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors shadow-lg shadow-[#CC2229]/20 cursor-pointer">
+              <Plus size={15} /> Nuevo traspaso
+            </button>
+          )}
         </div>
       </div>
 
@@ -1041,6 +1260,7 @@ export default function InventarioPage() {
           { key: "stock" as Tab,       label: "Stock de Materiales", icon: Package,         badge: materialesConAlerta > 0 ? materialesConAlerta : undefined },
           { key: "remisiones" as Tab,  label: "Remisiones",          icon: ArrowUpToLine,   badge: remisionesPeriodo.length || undefined },
           { key: "movimientos" as Tab, label: "Movimientos",          icon: ArrowDownToLine, badge: solicitudesEdicionPendientes.length || undefined },
+          { key: "traspasos" as Tab,   label: "Traspasos",            icon: ArrowLeftRight,  badge: traspasosFiltrados.length || undefined },
         ].map(({ key, label, icon: Icon, badge }) => (
           <button key={key} onClick={() => setTab(key)}
             className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap cursor-pointer ${tab === key ? "border-[#CC2229] text-gray-900" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
@@ -1344,8 +1564,69 @@ export default function InventarioPage() {
         </div>
       )}
 
+      {/* ── Tab: Traspasos ─────────────────────────────────────────────────────── */}
+      {!loading && tab === "traspasos" && (
+        <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
+          <div className="px-5 py-4 border-b border-[#3A3A3A]">
+            <h3 className="font-semibold text-white">Traspasos de material</h3>
+            <p className="mt-0.5 text-xs text-gray-500">Movimientos entre {localPlanta} y la otra planta.</p>
+          </div>
+          {traspasosFiltrados.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <ArrowLeftRight size={30} className="mb-3 text-gray-600" />
+              <p className="text-sm text-gray-500">Sin traspasos registrados para {localPlanta}.</p>
+              <button onClick={() => setShowTraspasoForm(true)} className="mt-4 flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-[#CC2229] text-white rounded-xl hover:bg-[#B01E24] transition-colors cursor-pointer">
+                <Plus size={14} /> Registrar primer traspaso
+              </button>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-[#1A1A1A] border-b border-[#3A3A3A]">
+                    {["Fecha", "Material", "Cant.", "De", "A", "Notas"].map((h) => (
+                      <th key={h} className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-400 whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#3A3A3A]">
+                  {traspasosFiltrados.map((t) => {
+                    const matInfo = INVENTARIO_MATERIALES.find((m) => m.key === t.material);
+                    const esSalida = t.plantaOrigen === localPlanta;
+                    return (
+                      <tr key={t.id} className="hover:bg-white/5 transition-colors">
+                        <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">{t.fecha ? (() => { const [y,m,d] = t.fecha.split("-"); return `${d}/${m}/${y}`; })() : "—"}</td>
+                        <td className="px-4 py-3">
+                          <span className="flex items-center gap-2">
+                            <span className={`w-2 h-2 rounded-full shrink-0 ${matInfo?.dot ?? "bg-gray-400"}`} />
+                            <span className="text-white text-xs font-medium">{matInfo?.label ?? t.material}</span>
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 font-mono text-xs font-bold text-white">{fmt(t.cantidad)} {t.unidad}</td>
+                        <td className="px-4 py-3">
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${esSalida ? "bg-[#CC2229]/15 text-[#CC2229]" : "bg-gray-700 text-gray-400"}`}>
+                            {t.plantaOrigen}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${!esSalida ? "bg-emerald-500/15 text-emerald-400" : "bg-gray-700 text-gray-400"}`}>
+                            {t.plantaDestino}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-500 max-w-[180px] truncate">{t.notas || "—"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── Drawers & Modals ───────────────────────────────────────────────────── */}
       <EntradaDrawer open={showEntradaForm} onClose={() => setShowEntradaForm(false)} onSave={handleSaveEntrada} remisionesDespacho={remisionesDespacho} />
+      <TraspasoDrawer open={showTraspasoForm} onClose={() => setShowTraspasoForm(false)} localPlanta={localPlanta} onSave={handleSaveTraspaso} />
       {isSuperAdmin && <ExistenciaModal open={showExistenciaForm} onClose={() => setShowExistenciaForm(false)} periodo={periodo} planta={localPlanta} current={existenciaInicial} onSave={handleSaveExistencia} />}
       <EditInventarioModal open={!!editTarget} onClose={() => setEditTarget(null)} entry={editTarget} onSubmit={handleSubmitEdicion} />
 

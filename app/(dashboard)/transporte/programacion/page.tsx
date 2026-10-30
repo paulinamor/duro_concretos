@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle, CalendarDays, ChevronDown, ChevronLeft, ChevronRight,
-  Clock, Download, Expand, ExternalLink, History, Loader2, MapPin, MessageSquare, Navigation, Palette, Plus, Search, Send, Shrink, UserRound, Wifi, X,
+  Clock, Download, Expand, ExternalLink, History, Loader2, MapPin, MessageSquare, Navigation, Palette, Plus, Search, Send, Shrink, Upload, UserRound, Wifi, X,
 } from "lucide-react";
 import ExcelView from "./ExcelView";
+import CargaMasivaModal from "./CargaMasivaModal";
 import type { ExcelProg } from "./ExcelView";
 import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
@@ -85,6 +86,7 @@ interface Programacion {
   fact: string;
   pagado: string;
   montoPagado: number | null;
+  incluyeIVA?: boolean;
   metodoPago: string;
   fechaPago: string;
   exhibiciones?: "1" | "2" | null;
@@ -146,6 +148,7 @@ interface FormState {
   recibosMontos: { [folio: string]: number };
   recibo: string; credito: string; fact: string; pagado: string;
   montoPagado: string;
+  incluyeIVA: boolean;
   metodoPago: string; fechaPago: string;
   exhibiciones: "" | "1" | "2";
   montoPago2: string; fechaPago2: string; metodoPago2: string;
@@ -267,7 +270,7 @@ function emptyForm(dia: string): FormState {
     precioM3: "", precioM3Bomba: "", factorBomba: "1.16", aplicarFactorBomba: false,
     ltoAcelr: "", kiloFibra: "", m3Imper: "",
     aditivo: "", tuberiaExtra: "", permisosOC: "",
-    recibos: [], recibosMontos: {}, recibo: "", credito: "", fact: "", pagado: "", montoPagado: "", metodoPago: "", fechaPago: "",
+    recibos: [], recibosMontos: {}, recibo: "", credito: "", fact: "", pagado: "", montoPagado: "", incluyeIVA: false, metodoPago: "", fechaPago: "",
     exhibiciones: "", montoPago2: "", fechaPago2: "", metodoPago2: "",
     notas: "", notasVendedor: "", rowColor: "", obraNombre: "",
   };
@@ -327,6 +330,7 @@ function formFromProg(p: Programacion): FormState {
     recibosMontos: p.recibosMontos ?? {},
     recibo: p.recibo ?? "", credito: p.credito ?? "", fact: p.fact ?? "", pagado: p.pagado ?? "",
     montoPagado: p.montoPagado != null ? String(p.montoPagado) : "",
+    incluyeIVA: p.incluyeIVA ?? false,
     metodoPago: p.metodoPago ?? "", fechaPago: p.fechaPago ?? "",
     exhibiciones: p.exhibiciones ?? "",
     montoPago2: p.montoPago2 != null ? String(p.montoPago2) : "",
@@ -556,7 +560,7 @@ function HistorialDrawer({
   return (
     <div className="fixed inset-0 z-[200] flex">
       <button className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} aria-label="Cerrar historial" />
-      <div className="relative ml-auto flex h-full w-full max-w-md flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden">
+      <div className="relative ml-auto flex h-full w-full max-w-md flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden" style={{ colorScheme: 'light' }}>
 
         {/* Header */}
         <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-4 shrink-0">
@@ -728,7 +732,7 @@ function FormDrawer({
     return obrasSugeridas.filter((o) => o.nombre.toLowerCase().includes(q));
   }, [obrasSugeridas, obraQuery]);
 
-  const set = (k: keyof Omit<FormState, "choferes" | "aplicarFactorBomba">, v: string) =>
+  const set = (k: keyof Omit<FormState, "choferes" | "aplicarFactorBomba" | "incluyeIVA">, v: string) =>
     setForm((p) => ({ ...p, [k]: v }));
   const setBool = (k: keyof FormState, v: boolean) =>
     setForm((p) => ({ ...p, [k]: v }));
@@ -885,14 +889,24 @@ function FormDrawer({
         recibosMontos: form.recibosMontos,
         credito: (form.credito ?? "").trim(),
         fact: (form.fact ?? "").trim(),
-        pagado: (form.pagado ?? "").trim(),
-        montoPagado: form.pagado === "Parcial" ? (n(form.montoPagado) ?? null) : null,
+        pagado: (() => {
+          const p = (form.pagado ?? "").trim();
+          if (p === "Parcial" && (n(form.montoPagado) ?? 0) >= (totalAuto ?? 0) && (totalAuto ?? 0) > 0) return "Sí";
+          return p;
+        })(),
+        montoPagado: (() => {
+          const p = (form.pagado ?? "").trim();
+          if (p !== "Parcial") return null;
+          if ((n(form.montoPagado) ?? 0) >= (totalAuto ?? 0) && (totalAuto ?? 0) > 0) return null;
+          return n(form.montoPagado) ?? null;
+        })(),
         metodoPago: (form.metodoPago ?? "").trim(),
         fechaPago: form.fechaPago ?? "",
         exhibiciones: (form.exhibiciones || null) as "1" | "2" | null,
         montoPago2: form.exhibiciones === "2" ? (n(form.montoPago2) ?? null) : null,
         fechaPago2: form.exhibiciones === "2" ? (form.fechaPago2 ?? "") : "",
         metodoPago2: form.exhibiciones === "2" ? (form.metodoPago2 ?? "").trim() : "",
+        incluyeIVA: form.incluyeIVA ?? false,
         notas: (form.notas ?? "").trim(),
         notasVendedor: (form.notasVendedor ?? "").trim(),
         ...(form.rowColor ? { rowColor: form.rowColor } : {}),
@@ -1013,7 +1027,7 @@ function FormDrawer({
   return (
     <div className="fixed inset-0 z-[100] flex">
       <button className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} aria-label="Cerrar" />
-      <div className="relative ml-auto flex h-full w-full max-w-2xl flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden">
+      <div className="relative ml-auto flex h-full w-full max-w-2xl flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden" style={{ colorScheme: 'light' }}>
 
         {/* Header */}
         <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-4 shrink-0">
@@ -1515,6 +1529,18 @@ function FormDrawer({
               <label className={lbl}>Fact</label>
               <input type="text" value={form.fact} onChange={(e) => set("fact", e.target.value)} placeholder="No. factura" className={inp} />
             </div>
+            <div className="flex items-center gap-2 pt-5">
+              <input
+                type="checkbox"
+                id="incluyeIVA"
+                checked={form.incluyeIVA}
+                onChange={(e) => setBool("incluyeIVA", e.target.checked)}
+                className="h-4 w-4 accent-[#CC2229] cursor-pointer"
+              />
+              <label htmlFor="incluyeIVA" className="text-sm text-gray-700 cursor-pointer select-none">
+                Total incluye IVA (÷1.16)
+              </label>
+            </div>
             <div>
               <label className={lbl}>Crédito</label>
               <input type="text" value={form.credito} onChange={(e) => set("credito", e.target.value)} placeholder="—" className={inp} />
@@ -1539,6 +1565,9 @@ function FormDrawer({
                   className={inp}
                   onWheel={(e) => e.currentTarget.blur()}
                 />
+                {(n(form.montoPagado) ?? 0) >= (totalAuto ?? 0) && (totalAuto ?? 0) > 0 && (
+                  <p className="mt-1 text-xs text-emerald-600 font-semibold">✓ Cubre el total — se marcará como Pagado al guardar</p>
+                )}
               </div>
             )}
           </div>
@@ -2404,6 +2433,7 @@ export default function ProgramacionPage() {
   const [rangoInicio, setRangoInicio] = useState(todayISO);
   const [rangoFin, setRangoFin] = useState(todayISO);
   const [showDrawer, setShowDrawer] = useState(false);
+  const [showCargaMasiva, setShowCargaMasiva] = useState(false);
   const [editing, setEditing] = useState<Programacion | undefined>();
   const [loading, setLoading] = useState(true);
   const [excelFullscreen, setExcelFullscreen] = useState(false);
@@ -2857,6 +2887,13 @@ export default function ProgramacionPage() {
             >
               <Download size={13} />
               Excel
+            </button>
+            <button
+              disabled
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-gray-500 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg opacity-40 cursor-not-allowed"
+            >
+              <Upload size={13} />
+              Carga masiva
             </button>
             {/* Panel de trabajo del día */}
             {filtered.length > 0 && (
@@ -3408,6 +3445,17 @@ export default function ProgramacionPage() {
           </div>
         </div>
       )}
+
+      <CargaMasivaModal
+        open={showCargaMasiva}
+        onClose={() => setShowCargaMasiva(false)}
+        existingProgs={programaciones}
+        onImported={(count) => {
+          window.dispatchEvent(new CustomEvent("duro:toast", {
+            detail: { type: "success", title: "Carga masiva completada", message: `${count} programación${count !== 1 ? "es" : ""} importada${count !== 1 ? "s" : ""}` },
+          }));
+        }}
+      />
     </div>
   );
 }

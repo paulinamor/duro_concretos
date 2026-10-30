@@ -730,7 +730,7 @@ function RegistroDrawer({
   return (
     <div className="fixed inset-0 z-50 flex">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative ml-auto flex h-full w-full max-w-lg flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden">
+      <div className="relative ml-auto flex h-full w-full max-w-lg flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden" style={{ colorScheme: 'light' }}>
         {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4 shrink-0">
           <div className="flex items-center gap-3">
@@ -1571,7 +1571,7 @@ export default function MantenimientoPage() {
       {confirmDeleteEvento && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center">
           <button className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setConfirmDeleteEvento(null)} />
-          <div className="relative bg-white border border-gray-200 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+          <div className="relative bg-white border border-gray-200 rounded-2xl p-6 w-full max-w-sm shadow-2xl" style={{ colorScheme: 'light' }}>
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-50 mb-4">
               <Trash2 size={20} className="text-red-500" />
             </div>

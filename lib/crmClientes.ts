@@ -30,6 +30,9 @@ export interface Cliente {
   notas: string;
   regimenFiscal?: string;
   usoCfdi?: string;
+  esContratista?: boolean;
+  clienteFinalRfc?: string;
+  clienteFinalNombre?: string;
 }
 
 export const tiposCliente: TipoCliente[] = ["Constructora", "Gobierno", "Particular", "Inmobiliaria", "Industrial"];
