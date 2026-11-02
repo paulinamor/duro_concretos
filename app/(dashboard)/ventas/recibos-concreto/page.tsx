@@ -3,28 +3,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import {
-  Calculator,
-  ChevronDown,
-  DollarSign,
-  MessageCircle,
-  Package,
-  Plus,
-  Printer,
-  ReceiptText,
-  Save,
-  Search,
-  Trash2,
-  X,
+  Calculator, ChevronDown, DollarSign, MessageCircle, Package,
+  Plus, Printer, ReceiptText, Save, Search, Trash2, X,
 } from "lucide-react";
 import {
-  calculateConcreteReceiptTotal,
-  ConcreteExtra,
-  ConcreteReceipt,
-  ConcreteSupplyType,
-  concreteReceiptResistencias,
-  defaultConcreteExtras,
-  formatReceiptDate,
-  syncReceiptWithTrip,
+  calculateConcreteReceiptTotal, ConcreteReceipt, ConcreteProducto,
+  ConcreteAditivo, ConcreteExtraRow, concreteReceiptResistencias,
+  defaultAditivos, formatReceiptDate, getTotalM3, getTotalM3Bombeado,
+  makeProducto, makeExtraLibre, migrateReceipt, syncReceiptWithTrip,
 } from "@/lib/concreteReceipts";
 import { upsertDocument, deleteDocument, COLLECTIONS, getCollectionDocs } from "@/lib/db";
 import { withPlantaTag } from "@/lib/auth";
@@ -43,6 +29,10 @@ function money(value: number | undefined | null) {
   return `$${(value ?? 0).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+function moneyNum(value: number | undefined | null) {
+  return (value ?? 0).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 function getNextReceiptNumber(receipts: ConcreteReceipt[]) {
   if (receipts.length === 0) return 1;
   return receipts.reduce((max, item) => Math.max(max, item.receiptNumber), 0) + 1;
@@ -50,26 +40,24 @@ function getNextReceiptNumber(receipts: ConcreteReceipt[]) {
 
 function createReceipt(receipts: ConcreteReceipt[]): ConcreteReceipt {
   const nextNumber = getNextReceiptNumber(receipts);
-  const today = todayCST();
-
   return {
     id: `REC-${nextNumber}`,
     receiptNumber: nextNumber,
     cliente: "",
     direccionObra: "",
-    m3: 0,
-    resistencia: "",
-    supplyType: "Tiro directo",
-    servicioBomba: "",
+    productos: [makeProducto()],
+    bombaAplicarMinimo: false,
+    bombaMinimoM3: 15,
+    bombaPrecioM3: 0,
     metrosVaciosCantidad: 0,
     metrosVaciosPrecio: 0,
-    precioPorM3: 0,
+    aditivos: defaultAditivos.map((a) => ({ ...a })),
+    extrasLibres: [],
     anticipo: 0,
     nota: "",
     firmaCliente: "",
     recibidoPor: "",
-    fecha: today,
-    extras: defaultConcreteExtras.map((extra) => ({ ...extra })),
+    fecha: todayCST(),
     total: 0,
     resta: 0,
     viajeFolio: `VJ-2026-${nextNumber}`,
@@ -77,14 +65,13 @@ function createReceipt(receipts: ConcreteReceipt[]): ConcreteReceipt {
   };
 }
 
+// ── Number input helper (empty string when zero for cleaner UX) ───────────────
+function numVal(v: number): string | number { return v === 0 ? "" : v; }
+function parseNum(s: string): number { return parseFloat(s) || 0; }
+
 export default function RecibosConcretoPage() {
   const { data: allRemisiones, loading } = useCollectionWithLoading<ConcreteReceipt>(COLLECTIONS.remisiones);
-  const savedReceipts = useMemo(
-    () => allRemisiones.filter((r) => r.receiptNumber != null),
-    [allRemisiones],
-  );
-
-  // Global (todas las plantas) solo para calcular el siguiente folio sin colisiones
+  const savedReceipts = useMemo(() => allRemisiones.filter((r) => r.receiptNumber != null), [allRemisiones]);
   const { data: allRemisionesGlobal } = useCollectionRawWithLoading<ConcreteReceipt>(COLLECTIONS.remisiones);
 
   const [receipt, setReceipt] = useState<ConcreteReceipt>(() => createReceipt([]));
@@ -102,6 +89,8 @@ export default function RecibosConcretoPage() {
   const [obraNewDireccion, setObraNewDireccion] = useState("");
   const obraContainerRef = useRef<HTMLDivElement>(null);
   const [search, setSearch] = useState("");
+  const [abonoReceiptId, setAbonoReceiptId] = useState<string | null>(null);
+  const [abonoMonto, setAbonoMonto] = useState<string>("");
 
   const nextReceiptNum = useMemo(
     () => getNextReceiptNumber(allRemisionesGlobal.filter((r) => r.receiptNumber != null)),
@@ -109,22 +98,24 @@ export default function RecibosConcretoPage() {
   );
   const effectiveReceiptNumber = isLoadedReceipt ? receipt.receiptNumber : nextReceiptNum;
 
-  const totalM3 = useMemo(() => savedReceipts.reduce((s, r) => s + (r.m3 ?? 0), 0), [savedReceipts]);
-  const totalFacturado = useMemo(
-    () => savedReceipts.reduce((s, r) => s + calculateConcreteReceiptTotal(r).total, 0),
-    [savedReceipts],
-  );
-  const totalPendiente = useMemo(
-    () => savedReceipts.reduce((s, r) => s + calculateConcreteReceiptTotal(r).resta, 0),
-    [savedReceipts],
-  );
+  const totalM3KPI   = useMemo(() => savedReceipts.reduce((s, r) => s + getTotalM3(r), 0), [savedReceipts]);
+  const totalFacturado = useMemo(() => savedReceipts.reduce((s, r) => s + calculateConcreteReceiptTotal(r).total, 0), [savedReceipts]);
+  const totalPendiente = useMemo(() => savedReceipts.reduce((s, r) => s + calculateConcreteReceiptTotal(r).resta, 0), [savedReceipts]);
+
+  const pendingReceipts = useMemo(() => {
+    if (!receipt.cliente) return [];
+    const clienteNorm = normCl(receipt.cliente);
+    return savedReceipts.filter((r) => {
+      if (normCl(r.cliente) !== clienteNorm) return false;
+      if (isLoadedReceipt && r.id === receipt.id) return false;
+      return calculateConcreteReceiptTotal(r).resta > 0;
+    });
+  }, [savedReceipts, receipt.cliente, isLoadedReceipt, receipt.id]);
 
   const filteredReceipts = useMemo(() => {
     const sorted = [...savedReceipts].sort((a, b) => b.receiptNumber - a.receiptNumber);
     if (!search.trim()) return sorted;
-    return sorted.filter((r) =>
-      matchesQuery(search, [r.receiptNumber, r.cliente, r.direccionObra])
-    );
+    return sorted.filter((r) => matchesQuery(search, [r.receiptNumber, r.cliente, r.direccionObra]));
   }, [savedReceipts, search]);
 
   useEffect(() => {
@@ -132,9 +123,7 @@ export default function RecibosConcretoPage() {
       getCollectionDocs<Cliente>(COLLECTIONS.clientes),
       getCollectionDocs<Obra>(COLLECTIONS.obras),
     ]).then(([clientes, obras]) => {
-      const names = clientes
-        .map((c) => c.razonSocial)
-        .filter(Boolean)
+      const names = clientes.map((c) => c.razonSocial).filter(Boolean)
         .sort((a, b) => a.localeCompare(b, "es", { sensitivity: "base" }));
       setClienteSuggestions(Array.from(new Set(names)));
       setRawClientes(clientes);
@@ -146,23 +135,18 @@ export default function RecibosConcretoPage() {
     if (!receipt.cliente) return [];
     const clienteNorm = normCl(receipt.cliente);
     const clienteReg = rawClientes.find((c) => {
-      const rs = normCl(c.razonSocial ?? "");
-      const nc = normCl(c.nombreComercial ?? "");
+      const rs = normCl(c.razonSocial ?? ""); const nc = normCl(c.nombreComercial ?? "");
       return rs === clienteNorm || nc === clienteNorm;
     });
     const aliases = new Set<string>([clienteNorm]);
-    if (clienteReg) {
-      aliases.add(normCl(clienteReg.razonSocial ?? ""));
-      aliases.add(normCl(clienteReg.nombreComercial ?? ""));
-    }
+    if (clienteReg) { aliases.add(normCl(clienteReg.razonSocial ?? "")); aliases.add(normCl(clienteReg.nombreComercial ?? "")); }
     aliases.delete("");
     return obrasData.filter((o) => aliases.has(normCl(o.cliente))).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
   }, [obrasData, receipt.cliente, rawClientes]);
 
   const obrasFiltradas = useMemo(() => {
     if (!obraQuery.trim()) return obrasSugeridas;
-    const q = obraQuery.toLowerCase();
-    return obrasSugeridas.filter((o) => o.nombre.toLowerCase().includes(q));
+    return obrasSugeridas.filter((o) => o.nombre.toLowerCase().includes(obraQuery.toLowerCase()));
   }, [obrasSugeridas, obraQuery]);
 
   useEffect(() => {
@@ -183,47 +167,103 @@ export default function RecibosConcretoPage() {
     setObrasData((prev) => [...prev, doc]);
   }
 
-  const totals = useMemo(() => calculateConcreteReceiptTotal(receipt), [receipt]);
-  const receiptDate = formatReceiptDate(receipt.fecha);
-  const realTotal = totals.total;
-  const realResta = totals.resta;
+  // ── Computed from receipt ──────────────────────────────────────────────────
+  const totals         = useMemo(() => calculateConcreteReceiptTotal(receipt), [receipt]);
+  const realTotal      = totals.total;
+  const realResta      = totals.resta;
+  const totalM3Receipt = useMemo(() => getTotalM3(receipt), [receipt]);
+  const m3Bombeado     = useMemo(() => getTotalM3Bombeado(receipt), [receipt]);
+  const hasBomba       = m3Bombeado > 0;
+  const receiptDate    = formatReceiptDate(receipt.fecha);
 
+  // ── Update helpers ────────────────────────────────────────────────────────
   function updateReceipt(partial: Partial<ConcreteReceipt>) {
-    setReceipt((current) => ({
-      ...current,
-      ...partial,
-      ...calculateConcreteReceiptTotal({ ...current, ...partial }),
-    }));
-  }
-
-  function updateExtra(index: number, partial: Partial<ConcreteExtra>) {
-    setReceipt((current) => {
-      const extras = current.extras.map((extra, extraIndex) =>
-        extraIndex === index ? { ...extra, ...partial } : extra,
-      );
-      return {
-        ...current,
-        extras,
-        ...calculateConcreteReceiptTotal(current),
-      };
+    setReceipt((cur) => {
+      const next = { ...cur, ...partial };
+      return { ...next, ...calculateConcreteReceiptTotal(next) };
     });
   }
 
+  function updateProducto(id: string, partial: Partial<ConcreteProducto>) {
+    setReceipt((cur) => {
+      const productos = cur.productos.map((p) => p.id === id ? { ...p, ...partial } : p);
+      const next = { ...cur, productos };
+      return { ...next, ...calculateConcreteReceiptTotal(next) };
+    });
+  }
+
+  function addProducto() {
+    setReceipt((cur) => {
+      const productos = [...cur.productos, makeProducto()];
+      const next = { ...cur, productos };
+      return { ...next, ...calculateConcreteReceiptTotal(next) };
+    });
+  }
+
+  function removeProducto(id: string) {
+    setReceipt((cur) => {
+      if (cur.productos.length <= 1) return cur;
+      const productos = cur.productos.filter((p) => p.id !== id);
+      const next = { ...cur, productos };
+      return { ...next, ...calculateConcreteReceiptTotal(next) };
+    });
+  }
+
+  function updateAditivo(index: number, partial: Partial<ConcreteAditivo>) {
+    setReceipt((cur) => {
+      const aditivos = cur.aditivos.map((a, i) => i === index ? { ...a, ...partial } : a);
+      const next = { ...cur, aditivos };
+      return { ...next, ...calculateConcreteReceiptTotal(next) };
+    });
+  }
+
+  function addExtraLibre() {
+    setReceipt((cur) => ({ ...cur, extrasLibres: [...cur.extrasLibres, makeExtraLibre()] }));
+  }
+
+  function removeExtraLibre(id: string) {
+    setReceipt((cur) => {
+      const extrasLibres = cur.extrasLibres.filter((e) => e.id !== id);
+      const next = { ...cur, extrasLibres };
+      return { ...next, ...calculateConcreteReceiptTotal(next) };
+    });
+  }
+
+  function updateExtraLibre(id: string, partial: Partial<ConcreteExtraRow>) {
+    setReceipt((cur) => {
+      const extrasLibres = cur.extrasLibres.map((e) => e.id === id ? { ...e, ...partial } : e);
+      const next = { ...cur, extrasLibres };
+      return { ...next, ...calculateConcreteReceiptTotal(next) };
+    });
+  }
+
+  // ── Form actions ──────────────────────────────────────────────────────────
   function openNew() {
     setReceipt(createReceipt([]));
     setIsLoadedReceipt(false);
     setShowForm(true);
+    setAbonoReceiptId(null); setAbonoMonto("");
   }
 
   function resetToNew() {
     setReceipt(createReceipt([]));
     setIsLoadedReceipt(false);
     setShowForm(false);
+    setAbonoReceiptId(null); setAbonoMonto("");
+  }
+
+  function receiptError(): string | null {
+    if (!receipt.cliente.trim()) return "Cliente es requerido.";
+    const m3Total = getTotalM3(receipt);
+    if (m3Total <= 0) return "Debe agregar al menos un producto con M³ mayor a 0.";
+    return null;
   }
 
   async function persistReceipt(showToast = true) {
     const num = effectiveReceiptNumber;
-    const id = `REC-${num}`;
+    const id  = `REC-${num}`;
+    const m3total = getTotalM3(receipt);
+    const firstProd = receipt.productos?.[0];
     const { planta: _p, ...data } = receipt as ConcreteReceipt & { planta?: string };
     const nextReceipt: ConcreteReceipt = {
       ...data,
@@ -233,73 +273,61 @@ export default function RecibosConcretoPage() {
       total: realTotal,
       resta: realResta,
       viajeFolio: `VJ-2026-${num}`,
+      // Persist summary fields for backward-compat display
+      m3: m3total,
+      resistencia: firstProd?.resistencia ?? "",
+      precioPorM3: firstProd?.precioPorM3 ?? 0,
     };
     const { id: docId, ...saveData } = nextReceipt;
     await upsertDocument(COLLECTIONS.remisiones, docId, withPlantaTag(saveData));
-    syncReceiptWithTrip(nextReceipt).catch((err) => console.error("Error sincronizando viaje:", err));
+    syncReceiptWithTrip(nextReceipt).catch((err) => console.error("syncTrip:", err));
 
-    // Sync to Cobros (programaciones) — solo si enviarACobros !== false
     const progId = `recibo-${docId}`;
     if (nextReceipt.enviarACobros !== false) {
       upsertDocument(COLLECTIONS.programaciones, progId, withPlantaTag({
-        dia: nextReceipt.fecha,
-        cliente: nextReceipt.cliente,
-        reciboFolio: `#${String(num).padStart(4, "0")}`,
-        total: realTotal,
-        montoPagado: nextReceipt.anticipo ?? 0,
-        nombreObra: nextReceipt.direccionObra,
-        origenRecibo: true,
-        reciboId: docId,
-      })).catch((err) => console.error("Error sincronizando a cobros:", err));
+        dia: nextReceipt.fecha, cliente: nextReceipt.cliente,
+        reciboFolio: `#${String(num).padStart(4, "0")}`, total: realTotal,
+        montoPagado: nextReceipt.anticipo ?? 0, nombreObra: nextReceipt.direccionObra,
+        origenRecibo: true, reciboId: docId,
+      })).catch((err) => console.error("syncCobros:", err));
     } else {
-      // Si se desactivó, eliminar la entrada de cobros si existía
       deleteDocument(COLLECTIONS.programaciones, progId).catch(() => {});
     }
 
-    // Sync to efectivo module
     upsertDocument(COLLECTIONS.efectivo, `ef-${docId}`, withPlantaTag({
-      folio: num,
-      cliente: nextReceipt.cliente,
-      importe: realTotal,
-      fecha: nextReceipt.fecha,
-      cemento: "Concreto premezclado",
-      metros: nextReceipt.m3,
-      precio: nextReceipt.precioPorM3,
-      resistencia: nextReceipt.resistencia,
-      tipoDeTiro: nextReceipt.supplyType,
-      direccionObra: nextReceipt.direccionObra,
-      notas: nextReceipt.nota ?? "",
-      entregado: false,
-      origenConcreto: true,
-      reciboConcreteId: docId,
-    })).catch((err) => console.error("Error sincronizando a efectivo:", err));
+      folio: num, cliente: nextReceipt.cliente, importe: realTotal,
+      fecha: nextReceipt.fecha, cemento: "Concreto premezclado",
+      metros: m3total, precio: firstProd?.precioPorM3 ?? 0,
+      resistencia: firstProd?.resistencia ?? "", tipoDeTiro: firstProd?.supplyType ?? "",
+      direccionObra: nextReceipt.direccionObra, notas: nextReceipt.nota ?? "",
+      entregado: false, origenConcreto: true, reciboConcreteId: docId,
+    })).catch((err) => console.error("syncEfectivo:", err));
+
+    if (!isLoadedReceipt && abonoReceiptId) {
+      const montoAbono = parseFloat(abonoMonto);
+      if (montoAbono > 0) {
+        const target = savedReceipts.find((r) => r.id === abonoReceiptId);
+        if (target) {
+          const nuevoAbono = { fecha: nextReceipt.fecha, monto: montoAbono, reciboOrigenId: nextReceipt.id };
+          const updatedAbonos = [...(target.abonos ?? []), nuevoAbono];
+          const { resta: nuevaResta } = calculateConcreteReceiptTotal({ ...target, abonos: updatedAbonos });
+          const { id: _tid, planta: _tp, ...targetSaveData } = target as ConcreteReceipt & { planta?: string };
+          await upsertDocument(COLLECTIONS.remisiones, abonoReceiptId, withPlantaTag({ ...targetSaveData, abonos: updatedAbonos, resta: nuevaResta }));
+        }
+      }
+    }
 
     if (showToast) {
-      window.dispatchEvent(
-        new CustomEvent("duro:toast", {
-          detail: { type: "success", message: "Recibo guardado y viaje pendiente creado." },
-        }),
-      );
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: "Recibo guardado." } }));
     }
     return nextReceipt;
-  }
-
-  function receiptError(): string | null {
-    if (!receipt.cliente.trim()) return "Cliente es requerido.";
-    if (!receipt.m3 || receipt.m3 <= 0) return "M³ debe ser mayor a 0.";
-    return null;
   }
 
   async function saveReceipt() {
     const err = receiptError();
     if (err) { window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: err } })); return; }
     setSaving(true);
-    try {
-      await persistReceipt();
-      resetToNew();
-    } finally {
-      setSaving(false);
-    }
+    try { await persistReceipt(); resetToNew(); } finally { setSaving(false); }
   }
 
   async function printReceipt() {
@@ -308,162 +336,131 @@ export default function RecibosConcretoPage() {
     setSaving(true);
     try {
       const saved = await persistReceipt(false);
-      // Fix: after saving, Firestore onSnapshot increments nextReceiptNum before window.print().
-      // flushSync pins receipt.receiptNumber to the actually-saved number so effectiveReceiptNumber
-      // doesn't jump to the next available folio during the print render.
-      flushSync(() => {
-        setReceipt(saved);
-        setIsLoadedReceipt(true);
-      });
+      flushSync(() => { setReceipt(saved); setIsLoadedReceipt(true); });
       window.print();
       window.setTimeout(resetToNew, 0);
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   }
 
   function getTicketAmounts(targetReceipt: ConcreteReceipt) {
-    const { total, resta } = calculateConcreteReceiptTotal(targetReceipt);
-    return { realTotal: total, realResta: resta };
+    return calculateConcreteReceiptTotal(targetReceipt);
   }
 
   async function sendWhatsApp(targetReceipt = receipt, shouldSave = true) {
-    let messageReceipt = targetReceipt;
+    let msgReceipt = targetReceipt;
     if (shouldSave) {
       const err = receiptError();
       if (err) { window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: err } })); return; }
       setSaving(true);
-      try {
-        messageReceipt = await persistReceipt(false);
-        resetToNew();
-      } finally {
-        setSaving(false);
-      }
+      try { msgReceipt = await persistReceipt(false); resetToNew(); } finally { setSaving(false); }
     }
-    const amounts = shouldSave ? { realTotal, realResta } : getTicketAmounts(messageReceipt);
+    const { total, resta } = getTicketAmounts(msgReceipt);
+    const m3 = getTotalM3(msgReceipt);
+    const firstProd = msgReceipt.productos?.[0];
     const message = [
-      `Recibo concreto premezclado No. ${messageReceipt.receiptNumber}`,
-      `Cliente: ${messageReceipt.cliente}`,
-      `Obra: ${messageReceipt.direccionObra}`,
-      `M3: ${messageReceipt.m3}`,
-      `Resistencia: ${messageReceipt.resistencia}`,
-      `Suministro: ${messageReceipt.supplyType}`,
-      `Precio/m3: ${money(messageReceipt.precioPorM3)}`,
-      `Total: ${money(amounts.realTotal)}`,
-      `Resta: ${money(amounts.realResta)}`,
-      `Nota: ${messageReceipt.nota || "Sin nota"}`,
-    ].join("\n");
+      `Recibo concreto premezclado No. ${msgReceipt.receiptNumber}`,
+      `Cliente: ${msgReceipt.cliente}`,
+      `Obra: ${msgReceipt.direccionObra}`,
+      `M³: ${m3}`,
+      firstProd ? `Resistencia: ${firstProd.resistencia}` : "",
+      firstProd ? `Suministro: ${firstProd.supplyType}` : "",
+      `Total: ${money(total)}`,
+      `Resta: ${money(resta)}`,
+      msgReceipt.nota ? `Nota: ${msgReceipt.nota}` : "",
+    ].filter(Boolean).join("\n");
     window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
   }
 
   async function deleteReceipt(id: string) {
     await deleteDocument(COLLECTIONS.remisiones, id);
     deleteDocument(COLLECTIONS.programaciones, `recibo-${id}`).catch(() => {});
-    window.dispatchEvent(
-      new CustomEvent("duro:toast", {
-        detail: { type: "success", message: "Recibo eliminado." },
-      }),
-    );
+    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: "Recibo eliminado." } }));
   }
 
   function loadSavedReceipt(savedReceipt: ConcreteReceipt) {
-    setReceipt({ ...savedReceipt });
+    setReceipt(migrateReceipt({ ...savedReceipt }));
     setIsLoadedReceipt(true);
     setShowForm(true);
   }
 
   function printSavedReceipt(savedReceipt: ConcreteReceipt) {
-    flushSync(() => {
-      setReceipt({ ...savedReceipt });
-      setIsLoadedReceipt(true);
-    });
+    flushSync(() => { setReceipt(migrateReceipt({ ...savedReceipt })); setIsLoadedReceipt(true); });
     window.print();
     resetToNew();
   }
 
-  // ─── Shared input class ───────────────────────────────────────────────────────
   const lbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5";
-  const inp =
-    "w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-900 text-sm placeholder-gray-400 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors";
+  const inp = "w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-900 text-sm placeholder-gray-400 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors";
+  const inpSm = "bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 text-sm focus:outline-none focus:border-[#CC2229]/60 transition-colors";
+
+  // ── Computed for print ────────────────────────────────────────────────────
+  const subtotalConcreto = receipt.productos.reduce((s, p) => s + (p.m3 ?? 0) * (p.precioPorM3 ?? 0), 0);
+  const metrosVaciosTotal = (receipt.metrosVaciosCantidad ?? 0) * (receipt.metrosVaciosPrecio ?? 0);
+  const bombaM3Base = receipt.bombaAplicarMinimo ? Math.max(m3Bombeado, receipt.bombaMinimoM3 ?? 0) : m3Bombeado;
+  const bombaImporte = hasBomba && (receipt.bombaPrecioM3 ?? 0) > 0 ? bombaM3Base * receipt.bombaPrecioM3 : 0;
+  const aditivosActivos = (receipt.aditivos ?? []).filter((a) => a.checked && a.precio > 0 && a.dosis > 0);
+  const extrasConImporte = (receipt.extrasLibres ?? []).filter((e) => e.concepto && parseFloat(e.precio) > 0);
 
   return (
     <div className="space-y-6">
       <style jsx global>{`
         @media print {
-          body * {
-            visibility: hidden !important;
-          }
-
+          body * { visibility: hidden !important; }
           #printable-concrete-receipt,
-          #printable-concrete-receipt * {
-            visibility: visible !important;
-          }
-
+          #printable-concrete-receipt * { visibility: visible !important; }
           #printable-concrete-receipt {
-            position: fixed !important;
-            inset: 0 !important;
-            width: 100vw !important;
-            min-height: 100vh !important;
-            background: white !important;
-            padding: 0.35in !important;
+            position: fixed !important; inset: 0 !important;
+            width: 100vw !important; min-height: 100vh !important;
+            background: white !important; padding: 0.3in 0.35in !important;
             color: black !important;
           }
-
-          @page {
-            size: letter landscape;
-            margin: 0;
-          }
+          @page { size: letter landscape; margin: 0; }
         }
+        .print-th {
+          background: #1e3a5f !important;
+          color: white !important;
+          font-size: 9px;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          padding: 5px 8px;
+          text-align: left;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        .print-sec {
+          background: #1e3a5f !important;
+          color: white !important;
+          font-size: 11px;
+          font-weight: 900;
+          text-transform: uppercase;
+          padding: 4px 8px;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        .print-td { font-size: 10px; padding: 4px 8px; border-bottom: 1px solid #ccc; vertical-align: middle; }
+        .print-total-row { background: #e8eef5 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       `}</style>
 
-      {/* ── Header ────────────────────────────────────────────────────────────── */}
+      {/* ── Header ────────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
-        <p className="text-sm text-gray-500">Captura digital del recibo físico de concreto premezclado</p>
-        <button
-          type="button"
-          onClick={openNew}
-          className="flex items-center gap-2 bg-[#CC2229] text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-[#B01E24] transition-colors shadow-md shadow-[#CC2229]/20 cursor-pointer"
-        >
-          <Plus size={16} />
-          Nuevo recibo
+        <p className="text-sm text-gray-500">Recibo de concreto premezclado — múltiples productos por recibo</p>
+        <button type="button" onClick={openNew}
+          className="flex items-center gap-2 bg-[#CC2229] text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-[#B01E24] transition-colors shadow-md shadow-[#CC2229]/20 cursor-pointer">
+          <Plus size={16} /> Nuevo recibo
         </button>
       </div>
 
-      {/* ── KPIs ──────────────────────────────────────────────────────────────── */}
+      {/* ── KPIs ──────────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 print:hidden">
-        <KPICard
-          title="Total recibos"
-          value={loading ? "…" : String(savedReceipts.length)}
-          icon={ReceiptText}
-          iconColor="text-[#CC2229]"
-          iconBg="bg-[#CC2229]/10"
-        />
-        <KPICard
-          title="Total m³"
-          value={loading ? "…" : `${totalM3.toLocaleString("es-MX", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} m³`}
-          icon={Package}
-          iconColor="text-blue-400"
-          iconBg="bg-blue-500/10"
-        />
-        <KPICard
-          title="Total facturado"
-          value={loading ? "…" : money(totalFacturado)}
-          icon={DollarSign}
-          iconColor="text-emerald-400"
-          iconBg="bg-emerald-500/10"
-        />
-        <KPICard
-          title="Pendiente cobro"
-          value={loading ? "…" : money(totalPendiente)}
-          icon={Calculator}
-          iconColor={totalPendiente > 0 ? "text-amber-400" : "text-emerald-400"}
-          iconBg={totalPendiente > 0 ? "bg-amber-500/10" : "bg-emerald-500/10"}
-        />
+        <KPICard title="Total recibos"   value={loading ? "…" : String(savedReceipts.length)}  icon={ReceiptText} iconColor="text-[#CC2229]"  iconBg="bg-[#CC2229]/10" />
+        <KPICard title="Total m³"        value={loading ? "…" : `${totalM3KPI.toLocaleString("es-MX", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} m³`} icon={Package} iconColor="text-blue-400" iconBg="bg-blue-500/10" />
+        <KPICard title="Total facturado" value={loading ? "…" : money(totalFacturado)} icon={DollarSign}  iconColor="text-emerald-400" iconBg="bg-emerald-500/10" />
+        <KPICard title="Pendiente cobro" value={loading ? "…" : money(totalPendiente)} icon={Calculator}  iconColor={totalPendiente > 0 ? "text-amber-400" : "text-emerald-400"} iconBg={totalPendiente > 0 ? "bg-amber-500/10" : "bg-emerald-500/10"} />
       </div>
 
-      {/* ── Saved receipts table ──────────────────────────────────────────────── */}
+      {/* ── Saved receipts table ──────────────────────────────────────────── */}
       <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden print:hidden">
-        {/* Table header */}
         <div className="flex flex-wrap items-center gap-3 px-5 py-4 border-b border-[#3A3A3A]">
           <div>
             <h3 className="font-semibold text-white">Recibos guardados</h3>
@@ -471,13 +468,8 @@ export default function RecibosConcretoPage() {
           </div>
           <div className="ml-auto relative min-w-[200px]">
             <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
-            <input
-              type="text"
-              placeholder="Buscar folio, cliente, obra…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg pl-8 pr-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229] placeholder-gray-600"
-            />
+            <input type="text" placeholder="Buscar folio, cliente, obra…" value={search} onChange={(e) => setSearch(e.target.value)}
+              className="w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg pl-8 pr-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229] placeholder-gray-600" />
           </div>
         </div>
 
@@ -492,9 +484,7 @@ export default function RecibosConcretoPage() {
         ) : filteredReceipts.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <ReceiptText size={30} className="mb-3 text-gray-600" />
-            <p className="text-sm text-gray-500">
-              {search ? "Sin resultados para esa búsqueda." : "No hay recibos guardados aún."}
-            </p>
+            <p className="text-sm text-gray-500">{search ? "Sin resultados para esa búsqueda." : "No hay recibos guardados aún."}</p>
           </div>
         ) : (
           <div className="overflow-x-auto overflow-y-auto max-h-[65vh]">
@@ -502,74 +492,40 @@ export default function RecibosConcretoPage() {
               <thead className="sticky top-0 z-10">
                 <tr className="bg-[#1A1A1A] border-b border-[#3A3A3A]">
                   {["No.", "Fecha", "Cliente", "Obra", "M³", "Total", "Resta", ""].map((h) => (
-                    <th
-                      key={h}
-                      className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-400 whitespace-nowrap bg-[#1A1A1A]"
-                    >
-                      {h}
-                    </th>
+                    <th key={h} className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-400 whitespace-nowrap bg-[#1A1A1A]">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#3A3A3A]">
                 {filteredReceipts.map((savedReceipt) => {
-                  const amounts = getTicketAmounts(savedReceipt);
+                  const { total, resta } = getTicketAmounts(savedReceipt);
                   return (
                     <tr key={savedReceipt.id} className="hover:bg-white/5 transition-colors">
-                      <td className="px-4 py-3 font-mono text-xs font-semibold text-[#CC2229]">
-                        #{String(savedReceipt.receiptNumber).padStart(4, "0")}
-                      </td>
+                      <td className="px-4 py-3 font-mono text-xs font-semibold text-[#CC2229]">#{String(savedReceipt.receiptNumber).padStart(4, "0")}</td>
                       <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
-                        {savedReceipt.fecha
-                          ? new Date(savedReceipt.fecha + "T12:00:00").toLocaleDateString("es-MX", {
-                              day: "2-digit",
-                              month: "short",
-                              year: "numeric",
-                            })
-                          : "—"}
+                        {savedReceipt.fecha ? new Date(savedReceipt.fecha + "T12:00:00").toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
                       </td>
-                      <td className="px-4 py-3 font-medium text-white max-w-[160px] truncate">
-                        {savedReceipt.cliente || "—"}
-                      </td>
-                      <td className="px-4 py-3 text-gray-400 max-w-[160px] truncate" title={savedReceipt.direccionObra}>
-                        {savedReceipt.direccionObra || "—"}
-                      </td>
-                      <td className="px-4 py-3 text-gray-300 whitespace-nowrap">{savedReceipt.m3} m³</td>
-                      <td className="px-4 py-3 font-semibold text-white whitespace-nowrap">
-                        {money(amounts.realTotal)}
-                      </td>
-                      <td className="px-4 py-3 text-gray-300 whitespace-nowrap">{money(amounts.realResta)}</td>
+                      <td className="px-4 py-3 font-medium text-white max-w-[160px] truncate">{savedReceipt.cliente || "—"}</td>
+                      <td className="px-4 py-3 text-gray-400 max-w-[160px] truncate" title={savedReceipt.direccionObra}>{savedReceipt.direccionObra || "—"}</td>
+                      <td className="px-4 py-3 text-gray-300 whitespace-nowrap">{getTotalM3(savedReceipt)} m³</td>
+                      <td className="px-4 py-3 font-semibold text-white whitespace-nowrap">{money(total)}</td>
+                      <td className="px-4 py-3 text-gray-300 whitespace-nowrap">{money(resta)}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => loadSavedReceipt(savedReceipt)}
-                            className="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-300 border border-[#3A3A3A] hover:border-[#CC2229]/60 hover:text-white transition-colors cursor-pointer"
-                          >
+                          <button type="button" onClick={() => loadSavedReceipt(savedReceipt)}
+                            className="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-300 border border-[#3A3A3A] hover:border-[#CC2229]/60 hover:text-white transition-colors cursor-pointer">
                             Editar
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => printSavedReceipt(savedReceipt)}
-                            className="rounded-lg p-2 text-gray-400 hover:bg-[#1A1A1A] hover:text-white transition-colors cursor-pointer"
-                            aria-label="Imprimir"
-                          >
+                          <button type="button" onClick={() => printSavedReceipt(savedReceipt)}
+                            className="rounded-lg p-2 text-gray-400 hover:bg-[#1A1A1A] hover:text-white transition-colors cursor-pointer" aria-label="Imprimir">
                             <Printer size={14} />
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => sendWhatsApp(savedReceipt, false)}
-                            className="rounded-lg p-2 text-gray-400 hover:bg-[#1A1A1A] hover:text-green-400 transition-colors cursor-pointer"
-                            aria-label="WhatsApp"
-                          >
+                          <button type="button" onClick={() => sendWhatsApp(savedReceipt, false)}
+                            className="rounded-lg p-2 text-gray-400 hover:bg-[#1A1A1A] hover:text-green-400 transition-colors cursor-pointer" aria-label="WhatsApp">
                             <MessageCircle size={14} />
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => setConfirmDeleteId(savedReceipt.id)}
-                            className="rounded-lg p-2 text-gray-400 hover:bg-[#1A1A1A] hover:text-[#CC2229] transition-colors cursor-pointer"
-                            aria-label="Eliminar"
-                          >
+                          <button type="button" onClick={() => setConfirmDeleteId(savedReceipt.id)}
+                            className="rounded-lg p-2 text-gray-400 hover:bg-[#1A1A1A] hover:text-[#CC2229] transition-colors cursor-pointer" aria-label="Eliminar">
                             <Trash2 size={14} />
                           </button>
                         </div>
@@ -583,141 +539,92 @@ export default function RecibosConcretoPage() {
         )}
       </div>
 
-      {/* ── Form drawer ───────────────────────────────────────────────────────── */}
+      {/* ── Form drawer ───────────────────────────────────────────────────── */}
       {showForm && (
         <div className="fixed inset-0 z-[100] flex print:hidden">
-          <button
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm cursor-default"
-            onClick={resetToNew}
-            aria-label="Cerrar"
-          />
-          <div className="relative ml-auto flex h-full w-full max-w-lg flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden">
-            {/* Drawer header */}
+          <button className="absolute inset-0 bg-black/50 backdrop-blur-sm cursor-default" onClick={resetToNew} aria-label="Cerrar" />
+          <div className="relative ml-auto flex h-full w-full max-w-xl flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden" style={{ colorScheme: "light" }}>
+
+            {/* Header */}
             <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-4 shrink-0">
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#CC2229]/10 text-[#CC2229]">
                 <ReceiptText size={18} />
               </div>
               <div>
-                <h2 className="text-sm font-semibold text-gray-900">
-                  {isLoadedReceipt ? "Editar recibo" : "Nuevo recibo"}
-                </h2>
-                <p className="text-xs text-gray-500">
-                  {loading ? "Cargando…" : `Recibo #${String(effectiveReceiptNumber).padStart(4, "0")}`}
-                </p>
+                <h2 className="text-sm font-semibold text-gray-900">{isLoadedReceipt ? "Editar recibo" : "Nuevo recibo"}</h2>
+                <p className="text-xs text-gray-500">{loading ? "Cargando…" : `Recibo #${String(effectiveReceiptNumber).padStart(4, "0")}`}</p>
               </div>
-              <button
-                type="button"
-                onClick={resetToNew}
-                className="ml-auto rounded-xl p-2 text-gray-400 hover:bg-gray-100 transition-colors cursor-pointer"
-              >
+              <button type="button" onClick={resetToNew} className="ml-auto rounded-xl p-2 text-gray-400 hover:bg-gray-100 transition-colors cursor-pointer">
                 <X size={16} />
               </button>
             </div>
 
-            {/* Drawer form body */}
-            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
 
-              {/* Sección: Datos generales */}
-              <div className="space-y-3">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 border-b border-gray-100 pb-1.5">Datos generales</p>
+              {/* ── Datos generales ── */}
+              <section className="space-y-3">
+                <p className={lbl + " border-b border-gray-100 pb-1.5 !mb-0"}>Datos generales</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={lbl}>No. recibo</label>
-                    <input
-                      type="number"
-                      value={loading ? "" : effectiveReceiptNumber}
-                      readOnly
-                      placeholder={loading ? "Cargando…" : ""}
-                      className={`${inp} cursor-not-allowed opacity-50`}
-                    />
+                    <input type="number" value={loading ? "" : effectiveReceiptNumber} readOnly
+                      className={`${inp} cursor-not-allowed opacity-50`} />
                   </div>
                   <div>
                     <label className={lbl}>Fecha</label>
-                    <input
-                      type="date"
-                      value={receipt.fecha}
-                      onChange={(e) => updateReceipt({ fecha: e.target.value })}
-                      className={`${inp} date-input-white`}
-                    />
+                    <input type="date" value={receipt.fecha} onChange={(e) => updateReceipt({ fecha: e.target.value })}
+                      className={`${inp} date-input-white`} />
                   </div>
                 </div>
                 <div>
-                  <label className={lbl}>Nombre del cliente</label>
-                  <AppSelect
-                    value={receipt.cliente}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      updateReceipt({ cliente: v, direccionObra: v !== receipt.cliente ? "" : receipt.direccionObra });
-                      setObraQuery("");
-                      setObraOpen(false);
-                    }}
-                  >
+                  <label className={lbl}>Cliente</label>
+                  <AppSelect value={receipt.cliente} onChange={(e) => {
+                    const v = e.target.value;
+                    updateReceipt({ cliente: v, direccionObra: v !== receipt.cliente ? "" : receipt.direccionObra });
+                    setObraQuery(""); setObraOpen(false);
+                    if (v !== receipt.cliente) { setAbonoReceiptId(null); setAbonoMonto(""); }
+                  }}>
                     <option value="">Seleccionar cliente…</option>
-                    {clienteSuggestions.map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                    {receipt.cliente && !clienteSuggestions.includes(receipt.cliente) && (
-                      <option value={receipt.cliente}>{receipt.cliente}</option>
-                    )}
+                    {clienteSuggestions.map((c) => <option key={c} value={c}>{c}</option>)}
+                    {receipt.cliente && !clienteSuggestions.includes(receipt.cliente) && <option value={receipt.cliente}>{receipt.cliente}</option>}
                   </AppSelect>
                 </div>
-                {/* Nombre de la obra — selector con dropdown */}
+                {/* Obra */}
                 <div ref={obraContainerRef} className="relative">
                   <div className="flex items-center justify-between mb-1">
-                    <label className={`${lbl} mb-0`}>
-                      Nombre de la obra
-                      {obrasSugeridas.length > 0 && !obraNewOpen && (
-                        <span className="ml-2 text-[10px] font-normal normal-case tracking-normal text-[#CC2229]/70">
-                          {obrasSugeridas.length} guardada{obrasSugeridas.length !== 1 ? "s" : ""}
-                        </span>
-                      )}
-                    </label>
+                    <label className={`${lbl} mb-0`}>Obra</label>
                     {receipt.cliente && !obraNewOpen && (
-                      <button
-                        type="button"
-                        onClick={() => { setObraNewOpen(true); setObraOpen(false); setObraNewNombre(""); setObraNewDireccion(""); }}
-                        className="text-[11px] font-semibold text-[#CC2229] hover:text-[#B01E24] cursor-pointer transition-colors shrink-0"
-                      >
-                        + Nueva obra
-                      </button>
+                      <button type="button" onClick={() => { setObraNewOpen(true); setObraOpen(false); setObraNewNombre(""); setObraNewDireccion(""); }}
+                        className="text-[11px] font-semibold text-[#CC2229] hover:text-[#B01E24] cursor-pointer transition-colors shrink-0">+ Nueva obra</button>
                     )}
                     {obraNewOpen && (
                       <button type="button" onClick={() => { setObraNewOpen(false); setObraQuery(""); }}
-                        className="text-[11px] font-medium text-gray-400 hover:text-gray-600 cursor-pointer transition-colors shrink-0">
-                        Cancelar
-                      </button>
+                        className="text-[11px] font-medium text-gray-400 hover:text-gray-600 cursor-pointer transition-colors shrink-0">Cancelar</button>
                     )}
                   </div>
-
                   {obraNewOpen && (
                     <div className="rounded-xl border border-[#CC2229]/30 bg-red-50/40 p-3 space-y-2">
-                      <input autoFocus value={obraNewNombre} onChange={(e) => setObraNewNombre(e.target.value)}
-                        placeholder="Nombre de la obra *"
-                        className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 bg-white focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20" />
-                      <input value={obraNewDireccion} onChange={(e) => setObraNewDireccion(e.target.value)}
-                        placeholder="Dirección o link de Maps (opcional)"
-                        className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 bg-white focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20" />
-                      <button type="button" disabled={!obraNewNombre.trim()}
-                        onClick={() => {
-                          if (!obraNewNombre.trim()) return;
-                          const nombre = obraNewNombre.trim().toUpperCase().replace(/\s+/g, " ");
-                          updateReceipt({ direccionObra: nombre });
-                          autoSaveObra(receipt.cliente, nombre, obraNewDireccion);
-                          setObraNewOpen(false); setObraQuery("");
-                        }}
-                        className="w-full text-sm py-2 rounded-lg bg-[#CC2229] text-white hover:bg-[#B01E24] disabled:opacity-50 cursor-pointer transition-colors font-medium">
+                      <input autoFocus value={obraNewNombre} onChange={(e) => setObraNewNombre(e.target.value)} placeholder="Nombre de la obra *"
+                        className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 bg-white focus:outline-none focus:border-[#CC2229]/60" />
+                      <input value={obraNewDireccion} onChange={(e) => setObraNewDireccion(e.target.value)} placeholder="Dirección (opcional)"
+                        className="w-full text-sm px-3 py-2 rounded-lg border border-gray-200 bg-white focus:outline-none focus:border-[#CC2229]/60" />
+                      <button type="button" disabled={!obraNewNombre.trim()} onClick={() => {
+                        if (!obraNewNombre.trim()) return;
+                        const nombre = obraNewNombre.trim().toUpperCase().replace(/\s+/g, " ");
+                        updateReceipt({ direccionObra: nombre });
+                        autoSaveObra(receipt.cliente, nombre, obraNewDireccion);
+                        setObraNewOpen(false); setObraQuery("");
+                      }} className="w-full text-sm py-2 rounded-lg bg-[#CC2229] text-white hover:bg-[#B01E24] disabled:opacity-50 cursor-pointer transition-colors font-medium">
                         Guardar obra
                       </button>
                     </div>
                   )}
-
                   {!obraNewOpen && (
-                    <div
-                      role="button" tabIndex={receipt.cliente ? 0 : -1}
+                    <div role="button" tabIndex={receipt.cliente ? 0 : -1}
                       onClick={() => { if (receipt.cliente) setObraOpen((v) => !v); }}
                       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (receipt.cliente) setObraOpen((v) => !v); } }}
-                      className={`flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-sm cursor-pointer select-none transition-colors ${obraOpen ? "border-[#CC2229]/60 ring-1 ring-[#CC2229]/20" : "border-gray-200 hover:border-gray-300"} ${!receipt.cliente ? "opacity-50 cursor-not-allowed bg-gray-50" : "bg-white"}`}
-                    >
+                      className={`flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-sm cursor-pointer select-none transition-colors ${obraOpen ? "border-[#CC2229]/60 ring-1 ring-[#CC2229]/20" : "border-gray-200 hover:border-gray-300"} ${!receipt.cliente ? "opacity-50 cursor-not-allowed bg-gray-50" : "bg-white"}`}>
                       <span className={`flex-1 truncate ${receipt.direccionObra ? "text-gray-900 font-medium" : "text-gray-400"}`}>
                         {receipt.direccionObra || (receipt.cliente ? "Seleccionar obra…" : "Selecciona un cliente primero")}
                       </span>
@@ -727,12 +634,10 @@ export default function RecibosConcretoPage() {
                       }
                     </div>
                   )}
-
                   {obraOpen && !obraNewOpen && (
                     <div className="absolute z-50 mt-1 w-full rounded-xl border border-gray-200 bg-white shadow-lg overflow-hidden">
                       <div className="p-2 border-b border-gray-100">
-                        <input autoFocus value={obraQuery} onChange={(e) => setObraQuery(e.target.value)}
-                          placeholder="Buscar obra…"
+                        <input autoFocus value={obraQuery} onChange={(e) => setObraQuery(e.target.value)} placeholder="Buscar obra…"
                           className="w-full text-sm px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[#CC2229]/60" />
                       </div>
                       <div className="max-h-48 overflow-y-auto">
@@ -745,245 +650,310 @@ export default function RecibosConcretoPage() {
                               {o.nombre}
                               {o.direccion && <span className="ml-1 text-[11px] text-gray-400 truncate">· {o.direccion}</span>}
                             </button>
-                          ))
-                        }
+                          ))}
                       </div>
                     </div>
                   )}
                 </div>
-              </div>
+              </section>
 
-              {/* Sección: Concreto */}
-              <div className="space-y-3">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 border-b border-gray-100 pb-1.5">Concreto</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className={lbl}>M³</label>
-                    <input
-                      type="number"
-                      value={receipt.m3}
-                      onChange={(e) => updateReceipt({ m3: Number(e.target.value) })}
-                      className={inp}
-                      onWheel={(e) => e.currentTarget.blur()}
-                    />
-                  </div>
-                  <div>
-                    <label className={lbl}>Resistencia</label>
-                    <AppSelect
-                      value={receipt.resistencia}
-                      onChange={(e) => updateReceipt({ resistencia: e.target.value })}
-                    >
-                      <option value="">Seleccionar…</option>
-                      {concreteReceiptResistencias.map((r) => (
-                        <option key={r} value={r}>{r}</option>
-                      ))}
-                      {receipt.resistencia && !concreteReceiptResistencias.includes(receipt.resistencia) && (
-                        <option value={receipt.resistencia}>{receipt.resistencia}</option>
-                      )}
-                    </AppSelect>
-                  </div>
-                  <div>
-                    <label className={lbl}>Tipo de suministro</label>
-                    <AppSelect
-                      value={receipt.supplyType}
-                      onChange={(e) => updateReceipt({ supplyType: e.target.value as ConcreteSupplyType })}
-                    >
-                      <option>Tiro directo</option>
-                      <option>Bombeado</option>
-                    </AppSelect>
-                  </div>
-                  <div className="col-span-2">
-                    <label className={lbl}>Servicio de bomba <span className="normal-case font-normal text-gray-600">(opcional — se suma directo al total)</span></label>
-                    <div className="grid grid-cols-[1fr_auto] gap-2">
-                      <input
-                        value={receipt.servicioBomba}
-                        onChange={(e) => updateReceipt({ servicioBomba: e.target.value })}
-                        placeholder="Descripción (ej. Bomba 36m)"
-                        className={inp}
-                      />
-                      <input
-                        type="number"
-                        min={0}
-                        value={receipt.servicioBombaImporte ?? ""}
-                        onChange={(e) => updateReceipt({ servicioBombaImporte: e.target.value ? Number(e.target.value) : 0 })}
-                        placeholder="$0"
-                        className={`${inp} w-28 text-right`}
-                        onWheel={(e) => e.currentTarget.blur()}
-                      />
+              {/* ── Abono a saldo pendiente ── */}
+              {!isLoadedReceipt && pendingReceipts.length > 0 && (
+                <section className="space-y-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-amber-600 border-b border-amber-100 pb-1.5">Saldo pendiente del cliente</p>
+                  <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-3 space-y-3">
+                    <p className="text-xs text-amber-700">Este cliente tiene <strong>{pendingReceipts.length}</strong> recibo{pendingReceipts.length !== 1 ? "s" : ""} con saldo pendiente. ¿Desea registrar un abono?</p>
+                    <div>
+                      <label className={lbl}>Recibo a abonar</label>
+                      <AppSelect value={abonoReceiptId ?? ""} onChange={(e) => { setAbonoReceiptId(e.target.value || null); setAbonoMonto(""); }}>
+                        <option value="">Sin abono</option>
+                        {pendingReceipts.map((r) => (
+                          <option key={r.id} value={r.id}>#{String(r.receiptNumber).padStart(4, "0")} — {money(calculateConcreteReceiptTotal(r).resta)} pendiente</option>
+                        ))}
+                      </AppSelect>
                     </div>
-                    {(receipt.servicioBombaImporte ?? 0) > 0 && (
-                      <p className="mt-1 text-[10px] text-emerald-600">+ {money(receipt.servicioBombaImporte)} sumado al total</p>
+                    {abonoReceiptId && (
+                      <div>
+                        <label className={lbl}>Monto del abono</label>
+                        <input type="number" min={0} value={abonoMonto} onChange={(e) => setAbonoMonto(e.target.value)}
+                          placeholder="$0.00" className={inp} onWheel={(e) => e.currentTarget.blur()} />
+                        {(() => {
+                          const target = pendingReceipts.find((r) => r.id === abonoReceiptId);
+                          if (!target) return null;
+                          const resta = calculateConcreteReceiptTotal(target).resta;
+                          const m = parseFloat(abonoMonto) || 0;
+                          if (m <= 0) return null;
+                          if (m > resta) return <p className="mt-1 text-xs text-red-500">⚠ El monto supera el saldo pendiente ({money(resta)})</p>;
+                          if (m === resta) return <p className="mt-1 text-xs text-emerald-600 font-semibold">✓ Cubre el total — el recibo quedará liquidado</p>;
+                          return <p className="mt-1 text-xs text-amber-600">Saldo restante: {money(resta - m)}</p>;
+                        })()}
+                      </div>
                     )}
                   </div>
-                </div>
-              </div>
+                </section>
+              )}
 
-              {/* Sección: Precios */}
-              <div className="space-y-3">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 border-b border-gray-100 pb-1.5">Precios</p>
+              {/* ── 1. Concreto (multi-producto) ── */}
+              <section className="space-y-2">
+                <div className="flex items-center justify-between border-b border-gray-100 pb-1.5">
+                  <p className={lbl + " !mb-0"}>① Concreto premezclado</p>
+                  <button type="button" onClick={addProducto}
+                    className="flex items-center gap-1 text-[11px] font-semibold text-[#CC2229] hover:text-[#B01E24] cursor-pointer transition-colors">
+                    <Plus size={12} /> Agregar producto
+                  </button>
+                </div>
+                {receipt.productos.map((p, idx) => (
+                  <div key={p.id} className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Producto {idx + 1}</span>
+                      {receipt.productos.length > 1 && (
+                        <button type="button" onClick={() => removeProducto(p.id)} className="text-gray-300 hover:text-red-400 cursor-pointer transition-colors">
+                          <X size={13} />
+                        </button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="col-span-2">
+                        <label className={lbl}>Resistencia / especificación</label>
+                        <AppSelect value={p.resistencia} onChange={(e) => updateProducto(p.id, { resistencia: e.target.value })}>
+                          <option value="">Seleccionar…</option>
+                          {concreteReceiptResistencias.map((r) => <option key={r} value={r}>{r}</option>)}
+                          {p.resistencia && !concreteReceiptResistencias.includes(p.resistencia) && <option value={p.resistencia}>{p.resistencia}</option>}
+                        </AppSelect>
+                      </div>
+                      <div>
+                        <label className={lbl}>M³</label>
+                        <input type="number" min={0} step="any" value={numVal(p.m3)} placeholder="0"
+                          onChange={(e) => updateProducto(p.id, { m3: parseNum(e.target.value) })}
+                          className={inpSm + " w-full"} onWheel={(e) => e.currentTarget.blur()} />
+                      </div>
+                      <div>
+                        <label className={lbl}>Precio / m³</label>
+                        <input type="number" min={0} step="any" value={numVal(p.precioPorM3)} placeholder="$0"
+                          onChange={(e) => updateProducto(p.id, { precioPorM3: parseNum(e.target.value) })}
+                          className={inpSm + " w-full"} onWheel={(e) => e.currentTarget.blur()} />
+                      </div>
+                      <div className="col-span-2">
+                        <label className={lbl}>Tipo de suministro</label>
+                        <div className="flex gap-3">
+                          {(["Tiro directo", "Bombeado"] as const).map((t) => (
+                            <label key={t} className="flex items-center gap-2 cursor-pointer">
+                              <input type="radio" checked={p.supplyType === t} onChange={() => updateProducto(p.id, { supplyType: t })}
+                                className="accent-[#CC2229]" />
+                              <span className="text-sm text-gray-700">{t}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    {p.m3 > 0 && p.precioPorM3 > 0 && (
+                      <p className="text-[11px] text-emerald-600 font-semibold text-right">
+                        Importe: {money(p.m3 * p.precioPorM3)}
+                      </p>
+                    )}
+                  </div>
+                ))}
+                {subtotalConcreto > 0 && (
+                  <p className="text-xs font-bold text-gray-700 text-right pr-1">Subtotal concreto: {money(subtotalConcreto)}</p>
+                )}
+              </section>
+
+              {/* ── 2. Metros vacíos ── */}
+              <section className="space-y-2">
+                <p className={lbl + " border-b border-gray-100 pb-1.5 !mb-0"}>② Metros vacíos <span className="font-normal normal-case tracking-normal text-gray-400">(solo si aplica)</span></p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className={lbl}>Metros vacíos</label>
-                    <input
-                      type="number"
-                      value={receipt.metrosVaciosCantidad}
-                      onChange={(e) => updateReceipt({ metrosVaciosCantidad: Number(e.target.value) })}
-                      className={inp}
-                      onWheel={(e) => e.currentTarget.blur()}
-                    />
+                    <label className={lbl}>Cantidad (m³)</label>
+                    <input type="number" min={0} step="any" value={numVal(receipt.metrosVaciosCantidad)} placeholder="0"
+                      onChange={(e) => updateReceipt({ metrosVaciosCantidad: parseNum(e.target.value) })}
+                      className={inp} onWheel={(e) => e.currentTarget.blur()} />
                   </div>
                   <div>
-                    <label className={lbl}>Precio metro vacío</label>
-                    <input
-                      type="number"
-                      value={receipt.metrosVaciosPrecio}
-                      onChange={(e) => updateReceipt({ metrosVaciosPrecio: Number(e.target.value) })}
-                      className={inp}
-                      onWheel={(e) => e.currentTarget.blur()}
-                    />
-                  </div>
-                  <div>
-                    <label className={lbl}>Precio por m³</label>
-                    <input
-                      type="number"
-                      value={receipt.precioPorM3}
-                      onChange={(e) => updateReceipt({ precioPorM3: Number(e.target.value) })}
-                      className={inp}
-                      onWheel={(e) => e.currentTarget.blur()}
-                    />
-                  </div>
-                  <div>
-                    <label className={lbl}>Anticipo</label>
-                    <input
-                      type="number"
-                      value={receipt.anticipo}
-                      onChange={(e) => updateReceipt({ anticipo: Number(e.target.value) })}
-                      className={inp}
-                      onWheel={(e) => e.currentTarget.blur()}
-                    />
+                    <label className={lbl}>Precio / m³</label>
+                    <input type="number" min={0} step="any" value={numVal(receipt.metrosVaciosPrecio)} placeholder="$0"
+                      onChange={(e) => updateReceipt({ metrosVaciosPrecio: parseNum(e.target.value) })}
+                      className={inp} onWheel={(e) => e.currentTarget.blur()} />
                   </div>
                 </div>
-              </div>
+                {metrosVaciosTotal > 0 && (
+                  <p className="text-[11px] text-emerald-600 font-semibold text-right">Importe metros vacíos: {money(metrosVaciosTotal)}</p>
+                )}
+              </section>
 
-              {/* Sección: Aditivos y extras */}
-              <div className="space-y-3">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 border-b border-gray-100 pb-1.5">Aditivos y extras</p>
-                <div className="rounded-xl border border-gray-200 bg-gray-50 divide-y divide-gray-100">
-                  {receipt.extras.map((extra, index) => {
-                    const qty = parseFloat(extra.quantity) || 0;
-                    const subtotal = extra.unit ? qty * extra.price : extra.price;
-                    return (
-                      <div key={extra.name} className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${extra.checked ? "" : "opacity-50"}`}>
-                        <input
-                          type="checkbox"
-                          checked={extra.checked}
-                          onChange={(e) => updateExtra(index, { checked: e.target.checked })}
-                          className="h-4 w-4 shrink-0 accent-[#CC2229] cursor-pointer"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm text-gray-800 font-medium leading-tight">{extra.name}</p>
-                          {extra.unit && <p className="text-[10px] text-gray-400">{extra.unit}</p>}
-                        </div>
-                        {extra.unit ? (
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <input
-                              type="number"
-                              min={0}
-                              step="any"
-                              value={extra.quantity}
-                              onChange={(e) => updateExtra(index, {
-                                quantity: e.target.value,
-                                checked: (parseFloat(e.target.value) > 0 && extra.price > 0) || extra.checked,
-                              })}
-                              placeholder="Cant."
-                              className="w-16 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-900 text-center focus:outline-none focus:border-[#CC2229]/60"
-                              onWheel={(e) => e.currentTarget.blur()}
-                            />
-                            <span className="text-gray-600 text-xs shrink-0">×</span>
-                            <input
-                              type="number"
-                              min={0}
-                              step="any"
-                              value={extra.price}
-                              onChange={(e) => updateExtra(index, {
-                                price: Number(e.target.value),
-                                checked: Number(e.target.value) > 0 || extra.checked,
-                              })}
-                              placeholder="$/u"
-                              className="w-20 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-900 text-right focus:outline-none focus:border-[#CC2229]/60"
-                              onWheel={(e) => e.currentTarget.blur()}
-                            />
-                          </div>
-                        ) : (
-                          <input
-                            type="number"
-                            min={0}
-                            step="any"
-                            value={extra.price}
-                            onChange={(e) => updateExtra(index, {
-                              price: Number(e.target.value),
-                              checked: Number(e.target.value) > 0 || extra.checked,
-                            })}
-                            placeholder="Importe"
-                            className="w-24 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-900 text-right focus:outline-none focus:border-[#CC2229]/60 shrink-0"
-                            onWheel={(e) => e.currentTarget.blur()}
-                          />
+              {/* ── 3. Servicio de bomba ── */}
+              {hasBomba && (
+                <section className="space-y-2">
+                  <p className={lbl + " border-b border-gray-100 pb-1.5 !mb-0"}>③ Servicio de bomba</p>
+                  <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-3 space-y-3">
+                    <p className="text-xs text-blue-700">M³ bombeados detectados: <strong>{m3Bombeado}</strong> m³</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className={lbl}>Precio / m³ de bombeo</label>
+                        <input type="number" min={0} step="any" value={numVal(receipt.bombaPrecioM3)} placeholder="$0"
+                          onChange={(e) => updateReceipt({ bombaPrecioM3: parseNum(e.target.value) })}
+                          className={inp} onWheel={(e) => e.currentTarget.blur()} />
+                      </div>
+                      <div>
+                        <label className={lbl}>Mínimo de bombeo (m³)</label>
+                        <input type="number" min={0} step="any" value={numVal(receipt.bombaMinimoM3)} placeholder="15"
+                          onChange={(e) => updateReceipt({ bombaMinimoM3: parseNum(e.target.value) })}
+                          className={inp} onWheel={(e) => e.currentTarget.blur()} />
+                      </div>
+                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={receipt.bombaAplicarMinimo}
+                        onChange={(e) => updateReceipt({ bombaAplicarMinimo: e.target.checked })}
+                        className="h-4 w-4 accent-[#CC2229]" />
+                      <span className="text-sm text-gray-700 font-medium">Aplicar mínimo de bombeo</span>
+                    </label>
+                    {(receipt.bombaPrecioM3 ?? 0) > 0 && (
+                      <p className="text-[11px] text-emerald-600 font-semibold">
+                        Importe bomba: {money(bombaImporte)}
+                        {receipt.bombaAplicarMinimo && m3Bombeado < (receipt.bombaMinimoM3 ?? 0) && (
+                          <span className="text-gray-400 font-normal ml-1">(mín. {receipt.bombaMinimoM3} m³ × {money(receipt.bombaPrecioM3)})</span>
                         )}
-                        <p className={`w-20 text-sm font-bold text-right tabular-nums shrink-0 ${extra.checked && subtotal > 0 ? "text-gray-900" : "text-gray-300"}`}>
-                          {subtotal > 0 ? money(subtotal) : "—"}
-                        </p>
+                      </p>
+                    )}
+                  </div>
+                </section>
+              )}
+
+              {/* ── 4. Aditivos (dosificación/m³) ── */}
+              <section className="space-y-2">
+                <p className={lbl + " border-b border-gray-100 pb-1.5 !mb-0"}>④ Aditivos <span className="font-normal normal-case tracking-normal text-gray-400">(dosificación por m³)</span></p>
+                <div className="rounded-xl border border-gray-200 bg-gray-50 divide-y divide-gray-100">
+                  {receipt.aditivos.map((a, idx) => {
+                    const qty = totalM3Receipt * (a.dosis ?? 0);
+                    const importe = qty * (a.precio ?? 0);
+                    return (
+                      <div key={a.name} className={`px-3 py-2.5 transition-colors ${a.checked ? "" : "opacity-50"}`}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <input type="checkbox" checked={a.checked}
+                            onChange={(e) => updateAditivo(idx, { checked: e.target.checked })}
+                            className="h-4 w-4 accent-[#CC2229] cursor-pointer shrink-0" />
+                          <span className="text-sm font-semibold text-gray-800">{a.name}</span>
+                          {a.showUnit && a.unit && <span className="text-xs text-gray-400">({a.unit})</span>}
+                          {a.checked && qty > 0 && (
+                            <span className="ml-auto text-xs text-gray-500">= {qty.toLocaleString("es-MX", { maximumFractionDigits: 2 })} {a.unit || "uds."}</span>
+                          )}
+                        </div>
+                        {a.checked && (
+                          <div className="grid grid-cols-3 gap-2 ml-6">
+                            <div>
+                              <p className="text-[9px] uppercase font-semibold text-gray-400 mb-1">Dosif.{a.unit ? `/${a.unit}/m³` : "/m³"}</p>
+                              <input type="number" min={0} step="any" value={numVal(a.dosis)} placeholder="0"
+                                onChange={(e) => updateAditivo(idx, { dosis: parseNum(e.target.value) })}
+                                className={inpSm + " w-full"} onWheel={(e) => e.currentTarget.blur()} />
+                            </div>
+                            <div>
+                              <p className="text-[9px] uppercase font-semibold text-gray-400 mb-1">Precio/{a.unit || "ud."}</p>
+                              <input type="number" min={0} step="any" value={numVal(a.precio)} placeholder="$0"
+                                onChange={(e) => updateAditivo(idx, { precio: parseNum(e.target.value) })}
+                                className={inpSm + " w-full"} onWheel={(e) => e.currentTarget.blur()} />
+                            </div>
+                            <div>
+                              <p className="text-[9px] uppercase font-semibold text-gray-400 mb-1">Importe</p>
+                              <p className={`text-sm font-bold mt-2 ${importe > 0 ? "text-gray-900" : "text-gray-300"}`}>
+                                {importe > 0 ? money(importe) : "—"}
+                              </p>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
                 </div>
-              </div>
+              </section>
 
-              {/* Sección: Nota y firma */}
-              <div className="space-y-3">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 border-b border-gray-100 pb-1.5">Nota y firma</p>
+              {/* ── 5. Extras libres ── */}
+              <section className="space-y-2">
+                <div className="flex items-center justify-between border-b border-gray-100 pb-1.5">
+                  <p className={lbl + " !mb-0"}>⑤ Extras</p>
+                  <button type="button" onClick={addExtraLibre}
+                    className="flex items-center gap-1 text-[11px] font-semibold text-[#CC2229] hover:text-[#B01E24] cursor-pointer transition-colors">
+                    <Plus size={12} /> Agregar concepto
+                  </button>
+                </div>
+                {receipt.extrasLibres.length === 0 && (
+                  <p className="text-xs text-gray-400 py-2">Sin extras — usa el botón para agregar maniobras, tubería, tiempo extra, etc.</p>
+                )}
+                {receipt.extrasLibres.map((ex) => {
+                  const qty = parseFloat(ex.cantidad) || 0;
+                  const precio = parseFloat(ex.precio) || 0;
+                  const importe = qty > 0 && precio > 0 ? qty * precio : 0;
+                  return (
+                    <div key={ex.id} className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                      <div className="flex items-start gap-2">
+                        <div className="flex-1 space-y-2">
+                          <input value={ex.concepto} onChange={(e) => updateExtraLibre(ex.id, { concepto: e.target.value })}
+                            placeholder="Concepto (ej. Maniobra especial, Tubería extra…)"
+                            className={inpSm + " w-full"} />
+                          <div className="grid grid-cols-3 gap-2">
+                            <div>
+                              <p className="text-[9px] uppercase font-semibold text-gray-400 mb-1">Cantidad</p>
+                              <input type="number" min={0} step="any" value={ex.cantidad} placeholder="—"
+                                onChange={(e) => updateExtraLibre(ex.id, { cantidad: e.target.value })}
+                                className={inpSm + " w-full"} onWheel={(e) => e.currentTarget.blur()} />
+                            </div>
+                            <div>
+                              <p className="text-[9px] uppercase font-semibold text-gray-400 mb-1">Precio unitario</p>
+                              <input type="number" min={0} step="any" value={ex.precio} placeholder="—"
+                                onChange={(e) => updateExtraLibre(ex.id, { precio: e.target.value })}
+                                className={inpSm + " w-full"} onWheel={(e) => e.currentTarget.blur()} />
+                            </div>
+                            <div>
+                              <p className="text-[9px] uppercase font-semibold text-gray-400 mb-1">Importe</p>
+                              <p className={`text-sm font-bold mt-2 ${importe > 0 ? "text-gray-900" : "text-gray-300"}`}>
+                                {importe > 0 ? money(importe) : "—"}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                        <button type="button" onClick={() => removeExtraLibre(ex.id)}
+                          className="mt-1 text-gray-300 hover:text-red-400 cursor-pointer transition-colors shrink-0">
+                          <X size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </section>
+
+              {/* ── Anticipo y nota ── */}
+              <section className="space-y-3">
+                <p className={lbl + " border-b border-gray-100 pb-1.5 !mb-0"}>Anticipo y observaciones</p>
                 <div>
-                  <label className={lbl}>Nota</label>
-                  <textarea
-                    rows={2}
-                    value={receipt.nota}
-                    onChange={(e) => updateReceipt({ nota: e.target.value })}
-                    className={`${inp} resize-none`}
-                  />
+                  <label className={lbl}>Anticipo</label>
+                  <input type="number" min={0} value={numVal(receipt.anticipo)} placeholder="$0.00"
+                    onChange={(e) => updateReceipt({ anticipo: parseNum(e.target.value) })}
+                    className={inp} onWheel={(e) => e.currentTarget.blur()} />
+                </div>
+                <div>
+                  <label className={lbl}>Observaciones</label>
+                  <textarea rows={2} value={receipt.nota} onChange={(e) => updateReceipt({ nota: e.target.value })}
+                    className={`${inp} resize-none`} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={lbl}>Firma cliente</label>
-                    <input
-                      value={receipt.firmaCliente}
-                      onChange={(e) => updateReceipt({ firmaCliente: e.target.value })}
-                      className={inp}
-                    />
+                    <input value={receipt.firmaCliente} onChange={(e) => updateReceipt({ firmaCliente: e.target.value })} className={inp} />
                   </div>
                   <div>
                     <label className={lbl}>Recibido por (R:)</label>
-                    <input
-                      value={receipt.recibidoPor}
-                      onChange={(e) => updateReceipt({ recibidoPor: e.target.value })}
-                      className={inp}
-                    />
+                    <input value={receipt.recibidoPor} onChange={(e) => updateReceipt({ recibidoPor: e.target.value })} className={inp} />
                   </div>
                 </div>
-              </div>
+              </section>
             </div>
 
-            {/* Toggle: enviar a Cobros */}
+            {/* Toggle venta a crédito */}
             <div className="px-6 py-3 border-t border-gray-100">
-              <button
-                type="button"
-                onClick={() => updateReceipt({ enviarACobros: receipt.enviarACobros === false ? true : false })}
-                className="flex items-center justify-between w-full group"
-              >
+              <button type="button" onClick={() => updateReceipt({ enviarACobros: receipt.enviarACobros === false ? true : false })}
+                className="flex items-center justify-between w-full group">
                 <div className="flex flex-col items-start gap-0.5">
                   <span className="text-sm font-medium text-gray-800">Venta a crédito</span>
                   <span className="text-[11px] text-gray-400">
-                    {receipt.enviarACobros !== false
-                      ? "El saldo pendiente aparecerá en Cobros para seguimiento"
-                      : "Venta de contado — no requiere seguimiento en Cobros"}
+                    {receipt.enviarACobros !== false ? "El saldo pendiente aparecerá en Cobros" : "Venta de contado"}
                   </span>
                 </div>
                 <div className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${receipt.enviarACobros !== false ? "bg-[#CC2229]" : "bg-gray-200"}`}>
@@ -992,47 +962,36 @@ export default function RecibosConcretoPage() {
               </button>
             </div>
 
-            {/* Totals bar */}
-            <div className="grid grid-cols-2 gap-4 px-6 py-3 border-t border-gray-100 bg-gray-50 shrink-0">
+            {/* Totals */}
+            <div className="grid grid-cols-3 gap-3 px-6 py-3 border-t border-gray-100 bg-gray-50 shrink-0">
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Total</p>
-                <p className="text-xl font-bold text-gray-900">{money(realTotal)}</p>
+                <p className="text-lg font-bold text-gray-900">{money(realTotal)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Anticipo</p>
+                <p className="text-lg font-bold text-blue-600">{money(receipt.anticipo)}</p>
               </div>
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Resta</p>
-                <p className="text-xl font-bold text-gray-600">{money(realResta)}</p>
+                <p className="text-lg font-bold text-[#CC2229]">{money(realResta)}</p>
               </div>
             </div>
 
-            {/* Drawer footer */}
+            {/* Footer buttons */}
             <div className="shrink-0 border-t border-gray-100 px-6 py-4 flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => sendWhatsApp()}
-                disabled={saving || loading}
-                className="flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-600 hover:border-green-500/60 hover:text-green-600 transition-colors disabled:opacity-40 cursor-pointer"
-              >
-                <MessageCircle size={15} />
-                WhatsApp
+              <button type="button" onClick={() => sendWhatsApp()} disabled={saving || loading}
+                className="flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-600 hover:border-green-500/60 hover:text-green-600 transition-colors disabled:opacity-40 cursor-pointer">
+                <MessageCircle size={15} /> WhatsApp
               </button>
               <div className="ml-auto flex gap-3">
-                <button
-                  type="button"
-                  onClick={saveReceipt}
-                  disabled={saving || loading}
-                  className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 border border-gray-200 rounded-xl transition-colors cursor-pointer disabled:opacity-40"
-                >
-                  <Save size={15} />
-                  {saving ? "Guardando…" : "Guardar"}
+                <button type="button" onClick={saveReceipt} disabled={saving || loading}
+                  className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 border border-gray-200 rounded-xl transition-colors cursor-pointer disabled:opacity-40">
+                  <Save size={15} /> {saving ? "Guardando…" : "Guardar"}
                 </button>
-                <button
-                  type="button"
-                  onClick={printReceipt}
-                  disabled={loading || saving}
-                  className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-xl transition-colors disabled:opacity-60 shadow-lg shadow-[#CC2229]/20 cursor-pointer"
-                >
-                  <Printer size={15} />
-                  Imprimir
+                <button type="button" onClick={printReceipt} disabled={loading || saving}
+                  className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-xl transition-colors disabled:opacity-60 shadow-lg shadow-[#CC2229]/20 cursor-pointer">
+                  <Printer size={15} /> Imprimir
                 </button>
               </div>
             </div>
@@ -1040,121 +999,243 @@ export default function RecibosConcretoPage() {
         </div>
       )}
 
-      {/* ── Printable receipt (off-screen, print-only) ────────────────────────── */}
-      <div
-        id="printable-concrete-receipt"
-        className="fixed -left-[9999px] top-0 w-[1050px] bg-white p-6 text-black print:static print:left-auto print:top-auto print:w-auto print:shadow-none"
-      >
-        <div className="rounded-[18px] border-[4px] border-black p-4">
-          <div className="grid grid-cols-[1fr_180px] gap-4">
-            <h1 className="text-center text-3xl font-black tracking-wide">CONCRETO PREMEZCLADO</h1>
-            <div className="rounded-md border-2 border-black px-3 py-2 text-center">
-              <p className="text-sm font-black">RECIBO</p>
-              <p className="text-xl font-black text-[#B91C1C]">No. {effectiveReceiptNumber}</p>
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      {/* PRINTABLE RECEIPT                                                     */}
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      <div id="printable-concrete-receipt"
+        className="fixed -left-[9999px] top-0 bg-white text-black print:static print:left-auto print:top-auto print:shadow-none"
+        style={{ width: 980, fontFamily: "Arial, sans-serif" }}>
+
+        {/* Title row */}
+        <div style={{ display: "flex", alignItems: "stretch", marginBottom: 8, borderBottom: "3px solid #1e3a5f" }}>
+          <div style={{ flex: 1, textAlign: "center", paddingBottom: 4 }}>
+            <div style={{ fontSize: 22, fontWeight: 900, color: "#1e3a5f", letterSpacing: "0.04em", lineHeight: 1 }}>
+              RECIBO DE CONCRETO PREMEZCLADO
             </div>
           </div>
-
-          <div className="mt-2 grid grid-cols-[1fr_300px] gap-4 text-[17px] font-black uppercase">
-            <div className="space-y-1">
-              <p>
-                Nombre del cliente: <span className="receipt-line handwritten">{receipt.cliente}</span>
-              </p>
-              <p>
-                Obra: <span className="receipt-line handwritten">{receipt.direccionObra}</span>
-              </p>
-              <p>
-                M³: <span className="short-line handwritten">{receipt.m3}</span>
-                <span className="ml-6">F&apos;C</span>{" "}
-                <span className="medium-line handwritten">{receipt.resistencia.replace("F'C ", "")}</span>
-              </p>
-              <p>
-                Servicio de bomba: <span className="receipt-line handwritten">{receipt.servicioBomba}</span>
-              </p>
-            </div>
-            <div className="space-y-2">
-              <p>Tipo de suministro:</p>
-              <label className="flex items-center gap-2">
-                <span className="receipt-box">{receipt.supplyType === "Tiro directo" ? "✓" : ""}</span>
-                Tiro directo
-              </label>
-              <label className="flex items-center gap-2">
-                <span className="receipt-box">{receipt.supplyType === "Bombeado" ? "✓" : ""}</span>
-                Bombeado
-              </label>
-            </div>
+          <div style={{ border: "2px solid #1e3a5f", borderRadius: 4, padding: "4px 14px", textAlign: "center", minWidth: 140 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#1e3a5f" }}>RECIBO No.</div>
+            <div style={{ fontSize: 22, fontWeight: 900, color: "#CC2229" }}>{String(effectiveReceiptNumber).padStart(4, "0")}</div>
           </div>
+        </div>
 
-          <div className="mt-3 grid grid-cols-[420px_1fr] gap-8">
-            <div className="border-2 border-black p-2">
-              <h2 className="text-center text-xl font-black">ADITIVOS Y EXTRAS</h2>
-              <div className="mt-1 space-y-1 text-[15px] font-black uppercase">
-                {receipt.extras.map((extra) => (
-                  <div key={extra.name} className="grid grid-cols-[28px_1fr_90px_70px] items-center gap-1">
-                    <span className="receipt-box">{extra.checked ? "✓" : ""}</span>
-                    <span>{extra.name}: $</span>
-                    <span className="line-only handwritten">{extra.checked && extra.price ? extra.price : ""}</span>
-                    <span className="line-only handwritten">{extra.quantity || extra.unit}</span>
-                  </div>
+        {/* Header info */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, marginBottom: 8, fontSize: 11 }}>
+          <div>
+            <span style={{ fontWeight: 700 }}>CLIENTE: </span>
+            <span style={{ borderBottom: "1px solid #333", display: "inline-block", minWidth: 280, paddingLeft: 4 }}>{receipt.cliente}</span>
+          </div>
+          <div>
+            <span style={{ fontWeight: 700 }}>FECHA: </span>
+            <span style={{ borderBottom: "1px solid #333", display: "inline-block", minWidth: 160, paddingLeft: 4 }}>
+              Allende N.L., a {receiptDate.day} de {receiptDate.month} del {receiptDate.year}
+            </span>
+          </div>
+          <div>
+            <span style={{ fontWeight: 700 }}>OBRA: </span>
+            <span style={{ borderBottom: "1px solid #333", display: "inline-block", minWidth: 280, paddingLeft: 4 }}>{receipt.direccionObra}</span>
+          </div>
+        </div>
+
+        {/* ① Concreto premezclado */}
+        <div style={{ marginBottom: 6, border: "1px solid #ccc" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div className="print-sec" style={{ flex: 1 }}>① CONCRETO PREMEZCLADO</div>
+          </div>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                {["No.", "RESISTENCIA / ESPECIFICACIÓN", "TIPO DE SUMINISTRO", "CANTIDAD (m³)", "PRECIO UNITARIO", "IMPORTE"].map((h) => (
+                  <th key={h} className="print-th" style={{ textAlign: h === "No." ? "center" : h === "IMPORTE" || h === "PRECIO UNITARIO" || h === "CANTIDAD (m³)" ? "right" : "left" }}>{h}</th>
                 ))}
-              </div>
-            </div>
+              </tr>
+            </thead>
+            <tbody>
+              {receipt.productos.map((p, i) => (
+                <tr key={p.id} style={{ background: i % 2 === 0 ? "#fff" : "#f8f9fb" }}>
+                  <td className="print-td" style={{ textAlign: "center", fontWeight: 700 }}>{i + 1}</td>
+                  <td className="print-td" style={{ fontWeight: 600 }}>{p.resistencia || "—"}</td>
+                  <td className="print-td">{p.supplyType}</td>
+                  <td className="print-td" style={{ textAlign: "right" }}>{(p.m3 ?? 0).toFixed(2)}</td>
+                  <td className="print-td" style={{ textAlign: "right" }}>$ {moneyNum(p.precioPorM3)}</td>
+                  <td className="print-td" style={{ textAlign: "right", fontWeight: 700 }}>$ {moneyNum((p.m3 ?? 0) * (p.precioPorM3 ?? 0))}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="print-total-row">
+                <td className="print-td" colSpan={5} style={{ textAlign: "right", fontWeight: 800, fontSize: 10 }}>SUBTOTAL CONCRETO:</td>
+                <td className="print-td" style={{ textAlign: "right", fontWeight: 800, fontSize: 11 }}>$ {moneyNum(subtotalConcreto)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
 
-            <div className="space-y-4 text-[18px] font-black uppercase">
-              <p>
-                Metros vacíos:
-                <span className="short-line handwritten">{receipt.metrosVaciosCantidad || ""}</span>
-                <span className="handwritten">{money(receipt.metrosVaciosPrecio)}</span>
-                <span className="ml-2">C/U</span>
-              </p>
-              <p>
-                Precio por m³:
-                <span className="medium-line handwritten">{money(receipt.precioPorM3)}</span>
-                Total:
-                <span className="medium-line handwritten">{money(realTotal)}</span>
-              </p>
-              <p>
-                Anticipo 1:
-                <span className="medium-line handwritten">{receipt.anticipo ? money(receipt.anticipo) : ""}</span>
-                Resta:
-                <span className="medium-line handwritten">{money(realResta)}</span>
-              </p>
-              <p>
-                Nota: <span className="receipt-line handwritten">{receipt.nota}</span>
-              </p>
-              <div className="pt-6 text-center">
-                <p className="mx-auto w-72 border-b-2 border-black handwritten">{receipt.firmaCliente}</p>
-                <p className="text-sm leading-tight">
-                  Nombre y
-                  <br />
-                  firma del cliente
-                </p>
-              </div>
+        {/* ② Metros vacíos — only if applicable */}
+        {metrosVaciosTotal > 0 && (
+          <div style={{ marginBottom: 6, border: "1px solid #ccc" }}>
+            <div className="print-sec">② METROS VACÍOS</div>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  {["CONCEPTO", "CANTIDAD (m³)", "PRECIO UNITARIO", "IMPORTE"].map((h) => (
+                    <th key={h} className="print-th" style={{ textAlign: h !== "CONCEPTO" ? "right" : "left" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className="print-td">Metros vacíos</td>
+                  <td className="print-td" style={{ textAlign: "right" }}>{(receipt.metrosVaciosCantidad ?? 0).toFixed(2)}</td>
+                  <td className="print-td" style={{ textAlign: "right" }}>$ {moneyNum(receipt.metrosVaciosPrecio)}</td>
+                  <td className="print-td" style={{ textAlign: "right", fontWeight: 700 }}>$ {moneyNum(metrosVaciosTotal)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* ③ Servicio de bomba — only if applicable */}
+        {hasBomba && bombaImporte > 0 && (
+          <div style={{ marginBottom: 6, border: "1px solid #ccc" }}>
+            <div className="print-sec">③ SERVICIO DE BOMBA</div>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  {["CONCEPTO", "PRECIO UNITARIO", "IMPORTE"].map((h) => (
+                    <th key={h} className="print-th" style={{ textAlign: h !== "CONCEPTO" ? "right" : "left", width: h === "CONCEPTO" ? "60%" : undefined }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className="print-td">Servicio de bomba</td>
+                  <td className="print-td" style={{ textAlign: "right" }}>$ {moneyNum(bombaImporte)}</td>
+                  <td className="print-td" style={{ textAlign: "right", fontWeight: 700 }}>$ {moneyNum(bombaImporte)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* ④ Aditivos — only if any active */}
+        {aditivosActivos.length > 0 && (
+          <div style={{ marginBottom: 6, border: "1px solid #ccc" }}>
+            <div className="print-sec">④ ADITIVOS</div>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  {["CONCEPTO", "CANTIDAD (TOTAL)", "DOSIFICACIÓN / M³", "PRECIO UNITARIO", "IMPORTE"].map((h) => (
+                    <th key={h} className="print-th" style={{ textAlign: h !== "CONCEPTO" ? "right" : "left" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {aditivosActivos.map((a, i) => {
+                  const qty = totalM3Receipt * (a.dosis ?? 0);
+                  const importe = qty * (a.precio ?? 0);
+                  return (
+                    <tr key={a.name} style={{ background: i % 2 === 0 ? "#fff" : "#f8f9fb" }}>
+                      <td className="print-td">{a.name}{a.showUnit && a.unit ? ` (${a.unit})` : ""}</td>
+                      <td className="print-td" style={{ textAlign: "right" }}>{qty.toLocaleString("es-MX", { maximumFractionDigits: 2 })}</td>
+                      <td className="print-td" style={{ textAlign: "right" }}>{(a.dosis ?? 0).toFixed(2)}</td>
+                      <td className="print-td" style={{ textAlign: "right" }}>$ {moneyNum(a.precio)}</td>
+                      <td className="print-td" style={{ textAlign: "right", fontWeight: 700 }}>$ {moneyNum(importe)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* ⑤ Extras — only if any */}
+        {extrasConImporte.length > 0 && (
+          <div style={{ marginBottom: 6, border: "1px solid #ccc" }}>
+            <div className="print-sec">⑤ EXTRAS</div>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  {["CONCEPTO", "CANTIDAD", "PRECIO UNITARIO", "IMPORTE"].map((h) => (
+                    <th key={h} className="print-th" style={{ textAlign: h !== "CONCEPTO" ? "right" : "left" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {extrasConImporte.map((ex, i) => {
+                  const qty = parseFloat(ex.cantidad) || 0;
+                  const precio = parseFloat(ex.precio) || 0;
+                  const importe = qty * precio;
+                  return (
+                    <tr key={ex.id} style={{ background: i % 2 === 0 ? "#fff" : "#f8f9fb" }}>
+                      <td className="print-td">{ex.concepto}</td>
+                      <td className="print-td" style={{ textAlign: "right" }}>{qty > 0 ? qty.toLocaleString("es-MX", { maximumFractionDigits: 2 }) : "—"}</td>
+                      <td className="print-td" style={{ textAlign: "right" }}>{precio > 0 ? `$ ${moneyNum(precio)}` : "—"}</td>
+                      <td className="print-td" style={{ textAlign: "right", fontWeight: 700 }}>$ {moneyNum(importe)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Observaciones + Totals */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 8, marginBottom: 8 }}>
+          <div style={{ border: "1px solid #ccc", padding: 8 }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: "#1e3a5f", textTransform: "uppercase", marginBottom: 4 }}>OBSERVACIONES:</div>
+            <div style={{ fontSize: 11, minHeight: 40, borderBottom: "1px solid #ccc", marginBottom: 4 }}>{receipt.nota}</div>
+            <div style={{ minHeight: 16 }} />
+          </div>
+          <div style={{ border: "1px solid #ccc" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", borderBottom: "2px solid #1e3a5f", padding: "6px 10px" }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "#1e3a5f" }}>TOTAL DEL SERVICIO:</span>
+              <span style={{ fontSize: 11, fontWeight: 900, color: "#1e3a5f" }}>$ {moneyNum(realTotal)}</span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", borderBottom: "1px solid #ccc", padding: "5px 10px" }}>
+              <span style={{ fontSize: 10 }}>ANTICIPO(S):</span>
+              <span style={{ fontSize: 10 }}>$ {moneyNum(receipt.anticipo)}</span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", padding: "6px 10px", background: "#1e3a5f" }}>
+              <span style={{ fontSize: 11, fontWeight: 800, color: "white" }}>RESTA / SALDO:</span>
+              <span style={{ fontSize: 13, fontWeight: 900, color: "white" }}>$ {moneyNum(realResta)}</span>
             </div>
           </div>
+        </div>
 
-          <div className="mt-4 grid grid-cols-[1fr_240px] items-end gap-4 text-[17px] font-black uppercase">
-            <p>
-              Allende, N.L. a
-              <span className="short-line handwritten">{receiptDate.day}</span>
-              de
-              <span className="medium-line handwritten">{receiptDate.month}</span>
-              del 20
-              <span className="short-line handwritten">{receiptDate.year.slice(-2)}</span>
-            </p>
-            <p className="flex items-end gap-2 whitespace-nowrap">
-              R: <span className="r-line handwritten">{receipt.recibidoPor}</span>
-            </p>
+        {/* Conditions */}
+        <div style={{ border: "1px solid #ccc", padding: "6px 10px", marginBottom: 8 }}>
+          <div style={{ fontSize: 8, fontWeight: 900, color: "#1e3a5f", textTransform: "uppercase", marginBottom: 4 }}>CONDICIONES DEL SERVICIO:</div>
+          <ol style={{ fontSize: 7.5, paddingLeft: 14, margin: 0, lineHeight: 1.6, color: "#222" }}>
+            <li><strong>Servicio de bombeo:</strong> El servicio está sujeto a un volumen mínimo de contratación. Cuando el volumen suministrado sea menor al mínimo establecido, se aplicará el cargo mínimo de bombeo correspondiente. CARGO POR SALIDA EN FALSO DE UNIDAD POR PARTE DEL CLIENTE.</li>
+            <li><strong>Metros vacíos:</strong> Cuando la cantidad solicitada o programada no sea completada por causas atribuibles al cliente u obra, podrán aplicarse los cargos correspondientes conforme a las condiciones previamente acordadas.</li>
+            <li><strong>Tiempos y maniobras adicionales:</strong> Los tiempos de espera, maniobras, tubería adicional y demás servicios extraordinarios podrán generar cargos adicionales cuando correspondan.</li>
+            <li><strong>Conformidad:</strong> Con su firma, el cliente reconoce la recepción del suministro y/o servicios descritos en el presente recibo, así como los conceptos e importes señalados.</li>
+            <li><strong>Saldo:</strong> La firma del presente recibo no implica liquidación cuando exista un saldo pendiente indicado en el mismo.</li>
+          </ol>
+        </div>
+
+        {/* Signature line */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 16, alignItems: "flex-end", fontSize: 10 }}>
+          <div>
+            <div style={{ borderBottom: "1px solid #333", paddingBottom: 2, minWidth: 200, color: "#555", fontStyle: "italic" }}>{receipt.firmaCliente}</div>
+            <div style={{ marginTop: 3, fontWeight: 700, textAlign: "center", fontSize: 9 }}>NOMBRE Y FIRMA DE CONFORMIDAD</div>
+          </div>
+          <div>
+            <div style={{ borderBottom: "1px solid #333", paddingBottom: 2, minWidth: 200 }}></div>
+            <div style={{ marginTop: 3, fontWeight: 700, textAlign: "center", fontSize: 9 }}>NOMBRE Y FIRMA DE QUIEN ELABORA / RECIBE</div>
+          </div>
+          <div style={{ whiteSpace: "nowrap" }}>
+            <span style={{ fontWeight: 700 }}>R: </span>
+            <span style={{ borderBottom: "1px solid #333", display: "inline-block", minWidth: 100, paddingLeft: 4, color: "#555", fontStyle: "italic" }}>{receipt.recibidoPor}</span>
           </div>
         </div>
       </div>
 
-      {/* ── Delete confirm modal ──────────────────────────────────────────────── */}
+      {/* ── Delete confirm modal ──────────────────────────────────────────── */}
       {confirmDeleteId && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center print:hidden">
-          <button
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => setConfirmDeleteId(null)}
-          />
+          <button className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setConfirmDeleteId(null)} />
           <div className="relative bg-[#1A1A1A] border border-[#3A3A3A] rounded-2xl p-6 w-full max-w-sm shadow-2xl">
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-500/10 mb-4">
               <Trash2 size={20} className="text-red-400" />
@@ -1162,88 +1243,18 @@ export default function RecibosConcretoPage() {
             <h3 className="text-sm font-semibold text-white mb-1">Eliminar recibo</h3>
             <p className="text-xs text-gray-500 mb-5">¿Eliminar este recibo? Esta acción no se puede deshacer.</p>
             <div className="flex gap-3">
-              <button
-                onClick={() => setConfirmDeleteId(null)}
-                className="flex-1 px-4 py-2.5 text-sm text-gray-400 border border-[#3A3A3A] rounded-xl hover:border-gray-500 transition-colors cursor-pointer"
-              >
+              <button onClick={() => setConfirmDeleteId(null)}
+                className="flex-1 px-4 py-2.5 text-sm text-gray-400 border border-[#3A3A3A] rounded-xl hover:border-gray-500 transition-colors cursor-pointer">
                 Cancelar
               </button>
-              <button
-                onClick={() => {
-                  deleteReceipt(confirmDeleteId);
-                  setConfirmDeleteId(null);
-                }}
-                className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors cursor-pointer"
-              >
+              <button onClick={() => { deleteReceipt(confirmDeleteId); setConfirmDeleteId(null); }}
+                className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors cursor-pointer">
                 Eliminar
               </button>
             </div>
           </div>
         </div>
       )}
-
-      <style jsx>{`
-        .receipt-line {
-          display: inline-block;
-          min-width: 320px;
-          border-bottom: 2px solid #111;
-          padding: 0 8px;
-          text-transform: none;
-        }
-
-        .short-line {
-          display: inline-block;
-          min-width: 58px;
-          border-bottom: 2px solid #111;
-          padding: 0 6px;
-          text-align: center;
-          text-transform: none;
-        }
-
-        .medium-line {
-          display: inline-block;
-          min-width: 150px;
-          border-bottom: 2px solid #111;
-          padding: 0 6px;
-          text-transform: none;
-        }
-
-        .r-line {
-          display: inline-block;
-          width: 185px;
-          max-width: 185px;
-          min-height: 24px;
-          border-bottom: 2px solid #111;
-          overflow: hidden;
-          text-transform: none;
-          white-space: nowrap;
-        }
-
-        .line-only {
-          display: inline-block;
-          min-height: 20px;
-          border-bottom: 2px solid #111;
-          text-transform: none;
-        }
-
-        .receipt-box {
-          display: inline-flex;
-          width: 24px;
-          height: 24px;
-          align-items: center;
-          justify-content: center;
-          border: 2px solid #111;
-          font-size: 20px;
-          line-height: 1;
-        }
-
-        .handwritten {
-          color: #1e3a8a;
-          font-family: "Comic Sans MS", "Bradley Hand", cursive;
-          font-size: 1.1em;
-          font-weight: 500;
-        }
-      `}</style>
     </div>
   );
 }
