@@ -317,11 +317,8 @@ export default function ReportesPage() {
                        + prevFiltered.filter((r) => isParcial(r.pagado)).reduce((s, r) => s + (r.montoPagado ?? 0), 0);
   const prevIngresosTot = prevFiltered.reduce((s, r) => s + (r.total ?? 0), 0);
   const prevPct        = prevIngresosTot > 0 ? Math.round((prevCobrado / prevIngresosTot) * 100) : 0;
-  // Precio promedio ponderado por m³ — solo precio base del concreto, sin bomba/extras
-  const totalPrecioBase = filtered.reduce((s, r) => s + (r.m3Totales ?? 0) * (r.precioM3 ?? 0), 0);
-  const prevPrecioBase  = prevFiltered.reduce((s, r) => s + (r.m3Totales ?? 0) * (r.precioM3 ?? 0), 0);
-  const precioPromM3   = totalM3 > 0 ? totalPrecioBase / totalM3 : 0;
-  const prevPrecioM3   = prevM3 > 0 ? prevPrecioBase / prevM3 : 0;
+  const precioPromM3   = totalM3 > 0 ? totalIngresos / totalM3 : 0;
+  const prevPrecioM3   = prevM3 > 0 ? prevIngresos / prevM3 : 0;
   const carteraPendiente = filtered.reduce((s, r) => s + saldoPendiente(r), 0);
   const prevCartera    = prevFiltered.reduce((s, r) => s + saldoPendiente(r), 0);
 

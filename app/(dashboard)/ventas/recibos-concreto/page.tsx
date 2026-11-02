@@ -1216,18 +1216,17 @@ export default function RecibosConcretoPage() {
         </div>
 
         {/* Signature line */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 16, alignItems: "flex-end", fontSize: 10 }}>
-          <div>
-            <div style={{ borderBottom: "1px solid #333", paddingBottom: 2, minWidth: 200, color: "#555", fontStyle: "italic" }}>{receipt.firmaCliente}</div>
-            <div style={{ marginTop: 3, fontWeight: 700, textAlign: "center", fontSize: 9 }}>NOMBRE Y FIRMA DE CONFORMIDAD</div>
-          </div>
-          <div>
-            <div style={{ borderBottom: "1px solid #333", paddingBottom: 2, minWidth: 200 }}></div>
-            <div style={{ marginTop: 3, fontWeight: 700, textAlign: "center", fontSize: 9 }}>NOMBRE Y FIRMA DE QUIEN ELABORA / RECIBE</div>
-          </div>
-          <div style={{ whiteSpace: "nowrap" }}>
-            <span style={{ fontWeight: 700 }}>R: </span>
-            <span style={{ borderBottom: "1px solid #333", display: "inline-block", minWidth: 100, paddingLeft: 4, color: "#555", fontStyle: "italic" }}>{receipt.recibidoPor}</span>
+        <div style={{ marginTop: 24, fontSize: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 24, alignItems: "flex-end" }}>
+            <div>
+              <div style={{ height: 36 }} />
+              <div style={{ borderBottom: "1px solid #333", paddingBottom: 2, color: "#555", fontStyle: "italic" }}>{receipt.firmaCliente}</div>
+              <div style={{ marginTop: 3, fontWeight: 700, textAlign: "center", fontSize: 9 }}>NOMBRE Y FIRMA DE CONFORMIDAD</div>
+            </div>
+            <div style={{ whiteSpace: "nowrap" }}>
+              <span style={{ fontWeight: 700 }}>R: </span>
+              <span style={{ borderBottom: "1px solid #333", display: "inline-block", minWidth: 120, paddingLeft: 4, color: "#555", fontStyle: "italic" }}>{receipt.recibidoPor}</span>
+            </div>
           </div>
         </div>
       </div>
