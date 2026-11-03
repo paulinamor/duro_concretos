@@ -1004,7 +1004,7 @@ export default function InventarioPage() {
         </div>
 
         <div className="ml-auto flex items-center gap-2">
-          {isSuperAdmin && tab === "stock" && (
+          {tab === "stock" && (
             <button onClick={() => setShowExistenciaForm(true)} className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:border-gray-300 hover:bg-gray-50 shadow-sm transition-colors cursor-pointer">
               <Edit2 size={13} /> Existencia inicial
             </button>
@@ -1063,25 +1063,21 @@ export default function InventarioPage() {
               <AlertTriangle size={16} className="text-amber-500 shrink-0 mt-0.5" />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-amber-800">Sin existencia inicial · {localPlanta} · {periodLabel(periodo)}</p>
-                {isSuperAdmin ? (
-                  <div className="flex flex-wrap items-center gap-2 mt-2">
-                    <button
-                      onClick={() => setShowExistenciaForm(true)}
-                      className="px-3 py-1.5 text-xs font-semibold bg-white border border-amber-300 text-amber-700 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
-                    >
-                      Capturar manualmente
-                    </button>
-                    <button
-                      onClick={handleImportarMesAnterior}
-                      disabled={importando}
-                      className="px-3 py-1.5 text-xs font-semibold bg-white border border-amber-300 text-amber-700 hover:bg-amber-50 rounded-lg transition-colors disabled:opacity-60 cursor-pointer"
-                    >
-                      {importando ? "Importando…" : `← Traer stock de ${periodLabel(adjMonth(periodo, -1))}`}
-                    </button>
-                  </div>
-                ) : (
-                  <p className="text-xs text-amber-600 mt-0.5">El cálculo de stock final parte de cero. Contacta al administrador para configurarlo.</p>
-                )}
+                <div className="flex flex-wrap items-center gap-2 mt-2">
+                  <button
+                    onClick={() => setShowExistenciaForm(true)}
+                    className="px-3 py-1.5 text-xs font-semibold bg-white border border-amber-300 text-amber-700 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                  >
+                    Capturar manualmente
+                  </button>
+                  <button
+                    onClick={handleImportarMesAnterior}
+                    disabled={importando}
+                    className="px-3 py-1.5 text-xs font-semibold bg-white border border-amber-300 text-amber-700 hover:bg-amber-50 rounded-lg transition-colors disabled:opacity-60 cursor-pointer"
+                  >
+                    {importando ? "Importando…" : `← Traer stock de ${periodLabel(adjMonth(periodo, -1))}`}
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -1297,7 +1293,7 @@ export default function InventarioPage() {
                         <td className="px-4 py-3 text-gray-400 text-xs capitalize">{periodLabel(periodo)}</td>
                         <td className="px-4 py-3 text-gray-400">—</td>
                         <td className="px-4 py-3">
-                          {isSuperAdmin && (
+                          {(
                             <button
                               onClick={() => setShowExistenciaForm(true)}
                               className="text-gray-300 hover:text-[#CC2229] transition-colors cursor-pointer"
@@ -1346,7 +1342,7 @@ export default function InventarioPage() {
 
       {/* ── Drawers & Modals ───────────────────────────────────────────────────── */}
       <EntradaDrawer open={showEntradaForm} onClose={() => setShowEntradaForm(false)} onSave={handleSaveEntrada} remisionesDespacho={remisionesDespacho} />
-      {isSuperAdmin && <ExistenciaModal open={showExistenciaForm} onClose={() => setShowExistenciaForm(false)} periodo={periodo} planta={localPlanta} current={existenciaInicial} onSave={handleSaveExistencia} />}
+      <ExistenciaModal open={showExistenciaForm} onClose={() => setShowExistenciaForm(false)} periodo={periodo} planta={localPlanta} current={existenciaInicial} onSave={handleSaveExistencia} />
       <EditInventarioModal open={!!editTarget} onClose={() => setEditTarget(null)} entry={editTarget} onSubmit={handleSubmitEdicion} />
 
       {confirmDeleteMovimiento && (
