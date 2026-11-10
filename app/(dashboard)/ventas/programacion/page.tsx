@@ -62,6 +62,7 @@ interface Programacion {
   muestras: string;
   hsr: string;
   tiempoExtraDescarga: string;
+  tiempoExtraCosto?: number | null;
   choferes: unknown[];
   notas?: string;
   nombreObra?: string;
@@ -105,6 +106,8 @@ type VForm = {
   obraNombre: string;
   direccion: string;
   m3Totales: string;
+  m3Vacios: string;
+  paraUso: string;
   resistencia: string;
   extras: string;
   tdBom: string;
@@ -114,15 +117,16 @@ type VForm = {
   m3Imper: string;
   tuberiaExtra: string;
   permisosOC: string;
+  tiempoExtraCosto: string;
 };
 
 function emptyForm(dia: string): VForm {
   return {
     dia, horaEntrega: "", diaHoraPedido: nowLocalISO(), cliente: "", telefono: "",
     obraNombre: "", direccion: "",
-    m3Totales: "", resistencia: "", extras: "", tdBom: "",
+    m3Totales: "", m3Vacios: "", paraUso: "", resistencia: "", extras: "", tdBom: "",
     precioM3: "", precioM3Bomba: "",
-    kiloFibra: "", m3Imper: "", tuberiaExtra: "", permisosOC: "",
+    kiloFibra: "", m3Imper: "", tuberiaExtra: "", permisosOC: "", tiempoExtraCosto: "",
   };
 }
 
@@ -136,6 +140,8 @@ function formFromProg(p: Programacion): VForm {
     obraNombre: p.nombreObra ?? "",
     direccion: p.direccion,
     m3Totales: p.m3Totales != null ? String(p.m3Totales) : "",
+    m3Vacios: p.m3Vacios != null ? String(p.m3Vacios) : "",
+    paraUso: p.paraUso ?? "",
     resistencia: p.resistencia ?? "",
     extras: p.extras ?? "",
     tdBom: p.tdBom ?? "",
@@ -145,6 +151,7 @@ function formFromProg(p: Programacion): VForm {
     m3Imper: p.m3Imper != null ? String(p.m3Imper) : "",
     tuberiaExtra: p.tuberiaExtra != null ? String(p.tuberiaExtra) : "",
     permisosOC: p.permisosOC != null ? String(p.permisosOC) : "",
+    tiempoExtraCosto: p.tiempoExtraCosto != null ? String(p.tiempoExtraCosto) : "",
   };
 }
 
@@ -444,8 +451,8 @@ function PedidoDrawer({
               <input type="date" value={form.dia} onChange={(e) => set("dia", e.target.value)} className={inp} />
             </div>
             <div>
-              <label className={lbl}>Hora de entrega <span className="text-[#CC2229]">*</span></label>
-              <input type="time" value={form.horaEntrega} onChange={(e) => set("horaEntrega", e.target.value)} className={inp} />
+              <label className={lbl}>Hora de entrega <span className="text-[#CC2229]">*</span> <span className="text-gray-400 font-normal normal-case tracking-normal">(24 hrs)</span></label>
+              <input type="time" lang="es" value={form.horaEntrega} onChange={(e) => set("horaEntrega", e.target.value)} className={inp} />
             </div>
           </div>
 
@@ -588,7 +595,14 @@ function PedidoDrawer({
                         type="button"
                         onClick={() => {
                           const norm = c.trim().toUpperCase().replace(/\s+/g, " ");
-                          setForm((f) => ({ ...f, cliente: norm, obraNombre: norm !== f.cliente ? "" : f.obraNombre, direccion: norm !== f.cliente ? "" : f.direccion }));
+                          const cl = rawClientes.find((r) => r.razonSocial?.trim().toUpperCase().replace(/\s+/g, " ") === norm || r.nombreComercial?.trim().toUpperCase().replace(/\s+/g, " ") === norm);
+                          const tel = cl?.telefono?.replace(/\D/g, "").slice(0, 10) ?? "";
+                          setForm((f) => ({
+                            ...f, cliente: norm,
+                            obraNombre: norm !== f.cliente ? "" : f.obraNombre,
+                            direccion: norm !== f.cliente ? "" : f.direccion,
+                            telefono: norm !== f.cliente && tel ? tel : f.telefono,
+                          }));
                           setClienteOpen(false);
                           setClienteQuery("");
                         }}
@@ -862,12 +876,20 @@ function PedidoDrawer({
             )}
           </div>
 
-          {/* M3 */}
-          <div>
-            <label className={lbl}>M³ solicitados <span className="text-[#CC2229]">*</span></label>
-            <input type="number" step="0.5" min="0" value={form.m3Totales}
-              onChange={(e) => set("m3Totales", e.target.value)} placeholder="0" className={inp}
-              onWheel={(e) => e.currentTarget.blur()} />
+          {/* M3 y M³ vacíos */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={lbl}>M³ solicitados <span className="text-[#CC2229]">*</span></label>
+              <input type="number" step="0.5" min="0" value={form.m3Totales}
+                onChange={(e) => set("m3Totales", e.target.value)} placeholder="0" className={inp}
+                onWheel={(e) => e.currentTarget.blur()} />
+            </div>
+            <div>
+              <label className={lbl}>M³ vacíos</label>
+              <input type="number" step="0.5" min="0" value={form.m3Vacios}
+                onChange={(e) => set("m3Vacios", e.target.value)} placeholder="0" className={inp}
+                onWheel={(e) => e.currentTarget.blur()} />
+            </div>
           </div>
 
           {/* Resistencia */}
@@ -883,6 +905,23 @@ function PedidoDrawer({
               ))}
               <input value={["100","150","200","250","300","350","400"].includes(form.resistencia) ? "" : form.resistencia}
                 onChange={(e) => set("resistencia", e.target.value)}
+                placeholder="Otro…" className="w-20 px-3 py-1.5 rounded-xl text-xs border border-gray-200 focus:outline-none focus:border-[#CC2229]" />
+            </div>
+          </div>
+
+          {/* Para qué es el pedido */}
+          <div>
+            <label className={lbl}>Para qué es el pedido</label>
+            <div className="flex flex-wrap gap-2">
+              {["Losa", "Cimentación", "Columnas", "Trabe", "Muro", "Firme", "Otro"].map((opt) => (
+                <button key={opt} type="button"
+                  onClick={() => set("paraUso", form.paraUso === opt ? "" : opt)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${form.paraUso === opt ? "bg-[#CC2229] border-[#CC2229] text-white" : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"}`}>
+                  {opt}
+                </button>
+              ))}
+              <input value={["Losa","Cimentación","Columnas","Trabe","Muro","Firme","Otro"].includes(form.paraUso) ? "" : form.paraUso}
+                onChange={(e) => set("paraUso", e.target.value)}
                 placeholder="Otro…" className="w-20 px-3 py-1.5 rounded-xl text-xs border border-gray-200 focus:outline-none focus:border-[#CC2229]" />
             </div>
           </div>
@@ -938,6 +977,16 @@ function PedidoDrawer({
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
                   <input type="number" min="0" step="0.01" value={form.permisosOC}
                     onChange={(e) => set("permisosOC", e.target.value)}
+                    placeholder="0.00" className={`${inp} pl-7`}
+                    onWheel={(e) => e.currentTarget.blur()} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Tiempo extra ($)</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                  <input type="number" min="0" step="0.01" value={form.tiempoExtraCosto}
+                    onChange={(e) => set("tiempoExtraCosto", e.target.value)}
                     placeholder="0.00" className={`${inp} pl-7`}
                     onWheel={(e) => e.currentTarget.blur()} />
                 </div>
@@ -1248,18 +1297,20 @@ export default function VentasProgramacionPage() {
 
   async function handleSave(form: VForm, existingId?: string) {
     const m3 = parseFloat(form.m3Totales) || null;
+    const m3Vacios = form.m3Vacios ? parseFloat(form.m3Vacios) : null;
     const precioM3 = form.precioM3 ? parseFloat(form.precioM3) : null;
     const precioM3Bomba = form.precioM3Bomba ? parseFloat(form.precioM3Bomba) : null;
     const kiloFibra = form.kiloFibra ? parseFloat(form.kiloFibra) : null;
     const m3Imper = form.m3Imper ? parseFloat(form.m3Imper) : null;
     const tuberiaExtra = form.tuberiaExtra ? parseFloat(form.tuberiaExtra) : null;
     const permisosOC = form.permisosOC ? parseFloat(form.permisosOC) : null;
+    const tiempoExtraCosto = form.tiempoExtraCosto ? parseFloat(form.tiempoExtraCosto) : null;
 
-    // Calculate total: (precioM3 + precioM3Bomba + kiloFibra + m3Imper + permisosOC) * m3 + tuberiaExtra
+    // Calculate total: (precioM3 + precioM3Bomba + kiloFibra + m3Imper + permisosOC) * m3 + tuberiaExtra + tiempoExtraCosto
     function calcTotal(): number | null {
       if (!m3 || !precioM3) return null;
       const txm3 = (precioM3 ?? 0) + (precioM3Bomba ?? 0) + (kiloFibra ?? 0) + (m3Imper ?? 0) + (permisosOC ?? 0);
-      const t = txm3 * m3 + (tuberiaExtra ?? 0);
+      const t = txm3 * m3 + (tuberiaExtra ?? 0) + (tiempoExtraCosto ?? 0);
       return t > 0 ? t : null;
     }
     if (existingId) {
@@ -1285,9 +1336,10 @@ export default function VentasProgramacionPage() {
       const newValues: Record<string, unknown> = {
         dia: form.dia, cliente: form.cliente.trim().toUpperCase().replace(/\s+/g, " "),
         telefono: form.telefono.trim(), direccion: form.direccion.trim(),
-        m3Totales: m3, resistencia: form.resistencia.trim(), extras: form.extras.trim(),
+        m3Totales: m3, m3Vacios, paraUso: form.paraUso.trim(),
+        resistencia: form.resistencia.trim(), extras: form.extras.trim(),
         tdBom: form.tdBom.trim(), hora: form.horaEntrega.trim(), precioM3, precioM3Bomba,
-        kiloFibra, m3Imper, tuberiaExtra, permisosOC,
+        kiloFibra, m3Imper, tuberiaExtra, permisosOC, tiempoExtraCosto,
         total: calcTotal(),
         nombreObra: form.obraNombre.trim() || rest.nombreObra || "",
       };
@@ -1333,15 +1385,15 @@ export default function VentasProgramacionPage() {
         extras: form.extras.trim(),
         tdBom: form.tdBom.trim(),
         hora: form.horaEntrega.trim(), hsr: "", muestras: "", tiempoExtraDescarga: "",
-        color: "", paraUso: "", aditivo: "", credito: "",
+        color: "", paraUso: form.paraUso.trim(), aditivo: "", credito: "",
         recibo: "", fact: "", pagado: "",
         metodoPago: "", fechaPago: "",
         choferes: [],
-        m3Vacios: null,
+        m3Vacios,
         precioM3,
         precioM3Bomba,
         factorBomba: null, aplicarFactorBomba: false, ltoAcelr: null,
-        kiloFibra, m3Imper, tuberiaExtra, permisosOC,
+        kiloFibra, m3Imper, tuberiaExtra, permisosOC, tiempoExtraCosto,
         totalXM3: null, total: calcTotal(),
         montoPagado: null,
         folio,
