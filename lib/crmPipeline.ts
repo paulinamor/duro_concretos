@@ -5,6 +5,8 @@ export type PipelineStage =
   | "Negociación"
   | "Cierre";
 
+export type CrmEstado = "activo" | "ganado" | "perdido";
+
 export interface CrmOpportunity {
   id: string;
   cliente: string;
@@ -20,6 +22,9 @@ export interface CrmOpportunity {
   responsable: string;
   resistencia?: string;
   comentarios?: string;
+  estado?: CrmEstado;
+  fechaCierre?: string;
+  motivoPerdida?: string;
 }
 
 export type CustomerStatus = "Activo" | "Prospecto" | "En riesgo" | "Ganado";

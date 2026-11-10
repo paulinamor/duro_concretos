@@ -399,11 +399,11 @@ export default function ReportesPage() {
   }, [filtered]);
 
   const porBomba = useMemo(() => {
-    const map = new Map<string, { m3: number; pedidos: number }>();
+    const map = new Map<string, { m3: number; pedidos: number; ingresos: number }>();
     filtered.forEach((r) => {
       const key = r.tdBom?.trim() || "Directo";
-      const curr = map.get(key) ?? { m3: 0, pedidos: 0 };
-      map.set(key, { m3: curr.m3 + (r.m3Totales ?? 0), pedidos: curr.pedidos + 1 });
+      const curr = map.get(key) ?? { m3: 0, pedidos: 0, ingresos: 0 };
+      map.set(key, { m3: curr.m3 + (r.m3Totales ?? 0), pedidos: curr.pedidos + 1, ingresos: curr.ingresos + (r.total ?? 0) });
     });
     return Array.from(map.entries()).sort(([, a], [, b]) => b.m3 - a.m3).map(([tipo, vals]) => ({ tipo, ...vals }));
   }, [filtered]);
@@ -657,20 +657,50 @@ export default function ReportesPage() {
               </div>
             </Card>
 
-            <Card title="M³ por tipo de entrega (bomba)">
+            <Card title="M³ por tipo de entrega">
               <div className="p-5">
                 {porBomba.length === 0 ? <EmptyChart /> : (
-                  <ResponsiveContainer width="100%" height={220}>
-                    <BarChart data={porBomba} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#2A2A2A" />
-                      <XAxis dataKey="tipo" stroke="#4B5563" tick={{ fontSize: 10 }} />
-                      <YAxis stroke="#4B5563" tick={{ fontSize: 10 }} />
-                      <Tooltip contentStyle={TT} formatter={(v) => [`${Number(v).toLocaleString("es-MX", { maximumFractionDigits: 1 })} m³`, "M³"]} />
-                      <Bar dataKey="m3" radius={[4, 4, 0, 0]} name="M³">
-                        {porBomba.map((e, i) => <Cell key={e.tipo} fill={filterBomba === e.tipo ? "#fff" : BOMBA_COLORS[i % BOMBA_COLORS.length]} />)}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <>
+                    <ResponsiveContainer width="100%" height={160}>
+                      <BarChart data={porBomba} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#2A2A2A" />
+                        <XAxis dataKey="tipo" stroke="#4B5563" tick={{ fontSize: 10 }} />
+                        <YAxis stroke="#4B5563" tick={{ fontSize: 10 }} />
+                        <Tooltip contentStyle={TT} formatter={(v) => [`${Number(v).toLocaleString("es-MX", { maximumFractionDigits: 1 })} m³`, "M³"]} />
+                        <Bar dataKey="m3" radius={[4, 4, 0, 0]} name="M³">
+                          {porBomba.map((e, i) => <Cell key={e.tipo} fill={filterBomba === e.tipo ? "#fff" : BOMBA_COLORS[i % BOMBA_COLORS.length]} />)}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                    <table className="w-full text-xs mt-3 border-t border-[#2A2A2A]">
+                      <thead>
+                        <tr className="text-gray-500 uppercase tracking-wide text-[9px]">
+                          <th className="py-1.5 text-left font-semibold">Tipo</th>
+                          <th className="py-1.5 text-right font-semibold">M³</th>
+                          <th className="py-1.5 text-right font-semibold">Pedidos</th>
+                          <th className="py-1.5 text-right font-semibold">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#2A2A2A]">
+                        {porBomba.map((e, i) => (
+                          <tr key={e.tipo} className="hover:bg-[#2A2A2A] transition-colors">
+                            <td className="py-1.5 font-medium" style={{ color: BOMBA_COLORS[i % BOMBA_COLORS.length] }}>{e.tipo}</td>
+                            <td className="py-1.5 text-right text-gray-300 tabular-nums">{e.m3.toLocaleString("es-MX", { maximumFractionDigits: 1 })} m³</td>
+                            <td className="py-1.5 text-right text-gray-400 tabular-nums">{e.pedidos}</td>
+                            <td className="py-1.5 text-right text-white font-semibold tabular-nums">{currency(e.ingresos)}</td>
+                          </tr>
+                        ))}
+                        {porBomba.length > 1 && (
+                          <tr className="border-t border-[#3A3A3A]">
+                            <td className="py-1.5 text-gray-500 font-semibold text-[9px] uppercase">Total</td>
+                            <td className="py-1.5 text-right text-gray-300 tabular-nums font-semibold">{porBomba.reduce((s, e) => s + e.m3, 0).toLocaleString("es-MX", { maximumFractionDigits: 1 })} m³</td>
+                            <td className="py-1.5 text-right text-gray-400 tabular-nums font-semibold">{porBomba.reduce((s, e) => s + e.pedidos, 0)}</td>
+                            <td className="py-1.5 text-right text-white font-bold tabular-nums">{currency(porBomba.reduce((s, e) => s + e.ingresos, 0))}</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </>
                 )}
               </div>
             </Card>

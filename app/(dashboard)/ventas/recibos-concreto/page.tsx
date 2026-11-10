@@ -91,6 +91,7 @@ export default function RecibosConcretoPage() {
   const [search, setSearch] = useState("");
   const [abonoReceiptId, setAbonoReceiptId] = useState<string | null>(null);
   const [abonoMonto, setAbonoMonto] = useState<string>("");
+  const [printSize, setPrintSize] = useState<"full" | "half">("full");
 
   const nextReceiptNum = useMemo(
     () => getNextReceiptNumber(allRemisionesGlobal.filter((r) => r.receiptNumber != null)),
@@ -371,6 +372,63 @@ export default function RecibosConcretoPage() {
     window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
   }
 
+  async function sendWhatsAppPdf(targetReceipt = receipt, shouldSave = true) {
+    let msgReceipt = targetReceipt;
+    if (shouldSave) {
+      const err = receiptError();
+      if (err) { window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: err } })); return; }
+      setSaving(true);
+      try { msgReceipt = await persistReceipt(false); flushSync(() => { setReceipt(msgReceipt); setIsLoadedReceipt(true); }); resetToNew(); } finally { setSaving(false); }
+    } else {
+      flushSync(() => { setReceipt(migrateReceipt({ ...msgReceipt })); setIsLoadedReceipt(true); });
+    }
+
+    const el = document.getElementById("printable-concrete-receipt");
+    if (!el) return;
+
+    // Temporarily move on-screen for capture
+    const prevStyle = el.getAttribute("style") ?? "";
+    el.setAttribute("style", prevStyle.replace("-left-[9999px]", "") + "; position: absolute; left: 0; top: 0; visibility: visible;");
+    el.style.position = "absolute";
+    el.style.left = "0";
+    el.style.top = "0";
+
+    try {
+      const html2canvas = (await import("html2canvas")).default;
+      const { jsPDF } = await import("jspdf");
+
+      const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
+      const imgData = canvas.toDataURL("image/jpeg", 0.92);
+
+      const isHalf = printSize === "half";
+      const pdfW = isHalf ? 139.7 : 279.4; // mm: 5.5in or 11in
+      const pdfH = isHalf ? 215.9 : 215.9; // mm: 8.5in
+      const pdf = new jsPDF({ orientation: isHalf ? "portrait" : "landscape", unit: "mm", format: isHalf ? [139.7, 215.9] : [279.4, 215.9] });
+
+      const imgW = pdfW;
+      const imgH = (canvas.height * pdfW) / canvas.width;
+      pdf.addImage(imgData, "JPEG", 0, 0, imgW, Math.min(imgH, pdfH));
+
+      const pdfBlob = pdf.output("blob");
+      const fileName = `Recibo-${msgReceipt.receiptNumber ?? "00"}.pdf`;
+
+      if (typeof navigator.share === "function" && navigator.canShare?.({ files: [new File([pdfBlob], fileName, { type: "application/pdf" })] })) {
+        await navigator.share({ files: [new File([pdfBlob], fileName, { type: "application/pdf" })], title: `Recibo #${msgReceipt.receiptNumber}` });
+      } else {
+        // Fallback: download PDF, then open WhatsApp
+        const url = URL.createObjectURL(pdfBlob);
+        const a = document.createElement("a");
+        a.href = url; a.download = fileName; a.click();
+        URL.revokeObjectURL(url);
+        const { total, resta } = getTicketAmounts(msgReceipt);
+        const textMsg = `Recibo concreto premezclado No. ${msgReceipt.receiptNumber}\nCliente: ${msgReceipt.cliente}\nTotal: ${money(total)}\nResta: ${money(resta)}\n📎 El PDF se descargó — adjúntalo en WhatsApp.`;
+        setTimeout(() => window.open(`https://wa.me/?text=${encodeURIComponent(textMsg)}`, "_blank", "noopener,noreferrer"), 500);
+      }
+    } finally {
+      el.setAttribute("style", prevStyle);
+    }
+  }
+
   async function deleteReceipt(id: string) {
     await deleteDocument(COLLECTIONS.remisiones, id);
     deleteDocument(COLLECTIONS.programaciones, `recibo-${id}`).catch(() => {});
@@ -411,10 +469,12 @@ export default function RecibosConcretoPage() {
           #printable-concrete-receipt {
             position: fixed !important; inset: 0 !important;
             width: 100vw !important; min-height: 100vh !important;
-            background: white !important; padding: 0.3in 0.35in !important;
-            color: black !important;
+            background: white !important; color: black !important;
+            ${printSize === "half"
+              ? "padding: 0.25in 0.3in !important;"
+              : "padding: 0.3in 0.35in !important;"}
           }
-          @page { size: letter landscape; margin: 0; }
+          @page { size: ${printSize === "half" ? "5.5in 8.5in portrait" : "letter landscape"}; margin: 0; }
         }
         .print-th {
           background: #1e3a5f !important;
@@ -445,10 +505,29 @@ export default function RecibosConcretoPage() {
       {/* ── Header ────────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
         <p className="text-sm text-gray-500">Recibo de concreto premezclado — múltiples productos por recibo</p>
-        <button type="button" onClick={openNew}
-          className="flex items-center gap-2 bg-[#CC2229] text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-[#B01E24] transition-colors shadow-md shadow-[#CC2229]/20 cursor-pointer">
-          <Plus size={16} /> Nuevo recibo
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Selector de tamaño de hoja */}
+          <div className="flex items-center gap-1 bg-[#1A1A1A] border border-[#3A3A3A] rounded-xl p-1">
+            <button
+              type="button"
+              onClick={() => setPrintSize("full")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${printSize === "full" ? "bg-[#CC2229] text-white" : "text-gray-400 hover:text-white"}`}
+            >
+              Hoja completa
+            </button>
+            <button
+              type="button"
+              onClick={() => setPrintSize("half")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${printSize === "half" ? "bg-[#CC2229] text-white" : "text-gray-400 hover:text-white"}`}
+            >
+              Media hoja
+            </button>
+          </div>
+          <button type="button" onClick={openNew}
+            className="flex items-center gap-2 bg-[#CC2229] text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-[#B01E24] transition-colors shadow-md shadow-[#CC2229]/20 cursor-pointer">
+            <Plus size={16} /> Nuevo recibo
+          </button>
+        </div>
       </div>
 
       {/* ── KPIs ──────────────────────────────────────────────────────────── */}
@@ -520,8 +599,8 @@ export default function RecibosConcretoPage() {
                             className="rounded-lg p-2 text-gray-400 hover:bg-[#1A1A1A] hover:text-white transition-colors cursor-pointer" aria-label="Imprimir">
                             <Printer size={14} />
                           </button>
-                          <button type="button" onClick={() => sendWhatsApp(savedReceipt, false)}
-                            className="rounded-lg p-2 text-gray-400 hover:bg-[#1A1A1A] hover:text-green-400 transition-colors cursor-pointer" aria-label="WhatsApp">
+                          <button type="button" onClick={() => sendWhatsAppPdf(savedReceipt, false)}
+                            className="rounded-lg p-2 text-gray-400 hover:bg-[#1A1A1A] hover:text-green-400 transition-colors cursor-pointer" aria-label="WhatsApp PDF">
                             <MessageCircle size={14} />
                           </button>
                           <button type="button" onClick={() => setConfirmDeleteId(savedReceipt.id)}
@@ -980,9 +1059,9 @@ export default function RecibosConcretoPage() {
 
             {/* Footer buttons */}
             <div className="shrink-0 border-t border-gray-100 px-6 py-4 flex items-center gap-3">
-              <button type="button" onClick={() => sendWhatsApp()} disabled={saving || loading}
+              <button type="button" onClick={() => sendWhatsAppPdf()} disabled={saving || loading}
                 className="flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-600 hover:border-green-500/60 hover:text-green-600 transition-colors disabled:opacity-40 cursor-pointer">
-                <MessageCircle size={15} /> WhatsApp
+                <MessageCircle size={15} /> WhatsApp PDF
               </button>
               <div className="ml-auto flex gap-3">
                 <button type="button" onClick={saveReceipt} disabled={saving || loading}
@@ -1004,7 +1083,7 @@ export default function RecibosConcretoPage() {
       {/* ══════════════════════════════════════════════════════════════════════ */}
       <div id="printable-concrete-receipt"
         className="fixed -left-[9999px] top-0 bg-white text-black print:static print:left-auto print:top-auto print:shadow-none"
-        style={{ width: 980, fontFamily: "Arial, sans-serif" }}>
+        style={{ width: printSize === "half" ? 520 : 980, fontFamily: "Arial, sans-serif" }}>
 
         {/* Title row */}
         <div style={{ display: "flex", alignItems: "stretch", marginBottom: 8, borderBottom: "3px solid #1e3a5f" }}>

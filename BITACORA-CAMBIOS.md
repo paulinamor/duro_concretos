@@ -7,6 +7,42 @@
 
 ## Noviembre 2026
 
+### 2026-11-10 (sesión 3)
+
+#### ✨ Mejora — Reportes: M³ por tipo de entrega con costo total
+- **Archivo:** `app/(dashboard)/reportes/page.tsx`
+- **Descripción:** La card "M³ por tipo de entrega" ahora incluye una mini tabla debajo de la gráfica con columnas: Tipo · M³ · Pedidos · Total ($). Permite ver de un vistazo cuánto se factura por entrega directa vs bomba.
+- **Horas estimadas:** 0.5 hrs
+
+#### 🐛 Bug — Programación Ventas: filtro de días no aplicaba a la tabla de pedidos
+- **Archivo:** `app/(dashboard)/ventas/programacion/page.tsx`
+- **Descripción:** `pedidosFiltrados` (la tabla principal "Todos mis pedidos") ignoraba el `diaActivo`. Al cambiar el día con ← →, la tabla no se actualizaba. Ahora filtra primero por `diaActivo` y luego por búsqueda de texto.
+- **Horas estimadas:** 0.25 hrs
+
+#### ✨ Mejora — CRM Pipeline: cierre de oportunidades (Ganado/Perdido)
+- **Archivo:** `app/(dashboard)/crm/pipeline/page.tsx`, `lib/crmPipeline.ts`
+- **Descripción:** Implementado sistema de cierre tipo CRM profesional:
+  - Cada card muestra botones "Ganada" (verde) y "Perdida" (rojo)
+  - Modal de confirmación con campo de motivo de pérdida (opcional)
+  - Toggle "Ver cerradas" para acceder al historial de oportunidades cerradas
+  - Vista de cerradas: lista con estado, motivo, valor y botón "Reactivar"
+  - KPIs ampliados: Pipeline, Ponderado, M³, En cierre, Ganadas ($), Perdidas (count)
+  - Campo `estado?: "activo" | "ganado" | "perdido"` + `fechaCierre` + `motivoPerdida` en el modelo
+- **Horas estimadas:** 2 hrs
+
+#### ✨ Mejora — Recibos de Concreto: selector de tamaño de hoja (completa / media)
+- **Archivo:** `app/(dashboard)/ventas/recibos-concreto/page.tsx`
+- **Descripción:** Toggle "Hoja completa / Media hoja" en el encabezado del módulo. Media hoja imprime en 5.5 × 8.5 pulgadas (portrait), hoja completa en letter landscape. El ancho del layout de impresión se ajusta automáticamente (980px → 520px para media hoja).
+- **Horas estimadas:** 0.5 hrs
+
+#### ✨ Mejora — Recibos de Concreto: envío de PDF adjunto por WhatsApp
+- **Archivo:** `app/(dashboard)/ventas/recibos-concreto/page.tsx`
+- **Descripción:** El botón WhatsApp ahora genera un PDF real del recibo usando html2canvas + jsPDF y lo envía como adjunto:
+  - En móvil (iOS/Android): abre el share nativo del sistema con el PDF adjunto
+  - En escritorio sin soporte nativo: descarga el PDF automáticamente y abre WhatsApp Web con el mensaje de texto + nota para adjuntar el PDF descargado
+  - Respeta el tamaño de hoja seleccionado (completa o media hoja)
+- **Horas estimadas:** 1.5 hrs
+
 ### 2026-11-10 (sesión 2)
 
 #### ✨ Mejora — CXC y CXP: paginación SAP y filtro por mes actual
@@ -78,10 +114,10 @@
 
 | Categoría | Cantidad | Horas estimadas |
 |---|---|---|
-| ✨ Mejoras | 5 | ~12.75 hrs |
+| ✨ Mejoras | 9 | ~17.25 hrs |
 | 🔧 Ajustes | 1 | ~0.25 hrs |
-| 🐛 Bugs | 0 | — |
-| **Total** | **6** | **~13 hrs** |
+| 🐛 Bugs | 1 | ~0.25 hrs |
+| **Total** | **11** | **~17.75 hrs** |
 
 ---
 

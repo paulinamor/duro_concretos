@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   CalendarDays,
+  CheckCircle2,
   DollarSign,
   FileSpreadsheet,
   FileText,
@@ -15,6 +16,7 @@ import {
   TrendingUp,
   UsersRound,
   X,
+  XCircle,
 } from "lucide-react";
 import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
@@ -24,6 +26,7 @@ import {
   pipelineStages,
   PipelineStage,
   type CrmOpportunity,
+  type CrmEstado,
 } from "@/lib/crmPipeline";
 import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
 import { normalizeKey } from "@/lib/duplicateCheck";
@@ -194,6 +197,9 @@ export default function CrmPipelinePage() {
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<PipelineStage | null>(null);
   const [duplicateWarn, setDuplicateWarn] = useState<{ field: string; value: string; detail?: string; proceed: () => void } | null>(null);
+  const [showClosed, setShowClosed] = useState(false);
+  const [closingOpp, setClosingOpp] = useState<{ opp: Opp; resultado: "ganado" | "perdido" } | null>(null);
+  const [motivoPerdida, setMotivoPerdida] = useState("");
 
   useEffect(() => {
     getCollectionDocs<Opp>(COLLECTIONS.pipeline).then((docs) => {
@@ -202,16 +208,20 @@ export default function CrmPipelinePage() {
     });
   }, []);
 
-  const filtered = useMemo(() => {
-    return opportunities.filter((o) =>
-      matchesQuery(query, [o.cliente, o.obra, o.contacto])
-    );
-  }, [opportunities, query]);
+  const activas = useMemo(() => opportunities.filter((o) => !o.estado || o.estado === "activo"), [opportunities]);
+  const cerradas = useMemo(() => opportunities.filter((o) => o.estado === "ganado" || o.estado === "perdido"), [opportunities]);
 
-  const totalPipeline = opportunities.reduce((sum, item) => sum + item.valorEstimado, 0);
-  const weightedPipeline = opportunities.reduce((sum, item) => sum + (item.valorEstimado * item.probabilidad / 100), 0);
-  const totalM3 = opportunities.reduce((sum, item) => sum + item.m3Estimados, 0);
-  const cierre = opportunities.filter((item) => item.etapa === "Cierre").length;
+  const filtered = useMemo(() => {
+    const base = showClosed ? cerradas : activas;
+    return base.filter((o) => matchesQuery(query, [o.cliente, o.obra, o.contacto]));
+  }, [activas, cerradas, showClosed, query]);
+
+  const totalPipeline = activas.reduce((sum, item) => sum + item.valorEstimado, 0);
+  const weightedPipeline = activas.reduce((sum, item) => sum + (item.valorEstimado * item.probabilidad / 100), 0);
+  const totalM3 = activas.reduce((sum, item) => sum + item.m3Estimados, 0);
+  const cierre = activas.filter((item) => item.etapa === "Cierre").length;
+  const totalGanado = cerradas.filter((o) => o.estado === "ganado").reduce((s, o) => s + o.valorEstimado, 0);
+  const totalPerdido = cerradas.filter((o) => o.estado === "perdido").length;
 
   async function handleSave(form: OppForm, existingId?: string, force = false) {
     if (!force && !existingId) {
@@ -250,6 +260,30 @@ export default function CrmPipelinePage() {
     } catch (e) {
       console.error(e);
       window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al guardar la oportunidad. Intenta de nuevo." } }));
+    }
+  }
+
+  async function handleCerrar(opp: Opp, resultado: CrmEstado, motivo?: string) {
+    const updated: Opp = { ...opp, estado: resultado, fechaCierre: todayCST(), ...(motivo ? { motivoPerdida: motivo } : {}) };
+    try {
+      await upsertDocument(COLLECTIONS.pipeline, opp.id, updated);
+      setOpportunities((cur) => cur.map((o) => o.id === opp.id ? updated : o));
+      setClosingOpp(null);
+      setMotivoPerdida("");
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `Oportunidad marcada como ${resultado === "ganado" ? "Ganada ✓" : "Perdida"}.` } }));
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  async function handleReactivar(opp: Opp) {
+    const updated: Opp = { ...opp, estado: "activo", fechaCierre: undefined, motivoPerdida: undefined };
+    try {
+      await upsertDocument(COLLECTIONS.pipeline, opp.id, updated);
+      setOpportunities((cur) => cur.map((o) => o.id === opp.id ? updated : o));
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: "Oportunidad reactivada al pipeline." } }));
+    } catch (e) {
+      console.error(e);
     }
   }
 
@@ -439,11 +473,13 @@ export default function CrmPipelinePage() {
         </PlantaRequired>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4">
         <KPICard title="Valor pipeline" value={`$${Math.round(totalPipeline).toLocaleString()}`} icon={DollarSign} iconColor="text-[#CC2229]" />
         <KPICard title="Pipeline ponderado" value={`$${Math.round(weightedPipeline).toLocaleString()}`} icon={TrendingUp} iconColor="text-green-400" />
         <KPICard title="M3 estimados" value={`${totalM3.toLocaleString()} m3`} icon={Target} iconColor="text-blue-400" />
-        <KPICard title="Oportunidades cierre" value={String(cierre)} icon={UsersRound} iconColor="text-orange-400" />
+        <KPICard title="En cierre" value={String(cierre)} icon={UsersRound} iconColor="text-orange-400" />
+        <KPICard title="Ganadas" value={`$${Math.round(totalGanado).toLocaleString()}`} icon={CheckCircle2} iconColor="text-emerald-400" />
+        <KPICard title="Perdidas" value={String(totalPerdido)} icon={XCircle} iconColor="text-red-400" />
       </div>
 
       <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl p-4 flex flex-wrap gap-3 items-center">
@@ -456,6 +492,14 @@ export default function CrmPipelinePage() {
             className="w-96 max-w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg pl-9 pr-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
           />
         </div>
+        <button
+          type="button"
+          onClick={() => setShowClosed((v) => !v)}
+          className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${showClosed ? "border-emerald-500/60 text-emerald-400 bg-emerald-500/10" : "border-[#3A3A3A] text-gray-400 hover:text-white"}`}
+        >
+          {showClosed ? <CheckCircle2 size={14} /> : <CheckCircle2 size={14} />}
+          {showClosed ? `Cerradas (${cerradas.length})` : `Ver cerradas (${cerradas.length})`}
+        </button>
         <span className="text-gray-500 text-xs ml-auto">{filtered.length} oportunidades</span>
         <button
           type="button"
@@ -485,6 +529,34 @@ export default function CrmPipelinePage() {
       <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
         {loading ? (
           <ModuleLoading label="Cargando pipeline…" />
+        ) : showClosed ? (
+          <div className="divide-y divide-[#3A3A3A]">
+            {filtered.length === 0 ? (
+              <p className="text-center py-14 text-gray-600 text-sm">Sin oportunidades cerradas</p>
+            ) : filtered.map((opportunity) => (
+              <div key={opportunity.id} className="flex items-center gap-4 px-4 py-3 hover:bg-[#1A1A1A] transition-colors">
+                <span className={`flex-none flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${opportunity.estado === "ganado" ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"}`}>
+                  {opportunity.estado === "ganado" ? <CheckCircle2 size={11} /> : <XCircle size={11} />}
+                  {opportunity.estado === "ganado" ? "Ganada" : "Perdida"}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-white text-sm font-medium truncate">{opportunity.cliente}</p>
+                  <p className="text-gray-500 text-xs truncate">{opportunity.obra}</p>
+                  {opportunity.motivoPerdida && <p className="text-gray-600 text-xs mt-0.5 italic">Motivo: {opportunity.motivoPerdida}</p>}
+                </div>
+                <div className="text-right flex-none">
+                  <p className="text-gray-300 text-xs">${opportunity.valorEstimado.toLocaleString()}</p>
+                  <p className="text-gray-600 text-[10px]">{opportunity.etapa} · {opportunity.fechaCierre ?? "—"}</p>
+                </div>
+                <button onClick={() => handleReactivar(opportunity)} className="text-[11px] text-gray-500 hover:text-white border border-[#3A3A3A] rounded-lg px-2 py-1 transition-colors cursor-pointer whitespace-nowrap">
+                  Reactivar
+                </button>
+                <button onClick={() => setConfirmDeleteId(opportunity.id)} className="p-1.5 text-gray-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer">
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
         ) : (
           <div className="grid grid-cols-1 xl:grid-cols-5 gap-4 p-4">
         {pipelineStages.map((stage: PipelineStage) => {
@@ -557,21 +629,37 @@ export default function CrmPipelinePage() {
                         <p className="text-gray-400 text-xs mt-0.5 line-clamp-2">{opportunity.comentarios}</p>
                       </div>
                     )}
-                    <div className="mt-3 pt-2 border-t border-[#2A2A2A] flex justify-end gap-1">
+                    <div className="mt-3 pt-2 border-t border-[#2A2A2A] flex items-center gap-1">
                       <button
-                        onClick={(e) => { e.stopPropagation(); setEditingOpp(opportunity); setShowForm(true); }}
-                        className="p-1.5 text-gray-600 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors cursor-pointer"
-                        aria-label="Editar"
+                        onClick={(e) => { e.stopPropagation(); setClosingOpp({ opp: opportunity, resultado: "ganado" }); }}
+                        className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors cursor-pointer"
+                        title="Marcar como Ganada"
                       >
-                        <Pencil size={12} />
+                        <CheckCircle2 size={12} /> Ganada
                       </button>
                       <button
-                        onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(opportunity.id); }}
-                        className="p-1.5 text-gray-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
-                        aria-label="Eliminar"
+                        onClick={(e) => { e.stopPropagation(); setClosingOpp({ opp: opportunity, resultado: "perdido" }); }}
+                        className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-red-400 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
+                        title="Marcar como Perdida"
                       >
-                        <Trash2 size={12} />
+                        <XCircle size={12} /> Perdida
                       </button>
+                      <div className="ml-auto flex gap-1">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setEditingOpp(opportunity); setShowForm(true); }}
+                          className="p-1.5 text-gray-600 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors cursor-pointer"
+                          aria-label="Editar"
+                        >
+                          <Pencil size={12} />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(opportunity.id); }}
+                          className="p-1.5 text-gray-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
+                          aria-label="Eliminar"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -582,6 +670,47 @@ export default function CrmPipelinePage() {
           </div>
         )}
       </div>
+
+      {/* Modal de cierre (ganado / perdido) */}
+      {closingOpp && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center">
+          <button className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => { setClosingOpp(null); setMotivoPerdida(""); }} />
+          <div className="relative bg-[#1A1A1A] border border-[#3A3A3A] rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <div className={`flex h-11 w-11 items-center justify-center rounded-xl mb-4 ${closingOpp.resultado === "ganado" ? "bg-emerald-500/10" : "bg-red-500/10"}`}>
+              {closingOpp.resultado === "ganado" ? <CheckCircle2 size={20} className="text-emerald-400" /> : <XCircle size={20} className="text-red-400" />}
+            </div>
+            <h3 className="text-sm font-semibold text-white mb-1">
+              {closingOpp.resultado === "ganado" ? "Marcar como Ganada" : "Marcar como Perdida"}
+            </h3>
+            <p className="text-xs text-gray-500 mb-4">
+              <span className="text-gray-300">{closingOpp.opp.cliente}</span> · {closingOpp.opp.obra}
+            </p>
+            {closingOpp.resultado === "perdido" && (
+              <div className="mb-4">
+                <label className="block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5">Motivo (opcional)</label>
+                <input
+                  type="text"
+                  value={motivoPerdida}
+                  onChange={(e) => setMotivoPerdida(e.target.value)}
+                  placeholder="Ej. Precio, competencia, proyecto cancelado…"
+                  className="w-full bg-[#242424] border border-[#3A3A3A] text-gray-200 text-sm rounded-xl px-3 py-2.5 focus:outline-none focus:border-red-500/50"
+                />
+              </div>
+            )}
+            <div className="flex gap-3">
+              <button onClick={() => { setClosingOpp(null); setMotivoPerdida(""); }} className="flex-1 px-4 py-2.5 text-sm text-gray-400 border border-[#3A3A3A] rounded-xl hover:border-gray-500 transition-colors">
+                Cancelar
+              </button>
+              <button
+                onClick={() => handleCerrar(closingOpp.opp, closingOpp.resultado, motivoPerdida || undefined)}
+                className={`flex-1 px-4 py-2.5 text-sm font-semibold text-white rounded-xl transition-colors ${closingOpp.resultado === "ganado" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-600 hover:bg-red-700"}`}
+              >
+                {closingOpp.resultado === "ganado" ? "Confirmar ganada" : "Confirmar perdida"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {confirmDeleteId && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center">

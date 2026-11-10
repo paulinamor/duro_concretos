@@ -1146,10 +1146,12 @@ export default function VentasProgramacionPage() {
     return [...base].sort((a, b) => b.dia.localeCompare(a.dia) || (a.diaHoraPedido ?? "").localeCompare(b.diaHoraPedido ?? ""));
   }, [allProgs, vendedorNombre, isAdmin, vendedorFiltro]);
 
-  // Feature 2: filtrado por folio/cliente/dirección
+  // Feature 2: filtrado por día activo + folio/cliente/dirección
   const pedidosFiltrados = useMemo(() => {
-    return misPedidos.filter((p) => matchesQuery(folioSearch, [p.folio, p.cliente, p.direccion, p.vendedor]));
-  }, [misPedidos, folioSearch]);
+    return misPedidos
+      .filter((p) => p.dia === diaActivo)
+      .filter((p) => matchesQuery(folioSearch, [p.folio, p.cliente, p.direccion, p.vendedor]));
+  }, [misPedidos, folioSearch, diaActivo]);
 
   // Disponibilidad del día activo (todos los pedidos de ese día, sin revelar datos de otros)
   const pedidosDia = useMemo(() =>
