@@ -6,6 +6,8 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ChevronUp,
   Clock,
   DollarSign,
@@ -1904,7 +1906,9 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
   } | null>(null);
   const [query, setQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("todos");
-  const [filterMes, setFilterMes] = useState("todos");
+  const [filterMes, setFilterMes] = useState(() => todayCST().slice(0, 7));
+  const [pageSize, setPageSize] = useState(50);
+  const [currentPage, setCurrentPage] = useState(0);
   const [filterTipo, setFilterTipo] = useState("todos");
   const [filterEstadoSAT, setFilterEstadoSAT] = useState("todos");
   const [filterContraparte, setFilterContraparte] = useState<Set<string>>(new Set());
@@ -1960,6 +1964,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
 
   const mesesDisponibles = useMemo(() => {
     const set = new Set<string>();
+    set.add(todayCST().slice(0, 7)); // always include current month so default filter shows in dropdown
     cuentas.forEach((c) => {
       const iso = c.fecha.includes("/") ? displayToISO(c.fecha) : c.fecha;
       set.add(iso.slice(0, 7));
@@ -2023,6 +2028,11 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
       return b.folio.localeCompare(a.folio, undefined, { numeric: true });
     });
   }, [cuentas, query, filterStatus, filterMes, filterTipo, filterEstadoSAT, filterContraparte, filterFormaPago, filterCategoria, isCxc]);
+
+  useEffect(() => { setCurrentPage(0); }, [query, filterStatus, filterMes, filterTipo, filterEstadoSAT, filterContraparte, filterFormaPago, filterCategoria]);
+
+  const paginatedRows = pageSize === -1 ? filtered : filtered.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
+  const totalPages = pageSize === -1 ? 1 : Math.max(1, Math.ceil(filtered.length / pageSize));
 
   // KPIs — facturas canceladas no cuentan en saldos ni conteos financieros
   const canceladas = filtered.filter((c) => c.estadoSAT === "Cancelado");
@@ -2797,7 +2807,7 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
                         : "Sin resultados para el filtro actual"}
                     </td>
                   </tr>
-                ) : filtered.map((c, i) => (
+                ) : paginatedRows.map((c, i) => (
                   <CuentaRow
                     key={c.id ?? i}
                     cuenta={c}
@@ -2818,6 +2828,51 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
               </tbody>
             </table>
           </div>
+
+          {/* SAP-style pagination footer */}
+          {filtered.length > 0 && (
+            <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-t border-[#3A3A3A] bg-[#1A1A1A] rounded-b-xl">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-gray-500">Filas por página:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(0); }}
+                  className="bg-[#242424] border border-[#3A3A3A] text-gray-300 text-xs rounded-md px-2 py-1 focus:outline-none focus:border-[#CC2229]/60 cursor-pointer"
+                >
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                  <option value={-1}>Todos</option>
+                </select>
+              </div>
+              <span className="text-[11px] text-gray-500 tabular-nums">
+                {pageSize === -1
+                  ? `${filtered.length} registros`
+                  : `${currentPage * pageSize + 1}–${Math.min((currentPage + 1) * pageSize, filtered.length)} de ${filtered.length} registros`}
+              </span>
+              {pageSize !== -1 && (
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
+                    disabled={currentPage === 0}
+                    className="p-1 rounded text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    <ChevronLeft size={15} />
+                  </button>
+                  <span className="text-[11px] text-gray-400 tabular-nums px-1">
+                    {currentPage + 1} / {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
+                    disabled={currentPage >= totalPages - 1}
+                    className="p-1 rounded text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    <ChevronRight size={15} />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
