@@ -221,6 +221,8 @@ export const COLLECTIONS = {
   productos: "productos",
   errores:   "errores",
   auditLog:  "auditLog",
+  cajasConfig:          "cajasConfig",
+  cajasDistribuciones:  "cajasDistribuciones",
 } as const;
 
 export { where, orderBy, limit, startAfter, type QueryConstraint };

@@ -16,6 +16,17 @@ import type { Operador } from "@/lib/operadores";
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
+interface EmisorFm {
+  id?: string;
+  rfc: string;
+  nombre: string;
+  regimen: string;
+  cp?: string;
+  curp?: string;
+  registroPatronal?: string;
+  activo?: boolean;
+}
+
 type NominaStatus = "Timbrado" | "Pendiente" | "Error";
 
 interface ReciboNomina {
@@ -49,8 +60,8 @@ interface ReciboNomina {
 const PERIODICIDADES: { value: Periodicidad; label: string; cfdi: string }[] = [
   { value: "semanal",    label: "Semanal",    cfdi: "02" },
   { value: "catorcenal", label: "Catorcenal", cfdi: "03" },
-  { value: "quincenal",  label: "Quincenal",  cfdi: "03" },
-  { value: "mensual",    label: "Mensual",    cfdi: "04" },
+  { value: "quincenal",  label: "Quincenal",  cfdi: "04" },
+  { value: "mensual",    label: "Mensual",    cfdi: "05" },
 ];
 
 const statusTone: Record<NominaStatus, string> = {
@@ -67,6 +78,8 @@ const fmt = (n: number) =>
 export default function NominaPage() {
   const [recibos, setRecibos]           = useState<ReciboNomina[]>([]);
   const [operadoresList, setOperadoresList] = useState<Operador[]>([]);
+  const [emisores, setEmisores]         = useState<EmisorFm[]>([]);
+  const [emisorSelId, setEmisorSelId]   = useState<string>("");
   const [query, setQuery]               = useState("");
   const [showDrawer, setShowDrawer]     = useState(false);
   const [timbrandoId, setTimbrandoId]   = useState<string | null>(null);
@@ -76,8 +89,12 @@ export default function NominaPage() {
     Promise.all([
       getCollectionDocs<ReciboNomina>(COLLECTIONS.nomina),
       getCollectionDocs<Operador>(COLLECTIONS.operadores),
-    ]).then(([rec, ops]) => {
+      getCollectionDocs<EmisorFm>("emisoresFm"),
+    ]).then(([rec, ops, ems]) => {
       setRecibos(rec);
+      const activos = ems.filter(e => e.activo !== false);
+      setEmisores(activos);
+      if (activos.length > 0) setEmisorSelId(activos[0].rfc);
       setOperadoresList(ops.filter((o) => !o.baja));
     });
   }, []);
@@ -125,27 +142,47 @@ export default function NominaPage() {
 
   async function handleTimbrar(recibo: ReciboNomina) {
     if (!recibo.id) return;
+    const emisor = emisores.find(e => e.rfc === emisorSelId) ?? emisores[0];
+    if (!emisor) {
+      window.dispatchEvent(new CustomEvent("duro:toast", {
+        detail: { type: "error", message: "Configura un emisor en Facturación → Emisores antes de timbrar." },
+      }));
+      return;
+    }
     setTimbrandoId(recibo.id);
     try {
       const per = PERIODICIDADES.find((p) => p.value === recibo.periodicidad);
+      // Jala datos actualizados del perfil de RH si el empleado está registrado
+      const opRH = operadoresList.find((o) => o.rfc === recibo.rfc);
       const resp = await fetch("/api/facturama/timbrar-nomina", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          empleadoRfc:        recibo.rfc,
-          empleadoCurp:       recibo.curp,
-          empleadoNombre:     recibo.empleado,
-          empleadoNss:        recibo.nss,
-          empleadoCodigoPostal: recibo.codigoPostal,
-          periodicidad:       per?.cfdi ?? "03",
-          fechaPago:          recibo.fechaPago,
-          fechaInicialPago:   recibo.fechaInicioPago,
-          fechaFinalPago:     recibo.fechaFinPago,
-          numDiasPagados:     recibo.diasTrabajados,
-          totalSueldos:       recibo.sueldoBruto,
-          totalExento:        0,
-          totalISR:           recibo.isr,
-          totalIMSS:          recibo.imss,
+          emisorRfc:            emisor.rfc,
+          emisorNombre:         emisor.nombre,
+          emisorRegimen:        emisor.regimen,
+          emisorCp:             emisor.cp ?? "64000",
+          curpEmisor:           emisor.curp ?? "",
+          registroPatronal:     emisor.registroPatronal ?? "",
+          empleadoRfc:          recibo.rfc,
+          empleadoCurp:         opRH?.curp || recibo.curp,
+          empleadoNombre:       opRH?.nombre || recibo.empleado,
+          empleadoNss:          opRH?.noSeguroSocial || recibo.nss,
+          empleadoCodigoPostal: recibo.codigoPostal || "64000",
+          periodicidad:         per?.cfdi ?? "04",
+          fechaPago:            recibo.fechaPago,
+          fechaInicialPago:     recibo.fechaInicioPago,
+          fechaFinalPago:       recibo.fechaFinPago,
+          numDiasPagados:       recibo.diasTrabajados,
+          totalSueldos:         recibo.sueldoBruto,
+          totalExento:          0,
+          totalISR:             recibo.isr,
+          totalIMSS:            recibo.imss,
+          subsidioEmpleo:       recibo.subsidio ?? 0,
+          salarioDiario:        opRH ? opRH.sueldoBase / 30 : recibo.salarioDiario,
+          salarioBase:          opRH?.sueldoBase || recibo.salarioDiario * 30,
+          fechaInicioLaboral:   opRH?.fechaIngreso ?? "2020-01-01",
+          claveEntidadFed:      "NLE",
         }),
       });
       const data = await resp.json();
@@ -174,12 +211,31 @@ export default function NominaPage() {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-gray-500 text-sm">Nómina timbrada y comprobantes electrónicos</p>
-        <button
-          onClick={() => setShowDrawer(true)}
-          className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#991A1E] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-        >
-          <Plus size={16} /> Calcular y timbrar
-        </button>
+        <div className="flex items-center gap-3 flex-wrap">
+          {emisores.length === 0 ? (
+            <p className="text-orange-400 text-xs border border-orange-800/50 bg-orange-900/20 rounded-lg px-3 py-2">
+              Sin emisor configurado — ve a Facturación → Emisores
+            </p>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="text-gray-500 text-xs">Emisor:</span>
+              {emisores.length === 1 ? (
+                <span className="text-gray-200 text-xs font-mono">{emisores[0].rfc} · {emisores[0].nombre}</span>
+              ) : (
+                <AppSelect dark value={emisorSelId} onChange={e => setEmisorSelId(e.target.value)} wrapperClassName="">
+                  {emisores.map(e => <option key={e.rfc} value={e.rfc}>{e.rfc} — {e.nombre}</option>)}
+                </AppSelect>
+              )}
+            </div>
+          )}
+          <button
+            onClick={() => setShowDrawer(true)}
+            disabled={emisores.length === 0}
+            className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#991A1E] disabled:opacity-40 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+          >
+            <Plus size={16} /> Calcular y timbrar
+          </button>
+        </div>
       </div>
 
       {/* KPIs */}
@@ -339,17 +395,22 @@ function CalcularDrawer({ onClose, onGuardar, operadoresList }: CalcularDrawerPr
       salarioDiario,
     }));
     setDesglose(null);
+    setMontos({ bruto: "", imss: "", isr: "", subsidio: "", neto: "" });
   }
 
   const [desglose, setDesglose]   = useState<DesglosePago | null>(null);
   const [calculando, setCalculando] = useState(false);
   const [guardando, setGuardando]   = useState(false);
   const [error, setError]           = useState<string | null>(null);
+  const [montos, setMontos]         = useState({ bruto: "", imss: "", isr: "", subsidio: "", neto: "" });
 
   function set(key: string, val: string) {
     setForm((f) => ({ ...f, [key]: val }));
     setDesglose(null);
     setError(null);
+  }
+  function setMonto(key: string, val: string) {
+    setMontos((m) => ({ ...m, [key]: val }));
   }
 
   async function calcular() {
@@ -378,8 +439,16 @@ function CalcularDrawer({ onClose, onGuardar, operadoresList }: CalcularDrawerPr
   }
 
   async function guardar() {
-    if (!desglose) return;
+    const canManual = !!(montos.bruto && montos.neto);
+    if (!desglose && !canManual) return;
     setGuardando(true);
+
+    const sueldoBruto = desglose ? desglose.totalPercepciones : parseFloat(montos.bruto) || 0;
+    const imssAmt     = desglose ? desglose.imssObrero        : parseFloat(montos.imss) || 0;
+    const isrAmt      = desglose ? desglose.isrRetenido       : parseFloat(montos.isr) || 0;
+    const subsidioAmt = desglose ? desglose.subsidioEmpleo    : parseFloat(montos.subsidio) || 0;
+    const netoAmt     = desglose ? desglose.netoAPagar        : parseFloat(montos.neto) || 0;
+
     const recibo: ReciboNomina = {
       folio:           "",
       empleado:        form.empleado,
@@ -394,17 +463,17 @@ function CalcularDrawer({ onClose, onGuardar, operadoresList }: CalcularDrawerPr
       fechaInicioPago: form.fechaInicioPago,
       fechaFinPago:    form.fechaFinPago,
       fechaPago:       form.fechaPago,
-      sueldoBruto:     desglose.totalPercepciones,
-      deducciones:     desglose.totalDeducciones,
-      neto:            desglose.netoAPagar,
-      imss:            desglose.imssObrero,
-      isr:             desglose.isrRetenido,
-      subsidio:        desglose.subsidioEmpleo,
+      sueldoBruto,
+      deducciones:     imssAmt + isrAmt - subsidioAmt,
+      neto:            netoAmt,
+      imss:            imssAmt,
+      isr:             isrAmt,
+      subsidio:        subsidioAmt,
       uuid:            "",
       facturamaId:     "",
       status:          "Pendiente",
       enviado:         false,
-      desglose,
+      ...(desglose ? { desglose } : {}),
     };
     onGuardar(recibo);
     setGuardando(false);
@@ -524,15 +593,49 @@ function CalcularDrawer({ onClose, onGuardar, operadoresList }: CalcularDrawerPr
             </div>
           </div>
 
-          {/* Botón calcular */}
-          <button
-            onClick={calcular}
-            disabled={!form.salarioDiario || calculando}
-            className="w-full flex items-center justify-center gap-2 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm rounded-xl font-medium transition-colors disabled:opacity-50 border border-gray-200"
-          >
-            {calculando ? <Loader2 size={15} className="animate-spin" /> : <Calculator size={15} />}
-            {calculando ? "Calculando…" : "Calcular con tablas SAT 2026"}
-          </button>
+          {/* Montos de nómina — captura manual */}
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-3">Montos de nómina</p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className={lbl}>Sueldo bruto ($)</label>
+                <input type="number" min="0" step="0.01" className={inp} value={montos.bruto} onChange={(e) => setMonto("bruto", e.target.value)} placeholder="4725.60" />
+              </div>
+              <div>
+                <label className={lbl}>Neto a pagar ($)</label>
+                <input type="number" min="0" step="0.01" className={inp} value={montos.neto} onChange={(e) => setMonto("neto", e.target.value)} placeholder="4200.00" />
+              </div>
+              <div>
+                <label className={lbl}>IMSS obrero ($)</label>
+                <input type="number" min="0" step="0.01" className={inp} value={montos.imss} onChange={(e) => setMonto("imss", e.target.value)} placeholder="0.00" />
+              </div>
+              <div>
+                <label className={lbl}>ISR retenido ($)</label>
+                <input type="number" min="0" step="0.01" className={inp} value={montos.isr} onChange={(e) => setMonto("isr", e.target.value)} placeholder="0.00" />
+              </div>
+              <div className="col-span-2">
+                <label className={lbl}>Subsidio al empleo ($)</label>
+                <input type="number" min="0" step="0.01" className={inp} value={montos.subsidio} onChange={(e) => setMonto("subsidio", e.target.value)} placeholder="0.00" />
+              </div>
+            </div>
+          </div>
+
+          {/* Cálculo automático — Próximamente */}
+          <div className="relative">
+            <div className="absolute inset-0 z-10 rounded-xl flex items-center justify-center bg-white/70 backdrop-blur-[1px]">
+              <span className="bg-gray-100 border border-gray-200 text-gray-400 text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1.5">
+                <Calculator size={12} />
+                Cálculo automático · Próximamente
+              </span>
+            </div>
+            <button
+              disabled
+              className="w-full flex items-center justify-center gap-2 py-2.5 bg-gray-50 text-gray-300 text-sm rounded-xl font-medium border border-gray-100 cursor-not-allowed"
+            >
+              <Calculator size={15} />
+              Calcular con tablas SAT 2026
+            </button>
+          </div>
 
           {error && (
             <div className="text-red-600 text-sm bg-red-50 border border-red-200 rounded-xl px-4 py-3">
@@ -591,7 +694,7 @@ function CalcularDrawer({ onClose, onGuardar, operadoresList }: CalcularDrawerPr
           </button>
           <button
             onClick={guardar}
-            disabled={!desglose || guardando}
+            disabled={(!desglose && !(montos.bruto && montos.neto)) || guardando}
             className="flex items-center gap-2 px-5 py-2.5 bg-[#CC2229] hover:bg-[#B01E24] text-white text-sm font-semibold rounded-xl transition-colors disabled:opacity-50 shadow-lg shadow-[#CC2229]/20"
           >
             {guardando ? <Loader2 size={14} className="animate-spin" /> : null}

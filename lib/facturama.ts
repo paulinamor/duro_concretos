@@ -114,6 +114,7 @@ export type FmDoctoRelacionado = {
   PreviousBalanceAmount: number;
   AmountPaid: number;
   ImpSaldoInsoluto: number;
+  Taxes?: FmTax[];
 };
 
 export type FmPayment = {
@@ -136,13 +137,14 @@ export type FmCfdiPayload = {
   ExpeditionPlace: string;
   PaymentForm?: string;
   PaymentMethod?: "PUE" | "PPD";
-  Currency: string;
+  Currency?: string;
   CurrencyExchangeRate?: number;
   Issuer: FmEmisor;
   Receiver: FmReceptor;
-  Items: FmItem[];
+  Items?: FmItem[];
   LogoB64?: string;
-  Complement?: FmComplement;
+  // Tipo I/E: complemento de pago usa "Complemento" (nombre real de la API)
+  Complemento?: FmComplement;
 };
 
 export type FmCfdiResponse = {
@@ -253,12 +255,15 @@ export type EmitirComplementoInput = {
 
 export function buildComplementoPayload(input: EmitirComplementoInput): FmCfdiPayload {
   const saldoInsoluto = Math.max(0, Math.round((input.facturaMontoAnterior - input.monto) * 100) / 100);
+  // IVA trasladado en el pago — requerido cuando TaxObject = "02"
+  const baseIva  = Math.round((input.monto / 1.16) * 100) / 100;
+  const ivaTotal = Math.round((input.monto - baseIva) * 100) / 100;
 
   return {
+    // Para CfdiType "P": NO incluir Currency ni Items en el nivel raíz
     CfdiType: "P",
     Date: new Date().toISOString().replace(/\.\d{3}Z$/, ""),
     ExpeditionPlace: input.emisorCp,
-    Currency: "XXX",
     Serie: input.serie,
     Folio: input.folio,
     Issuer: {
@@ -273,19 +278,9 @@ export function buildComplementoPayload(input: EmitirComplementoInput): FmCfdiPa
       TaxZipCode: input.clienteCp,
       FiscalRegime: input.clienteRegimenFiscal,
     },
-    Items: [{
-      ProductCode: "84111506",
-      Description: "Pago",
-      Unit: "Actividad",
-      UnitCode: "ACT",
-      UnitPrice: 0,
-      Quantity: 1,
-      Subtotal: 0,
-      TaxObject: "01",
-      Total: 0,
-    }],
     ...(input.logoB64 ? { LogoB64: input.logoB64 } : {}),
-    Complement: {
+    // "Complemento" (español) es el nombre correcto que acepta la API de Facturama
+    Complemento: {
       Payments: [{
         Date: input.fechaPago,
         PaymentForm: input.formaPago,
@@ -302,6 +297,13 @@ export function buildComplementoPayload(input: EmitirComplementoInput): FmCfdiPa
           PreviousBalanceAmount: input.facturaMontoAnterior,
           AmountPaid: input.monto,
           ImpSaldoInsoluto: saldoInsoluto,
+          Taxes: [{
+            Name: "IVA",
+            Base: baseIva,
+            Rate: 0.16,
+            Total: ivaTotal,
+            IsRetention: false,
+          }],
         }],
       }],
     },
@@ -313,6 +315,7 @@ export type TimbrarNominaInput = {
   emisorRfc: string;
   emisorNombre: string;
   emisorRegimen: string;
+  emisorCp: string;
   // Empleado
   empleadoRfc: string;
   empleadoCurp: string;
@@ -330,6 +333,15 @@ export type TimbrarNominaInput = {
   totalIMSS: number;
   totalInfonavit?: number;
   serie?: string;
+  folio?: string;
+  curpEmisor?: string;
+  registroPatronal?: string;
+  fechaInicioLaboral?: string;
+  empleadoNumero?: string;
+  claveEntidadFed?: string;
+  salarioBase?: number;
+  salarioDiario?: number;
+  subsidioEmpleo?: number;
 };
 
 // ─── Builder de payload ───────────────────────────────────────────────────────
@@ -385,6 +397,9 @@ export function buildCfdiPayload(input: EmitirFacturaInput): FmCfdiPayload {
     };
   });
 
+  const isPublicoGeneral = input.clienteRfc === "XAXX010101000";
+  const now = new Date();
+
   return {
     Serie:          serie,
     Folio:          input.folio,
@@ -404,6 +419,14 @@ export function buildCfdiPayload(input: EmitirFacturaInput): FmCfdiPayload {
       TaxZipCode:   input.clienteCp,
       FiscalRegime: input.clienteRegimenFiscal,
     },
+    // SAT requiere GlobalInformation cuando el receptor es XAXX010101000 (Público en General)
+    ...(isPublicoGeneral ? {
+      GlobalInformation: {
+        Periodicity: "01",
+        Months:      String(now.getMonth() + 1).padStart(2, "0"),
+        Year:        now.getFullYear(),
+      },
+    } : {}),
     Items: items,
     ...(input.logoB64 ? { LogoB64: input.logoB64 } : {}),
   };
@@ -423,21 +446,21 @@ export async function cancelarCfdi(
   motivo: "01" | "02" | "03" | "04" = "02",
 ): Promise<void> {
   await facturamaFetch(
-    `/api-lite/3/cfdis/${facturamaId}?type=issued&motive=${motivo}`,
+    `/Cfdi/${facturamaId}?type=issuedLite&motive=${motivo}`,
     { method: "DELETE" },
   );
 }
 
 export async function obtenerPdfBase64(facturamaId: string): Promise<string> {
   const res = await facturamaFetch<{ Content: string }>(
-    `/api-lite/3/cfdis/${facturamaId}/pdf/issued`,
+    `/Cfdi/pdf/issuedLite/${facturamaId}`,
   );
   return res.Content;
 }
 
 export async function obtenerXmlBase64(facturamaId: string): Promise<string> {
   const res = await facturamaFetch<{ Content: string }>(
-    `/api-lite/3/cfdis/${facturamaId}/xml/issued`,
+    `/Cfdi/xml/issuedLite/${facturamaId}`,
   );
   return res.Content;
 }

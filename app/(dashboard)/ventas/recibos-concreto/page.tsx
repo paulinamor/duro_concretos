@@ -92,6 +92,9 @@ export default function RecibosConcretoPage() {
   const [abonoReceiptId, setAbonoReceiptId] = useState<string | null>(null);
   const [abonoMonto, setAbonoMonto] = useState<string>("");
   const [printSize, setPrintSize] = useState<"full" | "half">("full");
+  const [showPrintDialog, setShowPrintDialog] = useState(false);
+  // null = imprimir desde el formulario activo; ConcreteReceipt = imprimir un guardado de la tabla
+  const pendingPrintReceipt = useRef<ConcreteReceipt | null>(null);
 
   const nextReceiptNum = useMemo(
     () => getNextReceiptNumber(allRemisionesGlobal.filter((r) => r.receiptNumber != null)),
@@ -442,9 +445,8 @@ export default function RecibosConcretoPage() {
   }
 
   function printSavedReceipt(savedReceipt: ConcreteReceipt) {
-    flushSync(() => { setReceipt(migrateReceipt({ ...savedReceipt })); setIsLoadedReceipt(true); });
-    window.print();
-    resetToNew();
+    pendingPrintReceipt.current = savedReceipt;
+    setShowPrintDialog(true);
   }
 
   const lbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5";
@@ -470,11 +472,9 @@ export default function RecibosConcretoPage() {
             position: fixed !important; inset: 0 !important;
             width: 100vw !important; min-height: 100vh !important;
             background: white !important; color: black !important;
-            ${printSize === "half"
-              ? "padding: 0.25in 0.3in !important;"
-              : "padding: 0.3in 0.35in !important;"}
+            padding: 0 !important;
           }
-          @page { size: ${printSize === "half" ? "5.5in 8.5in portrait" : "letter landscape"}; margin: 0; }
+          @page { size: ${printSize === "half" ? "letter portrait" : "letter landscape"}; margin: 0; }
         }
         .print-th {
           background: #1e3a5f !important;
@@ -506,23 +506,6 @@ export default function RecibosConcretoPage() {
       <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
         <p className="text-sm text-gray-500">Recibo de concreto premezclado — múltiples productos por recibo</p>
         <div className="flex items-center gap-2">
-          {/* Selector de tamaño de hoja */}
-          <div className="flex items-center gap-1 bg-[#1A1A1A] border border-[#3A3A3A] rounded-xl p-1">
-            <button
-              type="button"
-              onClick={() => setPrintSize("full")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${printSize === "full" ? "bg-[#CC2229] text-white" : "text-gray-400 hover:text-white"}`}
-            >
-              Hoja completa
-            </button>
-            <button
-              type="button"
-              onClick={() => setPrintSize("half")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${printSize === "half" ? "bg-[#CC2229] text-white" : "text-gray-400 hover:text-white"}`}
-            >
-              Media hoja
-            </button>
-          </div>
           <button type="button" onClick={openNew}
             className="flex items-center gap-2 bg-[#CC2229] text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-[#B01E24] transition-colors shadow-md shadow-[#CC2229]/20 cursor-pointer">
             <Plus size={16} /> Nuevo recibo
@@ -1068,7 +1051,7 @@ export default function RecibosConcretoPage() {
                   className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 border border-gray-200 rounded-xl transition-colors cursor-pointer disabled:opacity-40">
                   <Save size={15} /> {saving ? "Guardando…" : "Guardar"}
                 </button>
-                <button type="button" onClick={printReceipt} disabled={loading || saving}
+                <button type="button" onClick={() => { pendingPrintReceipt.current = null; setShowPrintDialog(true); }} disabled={loading || saving}
                   className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold bg-[#CC2229] hover:bg-[#B01E24] text-white rounded-xl transition-colors disabled:opacity-60 shadow-lg shadow-[#CC2229]/20 cursor-pointer">
                   <Printer size={15} /> Imprimir
                 </button>
@@ -1078,237 +1061,354 @@ export default function RecibosConcretoPage() {
         </div>
       )}
 
+      {/* ── Diálogo de opciones de impresión ──────────────────────────────── */}
+      {showPrintDialog && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center print:hidden"
+          onClick={() => setShowPrintDialog(false)}>
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div className="relative bg-[#1A1A1A] border border-[#3A3A3A] rounded-2xl p-6 w-full max-w-sm shadow-2xl mx-4"
+            onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h3 className="text-white font-semibold text-base">Opciones de impresión</h3>
+                <p className="text-gray-500 text-xs mt-0.5">Selecciona el formato</p>
+              </div>
+              <button type="button" onClick={() => setShowPrintDialog(false)}
+                className="text-gray-500 hover:text-white transition-colors cursor-pointer">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              {/* Opción 1 — 1 recibo por hoja */}
+              <button type="button"
+                onClick={() => {
+                  const saved = pendingPrintReceipt.current;
+                  pendingPrintReceipt.current = null;
+                  setPrintSize("full");
+                  setShowPrintDialog(false);
+                  setTimeout(() => {
+                    if (saved) { flushSync(() => { setReceipt(migrateReceipt({ ...saved })); setIsLoadedReceipt(true); }); window.print(); resetToNew(); }
+                    else { printReceipt(); }
+                  }, 80);
+                }}
+                className="group flex flex-col items-center gap-3 p-4 rounded-xl border border-[#3A3A3A] hover:border-[#CC2229]/60 hover:bg-[#CC2229]/5 transition-all cursor-pointer text-left">
+                {/* Ícono: hoja landscape */}
+                <div className="w-14 h-10 rounded border-2 border-gray-500 group-hover:border-[#CC2229]/70 transition-colors bg-[#242424] flex items-center justify-center">
+                  <div className="w-9 h-6 rounded-sm border border-gray-600 bg-[#2A2A2A] flex flex-col gap-0.5 p-1">
+                    <div className="w-full h-0.5 bg-gray-600 rounded" />
+                    <div className="w-4/5 h-0.5 bg-gray-600 rounded" />
+                    <div className="w-full h-0.5 bg-gray-600 rounded" />
+                    <div className="w-3/5 h-0.5 bg-gray-600 rounded" />
+                  </div>
+                </div>
+                <div>
+                  <div className="text-white text-xs font-semibold">1 por hoja</div>
+                  <div className="text-gray-500 text-[10px] mt-0.5">Carta horizontal</div>
+                </div>
+              </button>
+
+              {/* Opción 2 — 2 recibos por hoja */}
+              <button type="button"
+                onClick={() => {
+                  const saved = pendingPrintReceipt.current;
+                  pendingPrintReceipt.current = null;
+                  setPrintSize("half");
+                  setShowPrintDialog(false);
+                  setTimeout(() => {
+                    if (saved) { flushSync(() => { setReceipt(migrateReceipt({ ...saved })); setIsLoadedReceipt(true); }); window.print(); resetToNew(); }
+                    else { printReceipt(); }
+                  }, 80);
+                }}
+                className="group flex flex-col items-center gap-3 p-4 rounded-xl border border-[#3A3A3A] hover:border-[#CC2229]/60 hover:bg-[#CC2229]/5 transition-all cursor-pointer text-left">
+                {/* Ícono: hoja portrait con línea de corte en medio */}
+                <div className="w-10 h-14 rounded border-2 border-gray-500 group-hover:border-[#CC2229]/70 transition-colors bg-[#242424] flex flex-col items-center justify-around p-1 gap-0">
+                  <div className="w-full flex flex-col gap-0.5">
+                    <div className="w-full h-0.5 bg-gray-600 rounded" />
+                    <div className="w-4/5 h-0.5 bg-gray-600 rounded" />
+                    <div className="w-full h-0.5 bg-gray-600 rounded" />
+                  </div>
+                  <div className="w-full border-t border-dashed border-gray-500" />
+                  <div className="w-full flex flex-col gap-0.5">
+                    <div className="w-full h-0.5 bg-gray-600 rounded" />
+                    <div className="w-4/5 h-0.5 bg-gray-600 rounded" />
+                    <div className="w-full h-0.5 bg-gray-600 rounded" />
+                  </div>
+                </div>
+                <div>
+                  <div className="text-white text-xs font-semibold">2 por hoja</div>
+                  <div className="text-gray-500 text-[10px] mt-0.5">Original + copia</div>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ══════════════════════════════════════════════════════════════════════ */}
       {/* PRINTABLE RECEIPT                                                     */}
       {/* ══════════════════════════════════════════════════════════════════════ */}
-      <div id="printable-concrete-receipt"
-        className="fixed -left-[9999px] top-0 bg-white text-black print:static print:left-auto print:top-auto print:shadow-none"
-        style={{ width: printSize === "half" ? 520 : 980, fontFamily: "Arial, sans-serif" }}>
-
-        {/* Title row */}
-        <div style={{ display: "flex", alignItems: "stretch", marginBottom: 8, borderBottom: "3px solid #1e3a5f" }}>
-          <div style={{ flex: 1, textAlign: "center", paddingBottom: 4 }}>
-            <div style={{ fontSize: 22, fontWeight: 900, color: "#1e3a5f", letterSpacing: "0.04em", lineHeight: 1 }}>
-              RECIBO DE CONCRETO PREMEZCLADO
+      {(() => {
+        // Contenido del recibo extraído como función local para reutilizar en modo 2-por-hoja
+        const receiptBody = (copyLabel?: string) => (
+          <div style={{ fontFamily: "Arial, sans-serif" }}>
+            {/* Etiqueta de copia (solo en modo media hoja) */}
+            {copyLabel && (
+              <div style={{ textAlign: "right", fontSize: 8, fontWeight: 800, color: "#999", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 4 }}>
+                {copyLabel}
+              </div>
+            )}
+            {/* Title row */}
+            <div style={{ display: "flex", alignItems: "stretch", marginBottom: 8, borderBottom: "3px solid #1e3a5f" }}>
+              <div style={{ flex: 1, textAlign: "center", paddingBottom: 4 }}>
+                <div style={{ fontSize: printSize === "half" ? 16 : 22, fontWeight: 900, color: "#1e3a5f", letterSpacing: "0.04em", lineHeight: 1 }}>
+                  RECIBO DE CONCRETO PREMEZCLADO
+                </div>
+              </div>
+              <div style={{ border: "2px solid #1e3a5f", borderRadius: 4, padding: "4px 14px", textAlign: "center", minWidth: 140 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#1e3a5f" }}>RECIBO No.</div>
+                <div style={{ fontSize: printSize === "half" ? 16 : 22, fontWeight: 900, color: "#CC2229" }}>{String(effectiveReceiptNumber).padStart(4, "0")}</div>
+              </div>
             </div>
-          </div>
-          <div style={{ border: "2px solid #1e3a5f", borderRadius: 4, padding: "4px 14px", textAlign: "center", minWidth: 140 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: "#1e3a5f" }}>RECIBO No.</div>
-            <div style={{ fontSize: 22, fontWeight: 900, color: "#CC2229" }}>{String(effectiveReceiptNumber).padStart(4, "0")}</div>
-          </div>
-        </div>
 
-        {/* Header info */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, marginBottom: 8, fontSize: 11 }}>
-          <div>
-            <span style={{ fontWeight: 700 }}>CLIENTE: </span>
-            <span style={{ borderBottom: "1px solid #333", display: "inline-block", minWidth: 280, paddingLeft: 4 }}>{receipt.cliente}</span>
-          </div>
-          <div>
-            <span style={{ fontWeight: 700 }}>FECHA: </span>
-            <span style={{ borderBottom: "1px solid #333", display: "inline-block", minWidth: 160, paddingLeft: 4 }}>
-              Allende N.L., a {receiptDate.day} de {receiptDate.month} del {receiptDate.year}
-            </span>
-          </div>
-          <div>
-            <span style={{ fontWeight: 700 }}>OBRA: </span>
-            <span style={{ borderBottom: "1px solid #333", display: "inline-block", minWidth: 280, paddingLeft: 4 }}>{receipt.direccionObra}</span>
-          </div>
-        </div>
+            {/* Header info */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, marginBottom: 8, fontSize: 11 }}>
+              <div>
+                <span style={{ fontWeight: 700 }}>CLIENTE: </span>
+                <span style={{ borderBottom: "1px solid #333", display: "inline-block", minWidth: 200, paddingLeft: 4 }}>{receipt.cliente}</span>
+              </div>
+              <div>
+                <span style={{ fontWeight: 700 }}>FECHA: </span>
+                <span style={{ borderBottom: "1px solid #333", display: "inline-block", minWidth: 140, paddingLeft: 4 }}>
+                  Allende N.L., a {receiptDate.day} de {receiptDate.month} del {receiptDate.year}
+                </span>
+              </div>
+              <div>
+                <span style={{ fontWeight: 700 }}>OBRA: </span>
+                <span style={{ borderBottom: "1px solid #333", display: "inline-block", minWidth: 200, paddingLeft: 4 }}>{receipt.direccionObra}</span>
+              </div>
+            </div>
 
-        {/* ① Concreto premezclado */}
-        <div style={{ marginBottom: 6, border: "1px solid #ccc" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div className="print-sec" style={{ flex: 1 }}>① CONCRETO PREMEZCLADO</div>
-          </div>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                {["No.", "RESISTENCIA / ESPECIFICACIÓN", "TIPO DE SUMINISTRO", "CANTIDAD (m³)", "PRECIO UNITARIO", "IMPORTE"].map((h) => (
-                  <th key={h} className="print-th" style={{ textAlign: h === "No." ? "center" : h === "IMPORTE" || h === "PRECIO UNITARIO" || h === "CANTIDAD (m³)" ? "right" : "left" }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {receipt.productos.map((p, i) => (
-                <tr key={p.id} style={{ background: i % 2 === 0 ? "#fff" : "#f8f9fb" }}>
-                  <td className="print-td" style={{ textAlign: "center", fontWeight: 700 }}>{i + 1}</td>
-                  <td className="print-td" style={{ fontWeight: 600 }}>{p.resistencia || "—"}</td>
-                  <td className="print-td">{p.supplyType}</td>
-                  <td className="print-td" style={{ textAlign: "right" }}>{(p.m3 ?? 0).toFixed(2)}</td>
-                  <td className="print-td" style={{ textAlign: "right" }}>$ {moneyNum(p.precioPorM3)}</td>
-                  <td className="print-td" style={{ textAlign: "right", fontWeight: 700 }}>$ {moneyNum((p.m3 ?? 0) * (p.precioPorM3 ?? 0))}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="print-total-row">
-                <td className="print-td" colSpan={5} style={{ textAlign: "right", fontWeight: 800, fontSize: 10 }}>SUBTOTAL CONCRETO:</td>
-                <td className="print-td" style={{ textAlign: "right", fontWeight: 800, fontSize: 11 }}>$ {moneyNum(subtotalConcreto)}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-
-        {/* ② Metros vacíos — only if applicable */}
-        {metrosVaciosTotal > 0 && (
-          <div style={{ marginBottom: 6, border: "1px solid #ccc" }}>
-            <div className="print-sec">② METROS VACÍOS</div>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr>
-                  {["CONCEPTO", "CANTIDAD (m³)", "PRECIO UNITARIO", "IMPORTE"].map((h) => (
-                    <th key={h} className="print-th" style={{ textAlign: h !== "CONCEPTO" ? "right" : "left" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td className="print-td">Metros vacíos</td>
-                  <td className="print-td" style={{ textAlign: "right" }}>{(receipt.metrosVaciosCantidad ?? 0).toFixed(2)}</td>
-                  <td className="print-td" style={{ textAlign: "right" }}>$ {moneyNum(receipt.metrosVaciosPrecio)}</td>
-                  <td className="print-td" style={{ textAlign: "right", fontWeight: 700 }}>$ {moneyNum(metrosVaciosTotal)}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* ③ Servicio de bomba — only if applicable */}
-        {hasBomba && bombaImporte > 0 && (
-          <div style={{ marginBottom: 6, border: "1px solid #ccc" }}>
-            <div className="print-sec">③ SERVICIO DE BOMBA</div>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr>
-                  {["CONCEPTO", "PRECIO UNITARIO", "IMPORTE"].map((h) => (
-                    <th key={h} className="print-th" style={{ textAlign: h !== "CONCEPTO" ? "right" : "left", width: h === "CONCEPTO" ? "60%" : undefined }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td className="print-td">Servicio de bomba</td>
-                  <td className="print-td" style={{ textAlign: "right" }}>$ {moneyNum(bombaImporte)}</td>
-                  <td className="print-td" style={{ textAlign: "right", fontWeight: 700 }}>$ {moneyNum(bombaImporte)}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* ④ Aditivos — only if any active */}
-        {aditivosActivos.length > 0 && (
-          <div style={{ marginBottom: 6, border: "1px solid #ccc" }}>
-            <div className="print-sec">④ ADITIVOS</div>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr>
-                  {["CONCEPTO", "CANTIDAD (TOTAL)", "DOSIFICACIÓN / M³", "PRECIO UNITARIO", "IMPORTE"].map((h) => (
-                    <th key={h} className="print-th" style={{ textAlign: h !== "CONCEPTO" ? "right" : "left" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {aditivosActivos.map((a, i) => {
-                  const qty = totalM3Receipt * (a.dosis ?? 0);
-                  const importe = qty * (a.precio ?? 0);
-                  return (
-                    <tr key={a.name} style={{ background: i % 2 === 0 ? "#fff" : "#f8f9fb" }}>
-                      <td className="print-td">{a.name}{a.showUnit && a.unit ? ` (${a.unit})` : ""}</td>
-                      <td className="print-td" style={{ textAlign: "right" }}>{qty.toLocaleString("es-MX", { maximumFractionDigits: 2 })}</td>
-                      <td className="print-td" style={{ textAlign: "right" }}>{(a.dosis ?? 0).toFixed(2)}</td>
-                      <td className="print-td" style={{ textAlign: "right" }}>$ {moneyNum(a.precio)}</td>
-                      <td className="print-td" style={{ textAlign: "right", fontWeight: 700 }}>$ {moneyNum(importe)}</td>
+            {/* ① Concreto premezclado */}
+            <div style={{ marginBottom: 6, border: "1px solid #ccc" }}>
+              <div className="print-sec">① CONCRETO PREMEZCLADO</div>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    {["No.", "RESISTENCIA / ESPECIFICACIÓN", "TIPO DE SUMINISTRO", "CANTIDAD (m³)", "PRECIO UNITARIO", "IMPORTE"].map((h) => (
+                      <th key={h} className="print-th" style={{ textAlign: h === "No." ? "center" : h === "IMPORTE" || h === "PRECIO UNITARIO" || h === "CANTIDAD (m³)" ? "right" : "left" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {receipt.productos.map((p, i) => (
+                    <tr key={p.id} style={{ background: i % 2 === 0 ? "#fff" : "#f8f9fb" }}>
+                      <td className="print-td" style={{ textAlign: "center", fontWeight: 700 }}>{i + 1}</td>
+                      <td className="print-td" style={{ fontWeight: 600 }}>{p.resistencia || "—"}</td>
+                      <td className="print-td">{p.supplyType}</td>
+                      <td className="print-td" style={{ textAlign: "right" }}>{(p.m3 ?? 0).toFixed(2)}</td>
+                      <td className="print-td" style={{ textAlign: "right" }}>$ {moneyNum(p.precioPorM3)}</td>
+                      <td className="print-td" style={{ textAlign: "right", fontWeight: 700 }}>$ {moneyNum((p.m3 ?? 0) * (p.precioPorM3 ?? 0))}</td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* ⑤ Extras — only if any */}
-        {extrasConImporte.length > 0 && (
-          <div style={{ marginBottom: 6, border: "1px solid #ccc" }}>
-            <div className="print-sec">⑤ EXTRAS</div>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr>
-                  {["CONCEPTO", "CANTIDAD", "PRECIO UNITARIO", "IMPORTE"].map((h) => (
-                    <th key={h} className="print-th" style={{ textAlign: h !== "CONCEPTO" ? "right" : "left" }}>{h}</th>
                   ))}
-                </tr>
-              </thead>
-              <tbody>
-                {extrasConImporte.map((ex, i) => {
-                  const qty = parseFloat(ex.cantidad) || 0;
-                  const precio = parseFloat(ex.precio) || 0;
-                  const importe = qty * precio;
-                  return (
-                    <tr key={ex.id} style={{ background: i % 2 === 0 ? "#fff" : "#f8f9fb" }}>
-                      <td className="print-td">{ex.concepto}</td>
-                      <td className="print-td" style={{ textAlign: "right" }}>{qty > 0 ? qty.toLocaleString("es-MX", { maximumFractionDigits: 2 }) : "—"}</td>
-                      <td className="print-td" style={{ textAlign: "right" }}>{precio > 0 ? `$ ${moneyNum(precio)}` : "—"}</td>
-                      <td className="print-td" style={{ textAlign: "right", fontWeight: 700 }}>$ {moneyNum(importe)}</td>
+                </tbody>
+                <tfoot>
+                  <tr className="print-total-row">
+                    <td className="print-td" colSpan={5} style={{ textAlign: "right", fontWeight: 800, fontSize: 10 }}>SUBTOTAL CONCRETO:</td>
+                    <td className="print-td" style={{ textAlign: "right", fontWeight: 800, fontSize: 11 }}>$ {moneyNum(subtotalConcreto)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+            {/* ② Metros vacíos */}
+            {metrosVaciosTotal > 0 && (
+              <div style={{ marginBottom: 6, border: "1px solid #ccc" }}>
+                <div className="print-sec">② METROS VACÍOS</div>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr>
+                      {["CONCEPTO", "CANTIDAD (m³)", "PRECIO UNITARIO", "IMPORTE"].map((h) => (
+                        <th key={h} className="print-th" style={{ textAlign: h !== "CONCEPTO" ? "right" : "left" }}>{h}</th>
+                      ))}
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td className="print-td">Metros vacíos</td>
+                      <td className="print-td" style={{ textAlign: "right" }}>{(receipt.metrosVaciosCantidad ?? 0).toFixed(2)}</td>
+                      <td className="print-td" style={{ textAlign: "right" }}>$ {moneyNum(receipt.metrosVaciosPrecio)}</td>
+                      <td className="print-td" style={{ textAlign: "right", fontWeight: 700 }}>$ {moneyNum(metrosVaciosTotal)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
 
-        {/* Observaciones + Totals */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 8, marginBottom: 8 }}>
-          <div style={{ border: "1px solid #ccc", padding: 8 }}>
-            <div style={{ fontSize: 9, fontWeight: 700, color: "#1e3a5f", textTransform: "uppercase", marginBottom: 4 }}>OBSERVACIONES:</div>
-            <div style={{ fontSize: 11, minHeight: 40, borderBottom: "1px solid #ccc", marginBottom: 4 }}>{receipt.nota}</div>
-            <div style={{ minHeight: 16 }} />
-          </div>
-          <div style={{ border: "1px solid #ccc" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", borderBottom: "2px solid #1e3a5f", padding: "6px 10px" }}>
-              <span style={{ fontSize: 10, fontWeight: 700, color: "#1e3a5f" }}>TOTAL DEL SERVICIO:</span>
-              <span style={{ fontSize: 11, fontWeight: 900, color: "#1e3a5f" }}>$ {moneyNum(realTotal)}</span>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", borderBottom: "1px solid #ccc", padding: "5px 10px" }}>
-              <span style={{ fontSize: 10 }}>ANTICIPO(S):</span>
-              <span style={{ fontSize: 10 }}>$ {moneyNum(receipt.anticipo)}</span>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", padding: "6px 10px", background: "#1e3a5f" }}>
-              <span style={{ fontSize: 11, fontWeight: 800, color: "white" }}>RESTA / SALDO:</span>
-              <span style={{ fontSize: 13, fontWeight: 900, color: "white" }}>$ {moneyNum(realResta)}</span>
-            </div>
-          </div>
-        </div>
+            {/* ③ Servicio de bomba */}
+            {hasBomba && bombaImporte > 0 && (
+              <div style={{ marginBottom: 6, border: "1px solid #ccc" }}>
+                <div className="print-sec">③ SERVICIO DE BOMBA</div>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr>
+                      {["CONCEPTO", "PRECIO UNITARIO", "IMPORTE"].map((h) => (
+                        <th key={h} className="print-th" style={{ textAlign: h !== "CONCEPTO" ? "right" : "left", width: h === "CONCEPTO" ? "60%" : undefined }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td className="print-td">Servicio de bomba</td>
+                      <td className="print-td" style={{ textAlign: "right" }}>$ {moneyNum(bombaImporte)}</td>
+                      <td className="print-td" style={{ textAlign: "right", fontWeight: 700 }}>$ {moneyNum(bombaImporte)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
 
-        {/* Conditions */}
-        <div style={{ border: "1px solid #ccc", padding: "6px 10px", marginBottom: 8 }}>
-          <div style={{ fontSize: 8, fontWeight: 900, color: "#1e3a5f", textTransform: "uppercase", marginBottom: 4 }}>CONDICIONES DEL SERVICIO:</div>
-          <ol style={{ fontSize: 7.5, paddingLeft: 14, margin: 0, lineHeight: 1.6, color: "#222" }}>
-            <li><strong>Servicio de bombeo:</strong> El servicio está sujeto a un volumen mínimo de contratación. Cuando el volumen suministrado sea menor al mínimo establecido, se aplicará el cargo mínimo de bombeo correspondiente. CARGO POR SALIDA EN FALSO DE UNIDAD POR PARTE DEL CLIENTE.</li>
-            <li><strong>Metros vacíos:</strong> Cuando la cantidad solicitada o programada no sea completada por causas atribuibles al cliente u obra, podrán aplicarse los cargos correspondientes conforme a las condiciones previamente acordadas.</li>
-            <li><strong>Tiempos y maniobras adicionales:</strong> Los tiempos de espera, maniobras, tubería adicional y demás servicios extraordinarios podrán generar cargos adicionales cuando correspondan.</li>
-            <li><strong>Conformidad:</strong> Con su firma, el cliente reconoce la recepción del suministro y/o servicios descritos en el presente recibo, así como los conceptos e importes señalados.</li>
-            <li><strong>Saldo:</strong> La firma del presente recibo no implica liquidación cuando exista un saldo pendiente indicado en el mismo.</li>
-          </ol>
-        </div>
+            {/* ④ Aditivos */}
+            {aditivosActivos.length > 0 && (
+              <div style={{ marginBottom: 6, border: "1px solid #ccc" }}>
+                <div className="print-sec">④ ADITIVOS</div>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr>
+                      {["CONCEPTO", "CANTIDAD (TOTAL)", "DOSIFICACIÓN / M³", "PRECIO UNITARIO", "IMPORTE"].map((h) => (
+                        <th key={h} className="print-th" style={{ textAlign: h !== "CONCEPTO" ? "right" : "left" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {aditivosActivos.map((a, i) => {
+                      const qty = totalM3Receipt * (a.dosis ?? 0);
+                      const importe = qty * (a.precio ?? 0);
+                      return (
+                        <tr key={a.name} style={{ background: i % 2 === 0 ? "#fff" : "#f8f9fb" }}>
+                          <td className="print-td">{a.name}{a.showUnit && a.unit ? ` (${a.unit})` : ""}</td>
+                          <td className="print-td" style={{ textAlign: "right" }}>{qty.toLocaleString("es-MX", { maximumFractionDigits: 2 })}</td>
+                          <td className="print-td" style={{ textAlign: "right" }}>{(a.dosis ?? 0).toFixed(2)}</td>
+                          <td className="print-td" style={{ textAlign: "right" }}>$ {moneyNum(a.precio)}</td>
+                          <td className="print-td" style={{ textAlign: "right", fontWeight: 700 }}>$ {moneyNum(importe)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
 
-        {/* Signature line */}
-        <div style={{ marginTop: 24, fontSize: 10 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 24, alignItems: "flex-end" }}>
-            <div>
-              <div style={{ height: 36 }} />
-              <div style={{ borderBottom: "1px solid #333", paddingBottom: 2, color: "#555", fontStyle: "italic" }}>{receipt.firmaCliente}</div>
-              <div style={{ marginTop: 3, fontWeight: 700, textAlign: "center", fontSize: 9 }}>NOMBRE Y FIRMA DE CONFORMIDAD</div>
+            {/* ⑤ Extras */}
+            {extrasConImporte.length > 0 && (
+              <div style={{ marginBottom: 6, border: "1px solid #ccc" }}>
+                <div className="print-sec">⑤ EXTRAS</div>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr>
+                      {["CONCEPTO", "CANTIDAD", "PRECIO UNITARIO", "IMPORTE"].map((h) => (
+                        <th key={h} className="print-th" style={{ textAlign: h !== "CONCEPTO" ? "right" : "left" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {extrasConImporte.map((ex, i) => {
+                      const qty = parseFloat(ex.cantidad) || 0;
+                      const precio = parseFloat(ex.precio) || 0;
+                      const importe = qty * precio;
+                      return (
+                        <tr key={ex.id} style={{ background: i % 2 === 0 ? "#fff" : "#f8f9fb" }}>
+                          <td className="print-td">{ex.concepto}</td>
+                          <td className="print-td" style={{ textAlign: "right" }}>{qty > 0 ? qty.toLocaleString("es-MX", { maximumFractionDigits: 2 }) : "—"}</td>
+                          <td className="print-td" style={{ textAlign: "right" }}>{precio > 0 ? `$ ${moneyNum(precio)}` : "—"}</td>
+                          <td className="print-td" style={{ textAlign: "right", fontWeight: 700 }}>$ {moneyNum(importe)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Observaciones + Totals */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 240px", gap: 8, marginBottom: 8 }}>
+              <div style={{ border: "1px solid #ccc", padding: 8 }}>
+                <div style={{ fontSize: 9, fontWeight: 700, color: "#1e3a5f", textTransform: "uppercase", marginBottom: 4 }}>OBSERVACIONES:</div>
+                <div style={{ fontSize: 11, minHeight: 32, borderBottom: "1px solid #ccc", marginBottom: 4 }}>{receipt.nota}</div>
+                <div style={{ minHeight: 12 }} />
+              </div>
+              <div style={{ border: "1px solid #ccc" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr auto", borderBottom: "2px solid #1e3a5f", padding: "6px 10px" }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: "#1e3a5f" }}>TOTAL DEL SERVICIO:</span>
+                  <span style={{ fontSize: 11, fontWeight: 900, color: "#1e3a5f" }}>$ {moneyNum(realTotal)}</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr auto", borderBottom: "1px solid #ccc", padding: "5px 10px" }}>
+                  <span style={{ fontSize: 10 }}>ANTICIPO(S):</span>
+                  <span style={{ fontSize: 10 }}>$ {moneyNum(receipt.anticipo)}</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr auto", padding: "6px 10px", background: "#1e3a5f" }}>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: "white" }}>RESTA / SALDO:</span>
+                  <span style={{ fontSize: 13, fontWeight: 900, color: "white" }}>$ {moneyNum(realResta)}</span>
+                </div>
+              </div>
             </div>
-            <div style={{ whiteSpace: "nowrap" }}>
-              <span style={{ fontWeight: 700 }}>R: </span>
-              <span style={{ borderBottom: "1px solid #333", display: "inline-block", minWidth: 120, paddingLeft: 4, color: "#555", fontStyle: "italic" }}>{receipt.recibidoPor}</span>
+
+            {/* Conditions */}
+            <div style={{ border: "1px solid #ccc", padding: "5px 10px", marginBottom: 8 }}>
+              <div style={{ fontSize: 8, fontWeight: 900, color: "#1e3a5f", textTransform: "uppercase", marginBottom: 3 }}>CONDICIONES DEL SERVICIO:</div>
+              <ol style={{ fontSize: 7, paddingLeft: 14, margin: 0, lineHeight: 1.5, color: "#222" }}>
+                <li><strong>Servicio de bombeo:</strong> El servicio está sujeto a un volumen mínimo de contratación. Cuando el volumen suministrado sea menor al mínimo establecido, se aplicará el cargo mínimo de bombeo correspondiente. CARGO POR SALIDA EN FALSO DE UNIDAD POR PARTE DEL CLIENTE.</li>
+                <li><strong>Metros vacíos:</strong> Cuando la cantidad solicitada o programada no sea completada por causas atribuibles al cliente u obra, podrán aplicarse los cargos correspondientes conforme a las condiciones previamente acordadas.</li>
+                <li><strong>Tiempos y maniobras adicionales:</strong> Los tiempos de espera, maniobras, tubería adicional y demás servicios extraordinarios podrán generar cargos adicionales cuando correspondan.</li>
+                <li><strong>Conformidad:</strong> Con su firma, el cliente reconoce la recepción del suministro y/o servicios descritos en el presente recibo, así como los conceptos e importes señalados.</li>
+                <li><strong>Saldo:</strong> La firma del presente recibo no implica liquidación cuando exista un saldo pendiente indicado en el mismo.</li>
+              </ol>
+            </div>
+
+            {/* Signature line */}
+            <div style={{ marginTop: 16, fontSize: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 24, alignItems: "flex-end" }}>
+                <div>
+                  <div style={{ height: 28 }} />
+                  <div style={{ borderBottom: "1px solid #333", paddingBottom: 2, color: "#555", fontStyle: "italic" }}>{receipt.firmaCliente}</div>
+                  <div style={{ marginTop: 3, fontWeight: 700, textAlign: "center", fontSize: 9 }}>NOMBRE Y FIRMA DE CONFORMIDAD</div>
+                </div>
+                <div style={{ whiteSpace: "nowrap" }}>
+                  <span style={{ fontWeight: 700 }}>R: </span>
+                  <span style={{ borderBottom: "1px solid #333", display: "inline-block", minWidth: 120, paddingLeft: 4, color: "#555", fontStyle: "italic" }}>{receipt.recibidoPor}</span>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
+        );
+
+        return printSize === "half" ? (
+          /* ── MODO MEDIA HOJA: 2 recibos por página (original + copia) ── */
+          <div id="printable-concrete-receipt"
+            className="fixed -left-[9999px] top-0 bg-white text-black print:static print:left-auto print:top-auto print:shadow-none"
+            style={{ width: 760 }}>
+            <div style={{ padding: "0.2in 0.25in" }}>
+              {receiptBody("ORIGINAL — CLIENTE")}
+            </div>
+            {/* Línea de corte */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", color: "#bbb", fontSize: 9 }}>
+              <div style={{ flex: 1, borderTop: "1.5px dashed #bbb" }} />
+              <span>✂</span>
+              <div style={{ flex: 1, borderTop: "1.5px dashed #bbb" }} />
+            </div>
+            <div style={{ padding: "0.2in 0.25in" }}>
+              {receiptBody("COPIA — EMPRESA")}
+            </div>
+          </div>
+        ) : (
+          /* ── MODO HOJA COMPLETA: 1 recibo por página (landscape) ── */
+          <div id="printable-concrete-receipt"
+            className="fixed -left-[9999px] top-0 bg-white text-black print:static print:left-auto print:top-auto print:shadow-none"
+            style={{ width: 980, padding: "0.3in 0.35in" }}>
+            {receiptBody()}
+          </div>
+        );
+      })()}
 
       {/* ── Delete confirm modal ──────────────────────────────────────────── */}
       {confirmDeleteId && (

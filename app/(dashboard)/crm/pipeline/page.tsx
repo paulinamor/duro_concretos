@@ -223,6 +223,12 @@ export default function CrmPipelinePage() {
   const totalGanado = cerradas.filter((o) => o.estado === "ganado").reduce((s, o) => s + o.valorEstimado, 0);
   const totalPerdido = cerradas.filter((o) => o.estado === "perdido").length;
 
+  function fmtMoney(n: number) {
+    if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+    if (n >= 1_000) return `$${Math.round(n / 1_000)}k`;
+    return `$${n.toLocaleString("es-MX")}`;
+  }
+
   async function handleSave(form: OppForm, existingId?: string, force = false) {
     if (!force && !existingId) {
       const normCliente = normalizeKey(form.cliente);
@@ -473,13 +479,48 @@ export default function CrmPipelinePage() {
         </PlantaRequired>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4">
-        <KPICard title="Valor pipeline" value={`$${Math.round(totalPipeline).toLocaleString()}`} icon={DollarSign} iconColor="text-[#CC2229]" />
-        <KPICard title="Pipeline ponderado" value={`$${Math.round(weightedPipeline).toLocaleString()}`} icon={TrendingUp} iconColor="text-green-400" />
-        <KPICard title="M3 estimados" value={`${totalM3.toLocaleString()} m3`} icon={Target} iconColor="text-blue-400" />
-        <KPICard title="En cierre" value={String(cierre)} icon={UsersRound} iconColor="text-orange-400" />
-        <KPICard title="Ganadas" value={`$${Math.round(totalGanado).toLocaleString()}`} icon={CheckCircle2} iconColor="text-emerald-400" />
-        <KPICard title="Perdidas" value={String(totalPerdido)} icon={XCircle} iconColor="text-red-400" />
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <KPICard
+          title="Valor pipeline"
+          value={fmtMoney(totalPipeline)}
+          subtitle={`$${Math.round(totalPipeline).toLocaleString("es-MX")}`}
+          icon={DollarSign}
+          iconColor="text-[#CC2229]"
+        />
+        <KPICard
+          title="Pipeline ponderado"
+          value={fmtMoney(weightedPipeline)}
+          subtitle={`$${Math.round(weightedPipeline).toLocaleString("es-MX")}`}
+          icon={TrendingUp}
+          iconColor="text-green-400"
+        />
+        <KPICard
+          title="M³ estimados"
+          value={`${totalM3.toLocaleString("es-MX")} m³`}
+          icon={Target}
+          iconColor="text-blue-400"
+        />
+        <KPICard
+          title="En cierre"
+          value={String(cierre)}
+          subtitle="oportunidades"
+          icon={UsersRound}
+          iconColor="text-orange-400"
+        />
+        <KPICard
+          title="Ganadas"
+          value={fmtMoney(totalGanado)}
+          subtitle={totalGanado > 0 ? `$${Math.round(totalGanado).toLocaleString("es-MX")}` : "Sin registros"}
+          icon={CheckCircle2}
+          iconColor="text-emerald-400"
+        />
+        <KPICard
+          title="Perdidas"
+          value={String(totalPerdido)}
+          subtitle="oportunidades"
+          icon={XCircle}
+          iconColor="text-red-400"
+        />
       </div>
 
       <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl p-4 flex flex-wrap gap-3 items-center">

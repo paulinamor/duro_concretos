@@ -83,7 +83,8 @@ const transporteItems = [
 ];
 
 const operacionesItems = [
-  { href: "/operaciones/inventario", icon: Package, label: "Inventarios" },
+  { href: "/operaciones/inventario", icon: Package,     label: "Inventarios" },
+  { href: "/operaciones/caja-chica", icon: CreditCard,  label: "Caja Chica" },
 ];
 
 const crmItems = [
