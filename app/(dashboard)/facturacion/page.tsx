@@ -298,12 +298,14 @@ function EmitirDrawer({
   const [pedidos, setPedidos]           = useState<PedidoProg[]>([]);
   const [pedidoSel, setPedidoSel]       = useState<PedidoProg | null>(null);
   const [pedidoQuery, setPedidoQuery]   = useState("");
+  const [clienteFinalSugerido, setClienteFinalSugerido] = useState<{ rfc: string; nombre: string } | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setPaso("form");
     setError(""); setFieldErrors({});
     setPedidoSel(null); setPedidoQuery("");
+    setClienteFinalSugerido(null);
     getCollectionDocs<EmisorFm>("emisoresFm")
       .then((docs) => setEmisoresFm(filterByPlanta(docs.filter((d) => d.activo !== false))))
       .catch(() => {});
@@ -340,8 +342,9 @@ function EmitirDrawer({
       return;
     }
     setRfcLookupLoading(true);
+    setClienteFinalSugerido(null);
     try {
-      const clientes = await getCollectionDocs<{ rfc?: string; razonSocial?: string; regimenFiscal?: string; cp?: string; email?: string; usoCfdi?: string }>(
+      const clientes = await getCollectionDocs<{ rfc?: string; razonSocial?: string; regimenFiscal?: string; cp?: string; email?: string; usoCfdi?: string; esContratista?: boolean; clienteFinalRfc?: string; clienteFinalNombre?: string }>(
         COLLECTIONS.clientes, [],
       );
       const match = clientes.find((c) => c.rfc?.toUpperCase() === clean);
@@ -351,6 +354,13 @@ function EmitirDrawer({
         if (match.cp)            setCp(match.cp);
         if (match.email)         setEmail(match.email);
         if (match.usoCfdi)       setUso(match.usoCfdi);
+        // Si es contratista y tiene cliente final registrado, sugerirlo
+        if (match.esContratista && match.clienteFinalRfc) {
+          setClienteFinalSugerido({
+            rfc: match.clienteFinalRfc,
+            nombre: match.clienteFinalNombre ?? "",
+          });
+        }
       }
     } catch { /* ignore */ } finally { setRfcLookupLoading(false); }
   }
@@ -589,7 +599,7 @@ function EmitirDrawer({
   return (
     <div className="fixed inset-0 z-50 flex">
       <div className="fixed inset-0 bg-black/60" onClick={onClose} />
-      <aside className="relative ml-auto flex h-full w-full max-w-2xl flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden">
+      <aside className="relative ml-auto flex h-full w-full max-w-2xl flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden" style={{ colorScheme: 'light' }}>
         {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4 sticky top-0 bg-white z-10">
           <div className="flex items-center gap-3">
@@ -775,7 +785,7 @@ function EmitirDrawer({
                   <div className="relative">
                     <input
                       value={rfc}
-                      onChange={(e) => { setRfc(e.target.value.toUpperCase()); setFieldErrors((p) => ({ ...p, rfc: "" })); }}
+                      onChange={(e) => { setRfc(e.target.value.toUpperCase()); setFieldErrors((p) => ({ ...p, rfc: "" })); setClienteFinalSugerido(null); }}
                       onBlur={(e) => lookupRfc(e.target.value)}
                       className={`${inputCls} uppercase font-mono pr-8 ${fieldErrors.rfc ? "border-red-400 ring-1 ring-red-200" : ""}`}
                       placeholder="XAXX010101000"
@@ -820,6 +830,31 @@ function EmitirDrawer({
                 <input value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} placeholder="cliente@empresa.com" type="email" />
               </Field>
             </div>
+
+            {/* Banner: contratista detectado — sugerir cliente final */}
+            {clienteFinalSugerido && (
+              <div className="mt-3 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                <AlertCircle size={15} className="text-amber-500 mt-0.5 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-amber-800">Este cliente es contratista</p>
+                  <p className="text-xs text-amber-600 mt-0.5">
+                    El CFDI puede facturarse a nombre del cliente final: <strong>{clienteFinalSugerido.nombre || clienteFinalSugerido.rfc}</strong>
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRfc(clienteFinalSugerido.rfc);
+                    if (clienteFinalSugerido.nombre) setNombre(clienteFinalSugerido.nombre);
+                    setClienteFinalSugerido(null);
+                    lookupRfc(clienteFinalSugerido.rfc);
+                  }}
+                  className="shrink-0 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-600 transition-colors cursor-pointer"
+                >
+                  Usar cliente final
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Conceptos */}

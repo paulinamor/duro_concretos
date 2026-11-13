@@ -82,11 +82,46 @@ body:not(.duro-theme-light) [class*="border-[#3A3A3A]"] {
   border-color: rgba(255, 255, 255, 0.1) !important;
 }
 
-body:not(.duro-theme-light) input,
-body:not(.duro-theme-light) select,
-body:not(.duro-theme-light) textarea {
+/* Inputs sin clase bg explícita → fondo oscuro */
+body:not(.duro-theme-light) input:not(.bg-white):not([class*="bg-["]),
+body:not(.duro-theme-light) select:not(.bg-white):not([class*="bg-["]),
+body:not(.duro-theme-light) textarea:not(.bg-white):not([class*="bg-["]) {
   background-color: #111318 !important;
-  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+/* Inputs con bg-white explícita → fondo blanco, modo claro */
+body:not(.duro-theme-light) input.bg-white,
+body:not(.duro-theme-light) select.bg-white,
+body:not(.duro-theme-light) textarea.bg-white {
+  background-color: #ffffff !important;
+  color: #111827 !important;
+  color-scheme: light !important;
+}
+
+body:not(.duro-theme-light) input.bg-white::placeholder,
+body:not(.duro-theme-light) textarea.bg-white::placeholder {
+  color: #9ca3af !important;
+}
+
+/* Inputs sin clase bg dentro de contenedor blanco → fondo blanco */
+body:not(.duro-theme-light) .bg-white input:not([class*="bg-["]),
+body:not(.duro-theme-light) .bg-white select:not([class*="bg-["]),
+body:not(.duro-theme-light) .bg-white textarea:not([class*="bg-["]) {
+  background-color: #ffffff !important;
+  color: #111827 !important;
+  color-scheme: light !important;
+}
+
+body:not(.duro-theme-light) .bg-white input:not([class*="bg-["])::placeholder,
+body:not(.duro-theme-light) .bg-white textarea:not([class*="bg-["])::placeholder {
+  color: #9ca3af !important;
+}
+
+/* Ícono de calendario en inputs blancos — no invertir */
+body:not(.duro-theme-light) input.bg-white::-webkit-calendar-picker-indicator,
+body:not(.duro-theme-light) .bg-white input::-webkit-calendar-picker-indicator {
+  filter: none !important;
+  opacity: 0.6;
 }
 
 table th,
@@ -152,9 +187,19 @@ body.duro-theme-light [class*="border-white/10"] {
   border-color: #E2E8F0 !important;
 }
 
-body.duro-theme-light main [class*="text-white"]:not([class*="bg-[#CC2229]"]):not([class*="bg-[#991A1E]"]) {
+body.duro-theme-light main [class*="text-white"]:not([class*="bg-[#CC2229]"]):not([class*="bg-[#991A1E]"]):not(.duro-hero):not(.duro-hero *) {
   color: #111827 !important;
 }
+
+/* Hero section keeps white text even in light mode (dark background) */
+body.duro-theme-light main .duro-hero,
+body.duro-theme-light main .duro-hero [class*="text-white"] {
+  color: #ffffff !important;
+}
+body.duro-theme-light main .duro-hero [class*="text-white/50"] { color: rgba(255,255,255,0.50) !important; }
+body.duro-theme-light main .duro-hero [class*="text-white/60"] { color: rgba(255,255,255,0.60) !important; }
+body.duro-theme-light main .duro-hero [class*="text-white/70"] { color: rgba(255,255,255,0.70) !important; }
+body.duro-theme-light main .duro-hero [class*="text-white/80"] { color: rgba(255,255,255,0.80) !important; }
 
 body.duro-theme-light main [class*="text-gray-100"],
 body.duro-theme-light main [class*="text-gray-200"] {

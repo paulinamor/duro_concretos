@@ -223,7 +223,31 @@ export const COLLECTIONS = {
   auditLog:  "auditLog",
   cajasConfig:          "cajasConfig",
   cajasDistribuciones:  "cajasDistribuciones",
+  traspasos:            "traspasos",
+  tickets:              "tickets",
 } as const;
+
+export type TicketTipo     = "bug" | "mejora" | "pregunta" | "otro";
+export type TicketPrioridad = "baja" | "media" | "alta" | "crítica";
+export type TicketStatus   = "abierto" | "en-proceso" | "resuelto" | "cerrado";
+
+export interface Ticket {
+  id?: string;
+  tipo: TicketTipo;
+  titulo: string;
+  descripcion: string;
+  prioridad: TicketPrioridad;
+  status: TicketStatus;
+  autorEmail: string;
+  autorNombre: string;
+  planta?: string;
+  ruta?: string;
+  creadoEn: string;
+  actualizadoEn?: string;
+  respuesta?: string;
+  resueltoPor?: string;
+  resueltaEn?: string;
+}
 
 export { where, orderBy, limit, startAfter, type QueryConstraint };
 

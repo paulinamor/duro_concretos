@@ -246,14 +246,16 @@ export default function RecibosConcretoPage() {
     setReceipt(createReceipt([]));
     setIsLoadedReceipt(false);
     setShowForm(true);
-    setAbonoReceiptId(null); setAbonoMonto("");
+    setAbonoReceiptId(null);
+    setAbonoMonto("");
   }
 
   function resetToNew() {
     setReceipt(createReceipt([]));
     setIsLoadedReceipt(false);
     setShowForm(false);
-    setAbonoReceiptId(null); setAbonoMonto("");
+    setAbonoReceiptId(null);
+    setAbonoMonto("");
   }
 
   function receiptError(): string | null {
@@ -317,6 +319,25 @@ export default function RecibosConcretoPage() {
           const { resta: nuevaResta } = calculateConcreteReceiptTotal({ ...target, abonos: updatedAbonos });
           const { id: _tid, planta: _tp, ...targetSaveData } = target as ConcreteReceipt & { planta?: string };
           await upsertDocument(COLLECTIONS.remisiones, abonoReceiptId, withPlantaTag({ ...targetSaveData, abonos: updatedAbonos, resta: nuevaResta }));
+        }
+      }
+    }
+
+    // Apply abono to a previous receipt if the user registered one
+    if (!isLoadedReceipt && abonoReceiptId) {
+      const montoAbono = parseFloat(abonoMonto);
+      if (montoAbono > 0) {
+        const target = savedReceipts.find((r) => r.id === abonoReceiptId);
+        if (target) {
+          const nuevoAbono = { fecha: nextReceipt.fecha, monto: montoAbono, reciboOrigenId: nextReceipt.id };
+          const updatedAbonos = [...(target.abonos ?? []), nuevoAbono];
+          const { resta: nuevaResta } = calculateConcreteReceiptTotal({ ...target, abonos: updatedAbonos });
+          const { id: _tid, planta: _tp, ...targetSaveData } = target as ConcreteReceipt & { planta?: string };
+          await upsertDocument(COLLECTIONS.remisiones, abonoReceiptId, withPlantaTag({
+            ...targetSaveData,
+            abonos: updatedAbonos,
+            resta: nuevaResta,
+          }));
         }
       }
     }
@@ -640,13 +661,17 @@ export default function RecibosConcretoPage() {
                   </div>
                 </div>
                 <div>
-                  <label className={lbl}>Cliente</label>
-                  <AppSelect value={receipt.cliente} onChange={(e) => {
-                    const v = e.target.value;
-                    updateReceipt({ cliente: v, direccionObra: v !== receipt.cliente ? "" : receipt.direccionObra });
-                    setObraQuery(""); setObraOpen(false);
-                    if (v !== receipt.cliente) { setAbonoReceiptId(null); setAbonoMonto(""); }
-                  }}>
+                  <label className={lbl}>Nombre del cliente</label>
+                  <AppSelect
+                    value={receipt.cliente}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      updateReceipt({ cliente: v, direccionObra: v !== receipt.cliente ? "" : receipt.direccionObra });
+                      setObraQuery("");
+                      setObraOpen(false);
+                      if (v !== receipt.cliente) { setAbonoReceiptId(null); setAbonoMonto(""); }
+                    }}
+                  >
                     <option value="">Seleccionar cliente…</option>
                     {clienteSuggestions.map((c) => <option key={c} value={c}>{c}</option>)}
                     {receipt.cliente && !clienteSuggestions.includes(receipt.cliente) && <option value={receipt.cliente}>{receipt.cliente}</option>}

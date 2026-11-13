@@ -429,7 +429,7 @@ function PedidoDrawer({
   return (
     <div className="fixed inset-0 z-[100] flex">
       <button className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative ml-auto flex h-full w-full max-w-md flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden">
+      <div className="relative ml-auto flex h-full w-full max-w-md flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden" style={{ colorScheme: 'light' }}>
 
         <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-4 shrink-0">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 text-amber-600">

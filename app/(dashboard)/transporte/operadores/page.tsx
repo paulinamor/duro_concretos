@@ -135,7 +135,7 @@ function EmpleadoProfile({ op, onClose, onEdit }: { op: Operador; onClose: () =>
   return (
     <div className="fixed inset-0 z-[100] flex">
       <button className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative ml-auto flex h-full w-full max-w-lg flex-col bg-white shadow-2xl overflow-hidden">
+      <div className="relative ml-auto flex h-full w-full max-w-lg flex-col bg-white shadow-2xl overflow-hidden" style={{ colorScheme: 'light' }}>
 
         {/* Header con foto */}
         <div className="shrink-0 bg-slate-900 px-6 pt-6 pb-5">
@@ -381,7 +381,7 @@ function EmpleadoDrawer({ open, editing, onClose, onSave, puestosList }: {
   return (
     <div className="fixed inset-0 z-[100] flex">
       <button className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative ml-auto flex h-full w-full max-w-lg flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden">
+      <div className="relative ml-auto flex h-full w-full max-w-lg flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden" style={{ colorScheme: 'light' }}>
 
         {/* Header */}
         <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-4 shrink-0">
@@ -923,7 +923,7 @@ export default function EmpleadosPage() {
       {/* Catálogo puestos */}
       {showPuestosModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm flex flex-col">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm flex flex-col" style={{ colorScheme: 'light' }}>
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
               <h2 className="text-sm font-semibold text-gray-900">Catálogo de puestos</h2>
               <button onClick={() => setShowPuestosModal(false)} className="text-gray-400 hover:text-gray-600 cursor-pointer"><X size={16} /></button>

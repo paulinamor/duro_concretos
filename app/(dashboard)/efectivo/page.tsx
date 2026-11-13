@@ -191,7 +191,7 @@ function FormDrawer({ open, onClose, onSave, initial, nextFolio, clientesList }:
   const set = (k: keyof Omit<FormState, "entregado">, v: string) => setForm((p) => ({ ...p, [k]: v }));
 
   const lbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5";
-  const inp = "w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-900 text-sm placeholder-gray-400 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-all";
+  const inp = "w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-xl px-3.5 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-all";
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -323,7 +323,7 @@ function SalidaDrawer({ open, onClose, onSave, initial, nextFolio }: {
   const letra = monto > 0 ? numeroEnLetras(monto) : "";
 
   const lbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5";
-  const inp = "w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-900 text-sm placeholder-gray-400 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-all";
+  const inp = "w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-xl px-3.5 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-all";
   const sel = `${inp} cursor-pointer`;
 
   async function handleSave(e: React.FormEvent) {
