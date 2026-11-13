@@ -332,6 +332,13 @@ function EmitirDrawer({
   async function lookupRfc(rfcVal: string) {
     const clean = rfcVal.trim().toUpperCase();
     if (clean.length < 12) return;
+    // SAT: XAXX010101000 (Público en General) siempre requiere régimen 616 + UsoCFDI S01
+    if (clean === "XAXX010101000") {
+      setRegimen("616");
+      setUso("S01");
+      if (!nombre) setNombre("PUBLICO EN GENERAL");
+      return;
+    }
     setRfcLookupLoading(true);
     try {
       const clientes = await getCollectionDocs<{ rfc?: string; razonSocial?: string; regimenFiscal?: string; cp?: string; email?: string; usoCfdi?: string }>(

@@ -7,6 +7,15 @@
 
 ## Noviembre 2026
 
+### 2026-11-13 (sesión 12) — Bug Permisos OC
+
+#### 🐛 Bug — Permisos OC multiplicaba por m³ cuando debe ser cargo fijo
+- **Archivo:** `app/(dashboard)/ventas/programacion/page.tsx`
+- **Descripción:** El campo "Permisos OC" estaba incluido en el factor `txm3` que se multiplica por la cantidad de m³, generando totales incorrectos. Se movió a la suma de cargos fijos (junto con `tuberiaExtra` y `tiempoExtraCosto`). También se actualizó el label de "$/m³" a "$" para reflejar que es un cargo fijo.
+- **Horas estimadas:** 0.3
+
+---
+
 ### 2026-11-12 (sesión 10) — Pipeline CRM y Nómina
 
 #### ✨ Mejora — Pipeline CRM: KPI cards rediseñados (grid 3 columnas + valores abreviados)

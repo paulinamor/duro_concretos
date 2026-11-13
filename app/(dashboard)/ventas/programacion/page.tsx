@@ -972,7 +972,7 @@ function PedidoDrawer({
                 </div>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Permisos OC ($/m³)</label>
+                <label className="block text-xs text-gray-500 mb-1">Permisos OC ($)</label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
                   <input type="number" min="0" step="0.01" value={form.permisosOC}
@@ -1308,11 +1308,12 @@ export default function VentasProgramacionPage() {
     const permisosOC = form.permisosOC ? parseFloat(form.permisosOC) : null;
     const tiempoExtraCosto = form.tiempoExtraCosto ? parseFloat(form.tiempoExtraCosto) : null;
 
-    // Calculate total: (precioM3 + precioM3Bomba + kiloFibra + m3Imper + permisosOC) * m3 + tuberiaExtra + tiempoExtraCosto
+    // Calculate total: (precioM3 + precioM3Bomba + kiloFibra + m3Imper) * m3 + permisosOC + tuberiaExtra + tiempoExtraCosto
+    // permisosOC es cargo fijo (NO se multiplica por m³)
     function calcTotal(): number | null {
       if (!m3 || !precioM3) return null;
-      const txm3 = (precioM3 ?? 0) + (precioM3Bomba ?? 0) + (kiloFibra ?? 0) + (m3Imper ?? 0) + (permisosOC ?? 0);
-      const t = txm3 * m3 + (tuberiaExtra ?? 0) + (tiempoExtraCosto ?? 0);
+      const txm3 = (precioM3 ?? 0) + (precioM3Bomba ?? 0) + (kiloFibra ?? 0) + (m3Imper ?? 0);
+      const t = txm3 * m3 + (permisosOC ?? 0) + (tuberiaExtra ?? 0) + (tiempoExtraCosto ?? 0);
       return t > 0 ? t : null;
     }
     if (existingId) {

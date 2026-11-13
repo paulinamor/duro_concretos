@@ -398,6 +398,11 @@ export function buildCfdiPayload(input: EmitirFacturaInput): FmCfdiPayload {
   });
 
   const isPublicoGeneral = input.clienteRfc === "XAXX010101000";
+  // SAT: XAXX010101000 siempre requiere régimen 616 y UsoCFDI S01
+  const receptorRegimen = isPublicoGeneral ? "616" : input.clienteRegimenFiscal;
+  const receptorUsoCfdi = isPublicoGeneral ? "S01" : input.usoCfdi;
+  // SAT: CFDI Traslado no admite PaymentMethod ni PaymentForm
+  const isTraslado = tipo === "T";
   const now = new Date();
 
   return {
@@ -406,18 +411,21 @@ export function buildCfdiPayload(input: EmitirFacturaInput): FmCfdiPayload {
     Date:           fecha,
     CfdiType:       tipo,
     ExpeditionPlace: input.emisorCp,
-    PaymentForm:    input.metodoPago === "PPD" ? "99" : input.formaPago,
-    PaymentMethod:  input.metodoPago,
+    // Traslado no lleva PaymentForm/PaymentMethod
+    ...(!isTraslado ? {
+      PaymentForm:   input.metodoPago === "PPD" ? "99" : input.formaPago,
+      PaymentMethod: input.metodoPago,
+    } : {}),
     Currency:       input.moneda,
     CurrencyExchangeRate: input.moneda !== "MXN" ? input.tipoCambio : undefined,
     Issuer:         emisor,
     Receiver: {
       Rfc:          input.clienteRfc,
       Name:         input.clienteNombre,
-      CfdiUse:      input.usoCfdi,
+      CfdiUse:      receptorUsoCfdi,
       Email:        input.clienteEmail,
       TaxZipCode:   input.clienteCp,
-      FiscalRegime: input.clienteRegimenFiscal,
+      FiscalRegime: receptorRegimen,
     },
     // SAT requiere GlobalInformation cuando el receptor es XAXX010101000 (Público en General)
     ...(isPublicoGeneral ? {
