@@ -567,7 +567,7 @@ export default function CrmPipelinePage() {
         editing={editingOpp}
       />
 
-      <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">
+      <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl">
         {loading ? (
           <ModuleLoading label="Cargando pipeline…" />
         ) : showClosed ? (
@@ -599,7 +599,7 @@ export default function CrmPipelinePage() {
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-1 xl:grid-cols-5 gap-4 p-4">
+          <div className="flex gap-4 p-4 overflow-x-auto pb-6">
         {pipelineStages.map((stage: PipelineStage) => {
           const stageItems = filtered.filter((opportunity) => opportunity.etapa === stage);
           return (
@@ -608,7 +608,7 @@ export default function CrmPipelinePage() {
               onDragOver={(event) => handleDragOver(event, stage)}
               onDragLeave={() => setDragOverStage((current) => current === stage ? null : current)}
               onDrop={() => handleDrop(stage)}
-              className={`bg-[#242424] border rounded-xl min-h-[420px] transition-colors ${
+              className={`flex-none w-72 bg-[#242424] border rounded-xl min-h-[420px] transition-colors ${
                 dragOverStage === stage
                   ? "border-[#CC2229] bg-[#CC2229]/10"
                   : "border-[#3A3A3A]"

@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity, AlertCircle, BadgeCheck, BarChart3, Building2, CalendarDays, CheckCircle2, ChevronDown,
-  CloudDownload, Download, Eye, EyeOff, FileDown, FileKey2, FileText, Loader2,
+  ClipboardList, CloudDownload, Download, Eye, EyeOff, FileDown, FileKey2, FileText, Loader2,
   Plus, Receipt, RefreshCw, Search, Send, ShieldCheck, Trash2, Upload, User, X,
 } from "lucide-react";
 import AppSelect from "@/components/AppSelect";
@@ -201,6 +201,19 @@ interface CfdiEmitido {
   clienteCp?:    string;
 }
 
+interface PedidoProg {
+  id?: string;
+  folio?: string;
+  dia: string;
+  cliente: string;
+  m3Totales: number | null;
+  resistencia: string;
+  precioM3: number | null;
+  total: number | null;
+  nombreObra?: string;
+  direccion?: string;
+}
+
 interface DescargaSAT {
   id:          string;
   requestId:   string;
@@ -282,11 +295,15 @@ function EmitirDrawer({
   const [cfdiTimbrado, setCfdiTimbrado] = useState<CfdiEmitido | null>(null);
   const [enviandoCxc, setEnviandoCxc] = useState(false);
   const [productosDB, setProductosDB] = useState<{ id: string; codigo: string; descripcion: string; claveProdServ?: string; claveUnidad?: string; tasaIVA?: number; precio?: number }[]>([]);
+  const [pedidos, setPedidos]           = useState<PedidoProg[]>([]);
+  const [pedidoSel, setPedidoSel]       = useState<PedidoProg | null>(null);
+  const [pedidoQuery, setPedidoQuery]   = useState("");
 
   useEffect(() => {
     if (!open) return;
     setPaso("form");
     setError(""); setFieldErrors({});
+    setPedidoSel(null); setPedidoQuery("");
     getCollectionDocs<EmisorFm>("emisoresFm")
       .then((docs) => setEmisoresFm(filterByPlanta(docs.filter((d) => d.activo !== false))))
       .catch(() => {});
@@ -300,6 +317,14 @@ function EmitirDrawer({
           const last = Number(docs[0].folio);
           if (!isNaN(last) && last > 0) setFolio(String(last + 1));
         }
+      })
+      .catch(() => {});
+    // Cargar pedidos de programación (últimos 90 días)
+    getCollectionDocs<PedidoProg>(COLLECTIONS.programaciones)
+      .then((docs) => {
+        const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        const recent = docs.filter(p => (p.dia ?? "") >= cutoff).sort((a, b) => b.dia.localeCompare(a.dia));
+        setPedidos(recent);
       })
       .catch(() => {});
   }, [open]);
@@ -322,6 +347,58 @@ function EmitirDrawer({
       }
     } catch { /* ignore */ } finally { setRfcLookupLoading(false); }
   }
+
+  async function handleSeleccionarPedido(p: PedidoProg) {
+    setPedidoSel(p);
+    setPedidoQuery("");
+    // Auto-fill nombre receptor
+    setNombre(p.cliente);
+    // Auto-fill concepto con datos del pedido
+    const desc = [
+      p.m3Totales != null ? `${p.m3Totales}m³` : "",
+      p.resistencia,
+      p.nombreObra ? `· ${p.nombreObra}` : "",
+    ].filter(Boolean).join(" ") || "Suministro de concreto";
+    setConceptos([{
+      descripcion:   desc,
+      cantidad:      p.m3Totales ?? 1,
+      precio:        p.precioM3  ?? 0,
+      claveProducto: "30161801",
+      claveUnidad:   "MTQ",
+      tasaIVA:       0.16,
+    }]);
+    // Buscar datos fiscales del cliente por nombre
+    setRfcLookupLoading(true);
+    try {
+      const all = await getCollectionDocs<{
+        razonSocial?: string; nombre?: string; rfc?: string;
+        regimenFiscal?: string; cp?: string; email?: string; usoCfdi?: string;
+      }>(COLLECTIONS.clientes, []);
+      const pedCliente = p.cliente.toLowerCase().trim();
+      const cl = all.find(c => {
+        const name = (c.razonSocial ?? c.nombre ?? "").toLowerCase().trim();
+        return name && (name.includes(pedCliente) || pedCliente.includes(name));
+      });
+      if (cl) {
+        if (cl.rfc)           setRfc(cl.rfc.toUpperCase().trim());
+        if (cl.regimenFiscal) setRegimen(cl.regimenFiscal);
+        if (cl.cp)            setCp(cl.cp.trim());
+        if (cl.email)         setEmail(cl.email.trim());
+        if (cl.usoCfdi)       setUso(cl.usoCfdi);
+      }
+    } catch { /* ignorar */ } finally { setRfcLookupLoading(false); }
+  }
+
+  const pedidosFiltrados = useMemo(() => {
+    const q = pedidoQuery.trim().toLowerCase();
+    if (!q) return pedidos;
+    return pedidos.filter(p =>
+      (p.cliente ?? "").toLowerCase().includes(q) ||
+      (p.folio   ?? "").toLowerCase().includes(q) ||
+      (p.nombreObra ?? "").toLowerCase().includes(q) ||
+      (p.dia     ?? "").includes(q),
+    );
+  }, [pedidos, pedidoQuery]);
 
   const subtotal  = conceptos.reduce((s, c) => s + c.cantidad * c.precio, 0);
   const totalIVA  = conceptos.reduce((s, c) => s + c.cantidad * c.precio * c.tasaIVA, 0);
@@ -607,6 +684,81 @@ function EmitirDrawer({
             )}
           </div>
 
+          {/* ── Pedido de programación ──────────────────────────────────── */}
+          <div className="rounded-xl border border-[#CC2229]/30 bg-[#CC2229]/5 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <ClipboardList size={15} className="text-[#CC2229]" />
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-700">Enlazar pedido de programación</p>
+              </div>
+              {pedidoSel && (
+                <button onClick={() => { setPedidoSel(null); setNombre(""); }}
+                  className="text-xs text-gray-400 hover:text-red-500 transition-colors cursor-pointer">
+                  Desvincular
+                </button>
+              )}
+            </div>
+
+            {!pedidoSel ? (
+              <>
+                <div className="relative mb-2">
+                  <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    value={pedidoQuery}
+                    onChange={e => setPedidoQuery(e.target.value)}
+                    placeholder="Buscar por cliente, obra o fecha…"
+                    className={`${inputCls} pl-9 text-sm`}
+                  />
+                </div>
+                {pedidoQuery.trim() && (
+                  <div className="rounded-lg border border-gray-200 bg-white overflow-hidden max-h-52 overflow-y-auto">
+                    {pedidosFiltrados.length === 0 ? (
+                      <p className="text-center text-gray-400 text-xs py-4">Sin resultados para &ldquo;{pedidoQuery}&rdquo;</p>
+                    ) : pedidosFiltrados.slice(0, 20).map(p => (
+                      <button
+                        key={p.id ?? (p.dia + p.cliente)}
+                        onClick={() => handleSeleccionarPedido(p)}
+                        className="w-full text-left px-3.5 py-2.5 hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-0 cursor-pointer"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <p className="text-gray-900 text-sm font-medium leading-tight">{p.cliente}</p>
+                            <p className="text-gray-400 text-xs mt-0.5">{p.dia}{p.nombreObra ? ` · ${p.nombreObra}` : ""}</p>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className="text-gray-600 text-xs font-mono">{p.m3Totales ?? "?"}m³ {p.resistencia}</p>
+                            {p.total != null && <p className="text-[#CC2229] text-xs font-semibold">{fmt(p.total)}</p>}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {!pedidoQuery.trim() && (
+                  <p className="text-gray-400 text-xs text-center py-1.5">Escribe para buscar entre los últimos 90 días de programación</p>
+                )}
+              </>
+            ) : (
+              <div className="bg-white rounded-xl border border-gray-200 p-3.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-gray-900 font-semibold text-sm leading-tight">{pedidoSel.cliente}</p>
+                    <p className="text-gray-500 text-xs mt-0.5">{pedidoSel.dia}{pedidoSel.nombreObra ? ` · ${pedidoSel.nombreObra}` : ""}</p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-gray-600 text-xs font-mono">{pedidoSel.m3Totales ?? "?"}m³ {pedidoSel.resistencia}</p>
+                    {pedidoSel.total != null && <p className="text-[#CC2229] font-semibold text-sm">{fmt(pedidoSel.total)}</p>}
+                  </div>
+                </div>
+                {pedidoSel.folio && <p className="text-gray-400 text-xs mt-1.5">Folio: {pedidoSel.folio}</p>}
+                {pedidoSel.direccion && <p className="text-gray-400 text-xs mt-0.5 truncate">Obra: {pedidoSel.direccion}</p>}
+                <div className="mt-2 flex items-center gap-1.5 text-emerald-600 text-xs font-medium">
+                  <CheckCircle2 size={12} /> Concepto y datos del receptor precargados
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Cliente */}
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-3">Datos del receptor</p>
@@ -792,8 +944,11 @@ function EmitirDrawer({
           </div>
 
           {error && (
-            <div className="flex items-center gap-2 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">
-              <AlertCircle size={15} />{error}
+            <div className="rounded-xl bg-red-50 border border-red-200 p-4">
+              <div className="flex items-center gap-2 text-red-700 font-semibold text-sm mb-1">
+                <AlertCircle size={15} /> Error al validar el comprobante
+              </div>
+              <p className="text-red-600 text-sm whitespace-pre-wrap break-words">{error}</p>
             </div>
           )}
         </div>
@@ -883,8 +1038,12 @@ function EmitirDrawer({
           </div>
 
           {error && (
-            <div className="flex items-center gap-2 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">
-              <AlertCircle size={15} />{error}
+            <div className="rounded-xl bg-red-50 border border-red-200 p-4">
+              <div className="flex items-center gap-2 text-red-700 font-semibold text-sm mb-1">
+                <AlertCircle size={15} /> Error al timbrar
+              </div>
+              <p className="text-red-600 text-sm whitespace-pre-wrap break-words">{error}</p>
+              <p className="text-red-400 text-xs mt-2">Verifica los datos, corrige y vuelve a intentarlo. Si el error menciona un campo específico, ajústalo en el paso anterior.</p>
             </div>
           )}
         </div>

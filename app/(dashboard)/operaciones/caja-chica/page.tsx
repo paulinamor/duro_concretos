@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertTriangle, ArrowRight, CheckCircle2, Clock, Download,
-  Edit2, FileText, Plus, RefreshCw, Search, Settings,
+  AlertTriangle, ArrowRight, Camera, CheckCircle2, Clock, Download,
+  Edit2, FileText, Loader2, Plus, Receipt, RefreshCw, Search, Settings,
   ShieldCheck, Trash2, Wallet, X, XCircle,
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
@@ -57,6 +57,7 @@ interface GastoCajaChica {
   autorizadoPor: string;
   estado: EstadoGasto;
   cajaId?: string;
+  fotoBase64?: string;
   // Rastreo completo
   creadoEn: string;
   aprobadoEn?: string;
@@ -64,6 +65,18 @@ interface GastoCajaChica {
   rechazadoEn?: string;
   rechazadoPor?: string;
   motivoRechazo?: string;
+}
+
+interface GastoFormData {
+  fecha: string;
+  monto: string;
+  entrega: string;
+  descripcion: string;
+  categoria: string;
+  autoriza: string;
+  noTicket: string;
+  soporte: string;
+  foto: string;
 }
 
 interface ReciboEfectivo  { importe: number | null; planta?: string; origenConcreto?: boolean; entregado: boolean; }
@@ -80,6 +93,181 @@ function isoToDisplay(iso: string) { return iso.split("-").reverse().join("/"); 
 function displayToIso(display: string) { return display.split("/").reverse().join("-"); }
 
 function isoNow() { return new Date().toISOString(); }
+
+function comprimirImagen(file: File, maxDim = 1200, quality = 0.72): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height, 1));
+      const canvas = document.createElement("canvas");
+      canvas.width  = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Error al cargar imagen")); };
+    img.src = url;
+  });
+}
+
+function GastoDrawer({ open, onClose, onSave, hoy }: {
+  open: boolean;
+  onClose: () => void;
+  onSave: (data: GastoFormData) => Promise<void>;
+  hoy: string;
+}) {
+  const [fecha, setFecha]       = useState(hoy);
+  const [monto, setMonto]       = useState("");
+  const [entrega, setEntrega]   = useState("");
+  const [descripcion, setDesc]  = useState("");
+  const [categoria, setCat]     = useState("Consumibles");
+  const [autoriza, setAutoriza] = useState("");
+  const [noTicket, setTicket]   = useState("S/N");
+  const [soporte, setSoporte]   = useState("SI");
+  const [foto, setFoto]         = useState("");
+  const [fotoErr, setFotoErr]   = useState("");
+  const [saving, setSaving]     = useState(false);
+  const fileRef                 = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setFecha(hoy); setMonto(""); setEntrega(""); setDesc("");
+    setCat("Consumibles"); setAutoriza(""); setTicket("S/N");
+    setSoporte("SI"); setFoto(""); setFotoErr(""); setSaving(false);
+  }, [open, hoy]);
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFotoErr("");
+    try { setFoto(await comprimirImagen(file)); }
+    catch { setFotoErr("Error al procesar imagen. Intenta de nuevo."); }
+    e.target.value = "";
+  }
+
+  async function handleGuardar() {
+    if (!foto)                     { setFotoErr("La foto del ticket es obligatoria"); return; }
+    if (!monto || Number(monto) <= 0) return;
+    setSaving(true);
+    try { await onSave({ fecha, monto, entrega, descripcion, categoria, autoriza, noTicket, soporte, foto }); }
+    finally { setSaving(false); }
+  }
+
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end sm:flex-row sm:justify-end">
+      <div className="fixed inset-0 bg-black/60" onClick={onClose} />
+      <aside className="relative w-full sm:w-[480px] max-w-full bg-white flex flex-col shadow-2xl sm:border-l border-t border-gray-200 rounded-t-2xl sm:rounded-none max-h-[92svh] sm:max-h-full sm:h-full overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-white">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#CC2229]/10 text-[#CC2229]"><Receipt size={17} /></div>
+            <div>
+              <h2 className="text-gray-900 font-semibold text-base leading-tight">Registrar gasto</h2>
+              <p className="text-[10px] text-gray-400 mt-0.5">Foto del ticket obligatoria</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors cursor-pointer"><X size={18} /></button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-5">
+          {/* Foto del ticket — primero para que sea lo más fácil en celular */}
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-2">
+              Foto del ticket <span className="text-[#CC2229]">*</span>
+            </p>
+            {foto ? (
+              <div className="relative rounded-xl overflow-hidden border border-gray-200">
+                <img src={foto} alt="Ticket" className="w-full max-h-56 object-contain bg-gray-50" />
+                <button onClick={() => { setFoto(""); setTimeout(() => fileRef.current?.click(), 50); }}
+                  className="absolute bottom-2 right-2 bg-white/90 backdrop-blur-sm text-gray-700 text-xs px-3 py-1.5 rounded-lg border border-gray-200 shadow flex items-center gap-1.5 cursor-pointer hover:bg-gray-50 transition-colors">
+                  <Camera size={12} /> Cambiar foto
+                </button>
+              </div>
+            ) : (
+              <button type="button" onClick={() => fileRef.current?.click()}
+                className={`w-full flex flex-col items-center justify-center gap-3 py-9 rounded-xl border-2 border-dashed transition-colors cursor-pointer ${
+                  fotoErr ? "border-red-400 bg-red-50" : "border-gray-300 hover:border-[#CC2229] hover:bg-gray-50"
+                }`}>
+                <Camera size={30} className={fotoErr ? "text-red-400" : "text-gray-300"} />
+                <div className="text-center">
+                  <p className={`font-semibold text-sm ${fotoErr ? "text-red-500" : "text-gray-600"}`}>{fotoErr || "Tomar foto del ticket"}</p>
+                  <p className="text-gray-400 text-xs mt-0.5">Se abrirá la cámara de tu celular</p>
+                </div>
+              </button>
+            )}
+            <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFile} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5">Fecha</label>
+              <input type="date" value={fecha} onChange={e => setFecha(e.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-3.5 py-3 text-sm text-gray-900 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5">Monto ($) *</label>
+              <input type="number" min="0.01" step="0.01" placeholder="0.00" value={monto} onChange={e => setMonto(e.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-3.5 py-3 text-sm text-gray-900 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors" />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5">Descripción *</label>
+            <input type="text" placeholder="¿En qué se gastó?" value={descripcion} onChange={e => setDesc(e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-3.5 py-3 text-sm text-gray-900 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors" />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5">Entrega a</label>
+            <input type="text" placeholder="Nombre de quien recibe el efectivo" value={entrega} onChange={e => setEntrega(e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-3.5 py-3 text-sm text-gray-900 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors" />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5">Categoría</label>
+            <AppSelect value={categoria} onChange={e => setCat(e.target.value)}>
+              {CATEGORIAS.map(c => <option key={c}>{c}</option>)}
+            </AppSelect>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5">No. Ticket</label>
+              <input type="text" placeholder="S/N" value={noTicket} onChange={e => setTicket(e.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-3.5 py-3 text-sm text-gray-900 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5">¿Tiene soporte?</label>
+              <AppSelect value={soporte} onChange={e => setSoporte(e.target.value)}>
+                <option value="SI">SI</option>
+                <option value="NO">NO</option>
+              </AppSelect>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5">Autoriza</label>
+            <input type="text" placeholder="Nombre de quien autoriza" value={autoriza} onChange={e => setAutoriza(e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-3.5 py-3 text-sm text-gray-900 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors" />
+          </div>
+        </div>
+
+        <div className="border-t border-gray-100 px-5 py-4 flex gap-3 bg-white">
+          <button onClick={onClose}
+            className="flex-1 py-3.5 text-sm text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors font-medium cursor-pointer">
+            Cancelar
+          </button>
+          <button onClick={handleGuardar} disabled={saving}
+            className="flex-1 py-3.5 text-sm bg-[#CC2229] hover:bg-[#991A1E] text-white rounded-xl transition-colors font-semibold flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer">
+            {saving ? <><Loader2 size={14} className="animate-spin" /> Guardando…</> : <>Registrar gasto</>}
+          </button>
+        </div>
+      </aside>
+    </div>
+  );
+}
 
 function folioSecuencial(caja: CajaChicaConfig | undefined, gastosDeCaja: GastoCajaChica[]): string {
   const prefix = (caja?.nombre ?? "CC").slice(0, 3).toUpperCase().replace(/\s/g, "");
@@ -138,6 +326,7 @@ export default function CajaChicaPage() {
   const [duplicateWarn, setDuplicateWarn]     = useState<{
     field: string; value: string; detail?: string; proceed: () => void;
   } | null>(null);
+  const [fotoModal, setFotoModal]             = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -284,23 +473,23 @@ export default function CajaChicaPage() {
     }));
   }
 
-  async function handleSaveGasto(values: Record<string, string>, force = false) {
+  async function handleSaveGasto(data: GastoFormData, force = false) {
     const id      = Date.now().toString();
-    const rawDate = values.Fecha || todayCST().slice(0, 10);
+    const rawDate = data.fecha || todayCST().slice(0, 10);
     const fecha   = isoToDisplay(rawDate);
-    const monto   = Number(values["Monto ($)"] || 0);
+    const monto   = Number(data.monto || 0);
 
     if (!force) {
-      const desc = normalizeKey(values.Descripción || "");
+      const desc = normalizeKey(data.descripcion || "");
       const dup  = cajaGastos.find(g =>
         g.fecha === fecha && normalizeKey(g.descripcion) === desc && g.monto === monto,
       );
       if (dup) {
         setDuplicateWarn({
           field: "Descripción + Fecha + Monto",
-          value: `${values.Descripción} — ${fecha} — $${monto.toLocaleString("es-MX")}`,
+          value: `${data.descripcion} — ${fecha} — $${monto.toLocaleString("es-MX")}`,
           detail: `Folio ${dup.folio}`,
-          proceed: () => { setDuplicateWarn(null); void handleSaveGasto(values, true); },
+          proceed: () => { setDuplicateWarn(null); void handleSaveGasto(data, true); },
         });
         return;
       }
@@ -310,16 +499,17 @@ export default function CajaChicaPage() {
     const newGasto: GastoCajaChica = {
       folio,
       fecha,
-      descripcion:       values.Descripción?.trim()   || "",
-      categoria:         values.Categoría              || "Consumibles",
+      descripcion:       data.descripcion?.trim()  || "",
+      categoria:         data.categoria             || "Consumibles",
       monto,
-      comprobante:       values.Soporte               || "SI",
-      noComprobante:     values["No. Ticket"]          || "S/N",
+      comprobante:       data.soporte               || "SI",
+      noComprobante:     data.noTicket              || "S/N",
       comprobanteEstado: "Pendiente",
-      responsable:       values.Entrega?.trim()        || "",
-      autorizadoPor:     values.Autoriza?.trim()      || "",
+      responsable:       data.entrega?.trim()       || "",
+      autorizadoPor:     data.autoriza?.trim()      || "",
       estado:            "Revision",
       cajaId:            vistaActiva,
+      fotoBase64:        data.foto || undefined,
       creadoEn:          isoNow(),
     };
 
@@ -943,14 +1133,14 @@ export default function CajaChicaPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-[#1A1A1A] border-b border-[#3A3A3A]">
-                      {["Folio", "Fecha", "Descripción", "Entrega", "Soporte", "Monto", "Sobrante", "Cat.", "Estado", ""].map(h => (
+                      {["Folio", "Fecha", "Descripción", "Entrega", "Soporte", "Monto", "Sobrante", "Cat.", "Estado", "Foto", ""].map(h => (
                         <th key={h} className="px-3 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#3A3A3A]">
                     {filteredGastos.length === 0 ? (
-                      <tr><td colSpan={9} className="px-4 py-10 text-center text-gray-500 text-sm">Sin gastos con los filtros actuales</td></tr>
+                      <tr><td colSpan={11} className="px-4 py-10 text-center text-gray-500 text-sm">Sin gastos con los filtros actuales</td></tr>
                     ) : filteredGastos.map(g => {
                       const sobrante = sobrantePorFolio.get(g.folio);
                       return (
@@ -988,6 +1178,13 @@ export default function CajaChicaPage() {
                           )}
                         </td>
                         <td className="px-3 py-3">
+                          {g.fotoBase64 ? (
+                            <button onClick={() => setFotoModal(g.fotoBase64!)} className="cursor-pointer hover:opacity-80 transition-opacity">
+                              <img src={g.fotoBase64} alt="ticket" className="w-8 h-8 rounded-lg object-cover border border-[#3A3A3A]" />
+                            </button>
+                          ) : <span className="text-gray-600 text-xs">—</span>}
+                        </td>
+                        <td className="px-3 py-3">
                           {g.estado === "Revision" && (
                             <div className="flex flex-col gap-1">
                               <button
@@ -1015,7 +1212,7 @@ export default function CajaChicaPage() {
                         <td className="px-3 py-2 text-white font-bold text-sm">
                           ${filteredGastos.reduce((s, g) => s + g.monto, 0).toLocaleString()}
                         </td>
-                        <td colSpan={4} />
+                        <td colSpan={5} />
                       </tr>
                     </tfoot>
                   )}
@@ -1191,51 +1388,12 @@ export default function CajaChicaPage() {
         </div>
       </FormModal>
 
-      <FormModal
-        open={showFormGasto} title="Registrar gasto de caja chica"
-        onClose={() => setShowFormGasto(false)} onSave={handleSaveGasto}
-        footer={
-          <>
-            <button onClick={() => setShowFormGasto(false)} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-900 border border-gray-200 rounded-lg transition-colors">Cancelar</button>
-            <button className="px-4 py-2 text-sm bg-[#CC2229] hover:bg-[#991A1E] text-white rounded-lg transition-colors">Guardar</button>
-          </>
-        }
-      >
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm text-gray-700 mb-1">Fecha</label>
-            <input type="date" defaultValue={hoy} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-[#CC2229]" />
-          </div>
-          <div>
-            <label className="block text-sm text-gray-700 mb-1">Monto ($)</label>
-            <input type="number" min="1" step="0.01" placeholder="0.00" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-[#CC2229]" />
-          </div>
-          <div>
-            <label className="block text-sm text-gray-700 mb-1">Entrega</label>
-            <input type="text" placeholder="Nombre de quien recibe el efectivo" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-[#CC2229]" />
-          </div>
-          <div className="sm:col-span-2">
-            <label className="block text-sm text-gray-700 mb-1">Descripción</label>
-            <input type="text" placeholder="¿En qué se gastó?" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-[#CC2229]" />
-          </div>
-          <div>
-            <label className="block text-sm text-gray-700 mb-1">Soporte</label>
-            <AppSelect>{["SI", "NO"].map(c => <option key={c}>{c}</option>)}</AppSelect>
-          </div>
-          <div>
-            <label className="block text-sm text-gray-700 mb-1">No. Ticket</label>
-            <input type="text" defaultValue="S/N" placeholder="Número de ticket o folio" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-[#CC2229]" />
-          </div>
-          <div>
-            <label className="block text-sm text-gray-700 mb-1">Categoría</label>
-            <AppSelect>{CATEGORIAS.map(c => <option key={c}>{c}</option>)}</AppSelect>
-          </div>
-          <div className="sm:col-span-2">
-            <label className="block text-sm text-gray-700 mb-1">Autoriza</label>
-            <input type="text" placeholder="Nombre de quien autoriza el gasto" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-[#CC2229]" />
-          </div>
-        </div>
-      </FormModal>
+      <GastoDrawer
+        open={showFormGasto}
+        onClose={() => setShowFormGasto(false)}
+        onSave={async (data) => { await handleSaveGasto(data); setShowFormGasto(false); }}
+        hoy={hoy}
+      />
 
       {/* Modal rechazar gasto */}
       <FormModal
@@ -1295,6 +1453,19 @@ export default function CajaChicaPage() {
           field={duplicateWarn.field} value={duplicateWarn.value} detail={duplicateWarn.detail}
           onCancel={() => setDuplicateWarn(null)} onConfirm={duplicateWarn.proceed}
         />
+      )}
+
+      {/* Lightbox foto ticket */}
+      {fotoModal && (
+        <div className="fixed inset-0 z-[70] bg-black/90 flex items-center justify-center p-4" onClick={() => setFotoModal(null)}>
+          <div className="relative max-w-2xl w-full" onClick={e => e.stopPropagation()}>
+            <button onClick={() => setFotoModal(null)}
+              className="absolute -top-10 right-0 text-white/60 hover:text-white p-2 cursor-pointer">
+              <X size={24} />
+            </button>
+            <img src={fotoModal} alt="Ticket" className="w-full rounded-xl shadow-2xl" />
+          </div>
+        </div>
       )}
     </div>
   );
