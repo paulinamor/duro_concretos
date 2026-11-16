@@ -58,14 +58,18 @@ export default function CatalogoObrasPage() {
 
   useEffect(() => {
     getCollectionDocs<Cliente>(COLLECTIONS.clientes).then((docs) => {
-      const names = docs.flatMap((c) => [c.razonSocial, c.nombreComercial].filter(Boolean)) as string[];
+      const normName = (s: string) => s.trim().toUpperCase().replace(/\s+/g, " ");
+      const names = docs
+        .flatMap((c) => [c.razonSocial, c.nombreComercial].filter(Boolean))
+        .map((s) => normName(s as string));
       setClientes(Array.from(new Set(names)).sort());
     });
   }, []);
 
   const clientesDisponibles = useMemo(() => {
-    const from = obras.map((o) => o.cliente).filter(Boolean);
-    return Array.from(new Set([...from, ...clientes])).sort();
+    const normName = (s: string) => s.trim().toUpperCase().replace(/\s+/g, " ");
+    const fromObras = obras.map((o) => o.cliente).filter(Boolean).map(normName);
+    return Array.from(new Set([...fromObras, ...clientes])).sort();
   }, [obras, clientes]);
 
   const filtered = useMemo(() => {
@@ -75,6 +79,16 @@ export default function CatalogoObrasPage() {
       return true;
     }).sort((a, b) => a.cliente.localeCompare(b.cliente, "es") || a.nombre.localeCompare(b.nombre, "es"));
   }, [obras, search, filterCliente]);
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, (Obra & { planta?: string })[]>();
+    filtered.forEach((obra) => {
+      const key = obra.cliente || "(Sin cliente)";
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(obra);
+    });
+    return [...map.entries()];
+  }, [filtered]);
 
   // Grupos de duplicados — misma clave normalizada (cliente + nombre)
   const duplicateGroups = useMemo(() => {
@@ -416,63 +430,81 @@ export default function CatalogoObrasPage() {
               <thead>
                 <tr className="bg-[#1A1A1A] border-b border-[#3A3A3A]">
                   <th className="px-3 py-3 w-8" />
-                  {["Cliente", "Nombre de obra", "Dirección / Maps", ""].map((h) => (
+                  {["Nombre de obra", "Dirección / Maps", ""].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-400 whitespace-nowrap">
                       {h}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#3A3A3A]">
-                {filtered.map((obra) => {
-                  const selected = manualMergeIds.has(obra.id);
-                  return (
-                    <tr key={obra.id} className={`hover:bg-white/5 transition-colors ${selected ? "bg-blue-500/5" : ""}`}>
-                      <td className="px-3 py-3">
-                        <button
-                          onClick={() => toggleManualSelect(obra.id)}
-                          className={`p-0.5 rounded transition-colors cursor-pointer ${selected ? "text-blue-400" : "text-gray-600 hover:text-gray-400"}`}
-                          title="Seleccionar para fusionar"
-                        >
-                          {selected ? <CheckSquare size={16} /> : <Square size={16} />}
-                        </button>
+              <tbody>
+                {grouped.map(([cliente, obrasList], groupIdx) => (
+                  <>
+                    {/* ── Encabezado de cliente (estilo SAP group header) ── */}
+                    <tr key={`group-${cliente}`} className={`bg-[#1A1A1A] ${groupIdx > 0 ? "border-t-2 border-t-[#3A3A3A]" : ""}`}>
+                      <td className="pl-4 py-3 w-8">
+                        <div className="w-[3px] h-5 bg-[#CC2229] rounded-sm" />
                       </td>
-                      <td className="px-4 py-3 font-medium text-white max-w-[180px] truncate">{obra.cliente}</td>
-                      <td className="px-4 py-3">
-                        <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-white">
-                          <MapPin size={13} className="text-[#CC2229] shrink-0" />
-                          {obra.nombre}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-gray-400 max-w-[260px] truncate text-xs" title={obra.direccion}>
-                        {obra.direccion
-                          ? obra.direccion.startsWith("http")
-                            ? <a href={obra.direccion} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline">Ver en Maps</a>
-                            : obra.direccion
-                          : <span className="text-gray-600">Sin dirección</span>
-                        }
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1 justify-end">
-                          <button
-                            onClick={() => openEdit(obra)}
-                            className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
-                            aria-label="Editar"
-                          >
-                            <Pencil size={14} />
-                          </button>
-                          <button
-                            onClick={() => setConfirmDeleteId(obra.id)}
-                            className="p-1.5 rounded-lg text-gray-500 hover:text-[#CC2229] hover:bg-[#CC2229]/10 transition-colors cursor-pointer"
-                            aria-label="Eliminar"
-                          >
-                            <Trash2 size={14} />
-                          </button>
+                      <td colSpan={3} className="pr-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <span className="text-sm font-bold text-white tracking-wide">{cliente}</span>
+                          <span className="text-[10px] font-semibold text-gray-400 bg-[#2A2A2A] border border-[#3A3A3A] px-2 py-0.5 rounded-full">
+                            {obrasList.length} obra{obrasList.length !== 1 ? "s" : ""}
+                          </span>
                         </div>
                       </td>
                     </tr>
-                  );
-                })}
+                    {/* ── Obras del cliente ── */}
+                    {obrasList.map((obra) => {
+                      const selected = manualMergeIds.has(obra.id);
+                      return (
+                        <tr key={obra.id} className={`border-t border-[#3A3A3A] hover:bg-white/5 transition-colors ${selected ? "bg-blue-500/5" : ""}`}>
+                          <td className="px-3 py-2.5">
+                            <button
+                              onClick={() => toggleManualSelect(obra.id)}
+                              className={`p-0.5 rounded transition-colors cursor-pointer ${selected ? "text-blue-400" : "text-gray-600 hover:text-gray-400"}`}
+                              title="Seleccionar para fusionar"
+                            >
+                              {selected ? <CheckSquare size={16} /> : <Square size={16} />}
+                            </button>
+                          </td>
+                          <td className="px-4 py-2.5 pl-8">
+                            <div className="flex items-center gap-1.5">
+                              <MapPin size={12} className="text-gray-500 shrink-0" />
+                              <span className="text-sm text-gray-200 font-medium">{obra.nombre}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-2.5 text-gray-500 max-w-[260px] truncate text-xs" title={obra.direccion}>
+                            {obra.direccion
+                              ? obra.direccion.startsWith("http")
+                                ? <a href={obra.direccion} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline">Ver en Maps</a>
+                                : obra.direccion
+                              : <span className="text-gray-600">Sin dirección</span>
+                            }
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <div className="flex items-center gap-1 justify-end">
+                              <button
+                                onClick={() => openEdit(obra)}
+                                className="p-1.5 rounded-lg text-gray-600 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+                                aria-label="Editar"
+                              >
+                                <Pencil size={14} />
+                              </button>
+                              <button
+                                onClick={() => setConfirmDeleteId(obra.id)}
+                                className="p-1.5 rounded-lg text-gray-600 hover:text-[#CC2229] hover:bg-[#CC2229]/10 transition-colors cursor-pointer"
+                                aria-label="Eliminar"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </>
+                ))}
               </tbody>
             </table>
           </div>

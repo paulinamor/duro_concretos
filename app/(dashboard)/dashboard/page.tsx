@@ -42,6 +42,8 @@ interface Programacion {
   pagado: string;
   montoPagado?: number | null;
   incluyeIVA?: boolean;
+  fase?: string;
+  tdBom?: string;
   planta?: string;
 }
 
@@ -105,9 +107,8 @@ export default function DashboardPage() {
       router.replace(first?.href ?? "/");
       return;
     }
-    // Cargar 6 meses para el chart "Ventas por mes" y los últimos 15 días del gráfico diario
-    const hace6Meses = new Date(now.getFullYear(), now.getMonth() - 5, 1);
-    const histStart = `${hace6Meses.getFullYear()}-${String(hace6Meses.getMonth() + 1).padStart(2, "0")}-01`;
+    // Cargar 2 años para comparativa anual (año actual vs anterior)
+    const histStart = `${now.getFullYear() - 1}-01-01`;
     const mesStart = `${mesActual}-01`;
     const mesEnd = `${mesActual}-31`;
     Promise.all([
@@ -127,56 +128,52 @@ export default function DashboardPage() {
   }, []);
 
   // ─── KPIs del mes ──────────────────────────────────────────────────────────
+  // progsDelMes: todas las programaciones del mes (para cobrado y conteos)
   const progsDelMes = useMemo(() => progs.filter((p) => (p.dia ?? "").startsWith(mesActual)), [progs, mesActual]);
-  const m3Mes = useMemo(() => progsDelMes.reduce((s, p) => s + (p.m3Totales ?? 0), 0), [progsDelMes]);
-  const ventasMes = useMemo(() => progsDelMes.reduce((s, p) => s + (p.total ?? 0), 0), [progsDelMes]);
 
-  // Cobrado = dinero efectivamente recibido este mes
+  // progsEntregadasDelMes: solo las marcadas como "Entregado" (concreto físicamente despachado)
+  const progsEntregadasDelMes = useMemo(() => progsDelMes.filter((p) => p.fase === "Entregado"), [progsDelMes]);
+
+  // M³ y ventas: solo concreto efectivamente entregado
+  const m3Mes = useMemo(() => progsEntregadasDelMes.reduce((s, p) => s + (p.m3Totales ?? 0), 0), [progsEntregadasDelMes]);
+  const ventasMes = useMemo(() => progsEntregadasDelMes.reduce((s, p) => s + (p.total ?? 0), 0), [progsEntregadasDelMes]);
+
+  // Cobrado: solo pedidos completamente pagados ("Sí") del mes, entregados o no
   const cobradoMes = useMemo(() =>
-    progsDelMes.reduce((s, p) => {
-      if (p.pagado === "Sí") return s + (p.total ?? 0);
-      if (p.pagado === "Parcial") return s + (p.montoPagado ?? 0);
-      return s;
-    }, 0),
+    progsDelMes.reduce((s, p) => p.pagado === "Sí" ? s + (p.total ?? 0) : s, 0),
     [progsDelMes],
   );
 
-  // Cobrado neto sin IVA — divide entre 1.16 si la programación marcó incluyeIVA
-  const cobradoNetoMes = useMemo(() =>
-    progsDelMes.reduce((s, p) => {
-      let monto = 0;
-      if (p.pagado === "Sí") monto = p.total ?? 0;
-      else if (p.pagado === "Parcial") monto = p.montoPagado ?? 0;
-      return s + (p.incluyeIVA ? monto / 1.16 : monto);
-    }, 0),
-    [progsDelMes],
-  );
+  // Neto sin IVA: ventas entregadas sin el 16% de IVA (precios siempre incluyen IVA en este negocio)
+  const ventasNetas = useMemo(() => ventasMes / 1.16, [ventasMes]);
 
   const porCobrar = useMemo(() =>
     cxc.filter((c) => c.status !== "Pagado").reduce((s, c) => s + (c.total - c.montoPagado), 0), [cxc]);
   const porPagar = useMemo(() =>
     cxp.filter((c) => c.status !== "Pagado").reduce((s, c) => s + (c.total - c.montoPagado), 0), [cxp]);
 
-  // ─── M³ por día (últimos 15 días) ─────────────────────────────────────────
+  // ─── M³ por día (últimos 15 días, solo entregados) ───────────────────────
   const m3PorDia = useMemo(() => {
     const days: { dia: string; m3: number }[] = [];
     for (let i = 14; i >= 0; i--) {
       const d = new Date(now);
       d.setDate(d.getDate() - i);
       const iso = localISODate(d);
-      const m3 = progs.filter((p) => p.dia === iso).reduce((s, p) => s + (p.m3Totales ?? 0), 0);
+      const m3 = progs
+        .filter((p) => p.dia === iso && p.fase === "Entregado")
+        .reduce((s, p) => s + (p.m3Totales ?? 0), 0);
       days.push({ dia: `${d.getDate()}/${d.getMonth() + 1}`, m3 });
     }
     return days;
   }, [progs]);
 
-  // ─── Ventas por mes (últimos 6 meses) ─────────────────────────────────────
+  // ─── Ventas por mes (últimos 6 meses, solo entregadas) ───────────────────
   const ventasPorMes = useMemo(() => {
     const months: { mes: string; ventas: number; m3: number }[] = [];
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      const bucket = progs.filter((p) => (p.dia ?? "").startsWith(key));
+      const bucket = progs.filter((p) => (p.dia ?? "").startsWith(key) && p.fase === "Entregado");
       months.push({
         mes: MES_LABELS[d.getMonth()],
         ventas: bucket.reduce((s, p) => s + (p.total ?? 0), 0),
@@ -185,6 +182,56 @@ export default function DashboardPage() {
     }
     return months;
   }, [progs]);
+
+  // ─── Desglose Tiro Directo vs Bombeado ───────────────────────────────────
+  // Misma lógica que reportes/page.tsx: agrupa por tdBom raw, suma `total`
+  // isBomba: detecta cualquier variante del campo (Bomba, BOM, BOM 5", etc.)
+  const isBomba = (tdBom?: string) => (tdBom ?? "").toUpperCase().includes("BOM");
+  const progsConcreto = useMemo(() => progsEntregadasDelMes.filter((p) => !isBomba(p.tdBom)), [progsEntregadasDelMes]);
+  const progsBomba = useMemo(() => progsEntregadasDelMes.filter((p) => isBomba(p.tdBom)), [progsEntregadasDelMes]);
+  const m3Concreto = useMemo(() => progsConcreto.reduce((s, p) => s + (p.m3Totales ?? 0), 0), [progsConcreto]);
+  const m3Bomba = useMemo(() => progsBomba.reduce((s, p) => s + (p.m3Totales ?? 0), 0), [progsBomba]);
+  // Ventas por tipo = suma de `total` almacenado (igual que el módulo de Reportes)
+  const ventasConcreto = useMemo(() => progsConcreto.reduce((s, p) => s + (p.total ?? 0), 0), [progsConcreto]);
+  const ventasBomba = useMemo(() => progsBomba.reduce((s, p) => s + (p.total ?? 0), 0), [progsBomba]);
+
+  const diasTranscurridos = now.getDate();
+  const diasDelMes = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const promDiarioConcreto = diasTranscurridos > 0 ? m3Concreto / diasTranscurridos : 0;
+  const promDiarioBomba = diasTranscurridos > 0 ? m3Bomba / diasTranscurridos : 0;
+  const tendenciaConcreto = promDiarioConcreto * diasDelMes;
+  const tendenciaBomba = promDiarioBomba * diasDelMes;
+  // Ticket = $/m³ promedio por tipo de despacho
+  const ticketConcreto = m3Concreto > 0 ? ventasConcreto / m3Concreto : 0;
+  const ticketBomba = m3Bomba > 0 ? ventasBomba / m3Bomba : 0;
+  const pctBombeado = m3Mes > 0 ? (m3Bomba / m3Mes) * 100 : 0;
+  const m3PorPedido = progsEntregadasDelMes.length > 0 ? m3Mes / progsEntregadasDelMes.length : 0;
+
+  // ─── Top productos del mes (por resistencia/mezcla) ──────────────────────
+  const topResistencias = useMemo(() => {
+    const map = new Map<string, number>();
+    progsEntregadasDelMes.forEach((p) => {
+      const key = p.resistencia || "Sin especificar";
+      map.set(key, (map.get(key) ?? 0) + (p.m3Totales ?? 0));
+    });
+    return [...map.entries()]
+      .map(([name, m3]) => ({ name, m3: Math.round(m3 * 100) / 100 }))
+      .sort((a, b) => b.m3 - a.m3)
+      .slice(0, 6);
+  }, [progsEntregadasDelMes]);
+
+  // ─── Ventas anuales año actual vs anterior ────────────────────────────────
+  const anioActual = now.getFullYear();
+  const anioAnterior = anioActual - 1;
+  const ventasAnuales = useMemo(() =>
+    Array.from({ length: 12 }, (_, i) => {
+      const kaA = `${anioActual}-${String(i + 1).padStart(2, "0")}`;
+      const kaPrev = `${anioAnterior}-${String(i + 1).padStart(2, "0")}`;
+      const actual = progs.filter((p) => (p.dia ?? "").startsWith(kaA) && p.fase === "Entregado").reduce((s, p) => s + (p.m3Totales ?? 0), 0);
+      const anterior = progs.filter((p) => (p.dia ?? "").startsWith(kaPrev) && p.fase === "Entregado").reduce((s, p) => s + (p.m3Totales ?? 0), 0);
+      return { mes: MES_LABELS[i], actual, anterior };
+    }),
+  [progs]);
 
   // ─── Flota ────────────────────────────────────────────────────────────────
   const flota = useMemo(() => ({
@@ -327,34 +374,34 @@ export default function DashboardPage() {
         </div>
 
         {/* Content — explicitly z-index 2 to always render above background layers */}
-        <div className="relative flex min-h-[200px] flex-col justify-between gap-5 p-7 lg:max-w-[62%]" style={{ zIndex: 2 }}>
+        <div className="relative flex min-h-[200px] flex-col justify-between gap-5 p-7 lg:max-w-[62%]" style={{ zIndex: 2, color: "#ffffff" }}>
           <div>
             <div className="flex items-center gap-2 mb-2">
               <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <p className="text-white/60 text-xs">{fechaLabel}</p>
+              <p className="text-xs" style={{ color: "rgba(255,255,255,0.60)" }}>{fechaLabel}</p>
             </div>
-            <h1 className="text-2xl font-bold tracking-tight sm:text-[1.75rem]">
+            <h1 className="text-2xl font-bold tracking-tight sm:text-[1.75rem]" style={{ color: "#ffffff" }}>
               {greeting}{userName ? `, ${userName}` : ""}
             </h1>
-            <p className="mt-1 text-sm text-white/70">Duro Concretos — Resumen operativo</p>
+            <p className="mt-1 text-sm" style={{ color: "rgba(255,255,255,0.70)" }}>Duro Concretos — Resumen operativo</p>
           </div>
 
           {/* Hero KPIs */}
           <div className="grid grid-cols-3 gap-3 max-w-[520px]">
-            <div className="rounded-xl px-4 py-3.5 border border-white/10" style={{ background: "rgba(255,255,255,0.07)" }}>
-              <p className="text-[10px] font-bold tracking-widest uppercase text-red-300">Coladas hoy</p>
-              <p className="text-3xl font-bold text-white mt-1">{coladasHoy}</p>
-              <p className="text-white/60 text-xs mt-0.5">{m3Hoy > 0 ? `${m3Hoy} m³` : "0 m³"}</p>
+            <div className="rounded-xl px-4 py-3.5" style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.10)" }}>
+              <p className="text-[10px] font-bold tracking-widest uppercase" style={{ color: "#fca5a5" }}>Coladas hoy</p>
+              <p className="text-3xl font-bold mt-1" style={{ color: "#ffffff" }}>{coladasHoy}</p>
+              <p className="text-xs mt-0.5" style={{ color: "rgba(255,255,255,0.60)" }}>{m3Hoy > 0 ? `${m3Hoy.toLocaleString("es-MX")} m³ prog.` : "Sin coladas prog."}</p>
             </div>
-            <div className="rounded-xl px-4 py-3.5 border border-white/10" style={{ background: "rgba(255,255,255,0.07)" }}>
-              <p className="text-[10px] font-bold tracking-widest uppercase text-amber-300">M³ {MES_LABELS[now.getMonth()]}</p>
-              <p className="text-3xl font-bold text-white mt-1">{m3Mes.toLocaleString("es-MX")}</p>
-              <p className="text-white/60 text-xs mt-0.5">{progsDelMes.length} pedidos</p>
+            <div className="rounded-xl px-4 py-3.5" style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.10)" }}>
+              <p className="text-[10px] font-bold tracking-widest uppercase" style={{ color: "#fcd34d" }}>M³ {MES_LABELS[now.getMonth()]}</p>
+              <p className="text-3xl font-bold mt-1" style={{ color: "#ffffff" }}>{m3Mes.toLocaleString("es-MX")}</p>
+              <p className="text-xs mt-0.5" style={{ color: "rgba(255,255,255,0.60)" }}>{progsEntregadasDelMes.length} pedidos entregados</p>
             </div>
-            <div className="rounded-xl px-4 py-3.5 border border-white/10" style={{ background: "rgba(255,255,255,0.07)" }}>
-              <p className="text-[10px] font-bold tracking-widest uppercase text-emerald-300">Flota activa</p>
-              <p className="text-3xl font-bold text-white mt-1">{pctFlota}%</p>
-              <p className="text-white/60 text-xs mt-0.5">{flota.activas} de {unidades.length - flota.baja} unidades</p>
+            <div className="rounded-xl px-4 py-3.5" style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.10)" }}>
+              <p className="text-[10px] font-bold tracking-widest uppercase" style={{ color: "#6ee7b7" }}>Flota activa</p>
+              <p className="text-3xl font-bold mt-1" style={{ color: "#ffffff" }}>{pctFlota}%</p>
+              <p className="text-xs mt-0.5" style={{ color: "rgba(255,255,255,0.60)" }}>{flota.activas} activas · {flota.mant} en mtto.</p>
             </div>
           </div>
 
@@ -362,16 +409,16 @@ export default function DashboardPage() {
           <div className="flex flex-wrap items-center gap-3">
             <button
               onClick={() => router.push("/transporte/programacion")}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer"
-              style={{ backgroundColor: "#CC2229" }}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold cursor-pointer"
+              style={{ backgroundColor: "#CC2229", color: "#ffffff" }}
             >
               <Package size={15} />
               + Nueva programación
             </button>
             <button
               onClick={() => router.push("/finanzas/estado-cuenta-clientes")}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium text-white/80 border border-white/20 hover:bg-white/10 transition-colors cursor-pointer"
-              style={{ background: "rgba(255,255,255,0.05)" }}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-white/10 transition-colors cursor-pointer"
+              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.20)", color: "rgba(255,255,255,0.80)" }}
             >
               Reportes
             </button>
@@ -380,15 +427,24 @@ export default function DashboardPage() {
       </section>
 
       {/* ── KPI secundarios ───────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         <KPICard
-          title={`Ventas ${MES_LABELS[now.getMonth()]}`}
+          title={`Ventas ${MES_LABELS[now.getMonth()]} (entregadas)`}
           value={currency(ventasMes)}
           icon={TrendingUp}
           iconColor="text-emerald-400"
           iconBg="bg-emerald-500/10"
-          subtitle={m3Mes > 0 ? `${currency(ventasMes / m3Mes)} / m³` : "—"}
-          onClick={() => router.push("/facturacion")}
+          subtitle={m3Mes > 0 ? `${m3Mes.toLocaleString("es-MX")} m³ · ${currency(Math.round(ventasMes / m3Mes))}/m³ · ver en Programación →` : "Sin entregas registradas"}
+          onClick={() => router.push("/transporte/programacion")}
+        />
+        <KPICard
+          title={`Cobrado ${MES_LABELS[now.getMonth()]}`}
+          value={currency(cobradoMes)}
+          icon={CheckCircle2}
+          iconColor="text-emerald-400"
+          iconBg="bg-emerald-500/10"
+          subtitle={`${progsDelMes.filter((p) => p.pagado === "Sí").length} programaciones marcadas como pagadas`}
+          onClick={() => router.push("/transporte/programacion")}
         />
         <KPICard
           title="Por cobrar"
@@ -396,8 +452,16 @@ export default function DashboardPage() {
           icon={Banknote}
           iconColor="text-blue-400"
           iconBg="bg-blue-500/10"
-          subtitle={`${cxc.filter((c) => c.status !== "Pagado").length} docs pendientes`}
-          onClick={() => router.push("/finanzas/estado-cuenta-clientes")}
+          subtitle={`${cxc.filter((c) => c.status !== "Pagado").length} facturas · todos los meses`}
+          onClick={() => router.push("/finanzas/cxc")}
+        />
+        <KPICard
+          title="Neto sin IVA (ventas)"
+          value={currency(ventasNetas)}
+          icon={Building2}
+          iconColor="text-violet-400"
+          iconBg="bg-violet-500/10"
+          subtitle={ventasMes > 0 ? `IVA 16%: ${currency(Math.round(ventasMes - ventasNetas))}` : "—"}
         />
         <KPICard
           title="Por pagar"
@@ -405,8 +469,8 @@ export default function DashboardPage() {
           icon={TrendingDown}
           iconColor="text-[#CC2229]"
           iconBg="bg-red-500/10"
-          subtitle={`${cxp.filter((c) => c.status !== "Pagado").length} docs pendientes`}
-          onClick={() => router.push("/efectivo")}
+          subtitle={`${cxp.filter((c) => c.status !== "Pagado").length} facturas · todos los meses`}
+          onClick={() => router.push("/finanzas/cxp")}
         />
         <KPICard
           title="Unidades activas"
@@ -417,71 +481,230 @@ export default function DashboardPage() {
           subtitle={flota.mant > 0 ? `${flota.mant} en mantenimiento` : "Flota disponible"}
           onClick={() => router.push("/transporte/seguros")}
         />
-        <KPICard
-          title={`Cobrado ${MES_LABELS[now.getMonth()]}`}
-          value={currency(cobradoMes)}
-          icon={CheckCircle2}
-          iconColor="text-emerald-400"
-          iconBg="bg-emerald-500/10"
-          subtitle={`${progsDelMes.filter((p) => p.pagado === "Sí" || p.pagado === "Parcial").length} pagados / parciales`}
-          onClick={() => router.push("/transporte/programacion")}
-        />
-        <KPICard
-          title="Neto sin IVA"
-          value={currency(cobradoNetoMes)}
-          icon={Building2}
-          iconColor="text-violet-400"
-          iconBg="bg-violet-500/10"
-          subtitle={cobradoNetoMes < cobradoMes ? `IVA descontado: ${currency(cobradoMes - cobradoNetoMes)}` : "Sin IVA incluido"}
-        />
       </div>
+
+      {/* ── Indicadores del mes ──────────────────────────────────────────── */}
+      <div className="bg-[#242424] border border-white/10 rounded-2xl overflow-hidden">
+        <div className="px-5 py-3 border-b border-white/10 flex items-center justify-between">
+          <h3 className="text-white font-semibold text-sm">Indicadores del mes — {MES_LABELS[now.getMonth()]} {now.getFullYear()}</h3>
+          <span className="text-xs text-gray-500">{progsEntregadasDelMes.length} pedidos · {diasTranscurridos}/{diasDelMes} días transcurridos</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-[#1A1A1A] border-b border-white/10">
+                <th className="px-5 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-500 w-48">Indicador</th>
+                <th className="px-5 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wider text-gray-400">Total</th>
+                <th className="px-5 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wider text-blue-400">Tiro Directo</th>
+                <th className="px-5 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wider text-amber-400">Bombeado</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {[
+                {
+                  label: "Ventas ($)",
+                  total: currency(ventasMes),
+                  concreto: currency(ventasConcreto),
+                  bomba: currency(ventasBomba),
+                },
+                {
+                  label: "M³ despachados",
+                  total: `${m3Mes.toLocaleString("es-MX")} m³`,
+                  concreto: `${m3Concreto.toLocaleString("es-MX")} m³`,
+                  bomba: `${m3Bomba.toLocaleString("es-MX")} m³`,
+                },
+                {
+                  label: "Promedio diario",
+                  total: `${((m3Mes / diasTranscurridos) || 0).toFixed(2)} m³/día`,
+                  concreto: `${promDiarioConcreto.toFixed(2)} m³/día`,
+                  bomba: `${promDiarioBomba.toFixed(2)} m³/día`,
+                },
+                {
+                  label: "Tendencia (fin mes)",
+                  total: `${diasTranscurridos > 0 ? (((m3Mes / diasTranscurridos) * diasDelMes)).toLocaleString("es-MX", { maximumFractionDigits: 1 }) : "—"} m³`,
+                  concreto: `${tendenciaConcreto > 0 ? tendenciaConcreto.toLocaleString("es-MX", { maximumFractionDigits: 1 }) : "—"} m³`,
+                  bomba: `${tendenciaBomba > 0 ? tendenciaBomba.toLocaleString("es-MX", { maximumFractionDigits: 1 }) : "—"} m³`,
+                },
+                {
+                  label: "Ticket promedio ($/m³)",
+                  total: m3Mes > 0 ? `${currency(Math.round(ventasMes / m3Mes))}/m³` : "—",
+                  concreto: ticketConcreto > 0 ? `${currency(Math.round(ticketConcreto))}/m³` : "—",
+                  bomba: ticketBomba > 0 ? `${currency(Math.round(ticketBomba))}/m³` : "—",
+                },
+              ].map((row) => (
+                <tr key={row.label} className="hover:bg-white/5 transition-colors">
+                  <td className="px-5 py-3 text-gray-400 font-medium">{row.label}</td>
+                  <td className="px-5 py-3 text-right text-white font-semibold">{row.total}</td>
+                  <td className="px-5 py-3 text-right text-blue-400">{row.concreto}</td>
+                  <td className="px-5 py-3 text-right text-amber-400">{row.bomba}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="bg-[#1A1A1A] border-t border-white/10">
+                <td className="px-5 py-2.5 text-[10px] font-semibold text-gray-500" colSpan={2}>
+                  <span className="text-amber-400">{pctBombeado.toFixed(1)}%</span> bombeado ·
+                  <span className="text-blue-400 ml-1">{(100 - pctBombeado).toFixed(1)}%</span> tiro directo ·
+                  <span className="text-gray-600 ml-1">{progsBomba.length + progsConcreto.length} pedidos entregados</span>
+                </td>
+                <td className="px-5 py-2.5 text-right text-[10px] text-gray-500" colSpan={2}>
+                  M³ prom/pedido: <span className="text-white font-semibold">{m3PorPedido.toFixed(2)} m³</span> ·
+                  <span className="text-gray-600 ml-1">datos: módulo Reportes</span>
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      {/* ── Alerta cartera vencida ────────────────────────────────────── */}
+      {(() => {
+        const vencidas = cxc.filter((c) => c.status !== "Pagado" && c.vencimiento && diasHasta(c.vencimiento) < 0);
+        const totalVencido = vencidas.reduce((s, c) => s + (c.total - c.montoPagado), 0);
+        if (vencidas.length === 0) return null;
+        return (
+          <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 bg-red-500/10 border border-red-500/20 rounded-xl">
+            <div className="flex items-center gap-3">
+              <AlertTriangle size={16} className="text-red-400 shrink-0" />
+              <div>
+                <span className="text-red-400 font-semibold text-sm">Cartera vencida: {currency(totalVencido)}</span>
+                <span className="text-red-500/70 text-xs ml-2">· {vencidas.length} cuenta{vencidas.length !== 1 ? "s" : ""} con fecha de pago vencida</span>
+              </div>
+            </div>
+            <button onClick={() => router.push("/finanzas/cxc")} className="text-xs text-red-400 hover:text-red-300 font-medium underline underline-offset-2 cursor-pointer">
+              Ver CxC →
+            </button>
+          </div>
+        );
+      })()}
 
       {/* ── Gráficas ─────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* M³ por día */}
-        <div className="bg-white border border-gray-100 shadow-sm rounded-2xl p-5">
+        <div className="bg-[#242424] border border-white/10 rounded-2xl p-5">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-gray-900 font-semibold text-sm">M³ diarios</h3>
-              <p className="text-gray-400 text-xs">Últimos 15 días</p>
+              <h3 className="text-white font-semibold text-sm">M³ diarios entregados</h3>
+              <p className="text-gray-500 text-xs">Últimos 15 días · solo pedidos con remisión</p>
             </div>
-            <span className="text-amber-600 text-xs font-semibold bg-amber-50 px-2 py-1 rounded-lg">{m3Mes.toLocaleString()} m³ / mes</span>
+            <span className="text-amber-400 text-xs font-semibold bg-amber-500/10 px-2 py-1 rounded-lg">{m3Mes.toLocaleString("es-MX")} m³ / mes</span>
           </div>
           <ResponsiveContainer width="100%" height={200}>
             <AreaChart data={m3PorDia} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
               <defs>
                 <linearGradient id="gradM3" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#CC2229" stopOpacity={0.15} />
+                  <stop offset="5%" stopColor="#CC2229" stopOpacity={0.25} />
                   <stop offset="95%" stopColor="#CC2229" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
-              <XAxis dataKey="dia" stroke="#D1D5DB" tick={{ fontSize: 10, fill: "#6B7280" }} interval={2} />
-              <YAxis stroke="#D1D5DB" tick={{ fontSize: 10, fill: "#6B7280" }} />
-              <Tooltip contentStyle={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 8, fontSize: 12 }} formatter={(v) => [`${v} m³`, "M³"]} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
+              <XAxis dataKey="dia" stroke="#374151" tick={{ fontSize: 10, fill: "#6B7280" }} interval={2} />
+              <YAxis stroke="#374151" tick={{ fontSize: 10, fill: "#6B7280" }} />
+              <Tooltip contentStyle={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12, color: "#fff" }} formatter={(v) => [`${v} m³`, "M³"]} />
               <Area type="monotone" dataKey="m3" stroke="#CC2229" strokeWidth={2.5} fill="url(#gradM3)" dot={false} activeDot={{ r: 4, fill: "#CC2229" }} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
 
-        {/* Ventas por mes */}
-        <div className="bg-white border border-gray-100 shadow-sm rounded-2xl p-5">
+        {/* Ventas anuales año actual vs anterior */}
+        <div className="bg-[#242424] border border-white/10 rounded-2xl p-5">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-gray-900 font-semibold text-sm">Ventas por mes</h3>
-              <p className="text-gray-400 text-xs">Últimos 6 meses</p>
+              <h3 className="text-white font-semibold text-sm">Ventas anuales — {anioActual}</h3>
+              <p className="text-gray-500 text-xs">
+                <span className="inline-block w-2 h-2 bg-[#CC2229] rounded-sm mr-1 align-middle" />{anioActual}
+                <span className="inline-block w-2 h-2 bg-[#374151] rounded-sm ml-3 mr-1 align-middle" />{anioAnterior} · m³ entregados
+              </p>
             </div>
-            <span className="text-emerald-700 text-xs font-semibold bg-emerald-50 px-2 py-1 rounded-lg">{currency(ventasMes)} este mes</span>
+            <span className="text-emerald-400 text-xs font-semibold bg-emerald-500/10 px-2 py-1 rounded-lg">{m3Mes.toLocaleString("es-MX")} m³ este mes</span>
           </div>
           <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={ventasPorMes} margin={{ top: 4, right: 4, left: -10, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
-              <XAxis dataKey="mes" stroke="#D1D5DB" tick={{ fontSize: 11, fill: "#6B7280" }} />
-              <YAxis stroke="#D1D5DB" tick={{ fontSize: 10, fill: "#6B7280" }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
-              <Tooltip contentStyle={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 8, fontSize: 12 }} formatter={(v) => [currency(Number(v ?? 0)), "Ventas"]} />
-              <Bar dataKey="ventas" fill="#CC2229" radius={[4, 4, 0, 0]} />
+            <BarChart data={ventasAnuales} margin={{ top: 4, right: 4, left: -10, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
+              <XAxis dataKey="mes" stroke="#374151" tick={{ fontSize: 11, fill: "#6B7280" }} />
+              <YAxis stroke="#374151" tick={{ fontSize: 10, fill: "#6B7280" }} tickFormatter={(v) => `${v}m³`} />
+              <Tooltip
+                contentStyle={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12, color: "#fff" }}
+                formatter={(v, name) => [`${v} m³`, name === "actual" ? String(anioActual) : String(anioAnterior)]}
+              />
+              <Bar dataKey="anterior" fill="#374151" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="actual" fill="#CC2229" radius={[3, 3, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* ── Más vendidos + Bomba vs Tiro Directo ─────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+        {/* Más vendidos por mezcla/resistencia */}
+        <div className="bg-[#242424] border border-white/10 rounded-2xl p-5">
+          <div className="mb-4">
+            <h3 className="text-white font-semibold text-sm">Más vendidos — {MES_LABELS[now.getMonth()]}</h3>
+            <p className="text-gray-500 text-xs">Top productos por m³ entregados</p>
+          </div>
+          {topResistencias.length === 0 ? (
+            <div className="flex items-center justify-center h-[180px] text-gray-600 text-xs">Sin datos del mes</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={topResistencias} layout="vertical" margin={{ top: 4, right: 50, left: 4, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" horizontal={false} />
+                <XAxis type="number" stroke="#374151" tick={{ fontSize: 10, fill: "#6B7280" }} tickFormatter={(v) => `${v}m³`} />
+                <YAxis dataKey="name" type="category" stroke="#374151" tick={{ fontSize: 10, fill: "#9CA3AF" }} width={100} />
+                <Tooltip
+                  contentStyle={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12, color: "#fff" }}
+                  formatter={(v) => [`${v} m³`, "M³"]}
+                />
+                <Bar dataKey="m3" fill="#CC2229" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* Bomba vs Tiro Directo */}
+        <div className="bg-[#242424] border border-white/10 rounded-2xl p-5">
+          <div className="mb-4">
+            <h3 className="text-white font-semibold text-sm">Bomba vs Tiro Directo — {MES_LABELS[now.getMonth()]}</h3>
+            <p className="text-gray-500 text-xs">M³ entregados por tipo de despacho</p>
+          </div>
+          <div className="space-y-5 mt-2">
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs text-blue-400 font-semibold">Tiro Directo ({progsConcreto.length} pedidos)</span>
+                <span className="text-xs text-white font-semibold">{m3Concreto.toLocaleString("es-MX")} m³</span>
+              </div>
+              <div className="h-5 bg-[#2A2A2A] rounded-full overflow-hidden">
+                <div className="h-full bg-blue-500/80 rounded-full transition-all duration-700" style={{ width: m3Mes > 0 ? `${(m3Concreto / m3Mes) * 100}%` : "0%" }} />
+              </div>
+              <div className="flex justify-between mt-1">
+                <span className="text-[10px] text-gray-500">{progsConcreto.length} pedidos · {m3Mes > 0 ? (100 - pctBombeado).toFixed(1) : 0}%</span>
+                <span className="text-[10px] text-blue-400">{currency(ventasConcreto)}</span>
+              </div>
+            </div>
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs text-amber-400 font-semibold">Bombeado ({progsBomba.length} pedidos)</span>
+                <span className="text-xs text-white font-semibold">{m3Bomba.toLocaleString("es-MX")} m³</span>
+              </div>
+              <div className="h-5 bg-[#2A2A2A] rounded-full overflow-hidden">
+                <div className="h-full bg-amber-500/80 rounded-full transition-all duration-700" style={{ width: m3Mes > 0 ? `${pctBombeado}%` : "0%" }} />
+              </div>
+              <div className="flex justify-between mt-1">
+                <span className="text-[10px] text-gray-500">{progsBomba.length} pedidos · {pctBombeado.toFixed(1)}%</span>
+                <span className="text-[10px] text-amber-400">{currency(ventasBomba)}</span>
+              </div>
+            </div>
+            <div className="pt-3 border-t border-white/10 grid grid-cols-2 gap-3">
+              <div className="bg-[#2A2A2A] rounded-xl p-3">
+                <p className="text-[10px] text-gray-500 uppercase tracking-wide">M³ prom / pedido</p>
+                <p className="text-xl font-bold text-white mt-0.5">{m3PorPedido.toFixed(2)}</p>
+              </div>
+              <div className="bg-[#2A2A2A] rounded-xl p-3">
+                <p className="text-[10px] text-gray-500 uppercase tracking-wide">Días del mes</p>
+                <p className="text-xl font-bold text-white mt-0.5">{diasTranscurridos}<span className="text-sm text-gray-500 font-normal"> / {diasDelMes}</span></p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -489,18 +712,23 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
         {/* Estado flota */}
-        <div className="bg-white border border-gray-100 shadow-sm rounded-2xl p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <div className="h-7 w-7 rounded-lg bg-gray-100 flex items-center justify-center">
-              <Truck size={14} className="text-gray-600" />
+        <div className="bg-[#242424] border border-white/10 rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <div className="h-7 w-7 rounded-lg bg-white/10 flex items-center justify-center">
+                <Truck size={14} className="text-gray-400" />
+              </div>
+              <div>
+                <h3 className="text-white font-semibold text-sm">Estado de flota</h3>
+                <p className="text-gray-500 text-[10px]">{unidades.length} unidades totales registradas</p>
+              </div>
             </div>
-            <h3 className="text-gray-900 font-semibold text-sm">Estado de flota</h3>
           </div>
           <div className="grid grid-cols-3 gap-3 mb-4">
             {[
-              { label: "Activas", value: flota.activas, color: "text-emerald-600", bg: "bg-emerald-50 border-emerald-100" },
-              { label: "Mantenimiento", value: flota.mant, color: "text-amber-600", bg: "bg-amber-50 border-amber-100" },
-              { label: "Baja", value: flota.baja, color: "text-gray-400", bg: "bg-gray-50 border-gray-100" },
+              { label: "Activas",  value: flota.activas, color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/20" },
+              { label: "En mtto.", value: flota.mant,    color: "text-amber-400",   bg: "bg-amber-500/10 border-amber-500/20" },
+              { label: "Baja",     value: flota.baja,    color: "text-gray-500",    bg: "bg-white/5 border-white/10" },
             ].map(({ label, value, color, bg }) => (
               <div key={label} className={`rounded-xl border p-3 text-center ${bg}`}>
                 <p className={`text-2xl font-bold ${color}`}>{value}</p>
@@ -508,76 +736,120 @@ export default function DashboardPage() {
               </div>
             ))}
           </div>
+
+          {/* Unidades actualmente en mantenimiento */}
+          {flota.mant > 0 && (
+            <div className="space-y-1.5 mb-3">
+              <p className="text-[10px] uppercase tracking-wider text-amber-400 font-semibold flex items-center gap-1.5">
+                <Wrench size={10} />
+                En mantenimiento ahora
+              </p>
+              {unidades.filter((u) => u.estatus === "Mantenimiento").map((u) => (
+                <div key={u.id} className="flex items-center justify-between bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono text-amber-400 font-semibold">{u.noEconomico}</span>
+                    <span className="text-xs text-gray-400">{u.marca} {u.modelo}</span>
+                  </div>
+                  <span className="text-[10px] text-amber-400 font-semibold">En taller</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Próximos mantenimientos */}
           {flota.proxMant.length > 0 ? (
-            <div className="space-y-2">
-              <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold flex items-center gap-1.5">
+            <div className="space-y-1.5">
+              <p className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold flex items-center gap-1.5">
                 <Wrench size={10} />
                 Mantenimiento próximo (30 días)
               </p>
               {flota.proxMant.map((u) => {
                 const dias = diasHasta(u.proximoMantenimiento);
                 return (
-                  <div key={u.id} className="flex items-center justify-between bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
+                  <div key={u.id} className="flex items-center justify-between bg-white/5 border border-white/10 rounded-lg px-3 py-2">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-mono text-[#CC2229] font-semibold">{u.noEconomico}</span>
-                      <span className="text-xs text-gray-500">{u.marca} {u.modelo}</span>
+                      <span className="text-xs text-gray-400">{u.marca} {u.modelo}</span>
                     </div>
-                    <span className={`text-xs font-semibold ${dias <= 7 ? "text-red-600" : "text-amber-600"}`}>
-                      {dias <= 0 ? "Vencido" : `${dias}d`}
+                    <span className={`text-xs font-semibold ${dias <= 0 ? "text-red-400" : dias <= 7 ? "text-amber-400" : "text-gray-500"}`}>
+                      {dias <= 0 ? "Vencido" : `en ${dias}d`}
                     </span>
                   </div>
                 );
               })}
             </div>
-          ) : (
-            <div className="flex items-center gap-2 text-emerald-600 text-xs bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2 mt-2">
+          ) : flota.mant === 0 ? (
+            <div className="flex items-center gap-2 text-emerald-400 text-xs bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
               <CheckCircle2 size={13} />
-              Todos los mantenimientos al día
+              Flota operativa — sin mantenimientos urgentes
             </div>
-          )}
+          ) : null}
         </div>
 
         {/* CxC por vencer */}
-        <div className="bg-white border border-gray-100 shadow-sm rounded-2xl p-5">
+        <div className="bg-[#242424] border border-white/10 rounded-2xl p-5">
           <div className="flex items-center gap-2 mb-4">
-            <div className="h-7 w-7 rounded-lg bg-gray-100 flex items-center justify-center">
-              <Clock size={14} className="text-gray-600" />
+            <div className="h-7 w-7 rounded-lg bg-white/10 flex items-center justify-center">
+              <Clock size={14} className="text-gray-400" />
             </div>
-            <h3 className="text-gray-900 font-semibold text-sm">CxC — Próximas a vencer</h3>
+            <div>
+              <h3 className="text-white font-semibold text-sm">CxC — Vencidas y por vencer</h3>
+              <p className="text-gray-500 text-[10px]">Saldo pendiente por cliente, ordenado por urgencia</p>
+            </div>
           </div>
-          {cxcPorVencer.length === 0 ? (
-            <div className="flex items-center gap-2 text-emerald-600 text-xs bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">
-              <CheckCircle2 size={13} />
-              Sin cuentas próximas a vencer
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {cxcPorVencer.map((c, i) => {
-                const pendiente = c.total - c.montoPagado;
-                const dias = diasHasta(c.vencimiento);
-                const isVencido = dias < 0;
-                const isUrgente = dias >= 0 && dias <= 7;
-                return (
-                  <div key={c.id ?? i} className="flex items-center justify-between bg-gray-50 border border-gray-100 rounded-lg px-3 py-2.5 gap-3">
-                    <div className="min-w-0">
-                      <p className="text-xs text-gray-900 font-medium truncate">{c.contraparte}</p>
-                      <p className="text-[10px] text-gray-400 mt-0.5">Vence {isoToDisplay(c.vencimiento)}</p>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-xs font-semibold text-gray-900">{currency(pendiente)}</p>
-                      <p className={`text-[10px] font-semibold mt-0.5 ${isVencido ? "text-red-600" : isUrgente ? "text-amber-600" : "text-gray-400"}`}>
-                        {isVencido ? `${Math.abs(dias)}d vencida` : `${dias}d`}
-                      </p>
-                    </div>
-                    {(isVencido || isUrgente) && <AlertTriangle size={12} className={isVencido ? "text-red-500 shrink-0" : "text-amber-500 shrink-0"} />}
+          {(() => {
+            const pendientes = cxc.filter((c) => c.status !== "Pagado" && c.vencimiento);
+            const vencidas   = pendientes.filter((c) => diasHasta(c.vencimiento) < 0).sort((a, b) => diasHasta(a.vencimiento) - diasHasta(b.vencimiento));
+            const proximas   = pendientes.filter((c) => diasHasta(c.vencimiento) >= 0).sort((a, b) => diasHasta(a.vencimiento) - diasHasta(b.vencimiento)).slice(0, 5);
+            if (vencidas.length === 0 && proximas.length === 0) return (
+              <div className="flex items-center gap-2 text-emerald-400 text-xs bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
+                <CheckCircle2 size={13} />
+                Sin cuentas pendientes con fecha de vencimiento
+              </div>
+            );
+            const Row = ({ c, i }: { c: Cuenta; i: number }) => {
+              const pendiente = c.total - c.montoPagado;
+              const dias = diasHasta(c.vencimiento);
+              const isVencido = dias < 0;
+              const isUrgente = dias >= 0 && dias <= 7;
+              return (
+                <div key={c.id ?? i} className={`flex items-center justify-between rounded-lg px-3 py-2.5 gap-3 border ${isVencido ? "bg-red-500/10 border-red-500/20" : isUrgente ? "bg-amber-500/10 border-amber-500/20" : "bg-white/5 border-white/10"}`}>
+                  <div className="min-w-0">
+                    <p className="text-xs text-white font-medium truncate">{c.contraparte}</p>
+                    <p className={`text-[10px] mt-0.5 ${isVencido ? "text-red-400" : "text-gray-500"}`}>
+                      {isVencido ? `Venció ${isoToDisplay(c.vencimiento)}` : `Vence ${isoToDisplay(c.vencimiento)}`}
+                    </p>
                   </div>
-                );
-              })}
-            </div>
-          )}
-          <div className="mt-4 pt-3 border-t border-gray-100 flex justify-between text-xs">
-            <span className="text-gray-400">{cxc.filter((c) => c.status !== "Pagado").length} cuentas pendientes</span>
-            <span className="text-gray-900 font-semibold">{currency(porCobrar)}</span>
+                  <div className="text-right shrink-0">
+                    <p className="text-xs font-semibold text-white">{currency(pendiente)}</p>
+                    <p className={`text-[10px] font-semibold mt-0.5 ${isVencido ? "text-red-400" : isUrgente ? "text-amber-400" : "text-gray-500"}`}>
+                      {isVencido ? `${Math.abs(dias)}d vencida` : `en ${dias}d`}
+                    </p>
+                  </div>
+                  {(isVencido || isUrgente) && <AlertTriangle size={12} className={`shrink-0 ${isVencido ? "text-red-400" : "text-amber-400"}`} />}
+                </div>
+              );
+            };
+            return (
+              <div className="space-y-3">
+                {vencidas.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] uppercase tracking-wider text-red-400 font-semibold">Vencidas ({vencidas.length})</p>
+                    {vencidas.map((c, i) => <Row key={c.id ?? i} c={c} i={i} />)}
+                  </div>
+                )}
+                {proximas.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Próximas a vencer</p>
+                    {proximas.map((c, i) => <Row key={c.id ?? i} c={c} i={i} />)}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+          <div className="mt-4 pt-3 border-t border-white/10 flex justify-between text-xs">
+            <span className="text-gray-500">{cxc.filter((c) => c.status !== "Pagado").length} cuentas pendientes totales</span>
+            <span className="text-white font-semibold">{currency(porCobrar)}</span>
           </div>
         </div>
       </div>
@@ -586,34 +858,34 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
         {/* Recibos sin entregar */}
-        <div className="bg-white border border-gray-100 shadow-sm rounded-2xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <div className="bg-[#242424] border border-white/10 rounded-2xl overflow-hidden">
+          <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="h-6 w-6 rounded-lg bg-gray-100 flex items-center justify-center">
-                <Building2 size={12} className="text-gray-500" />
+              <div className="h-6 w-6 rounded-lg bg-white/10 flex items-center justify-center">
+                <Building2 size={12} className="text-gray-400" />
               </div>
-              <h3 className="text-gray-900 font-semibold text-sm">Recibos sin entregar</h3>
+              <h3 className="text-white font-semibold text-sm">Recibos sin entregar</h3>
             </div>
-            <span className="text-xs text-amber-600 font-semibold bg-amber-50 px-2 py-0.5 rounded-full">{recibos.filter((r) => !r.entregado).length} pendientes</span>
+            <span className="text-xs text-amber-400 font-semibold bg-amber-500/10 px-2 py-0.5 rounded-full">{recibos.filter((r) => !r.entregado).length} pendientes</span>
           </div>
           {recibosPendientes.length === 0 ? (
-            <div className="px-5 py-8 text-center text-sm text-gray-400">Sin recibos pendientes</div>
+            <div className="px-5 py-8 text-center text-sm text-gray-500">Sin recibos pendientes</div>
           ) : (
             <table className="w-full text-xs">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-100">
+                <tr className="bg-white/5 border-b border-white/10">
                   {["Folio", "Cliente", "Metros", "Importe"].map((h) => (
-                    <th key={h} className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-400">{h}</th>
+                    <th key={h} className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-500">{h}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody className="divide-y divide-white/5">
                 {recibosPendientes.map((r) => (
-                  <tr key={r.id} className="hover:bg-gray-50 transition-colors">
+                  <tr key={r.id} className="hover:bg-white/5 transition-colors">
                     <td className="px-4 py-2.5 font-mono text-[#CC2229] font-semibold">#{r.folio}</td>
-                    <td className="px-4 py-2.5 text-gray-800 max-w-[120px] truncate">{r.cliente}</td>
+                    <td className="px-4 py-2.5 text-gray-300 max-w-[120px] truncate">{r.cliente}</td>
                     <td className="px-4 py-2.5 text-gray-500">{r.metros ?? "—"} m³</td>
-                    <td className="px-4 py-2.5 text-emerald-600 font-medium">{r.importe ? currency(r.importe) : "—"}</td>
+                    <td className="px-4 py-2.5 text-emerald-400 font-medium">{r.importe ? currency(r.importe) : "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -621,37 +893,61 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Programaciones recientes */}
-        <div className="bg-white border border-gray-100 shadow-sm rounded-2xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        {/* Programaciones del mes — más recientes */}
+        <div className="bg-[#242424] border border-white/10 rounded-2xl overflow-hidden">
+          <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="h-6 w-6 rounded-lg bg-gray-100 flex items-center justify-center">
-                <Package size={12} className="text-gray-500" />
+              <div className="h-6 w-6 rounded-lg bg-white/10 flex items-center justify-center">
+                <Package size={12} className="text-gray-400" />
               </div>
-              <h3 className="text-gray-900 font-semibold text-sm">Programaciones recientes</h3>
+              <div>
+                <h3 className="text-white font-semibold text-sm">Programaciones del mes</h3>
+                <p className="text-gray-500 text-[10px]">{progsEntregadasDelMes.length} de {progsDelMes.length} entregadas este mes</p>
+              </div>
             </div>
-            <span className="text-xs text-gray-400">{progs.length} total</span>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
+              style={{
+                background: progsDelMes.length > 0 && progsEntregadasDelMes.length / progsDelMes.length >= 0.8
+                  ? "rgba(16,185,129,0.15)" : "rgba(245,158,11,0.15)",
+                color: progsDelMes.length > 0 && progsEntregadasDelMes.length / progsDelMes.length >= 0.8
+                  ? "#34d399" : "#fbbf24",
+              }}>
+              {progsDelMes.length > 0 ? `${Math.round(progsEntregadasDelMes.length / progsDelMes.length * 100)}% entregado` : "—"}
+            </span>
           </div>
           {progsRecientes.length === 0 ? (
-            <div className="px-5 py-8 text-center text-sm text-gray-400">Sin programaciones</div>
+            <div className="px-5 py-8 text-center text-sm text-gray-500">Sin programaciones</div>
           ) : (
             <table className="w-full text-xs">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-100">
-                  {["Fecha", "Cliente", "M³", "Total"].map((h) => (
-                    <th key={h} className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-400">{h}</th>
+                <tr className="bg-white/5 border-b border-white/10">
+                  {["Fecha", "Cliente", "M³", "Total", "Estado"].map((h) => (
+                    <th key={h} className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-500">{h}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
-                {progsRecientes.map((p, i) => (
-                  <tr key={p.id ?? i} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-2.5 text-gray-500">{isoToDisplay(p.dia)}</td>
-                    <td className="px-4 py-2.5 text-gray-800 max-w-[130px] truncate">{p.cliente || "—"}</td>
-                    <td className="px-4 py-2.5 text-amber-600 font-medium">{p.m3Totales ?? "—"} m³</td>
-                    <td className="px-4 py-2.5 text-gray-900 font-semibold">{p.total ? currency(p.total) : "—"}</td>
-                  </tr>
-                ))}
+              <tbody className="divide-y divide-white/5">
+                {progsRecientes.map((p, i) => {
+                  const isEntregado = p.fase === "Entregado";
+                  const isPagadoSi = p.pagado === "Sí";
+                  return (
+                    <tr key={p.id ?? i} className="hover:bg-white/5 transition-colors">
+                      <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{isoToDisplay(p.dia)}</td>
+                      <td className="px-3 py-2.5 text-gray-300 max-w-[110px] truncate">{p.cliente || "—"}</td>
+                      <td className="px-3 py-2.5 text-amber-400 font-medium whitespace-nowrap">{p.m3Totales ?? "—"} m³</td>
+                      <td className="px-3 py-2.5 text-white font-semibold whitespace-nowrap">{p.total ? currency(p.total) : "—"}</td>
+                      <td className="px-3 py-2.5">
+                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap ${
+                          isPagadoSi ? "bg-emerald-500/15 text-emerald-400" :
+                          isEntregado ? "bg-blue-500/15 text-blue-400" :
+                          "bg-white/10 text-gray-400"
+                        }`}>
+                          {isPagadoSi ? "Pagado" : isEntregado ? "Entregado" : p.fase || "Prog."}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}

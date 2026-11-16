@@ -247,6 +247,11 @@ export interface Ticket {
   respuesta?: string;
   resueltoPor?: string;
   resueltaEn?: string;
+  adjuntos?: string[];
+  modulo?: string;
+  pasos?: string;
+  navegador?: string;
+  sistemaInfo?: Record<string, string>;
 }
 
 export { where, orderBy, limit, startAfter, type QueryConstraint };

@@ -7,6 +7,7 @@ import Sidebar from "@/components/Sidebar";
 import Header from "@/components/Header";
 import DevToolsOverlay from "@/components/DevToolsOverlay";
 import ErrorCaptureProvider from "@/components/ErrorCaptureProvider";
+import SupportFloatingButton from "@/components/SupportFloatingButton";
 import {
   getAllowedModuleSet,
   getStoredSession,
@@ -273,6 +274,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             )}
           </div>
         </main>
+        <SupportFloatingButton />
       </div>
     </div>
   );

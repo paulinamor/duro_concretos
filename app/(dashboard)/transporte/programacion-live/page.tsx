@@ -160,8 +160,8 @@ function VehicleRow({
 // ─── Trip card ────────────────────────────────────────────────────────────────
 
 function TripCard({ prog, liveMap }: { prog: Programacion; liveMap: Map<string, SamsaraVehicle> }) {
-  const hasGps = prog.choferes.some((c) => c.cr && liveMap.has(normalize(c.cr)));
-  const onRoute = prog.choferes.some((c) => liveMap.get(normalize(c.cr))?.engineState === "On");
+  const hasGps = (prog.choferes ?? []).some((c) => c.cr && liveMap.has(normalize(c.cr)));
+  const onRoute = (prog.choferes ?? []).some((c) => liveMap.get(normalize(c.cr))?.engineState === "On");
 
   return (
     <div className={`rounded-2xl border bg-white p-4 space-y-3 ${onRoute ? "border-emerald-200 shadow-sm shadow-emerald-50" : "border-slate-200"}`}>
@@ -194,7 +194,7 @@ function TripCard({ prog, liveMap }: { prog: Programacion; liveMap: Map<string, 
       </div>
 
       {/* GPS hint */}
-      {!hasGps && prog.choferes.length > 0 && (
+      {!hasGps && (prog.choferes ?? []).length > 0 && (
         <p className="text-[11px] text-slate-400 flex items-center gap-1.5 bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
           <Satellite size={11} /> Vehículos no encontrados en Samsara — verifica que el nombre del CR coincida
         </p>
@@ -202,7 +202,7 @@ function TripCard({ prog, liveMap }: { prog: Programacion; liveMap: Map<string, 
 
       {/* Vehicles */}
       <div className="space-y-2">
-        {prog.choferes
+        {(prog.choferes ?? [])
           .filter((c) => c.cr || c.chofer)
           .map((entry) => (
             <VehicleRow
@@ -305,7 +305,7 @@ export default function ProgramacionLivePage() {
 
   // All CRs referenced in today's programaciones
   const progCRs = new Set(
-    progs.flatMap((p) => p.choferes.map((c) => normalize(c.cr)).filter(Boolean))
+    progs.flatMap((p) => (p.choferes ?? []).map((c) => normalize(c.cr)).filter(Boolean))
   );
 
   // Count vehicles in different states among those assigned to trips

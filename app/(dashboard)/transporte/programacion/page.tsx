@@ -2596,6 +2596,10 @@ export default function ProgramacionPage() {
   const totalFacturado = filtered.reduce((s, p) => s + (p.total ?? 0), 0);
   const totalM3Vacios = filtered.reduce((s, p) => s + (p.m3Vacios ?? 0), 0);
   const totalPagado = filtered.filter((p) => p.pagado === "Sí").length;
+  // Totales solo entregados — deben coincidir con los KPIs del dashboard
+  const filteredEntregados = filtered.filter((p) => p.fase === "Entregado");
+  const totalM3Entregados = filteredEntregados.reduce((s, p) => s + (p.m3Totales ?? 0), 0);
+  const totalFacturadoEntregados = filteredEntregados.reduce((s, p) => s + (p.total ?? 0), 0);
 
   // Panel de trabajo: conteos por estado para el equipo de programación
   const trabajoPendiente = useMemo(() => {
@@ -3018,19 +3022,20 @@ export default function ProgramacionPage() {
           subtitle={`${programaciones.length} total registradas`}
         />
         <KPICard
-          title="Total m³"
-          value={totalM3 > 0 ? `${totalM3.toLocaleString("es-MX")} m³` : "—"}
+          title="M³ entregados"
+          value={totalM3Entregados > 0 ? `${totalM3Entregados.toLocaleString("es-MX")} m³` : "—"}
           icon={Clock}
           iconColor="text-blue-400"
           iconBg="bg-blue-500/10"
-          subtitle={totalM3Vacios > 0 ? `${totalM3Vacios} m³ vacíos` : undefined}
+          subtitle={totalM3 !== totalM3Entregados ? `${totalM3.toLocaleString("es-MX")} m³ total (incl. pendientes)` : (totalM3Vacios > 0 ? `${totalM3Vacios} m³ vacíos` : undefined)}
         />
         <KPICard
-          title="Total facturado"
-          value={totalFacturado > 0 ? `$${totalFacturado.toLocaleString("es-MX")}` : "—"}
+          title="Ventas entregadas"
+          value={totalFacturadoEntregados > 0 ? `$${totalFacturadoEntregados.toLocaleString("es-MX")}` : "—"}
           icon={Clock}
           iconColor="text-emerald-400"
           iconBg="bg-emerald-500/10"
+          subtitle={totalFacturado !== totalFacturadoEntregados ? `$${totalFacturado.toLocaleString("es-MX")} total incl. pendientes` : undefined}
         />
         <KPICard
           title="Viajes pagados"

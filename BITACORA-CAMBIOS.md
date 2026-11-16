@@ -7,6 +7,117 @@
 
 ## Noviembre 2026
 
+### 2026-11-15 (sesión 16) — Dashboard: KPIs Concreto vs Bomba + indicadores + gráficas + trazabilidad
+
+#### 🐛 Fix — Dashboard: cálculo erróneo de ventas Tiro Directo vs Bombeado
+- **Archivos:** `app/(dashboard)/dashboard/page.tsx`
+- **Descripción:** Dos iteraciones. Primera: se intentó separar componente precio concreto (precioM3×m3) vs cargo bomba (precioM3Bomba×m3), pero los datos en Firestore tienen precioM3Bomba almacenando el precio COMPLETO del pedido bombeado, no solo el surcharge — resultado incorrecto. Segunda (definitiva): misma lógica que módulo de Reportes — agrupar por tdBom con detección inclusiva `isBomba=(tdBom)=>(tdBom??"").toUpperCase().includes("BOM")`, sumar campo `total` por tipo. Columnas renombradas a "Tiro Directo" / "Bombeado". Ticket = $/m³ por tipo. Verifica automáticamente: Directo+Bombeado=Total.
+- **Horas estimadas:** 0.5 h
+
+#### ✨ Mejora — Trazabilidad de datos: dashboard ↔ programación
+- **Archivos:** `app/(dashboard)/transporte/programacion/page.tsx`, `app/(dashboard)/dashboard/page.tsx`
+- **Descripción:** KPI "Total m³" renombrado a "M³ entregados" y "Total facturado" a "Ventas entregadas" en programación — ahora solo suman fase="Entregado", igual que el dashboard. El subtítulo muestra el total incluyendo pendientes para ver la diferencia. KPI "Ventas mes" del dashboard ahora linkea a programación. Los números del módulo de programación (vista Mes) deben coincidir con los del dashboard.
+- **Horas estimadas:** 0.5 h
+
+---
+
+### 2026-11-15 (sesión 16-a) — Dashboard: KPIs Concreto vs Bomba + indicadores + gráficas avanzadas
+
+#### ✨ Mejora — Dashboard: tabla de indicadores del mes (Concreto vs Bomba)
+- **Archivos:** `app/(dashboard)/dashboard/page.tsx`
+- **Descripción:** Nueva sección "Indicadores del mes" al estilo del sistema externo: tabla con columnas Total, Concreto y Bomba para ventas ($), m³ despachados, promedio diario, tendencia a fin de mes y ticket promedio. Footer muestra % bombeado vs tiro directo y m³ promedio por pedido.
+- **Horas estimadas:** 1 h
+
+#### ✨ Mejora — Dashboard: gráfica "Ventas anuales" (año actual vs anterior)
+- **Archivos:** `app/(dashboard)/dashboard/page.tsx`
+- **Descripción:** Reemplazada la gráfica "Ventas últimos 6 meses" por comparativa anual m³ entregados: año actual (rojo) vs año anterior (gris). La carga de datos se amplió de 6 meses a 2 años para soportar la comparativa.
+- **Horas estimadas:** 0.5 h
+
+#### ✨ Mejora — Dashboard: gráficas "Más vendidos" y "Bomba vs Tiro Directo"
+- **Archivos:** `app/(dashboard)/dashboard/page.tsx`
+- **Descripción:** Nueva sección con dos gráficas: (1) Top 6 mezclas/resistencias por m³ del mes (barras horizontales), (2) Visualización Bomba vs Tiro Directo con barras de progreso, conteo de pedidos, % y resumen de m³ prom/pedido.
+- **Horas estimadas:** 0.5 h
+
+---
+
+### 2026-11-15 (sesión 15) — Obras agrupadas por cliente + paginación en módulos pesados
+
+#### ✨ Mejora — Catálogo de Obras: vista agrupada por cliente
+- **Archivos:** `app/(dashboard)/ventas/obras/page.tsx`
+- **Descripción:** En lugar de mostrar el mismo cliente en cada fila, las obras ahora se agrupan bajo un encabezado por cliente. Cada grupo muestra el nombre del cliente en negrita con un badge del conteo de obras. Las obras dentro del grupo quedan indentadas con solo nombre, dirección y acciones.
+- **Horas estimadas:** 1 h
+
+#### ✨ Mejora — Paginación en módulos pesados (Remisiones + Recibos de concreto)
+- **Archivos:**
+  - `app/(dashboard)/ventas/remisiones/page.tsx`
+  - `app/(dashboard)/ventas/recibos-concreto/page.tsx`
+- **Descripción:** Implementada paginación SAP-style en los dos módulos con más registros. Footer con selector de filas (25/50/100/200/Todos), contador de registros y controles de página anterior/siguiente. La página se reinicia automáticamente al cambiar filtros.
+- **Horas estimadas:** 1.5 h
+
+---
+
+### 2026-11-15 (sesión 14) — Módulo Soporte habilitado + botón flotante + notificación email
+
+#### ✨ Mejora — Módulo Soporte: activación, botón flotante y email
+- **Archivos:**
+  - `lib/auth.ts`
+  - `app/api/soporte/route.ts` (nuevo)
+  - `components/SupportFloatingButton.tsx` (nuevo)
+  - `app/(dashboard)/layout.tsx`
+  - `app/(dashboard)/soporte/page.tsx`
+  - `.env.local`
+- **Descripción:**
+  - `/soporte` agregado a `moduleCatalog` y a `getDefaultModulesForRole()` → ya no aparece bloqueado para operadores
+  - Nuevo API route `POST /api/soporte` que envía notificación por email via Resend con HTML estilizado
+  - Destinatarios configurables en `SUPPORT_EMAILS` (.env) — por defecto `contacto@lpsoft.mx`; agregar email de Paulina como segundo destinatario
+  - `handleNuevoTicket` en página de soporte actualizado para llamar al API route (fire-and-forget)
+  - Componente `SupportFloatingButton` — botón circular rojo (auricular) fijo en esquina inferior derecha, visible desde cualquier página excepto `/soporte`
+  - Al hacer clic abre el formulario de ticket sobre la pantalla actual con pantalla de éxito ✅
+  - Variables documentadas: `RESEND_API_KEY` y `SUPPORT_EMAILS`
+- **Horas estimadas:** 2.0 hrs
+
+---
+
+### 2026-11-13 (sesión 13) — Sidebar rediseño + reestructura de módulos
+
+#### ✨ Mejora — Sidebar: diseño JC + nueva estructura de módulos
+- **Archivo:** `components/Sidebar.tsx`
+- **Descripción:**
+  - Rediseño visual basado en el sidebar del proyecto Grupo JC:
+    - Gradiente radial rojo-marca en esquina superior izquierda + fade inferior sutil
+    - Item activo: `bg-white/[0.09]` + `shadow-[inset...]` (sutil) en lugar de `bg-[#CC2229]` sólido
+    - Indicador activo: barra roja lateral izquierda de 3px (igual que JC)
+    - User card al pie con avatar de iniciales (gradiente azul→rojo), nombre, rol y botón logout
+    - Botón colapsar/expandir con `PanelLeftClose/Open`, estado persistido en `localStorage`
+    - Sidebar colapsado: 76px icon-only con tooltips HTML `title`
+    - Grupos sin toggle expand/collapse → labels estáticos (más limpio)
+    - Ancho: 72 (288px) → 264px
+  - **Reestructura de módulos:**
+    - Antes: Dashboard+Reportes / Transporte / Administración / Operaciones / CRM / Ventas / Finanzas / Facturación / RRHH / Sistema
+    - Después: Inicio (top) / **Programación** (prog. transporte+ventas, recibos, remisiones) / **Transporte** (flota, verificación, unidades, diésel, mantenimiento) / **Ventas & CRM** / **Finanzas** (incluye Facturas CFDI) / **Operaciones** / **RRHH** / **Sistema**
+  - Todas las rutas/hrefs existentes conservadas sin cambios
+- **Horas estimadas:** 1.5 hrs
+
+---
+
+### 2026-11-13 (sesión 13) — Dashboard rediseño completo
+
+#### ✨ Mejora — Dashboard: tema oscuro + corrección de datos
+- **Archivo:** `app/(dashboard)/dashboard/page.tsx`
+- **Descripción:**
+  - Todos los cards/secciones cambiados de `bg-white` a `bg-[#242424]` para consistencia con el tema oscuro del sistema (antes eran blancos sobre fondo oscuro)
+  - Colores de texto: `text-gray-900` → `text-white`, `text-gray-500` → `text-gray-500/400`
+  - Bordes: `border-gray-100` → `border-white/10`
+  - Badges de estado: variantes light → `bg-*/15 text-*-400` (dark-safe)
+  - Gráficas: grid/ejes ajustados para tema oscuro (`stroke="#2a2a2a"`), tooltips con fondo `#1a1a1a`
+  - Alerta cartera vencida: `bg-red-50` → `bg-red-500/10`
+  - **NETO SIN IVA corregido:** antes usaba campo `incluyeIVA` que casi nunca está marcado → siempre devolvía el mismo valor que Ventas ($0 de IVA). Ahora: `ventasMes / 1.16` (siempre se asume IVA incluido en este negocio)
+  - KPI grid reorganizado: de `grid-cols-4` asimétrico → `grid-cols-3` balanceado (Ventas | Cobrado | Por Cobrar / Neto sin IVA | Por Pagar | Flota)
+  - Subtítulos más claros: "Por cobrar" = "todos los meses", "Cobrado" = "programaciones marcadas", "IVA 16%: $X" en neto
+- **Horas estimadas:** 1.5 hrs
+
+---
+
 ### 2026-11-13 (sesión 12) — Bug Permisos OC
 
 #### 🐛 Bug — Permisos OC multiplicaba por m³ cuando debe ser cargo fijo

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import {
-  Calculator, ChevronDown, DollarSign, MessageCircle, Package,
+  Calculator, ChevronDown, ChevronLeft, ChevronRight, DollarSign, MessageCircle, Package,
   Plus, Printer, ReceiptText, Save, Search, Trash2, X,
 } from "lucide-react";
 import {
@@ -121,6 +121,13 @@ export default function RecibosConcretoPage() {
     if (!search.trim()) return sorted;
     return sorted.filter((r) => matchesQuery(search, [r.receiptNumber, r.cliente, r.direccionObra]));
   }, [savedReceipts, search]);
+
+  const [pageSize, setPageSize] = useState(50);
+  const [currentPage, setCurrentPage] = useState(0);
+  const paginatedReceipts = pageSize === -1 ? filteredReceipts : filteredReceipts.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
+  const totalPages = pageSize === -1 ? 1 : Math.max(1, Math.ceil(filteredReceipts.length / pageSize));
+
+  useEffect(() => { setCurrentPage(0); }, [filteredReceipts]);
 
   useEffect(() => {
     Promise.all([
@@ -570,7 +577,8 @@ export default function RecibosConcretoPage() {
             <p className="text-sm text-gray-500">{search ? "Sin resultados para esa búsqueda." : "No hay recibos guardados aún."}</p>
           </div>
         ) : (
-          <div className="overflow-x-auto overflow-y-auto max-h-[65vh]">
+          <>
+          <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="sticky top-0 z-10">
                 <tr className="bg-[#1A1A1A] border-b border-[#3A3A3A]">
@@ -580,7 +588,7 @@ export default function RecibosConcretoPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#3A3A3A]">
-                {filteredReceipts.map((savedReceipt) => {
+                {paginatedReceipts.map((savedReceipt) => {
                   const { total, resta } = getTicketAmounts(savedReceipt);
                   return (
                     <tr key={savedReceipt.id} className="hover:bg-white/5 transition-colors">
@@ -619,6 +627,38 @@ export default function RecibosConcretoPage() {
               </tbody>
             </table>
           </div>
+          <div className="flex items-center justify-between px-5 py-3 border-t border-[#3A3A3A] bg-[#1E1E1E]">
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              <span>Filas por página:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(0); }}
+                className="bg-[#2A2A2A] border border-[#3A3A3A] text-gray-300 rounded-lg px-2 py-1 text-xs focus:outline-none cursor-pointer"
+              >
+                {[25, 50, 100, 200].map((n) => <option key={n} value={n}>{n}</option>)}
+                <option value={-1}>Todos</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-3 text-xs text-gray-500">
+              <span>
+                {pageSize === -1
+                  ? `${filteredReceipts.length} registros`
+                  : `${currentPage * pageSize + 1}–${Math.min((currentPage + 1) * pageSize, filteredReceipts.length)} de ${filteredReceipts.length}`}
+              </span>
+              {pageSize !== -1 && (
+                <div className="flex items-center gap-1">
+                  <button onClick={() => setCurrentPage((p) => Math.max(0, p - 1))} disabled={currentPage === 0} className="p-1 rounded-lg hover:bg-white/5 disabled:opacity-30 disabled:cursor-default cursor-pointer transition-colors">
+                    <ChevronLeft size={15} />
+                  </button>
+                  <span className="px-2 font-medium text-gray-300">{currentPage + 1} / {totalPages}</span>
+                  <button onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))} disabled={currentPage >= totalPages - 1} className="p-1 rounded-lg hover:bg-white/5 disabled:opacity-30 disabled:cursor-default cursor-pointer transition-colors">
+                    <ChevronRight size={15} />
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+          </>
         )}
       </div>
 

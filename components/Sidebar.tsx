@@ -6,38 +6,37 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   Activity,
-  LayoutDashboard,
-  Truck,
+  BarChart3,
+  BookUser,
+  Building2,
+  CalendarDays,
+  ChartNoAxesColumn,
+  CloudDownload,
+  CreditCard,
   DollarSign,
   FileDown,
   FileText,
+  FlaskConical,
   Fuel,
-  Wrench,
+  HardHat,
+  LayoutDashboard,
+  LifeBuoy,
+  Lock,
+  LogOut,
+  MapPin,
   Package,
+  PanelLeftClose,
+  PanelLeftOpen,
   ReceiptText,
+  ScanEye,
+  ShieldCheck,
+  ShieldEllipsis,
+  Terminal,
+  Truck,
+  UserRound,
+  Wrench,
   X,
   Menu,
-  ChevronDown,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
-  Lock,
-  ShieldCheck,
-  BarChart3,
-  HardHat,
-  BookUser,
-  CalendarDays,
-  Building2,
-  FlaskConical,
-  ChartNoAxesColumn,
-  Terminal,
-  UserRound,
-  ScanEye,
-  MapPin,
-  ShieldEllipsis,
-  CloudDownload,
-  CreditCard,
-  LifeBuoy,
 } from "lucide-react";
 import {
   getAllowedModuleSet,
@@ -57,86 +56,104 @@ import {
   MODULE_STATUS_DEFAULTS,
 } from "@/lib/moduleStatus";
 
-// ─── Items de navegación ──────────────────────────────────────────────────────
+// ─── Tipos ────────────────────────────────────────────────────────────────────
 
-const navItems = [
-  { href: "/dashboard",  icon: LayoutDashboard, label: "Dashboard" },
-  { href: "/reportes",   icon: BarChart3,        label: "Reportes" },
+interface NavItem {
+  href: string;
+  icon: React.ElementType;
+  label: string;
+  devOnly?: boolean;
+  badge?: "beta";
+}
+
+interface NavGroup {
+  label: string;
+  items: NavItem[];
+}
+
+// ─── Navegación ───────────────────────────────────────────────────────────────
+
+const topItems: NavItem[] = [
+  { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
+  { href: "/reportes",  icon: BarChart3,       label: "Reportes" },
 ];
 
-const systemItems = [
-  { href: "/configuracion",              icon: ShieldCheck,   label: "Configuración" },
-  { href: "/soporte",                    icon: LifeBuoy,      label: "Soporte" },
-  { href: "/configuracion/sat-descarga", icon: CloudDownload, label: "Descarga SAT", devOnly: true },
-  { href: "/dev",                        icon: Terminal,      label: "Dev Tools",     devOnly: true },
-];
-
-const administracionItems: { href: string; icon: React.ElementType; label: string }[] = [];
-
-const transporteItems = [
-  { href: "/transporte/programacion",      icon: CalendarDays, label: "Programación" },
-  { href: "/transporte/flota-en-vivo",       icon: ScanEye,      label: "Flota en vivo" },
-  { href: "/transporte/verificacion-viajes", icon: MapPin,       label: "Verificación viajes" },
-  { href: "/transporte/geocercas",           icon: ShieldEllipsis, label: "Geocercas" },
-  { href: "/transporte/programacion-live",   icon: Activity,     label: "Prog. en tiempo real" },
-  { href: "/transporte/seguros",           icon: Truck,        label: "Unidades y Seguros" },
-  { href: "/transporte/diesel",            icon: Fuel,         label: "Consumo de Diésel" },
-  { href: "/transporte/mantenimiento",     icon: Wrench,       label: "Mantenimiento de Flota" },
-];
-
-const operacionesItems = [
-  { href: "/operaciones/inventario", icon: Package,     label: "Inventarios" },
-  { href: "/operaciones/caja-chica", icon: CreditCard,  label: "Caja Chica" },
-];
-
-const crmItems = [
-  { href: "/crm/clientes",  icon: BookUser,          label: "Clientes" },
-  { href: "/crm/pipeline",  icon: ChartNoAxesColumn, label: "Pipeline" },
-];
-
-const ventasItems = [
-  { href: "/ventas/programacion",     icon: CalendarDays, label: "Programación" },
-  { href: "/ventas/recibos-concreto", icon: ReceiptText,  label: "Recibos de Concreto" },
-  { href: "/ventas/obras",            icon: MapPin,       label: "Catálogo de Obras" },
-  { href: "/ventas/remisiones",       icon: FileText,     label: "Remisiones" },
-  { href: "/ventas/productos",        icon: Package,      label: "Productos" },
-];
-
-const finanzasItems = [
-  { href: "/finanzas/cxc",                    icon: FileDown,  label: "Cuentas x Cobrar" },
-  { href: "/finanzas/cxp",                    icon: DollarSign, label: "Cuentas x Pagar" },
-  { href: "/finanzas/cobros",                 icon: CreditCard, label: "Cobros", dev: true },
-  { href: "/finanzas/estado-cuenta-clientes", icon: FileText,  label: "Estados Cliente" },
-];
-
-const facturacionItems = [
-  { href: "/facturacion", icon: ReceiptText, label: "Facturas CFDI" },
-];
-
-const recursosHumanosItems = [
-  { href: "/transporte/operadores",            icon: HardHat,      label: "Empleados" },
-  { href: "/recursos-humanos/asistencia",      icon: CalendarDays, label: "Asistencia" },
-  { href: "/recursos-humanos/nomina",          icon: FlaskConical, label: "Nómina", devOnly: true },
+const NAV_GROUPS: NavGroup[] = [
+  {
+    label: "Programación",
+    items: [
+      { href: "/transporte/programacion",     icon: CalendarDays, label: "Programación" },
+      { href: "/transporte/programacion-live", icon: Activity,     label: "Prog. en tiempo real" },
+      { href: "/ventas/recibos-concreto",     icon: ReceiptText,  label: "Recibos de Concreto" },
+      { href: "/ventas/remisiones",           icon: FileText,     label: "Remisiones" },
+    ],
+  },
+  {
+    label: "Transporte",
+    items: [
+      { href: "/transporte/flota-en-vivo",       icon: ScanEye,        label: "Flota en vivo" },
+      { href: "/transporte/verificacion-viajes", icon: MapPin,         label: "Verificación viajes" },
+      { href: "/transporte/geocercas",           icon: ShieldEllipsis, label: "Geocercas" },
+      { href: "/transporte/seguros",             icon: Truck,          label: "Unidades y Seguros" },
+      { href: "/transporte/diesel",              icon: Fuel,           label: "Consumo de Diésel" },
+      { href: "/transporte/mantenimiento",       icon: Wrench,         label: "Mantenimiento de Flota" },
+    ],
+  },
+  {
+    label: "Ventas & CRM",
+    items: [
+      { href: "/crm/clientes",         icon: BookUser,          label: "Clientes" },
+      { href: "/crm/pipeline",         icon: ChartNoAxesColumn, label: "Pipeline" },
+      { href: "/ventas/programacion",  icon: CalendarDays,      label: "Programación Ventas" },
+      { href: "/ventas/obras",         icon: MapPin,            label: "Catálogo de Obras" },
+      { href: "/ventas/productos",     icon: Package,           label: "Productos" },
+    ],
+  },
+  {
+    label: "Finanzas",
+    items: [
+      { href: "/facturacion",                      icon: ReceiptText, label: "Facturas CFDI" },
+      { href: "/finanzas/cxc",                     icon: FileDown,    label: "Cuentas x Cobrar" },
+      { href: "/finanzas/cxp",                     icon: DollarSign,  label: "Cuentas x Pagar" },
+      { href: "/finanzas/cobros",                  icon: CreditCard,  label: "Cobros" },
+      { href: "/finanzas/estado-cuenta-clientes",  icon: FileText,    label: "Estados Cliente" },
+    ],
+  },
+  {
+    label: "Operaciones",
+    items: [
+      { href: "/operaciones/inventario", icon: Package,    label: "Inventarios" },
+      { href: "/operaciones/caja-chica", icon: CreditCard, label: "Caja Chica" },
+    ],
+  },
+  {
+    label: "Recursos Humanos",
+    items: [
+      { href: "/transporte/operadores",       icon: HardHat,      label: "Empleados" },
+      { href: "/recursos-humanos/asistencia", icon: CalendarDays, label: "Asistencia" },
+      { href: "/recursos-humanos/nomina",     icon: FlaskConical, label: "Nómina", devOnly: true },
+    ],
+  },
+  {
+    label: "Sistema",
+    items: [
+      { href: "/configuracion",              icon: ShieldCheck,   label: "Configuración" },
+      { href: "/soporte",                    icon: LifeBuoy,      label: "Soporte" },
+      { href: "/configuracion/sat-descarga", icon: CloudDownload, label: "Descarga SAT", devOnly: true },
+      { href: "/dev",                        icon: Terminal,      label: "Dev Tools",    devOnly: true },
+    ],
+  },
 ];
 
 // ─── Badge de estado ──────────────────────────────────────────────────────────
 
 const STATUS_BADGE: Record<ModuleStatus, { label: string; cls: string }> = {
-  live: {
-    label: "EN VIVO",
-    cls:   "text-emerald-400/80 bg-emerald-400/10 border border-emerald-400/20",
-  },
-  wip: {
-    label: "WIP",
-    cls:   "text-orange-400/80 bg-orange-400/10 border border-orange-400/20",
-  },
-  dev: {
-    label: "DEV",
-    cls:   "text-amber-400/80 bg-amber-400/10 border border-amber-400/20",
-  },
+  live: { label: "●",   cls: "text-emerald-400/70 bg-emerald-400/10 border border-emerald-400/20" },
+  wip:  { label: "WIP", cls: "text-orange-400/70 bg-orange-400/10 border border-orange-400/20" },
+  dev:  { label: "DEV", cls: "text-amber-400/70 bg-amber-400/10 border border-amber-400/20" },
 };
 
-// ─── NavLink ──────────────────────────────────────────────────────────────────
+// ─── NavItem component ────────────────────────────────────────────────────────
 
 function NavLink({
   href,
@@ -147,26 +164,27 @@ function NavLink({
   devOnly,
   status,
   isDevMode,
+  isCollapsed,
   onStatusChange,
   onClick,
-}: {
-  href:           string;
-  icon:           React.ElementType;
-  label:          string;
+}: NavItem & {
   enabledSet:     Set<string>;
-  isAdmin?:       boolean;
-  devOnly?:       boolean;
+  isAdmin:        boolean;
+  isDevMode:      boolean;
+  isCollapsed:    boolean;
   status?:        ModuleStatus;
-  isDevMode?:     boolean;
-  onStatusChange?: (href: string, next: ModuleStatus) => void;
+  onStatusChange: (href: string, next: ModuleStatus) => void;
   onClick?:       () => void;
 }) {
-  const pathname = usePathname();
-  const isActive = pathname === href || pathname.startsWith(href + "/");
+  const pathname  = usePathname();
+  const isActive  = pathname === href || pathname.startsWith(href + "/");
 
   if (devOnly && !isAdmin) return null;
 
   const isEnabled = enabledSet.has(href) && !DEV_ONLY_ROUTES.has(href) || DEV_ONLY_ROUTES.has(href);
+  // "live" badge solo visible en dev mode; WIP y DEV siempre visibles
+  const badge = status && STATUS_BADGE[status] ? STATUS_BADGE[status] : null;
+  const showBadge = badge && (status !== "live" || isDevMode);
 
   function handleBadgeClick(e: React.MouseEvent) {
     if (!isDevMode || !onStatusChange) return;
@@ -175,30 +193,25 @@ function NavLink({
     onStatusChange(href, nextStatus(status ?? "live"));
   }
 
-  const badge = status ? STATUS_BADGE[status] : null;
-
-  const badgeEl = badge ? (
+  const badgeEl = showBadge && !isCollapsed ? (
     <span
       onClick={handleBadgeClick}
-      title={isDevMode ? `Clic para cambiar a: ${nextStatus(status!)}` : badge.label}
-      className={`ml-auto shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${badge.cls} ${
-        isDevMode ? "cursor-pointer hover:opacity-100 transition-opacity" : ""
-      }`}
+      title={isDevMode ? `Cambiar a: ${nextStatus(status!)}` : badge.label}
+      className={`ml-auto shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${badge.cls} ${isDevMode ? "cursor-pointer" : ""}`}
     >
-      {status === "live" ? "●" : badge.label}
+      {badge.label}
     </span>
   ) : null;
 
   if (!isEnabled) {
     return (
       <div
-        className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-slate-500 cursor-not-allowed select-none"
-        aria-disabled="true"
-        title="Módulo bloqueado"
+        title={isCollapsed ? `${label} (bloqueado)` : undefined}
+        className={`flex items-center gap-3 rounded-xl py-2 text-[0.83rem] text-slate-500 cursor-not-allowed select-none opacity-50 ${isCollapsed ? "justify-center px-0" : "px-3"}`}
       >
-        <Icon size={18} className="text-slate-600" />
-        <span className="min-w-0 flex-1 whitespace-normal leading-snug">{label}</span>
-        {badgeEl ?? <Lock size={13} className="ml-auto shrink-0 text-slate-600" />}
+        <Icon size={18} className="shrink-0 text-slate-600" />
+        {!isCollapsed && <span className="flex-1 truncate">{label}</span>}
+        {!isCollapsed && <Lock size={12} className="ml-auto shrink-0 text-slate-600" />}
       </div>
     );
   }
@@ -206,49 +219,41 @@ function NavLink({
   return (
     <Link
       href={href}
+      title={isCollapsed ? label : undefined}
       onClick={onClick}
-      className={`group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all duration-150 ${
+      className={`group relative flex items-center gap-3 rounded-xl py-2 text-[0.83rem] font-medium transition-colors ${
+        isCollapsed ? "justify-center px-0" : "px-3"
+      } ${
         isActive
-          ? "bg-[#CC2229] text-white shadow-lg shadow-[#CC2229]/20"
-          : "text-white/90 hover:bg-white/10 hover:text-white"
+          ? "bg-white/[0.09] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]"
+          : "text-slate-300 hover:bg-white/[0.05] hover:text-white"
       }`}
     >
-      <Icon size={18} className={isActive ? "text-white" : "text-slate-400 group-hover:text-white"} />
-      <span className="min-w-0 flex-1 whitespace-normal leading-snug">{label}</span>
+      {/* Indicador activo — barra roja lateral izquierda */}
+      {isActive && (
+        <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-[#CC2229]" />
+      )}
+      <Icon
+        size={18}
+        className={`shrink-0 ${isActive ? "text-white" : "text-slate-400 group-hover:text-white"}`}
+      />
+      {!isCollapsed && <span className="flex-1 truncate">{label}</span>}
       {badgeEl}
     </Link>
   );
 }
 
-// ─── SectionHeader ────────────────────────────────────────────────────────────
-
-function SectionHeader({
-  label,
-  expanded,
-  onToggle,
-  locked = false,
-}: {
-  label:    string;
-  expanded: boolean;
-  onToggle: () => void;
-  locked?:  boolean;
-}) {
-  return (
-    <button
-      onClick={locked ? undefined : onToggle}
-      disabled={locked}
-      className={`w-full flex items-center justify-between px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] transition-colors ${
-        locked ? "text-slate-600 cursor-not-allowed" : "text-slate-400 hover:text-white"
-      }`}
-      title={locked ? "Sección bloqueada" : undefined}
-    >
-      {label}
-      {locked ? <Lock size={12} /> : expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-    </button>
-  );
-}
-
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
+
+const COLLAPSE_KEY = "duro:sidebar-collapsed";
+const ROLE_LABELS: Record<string, string> = {
+  admin:         "Administrador",
+  operaciones:   "Operaciones",
+  administracion:"Administración",
+  finanzas:      "Finanzas",
+  ventas:        "Ventas",
+  transporte:    "Transporte",
+};
 
 interface SidebarProps {
   mobileOpen?: boolean;
@@ -256,43 +261,22 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
-  const [session, setSession]             = useState<ReturnType<typeof getStoredSession>>(null);
+  const [session, setSession]           = useState<ReturnType<typeof getStoredSession>>(null);
   const [activePlanta, setActivePlantaState] = useState<Planta>("Todas");
-  const [statuses, setStatuses]           = useState<Record<string, ModuleStatus>>(MODULE_STATUS_DEFAULTS);
-  const [devMode, setDevMode]             = useState(false);
-
-  const [collapsed, setCollapsed] = useState(false);
+  const [statuses, setStatuses]         = useState<Record<string, ModuleStatus>>(MODULE_STATUS_DEFAULTS);
+  const [devMode, setDevMode]           = useState(false);
+  const [devOpen, setDevOpen]           = useState(false);
+  const [collapsed, setCollapsed]       = useState(false);
 
   const canSwitchPlanta = !session?.planta || session.planta === "Todas";
   const isAdmin         = session?.role === "admin";
   const isDeveloper     = session?.email === DEVELOPER_EMAIL;
+  const enabledSet      = useMemo(() => getAllowedModuleSet(session), [session]);
 
-  const enabledSet = useMemo(() => getAllowedModuleSet(session), [session]);
+  useEffect(() => {
+    try { setCollapsed(localStorage.getItem(COLLAPSE_KEY) === "1"); } catch { /* noop */ }
+  }, []);
 
-  const hasEnabledItems = (items: Array<{ href: string; devOnly?: boolean }>) =>
-    items.some((item) => (item.devOnly ? isAdmin : enabledSet.has(item.href)));
-
-  const transporteLocked      = !hasEnabledItems(transporteItems);
-  const administracionLocked  = !hasEnabledItems(administracionItems);
-  const operacionesLocked     = !hasEnabledItems(operacionesItems);
-  const crmLocked             = !hasEnabledItems(crmItems);
-  const ventasLocked          = !hasEnabledItems(ventasItems);
-  const finanzasLocked        = !hasEnabledItems(finanzasItems);
-  const facturacionLocked     = !hasEnabledItems(facturacionItems);
-  const recursosHumanosLocked = !hasEnabledItems(recursosHumanosItems);
-  const sistemaLocked         = !hasEnabledItems(systemItems);
-
-  const [transporteOpen,      setTransporteOpen]      = useState(true);
-  const [administracionOpen,  setAdministracionOpen]  = useState(true);
-  const [operacionesOpen,     setOperacionesOpen]      = useState(true);
-  const [crmOpen,             setCrmOpen]              = useState(true);
-  const [ventasOpen,          setVentasOpen]           = useState(true);
-  const [finanzasOpen,        setFinanzasOpen]         = useState(true);
-  const [facturacionOpen,     setFacturacionOpen]      = useState(true);
-  const [recursosHumanosOpen, setRecursosHumanosOpen] = useState(true);
-  const [sistemaOpen,         setSistemaOpen]          = useState(true);
-
-  // Carga inicial — debe correr solo en cliente para evitar hydration mismatch
   useEffect(() => {
     setSession(getStoredSession());
     setActivePlantaState(getActivePlanta());
@@ -308,6 +292,13 @@ export default function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
     return () => window.removeEventListener("duro:session-updated", onUpdate);
   }, []);
 
+  function toggleCollapsed() {
+    setCollapsed((v) => {
+      try { localStorage.setItem(COLLAPSE_KEY, v ? "0" : "1"); } catch { /* noop */ }
+      return !v;
+    });
+  }
+
   function handlePlantaChange(p: Planta) {
     setActivePlanta(p);
     setActivePlantaState(p);
@@ -319,200 +310,239 @@ export default function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
     await saveModuleStatus(href, next);
   }
 
-  function navLinkProps(href: string) {
+  function navLinkProps(item: NavItem) {
     return {
+      ...item,
       enabledSet,
-      isAdmin,
-      status:         statuses[href] as ModuleStatus | undefined,
+      isAdmin:        isAdmin || false,
       isDevMode:      devMode && isDeveloper,
+      isCollapsed:    collapsed,
       onStatusChange: handleStatusChange,
       onClick:        onClose,
+      status:         statuses[item.href] as ModuleStatus | undefined,
     };
   }
 
+  const initials = session?.name
+    ? session.name.split(" ").slice(0, 2).map((w: string) => w[0]).join("").toUpperCase()
+    : "U";
+
   const content = (
     <div className="flex flex-col h-full">
-      {/* Logo */}
-      <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white p-1.5 shadow-sm">
+
+      {/* Gradiente de fondo — idéntico al JC */}
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_60%_at_0%_0%,rgba(204,34,41,0.20),transparent_60%)]" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[rgba(204,34,41,0.08)] to-transparent" />
+
+      {/* Marca */}
+      <div className={`relative shrink-0 pb-3 pt-5 ${collapsed ? "px-3" : "px-4"}`}>
+        <div className={`flex items-center gap-3 ${collapsed ? "justify-center" : ""}`}>
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-1 shadow-[0_6px_18px_-6px_rgba(0,0,0,0.6)]">
             <Image
               src="/DC_LOGO-removebg-preview.png"
               alt="Duro Concretos"
-              width={36}
-              height={36}
+              width={32}
+              height={32}
               style={{ objectFit: "contain" }}
               priority
             />
           </div>
-          <div className="min-w-0">
-            <p className="text-sm font-bold text-white leading-tight truncate">Duro Concretos</p>
-            <p className="text-xs text-slate-400 leading-tight">Sistema ERP</p>
-          </div>
+          {!collapsed && (
+            <div className="min-w-0">
+              <p className="truncate text-[0.9rem] font-bold leading-tight tracking-tight text-white">
+                Duro Concretos
+              </p>
+              <p className="truncate text-[0.66rem] font-medium text-slate-400">
+                Sistema ERP
+              </p>
+            </div>
+          )}
+          {!collapsed && onClose && (
+            <button
+              onClick={onClose}
+              className="ml-auto shrink-0 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-white/10 hover:text-white lg:hidden"
+            >
+              <X size={18} />
+            </button>
+          )}
         </div>
-        {onClose && (
-          <button onClick={onClose} className="shrink-0 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-white/10 hover:text-white lg:hidden">
-            <X size={18} />
-          </button>
-        )}
       </div>
 
-      {/* Plant switcher */}
-      <div className="px-3 py-2.5 border-b border-white/10">
-        {canSwitchPlanta ? (
-          <>
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 mb-2 px-0.5">Planta activa</p>
-            <div className="flex gap-1">
-              {(["Allende", "Pesquería", "Todas"] as Planta[]).map((p) => (
-                <button
-                  key={p}
-                  onClick={() => handlePlantaChange(p)}
-                  className={`flex-1 py-1.5 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
-                    activePlanta === p
-                      ? "bg-[#CC2229] text-white shadow-md shadow-[#CC2229]/30"
-                      : "bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white"
-                  }`}
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
-          </>
-        ) : (
-          <div className="flex items-center gap-2 px-0.5">
+      {/* Planta switcher */}
+      {canSwitchPlanta ? (
+        <div className={`relative shrink-0 pb-3 ${collapsed ? "px-2" : "px-4"}`}>
+          {!collapsed && (
+            <p className="text-[0.6rem] font-bold uppercase tracking-[0.2em] text-slate-500 mb-1.5 px-0.5">
+              Planta activa
+            </p>
+          )}
+          <div className={`flex ${collapsed ? "flex-col" : "flex-row"} gap-1`}>
+            {(["Allende", "Pesquería", "Todas"] as Planta[]).map((p) => (
+              <button
+                key={p}
+                onClick={() => handlePlantaChange(p)}
+                title={collapsed ? p : undefined}
+                className={`rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
+                  collapsed ? "py-1.5 px-0 w-full text-center" : "flex-1 py-1.5"
+                } ${
+                  activePlanta === p
+                    ? "bg-[#CC2229] text-white"
+                    : "bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white"
+                }`}
+              >
+                {collapsed ? p[0] : p}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        !collapsed && (
+          <div className="relative shrink-0 pb-3 px-5 flex items-center gap-2">
             <Building2 size={13} className="text-[#CC2229] shrink-0" />
             <span className="text-xs text-white font-semibold">Planta {session?.planta}</span>
           </div>
-        )}
-      </div>
+        )
+      )}
 
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
-        {navItems.map((item) => (
-          <NavLink key={item.href} {...item} {...navLinkProps(item.href)} />
-        ))}
+      <nav className={`relative flex-1 overflow-y-auto pb-4 ${collapsed ? "px-2.5" : "px-3"}`}>
 
-        <div className="pt-4 pb-1">
-          <SectionHeader label="Transporte" expanded={transporteOpen && !transporteLocked} locked={transporteLocked} onToggle={() => setTransporteOpen((v) => !v)} />
+        {/* Items de inicio — sin grupo */}
+        <div className="space-y-0.5 mb-2">
+          {topItems.map((item) => <NavLink key={item.href} {...navLinkProps(item)} />)}
         </div>
-        {transporteOpen && !transporteLocked && transporteItems.map((item) => (
-          <NavLink key={item.href} {...item} {...navLinkProps(item.href)} />
-        ))}
 
-        <div className="pt-4 pb-1">
-          <SectionHeader label="Administración" expanded={administracionOpen && !administracionLocked} locked={administracionLocked} onToggle={() => setAdministracionOpen((v) => !v)} />
-        </div>
-        {administracionOpen && !administracionLocked && administracionItems.map((item) => (
-          <NavLink key={item.href} {...item} {...navLinkProps(item.href)} />
-        ))}
-
-        <div className="pt-4 pb-1">
-          <SectionHeader label="Operaciones" expanded={operacionesOpen && !operacionesLocked} locked={operacionesLocked} onToggle={() => setOperacionesOpen((v) => !v)} />
-        </div>
-        {operacionesOpen && !operacionesLocked && operacionesItems.map((item) => (
-          <NavLink key={item.href} {...item} {...navLinkProps(item.href)} />
-        ))}
-
-        <div className="pt-4 pb-1">
-          <SectionHeader label="CRM" expanded={crmOpen && !crmLocked} locked={crmLocked} onToggle={() => setCrmOpen((v) => !v)} />
-        </div>
-        {crmOpen && !crmLocked && crmItems.map((item) => (
-          <NavLink key={item.href} {...item} {...navLinkProps(item.href)} />
-        ))}
-
-        <div className="pt-4 pb-1">
-          <SectionHeader label="Ventas" expanded={ventasOpen && !ventasLocked} locked={ventasLocked} onToggle={() => setVentasOpen((v) => !v)} />
-        </div>
-        {ventasOpen && !ventasLocked && ventasItems.map((item) => (
-          <NavLink key={item.href} {...item} {...navLinkProps(item.href)} />
-        ))}
-
-        <div className="pt-4 pb-1">
-          <SectionHeader label="Finanzas" expanded={finanzasOpen && !finanzasLocked} locked={finanzasLocked} onToggle={() => setFinanzasOpen((v) => !v)} />
-        </div>
-        {finanzasOpen && !finanzasLocked && finanzasItems.map((item) => (
-          <NavLink key={item.href} {...item} {...navLinkProps(item.href)} />
-        ))}
-
-        <div className="pt-4 pb-1">
-          <SectionHeader label="Facturación" expanded={facturacionOpen && !facturacionLocked} locked={facturacionLocked} onToggle={() => setFacturacionOpen((v) => !v)} />
-        </div>
-        {facturacionOpen && !facturacionLocked && facturacionItems.map((item) => (
-          <NavLink key={item.href} {...item} {...navLinkProps(item.href)} />
-        ))}
-
-        <div className="pt-4 pb-1">
-          <SectionHeader label="Recursos Humanos" expanded={recursosHumanosOpen && !recursosHumanosLocked} locked={recursosHumanosLocked} onToggle={() => setRecursosHumanosOpen((v) => !v)} />
-        </div>
-        {recursosHumanosOpen && !recursosHumanosLocked && recursosHumanosItems.map((item) => (
-          <NavLink key={item.href} {...item} {...navLinkProps(item.href)} />
-        ))}
-
-        <div className="pt-4 pb-1">
-          <SectionHeader label="Sistema" expanded={sistemaOpen && !sistemaLocked} locked={sistemaLocked} onToggle={() => setSistemaOpen((v) => !v)} />
-        </div>
-        {sistemaOpen && !sistemaLocked && systemItems.map((item) => (
-          <NavLink key={item.href} {...item} {...navLinkProps(item.href)} />
-        ))}
+        {/* Grupos */}
+        {NAV_GROUPS.map((group) => {
+          const visibleItems = group.items.filter((i) => i.devOnly ? isAdmin : true);
+          if (visibleItems.length === 0) return null;
+          return (
+            <div key={group.label} className="pt-4 first:pt-1">
+              {collapsed ? (
+                <div className="mx-3 mb-2 h-px bg-white/[0.07]" />
+              ) : (
+                <p className="mb-1 px-3 text-[0.62rem] font-bold uppercase tracking-[0.2em] text-slate-500">
+                  {group.label}
+                </p>
+              )}
+              <div className="space-y-0.5">
+                {visibleItems.map((item) => <NavLink key={item.href} {...navLinkProps(item)} />)}
+              </div>
+            </div>
+          );
+        })}
       </nav>
 
-      {/* Footer */}
-      <div className="border-t border-white/10 px-4 py-3 space-y-2">
-        <button
-          onClick={() => setCollapsed(true)}
-          className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-slate-500 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
-        >
-          <ChevronsLeft size={13} />
-          Ocultar menú
-        </button>
-        {/* Dev tools — solo visible para leonardo@lpsoft.mx */}
-        {isDeveloper && (
-          <div className="space-y-1">
-            <button
-              onClick={() => setDevMode((v) => !v)}
-              className={`w-full flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
-                devMode
-                  ? "bg-violet-500/20 border border-violet-400/30 text-violet-300"
-                  : "bg-white/5 border border-white/10 text-slate-400 hover:text-white hover:bg-white/10"
-              }`}
-            >
-              <Terminal size={13} />
-              {devMode ? "Dev mode activo — clic en badge para cambiar" : "Dev tools"}
-              {devMode && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />}
-            </button>
+      {/* Dev tools — solo developer */}
+      {isDeveloper && !collapsed && (
+        <div className="relative shrink-0 space-y-0.5 px-3 pt-1">
+          <button
+            onClick={() => setDevOpen((v) => !v)}
+            className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold transition-all ${
+              devOpen
+                ? "border border-violet-400/30 bg-violet-500/20 text-violet-300"
+                : "border border-white/10 bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white"
+            }`}
+          >
+            <Terminal className="h-3.5 w-3.5 shrink-0" />
+            <span className="flex-1 text-left">
+              {devMode ? "Dev mode activo" : "Dev tools"}
+            </span>
+            {devOpen && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-400" />}
+          </button>
+          {devOpen && (
+            <div className="space-y-0.5 pl-1">
+              <button
+                onClick={() => {
+                  setDevMode((v) => !v);
+                }}
+                className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs transition-colors ${
+                  devMode ? "text-violet-300 hover:bg-violet-500/10" : "text-slate-400 hover:bg-white/5 hover:text-white"
+                }`}
+              >
+                <span className={`h-2 w-2 rounded-full ${devMode ? "bg-violet-400 animate-pulse" : "bg-slate-600"}`} />
+                {devMode ? "Desactivar dev mode" : "Activar dev mode"}
+              </button>
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent("duro:devtool:open", { detail: { tool: "impersonate" } }))}
+                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-400 transition-colors hover:bg-white/5 hover:text-white"
+              >
+                <UserRound className="h-3.5 w-3.5 shrink-0" />
+                Impersonar usuario
+              </button>
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent("duro:devtool:open", { detail: { tool: "inspector" } }))}
+                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-400 transition-colors hover:bg-white/5 hover:text-white"
+              >
+                <ScanEye className="h-3.5 w-3.5 shrink-0" />
+                Inspector de sesión
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
-            {devMode && (
-              <div className="space-y-0.5 pl-1">
-                <button
-                  onClick={() => window.dispatchEvent(new CustomEvent("duro:devtool:open", { detail: { tool: "impersonate" } }))}
-                  className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
-                >
-                  <UserRound size={13} />
-                  Impersonar usuario
-                </button>
-                <button
-                  onClick={() => window.dispatchEvent(new CustomEvent("duro:devtool:open", { detail: { tool: "inspector" } }))}
-                  className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
-                >
-                  <ScanEye size={13} />
-                  Inspector de sesión
-                </button>
-              </div>
-            )}
+      {/* Usuario + footer */}
+      <div className={`relative shrink-0 pb-4 pt-2 ${collapsed ? "px-2.5" : "px-3"}`}>
+        <div
+          className={`flex items-center gap-3 rounded-xl border border-white/[0.07] bg-white/[0.04] p-2.5 ${
+            collapsed ? "flex-col gap-2 px-0" : ""
+          }`}
+        >
+          {/* Avatar con iniciales */}
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-[#CC2229] text-[0.7rem] font-bold text-white ring-1 ring-white/10">
+            {initials}
           </div>
-        )}
-        <div className="border-t border-white/5 pt-3">
-          <div className="flex items-center justify-between">
+          {!collapsed && (
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs font-semibold leading-tight text-white">
+                {session?.name || "Usuario"}
+              </p>
+              <p className="truncate text-[0.66rem] text-slate-400">
+                {ROLE_LABELS[session?.role ?? ""] ?? session?.role ?? ""}
+              </p>
+            </div>
+          )}
+          <button
+            onClick={() => {
+              localStorage.removeItem("duro_concretos_session");
+              window.location.href = "/";
+            }}
+            title="Cerrar sesión"
+            className="cursor-pointer rounded-lg p-1.5 text-slate-500 transition hover:bg-white/10 hover:text-white"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        <div className={`mt-2.5 flex items-center ${collapsed ? "justify-center" : "justify-between px-1"}`}>
+          {!collapsed && (
             <a
               href="https://lpsoft.mx"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[10px] text-slate-600 hover:text-slate-400 transition-colors"
+              className="text-[0.6rem] text-slate-600 transition hover:text-slate-400"
             >
               Software and Solutions LP
             </a>
-            <span className="text-[10px] font-mono text-slate-600">v{pkg.version}</span>
-          </div>
+          )}
+          {!collapsed && (
+            <span className="text-[0.6rem] font-mono text-slate-600">v{pkg.version}</span>
+          )}
+        </div>
+
+        {/* Botón colapsar */}
+        <div className={`mt-2 flex ${collapsed ? "justify-center" : "justify-end px-1"}`}>
+          <button
+            onClick={toggleCollapsed}
+            title={collapsed ? "Expandir menú" : "Contraer menú"}
+            className="rounded-lg p-1.5 text-slate-500 transition hover:bg-white/10 hover:text-white"
+          >
+            {collapsed
+              ? <PanelLeftOpen className="h-3.5 w-3.5" />
+              : <PanelLeftClose className="h-3.5 w-3.5" />
+            }
+          </button>
         </div>
       </div>
     </div>
@@ -520,24 +550,20 @@ export default function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
 
   return (
     <>
-      <aside className={`duro-sidebar hidden min-h-screen shrink-0 flex-col border-r border-[#1E293B] bg-[#0B1220] lg:flex transition-all duration-200 overflow-hidden ${collapsed ? "w-14" : "w-72"}`}>
-        {collapsed ? (
-          <div className="flex flex-col items-center pt-4">
-            <button
-              onClick={() => setCollapsed(false)}
-              title="Mostrar menú"
-              className="p-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-            >
-              <ChevronsRight size={20} />
-            </button>
-          </div>
-        ) : content}
+      {/* Desktop sidebar */}
+      <aside
+        className={`duro-sidebar relative hidden min-h-screen shrink-0 flex-col overflow-hidden border-r border-white/[0.06] bg-[#0B1220] text-slate-300 transition-[width] duration-200 lg:flex ${
+          collapsed ? "w-[76px]" : "w-[264px]"
+        }`}
+      >
+        {content}
       </aside>
 
+      {/* Mobile overlay */}
       {mobileOpen && (
         <div className="lg:hidden fixed inset-0 z-50 flex">
           <div className="fixed inset-0 bg-black/60" onClick={onClose} />
-          <aside className="duro-sidebar relative flex min-h-screen w-80 max-w-[85vw] flex-col border-r border-[#1E293B] bg-[#0B1220]">
+          <aside className="duro-sidebar relative flex min-h-screen w-[264px] max-w-[85vw] flex-col overflow-hidden border-r border-white/[0.06] bg-[#0B1220] text-slate-300">
             {content}
           </aside>
         </div>
