@@ -13,6 +13,7 @@ import ModuleLoading from "@/components/ModuleLoading";
 import AppSelect from "@/components/AppSelect";
 import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS, type SolicitudAutorizacion } from "@/lib/db";
 import { filterByPlanta, getActivePlanta, getStoredSession } from "@/lib/auth";
+import PlantaFilter from "@/components/PlantaFilter";
 import { todayCST, currentMonthCST } from "@/lib/dateUtils";
 import { storage } from "@/lib/firebase";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -1206,14 +1207,11 @@ export default function InventarioPage() {
         </div>
 
         {/* Plant selector */}
-        <div className="flex items-center bg-gray-100 rounded-lg p-1 gap-0.5">
-          {(["Allende", "Pesquería"] as const).map((p) => (
-            <button key={p} onClick={() => setLocalPlanta(p)}
-              className={`px-4 py-1.5 rounded-md text-xs font-bold tracking-wide transition-all cursor-pointer ${localPlanta === p ? "bg-[#CC2229] text-white shadow-md" : "text-gray-500 hover:text-gray-700"}`}>
-              {p}
-            </button>
-          ))}
-        </div>
+        <PlantaFilter
+          value={localPlanta}
+          onChange={(p) => setLocalPlanta(p as "Allende" | "Pesquería")}
+          showTodas={false}
+        />
 
         <div className="ml-auto flex items-center gap-2">
           {tab === "stock" && (

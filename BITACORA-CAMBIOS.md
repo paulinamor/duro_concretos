@@ -7,6 +7,30 @@
 
 ## Noviembre 2026
 
+### 2026-11-17 (sesión 17) — Audit logs globales + modal confirmación + selector de planta unificado
+
+#### ✨ Mejora — Audit log automático en todas las eliminaciones
+- **Archivos:** `lib/db.ts`, `lib/errorLogger.ts`
+- **Descripción:** `deleteDocument` ahora guarda automáticamente el documento antes de eliminarlo y registra en `auditLog` (Firestore) con acción, colección, documentId, usuario, planta, timestamp y snapshot `before`. Sin cambios en cada módulo.
+- **Horas estimadas:** 1 h
+
+#### ✨ Mejora — Modal de confirmación global para borrar (DeleteProvider)
+- **Archivos:** `lib/delete-context.tsx` (nuevo), `app/(dashboard)/layout.tsx`, `app/(dashboard)/transporte/diesel/page.tsx`, `app/(dashboard)/transporte/operadores/page.tsx`, `app/(dashboard)/ventas/productos/page.tsx`, `app/(dashboard)/ventas/obras/page.tsx`, `app/(dashboard)/finanzas/cobros/page.tsx`, `app/(dashboard)/transporte/programacion/page.tsx`
+- **Descripción:** Contexto React global `DeleteProvider` con hook `useConfirmDelete`. Todos los módulos ahora piden autorización antes de borrar con un modal dark-theme con botón rojo "Eliminar". Reemplaza los modales inline ad-hoc en cada página.
+- **Horas estimadas:** 1.5 h
+
+#### ✨ Mejora — Componente PlantaFilter unificado en todos los módulos
+- **Archivos:** `components/PlantaFilter.tsx` (nuevo), `lib/useCollection.ts`, `app/(dashboard)/ventas/recibos-concreto/page.tsx`, `app/(dashboard)/ventas/remisiones/page.tsx`, `app/(dashboard)/transporte/diesel/page.tsx`, `app/(dashboard)/reportes/page.tsx`, `app/(dashboard)/transporte/programacion/page.tsx`, `app/(dashboard)/transporte/mantenimiento/page.tsx`, `app/(dashboard)/operaciones/inventario/page.tsx`, `app/(dashboard)/efectivo/page.tsx`, `app/(dashboard)/finanzas/cobros/page.tsx`
+- **Descripción:** Un solo componente de selector Todas/Allende/Pesquería con diseño dark consistente (rojo/azul/verde). Modo controlado (filtro local, sin tocar sesión) y modo uncontrolled (actualiza sesión global). `useCollectionWithLoading` y `useCollection` escuchan `duro:session-updated` para re-filtrar en tiempo real sin recargar. Inventario reemplazó su selector custom; recibos-concreto agrega badge de planta por fila cuando está en "Todas".
+- **Horas estimadas:** 2 h
+
+#### 🐛 Fix — Recibo #0086 "desaparecido" (planta incorrecta en filtro)
+- **Archivos:** `app/(dashboard)/dev-recover/page.tsx` (nuevo), `lib/auth.ts`
+- **Descripción:** Recibo existía en Pesquería pero el usuario tenía filtro Allende activo. Se creó página diagnóstico `/dev-recover` (solo admin) que consulta Firestore directamente. Registrada causa raíz: datos con `planta: "Pesquería"` no visibles en vista Allende.
+- **Horas estimadas:** 0.5 h
+
+---
+
 ### 2026-11-15 (sesión 16) — Dashboard: KPIs Concreto vs Bomba + indicadores + gráficas + trazabilidad
 
 #### 🐛 Fix — Dashboard: cálculo erróneo de ventas Tiro Directo vs Bombeado

@@ -1,73 +1,56 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { subscribeToCollection } from "./db";
 import { filterByPlanta } from "./auth";
 import type { QueryConstraint } from "firebase/firestore";
 
-/**
- * Hook de tiempo real: suscribe a una colección de Firestore con onSnapshot.
- * Aplica filterByPlanta automáticamente y actualiza el estado en cada cambio,
- * sin necesidad de hacer refresh manual.
- *
- * Uso:
- *   const cargas = useCollection<CargaDiesel>(COLLECTIONS.diesel);
- *
- * Reemplaza el patrón:
- *   useEffect(() => {
- *     getCollectionDocs<T>(col).then(d => setState(filterByPlanta(d)));
- *   }, []);
- */
 export function useCollection<T extends { planta?: string }>(
   collectionName: string,
   constraints: QueryConstraint[] = [],
 ): T[] {
   const [data, setData] = useState<T[]>([]);
+  const rawRef = useRef<T[]>([]);
 
   useEffect(() => {
     const unsub = subscribeToCollection<T>(
       collectionName,
-      (docs) => setData(filterByPlanta(docs)),
+      (docs) => { rawRef.current = docs; setData(filterByPlanta(docs)); },
       constraints,
     );
-    return unsub;
-  // constraints array identity changes on every render — pass it memoized from the caller if needed
+    const refilter = () => setData(filterByPlanta(rawRef.current));
+    window.addEventListener("duro:session-updated", refilter);
+    return () => { unsub(); window.removeEventListener("duro:session-updated", refilter); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [collectionName]);
 
   return data;
 }
 
-/**
- * Igual que useCollection pero devuelve { data, loading } donde loading es true
- * hasta que onSnapshot dispara la primera vez (aunque la colección esté vacía).
- */
 export function useCollectionWithLoading<T extends { planta?: string }>(
   collectionName: string,
   constraints: QueryConstraint[] = [],
 ): { data: T[]; loading: boolean } {
   const [data, setData] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
+  const rawRef = useRef<T[]>([]);
 
   useEffect(() => {
     const unsub = subscribeToCollection<T>(
       collectionName,
-      (docs) => {
-        setData(filterByPlanta(docs));
-        setLoading(false);
-      },
+      (docs) => { rawRef.current = docs; setData(filterByPlanta(docs)); setLoading(false); },
       constraints,
     );
-    return unsub;
+    const refilter = () => setData(filterByPlanta(rawRef.current));
+    window.addEventListener("duro:session-updated", refilter);
+    return () => { unsub(); window.removeEventListener("duro:session-updated", refilter); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [collectionName]);
 
   return { data, loading };
 }
 
-/**
- * Variante sin filtro de planta — para colecciones globales como users, clientes.
- */
+/** Variante sin filtro de planta — para colecciones globales como users, clientes. */
 export function useCollectionRaw<T>(
   collectionName: string,
   constraints: QueryConstraint[] = [],
@@ -75,11 +58,7 @@ export function useCollectionRaw<T>(
   const [data, setData] = useState<T[]>([]);
 
   useEffect(() => {
-    const unsub = subscribeToCollection<T>(
-      collectionName,
-      setData,
-      constraints,
-    );
+    const unsub = subscribeToCollection<T>(collectionName, setData, constraints);
     return unsub;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [collectionName]);
@@ -87,9 +66,7 @@ export function useCollectionRaw<T>(
   return data;
 }
 
-/**
- * Igual que useCollectionRaw pero devuelve { data, loading } sin filtro de planta.
- */
+/** Igual que useCollectionRaw pero devuelve { data, loading } sin filtro de planta. */
 export function useCollectionRawWithLoading<T>(
   collectionName: string,
   constraints: QueryConstraint[] = [],
@@ -100,10 +77,7 @@ export function useCollectionRawWithLoading<T>(
   useEffect(() => {
     const unsub = subscribeToCollection<T>(
       collectionName,
-      (docs) => {
-        setData(docs);
-        setLoading(false);
-      },
+      (docs) => { setData(docs); setLoading(false); },
       constraints,
     );
     return unsub;

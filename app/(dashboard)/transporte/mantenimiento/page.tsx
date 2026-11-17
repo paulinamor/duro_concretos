@@ -37,6 +37,7 @@ import EmptyState from "@/components/EmptyState";
 import { todayCST } from "@/lib/dateUtils";
 import type { Unidad } from "@/lib/unidades";
 import PlantaRequired from "@/components/PlantaRequired";
+import PlantaFilter from "@/components/PlantaFilter";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1306,6 +1307,7 @@ export default function MantenimientoPage() {
 
       {/* Toolbar row 1 */}
       <div className="flex flex-wrap items-center gap-3">
+        <PlantaFilter />
         {/* View toggle */}
         <div className="flex gap-1 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg p-1">
           <button onClick={() => setViewMode("unidades")}

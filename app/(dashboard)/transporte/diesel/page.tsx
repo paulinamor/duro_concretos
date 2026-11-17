@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
+import PlantaFilter from "@/components/PlantaFilter";
 import { upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
 import { todayCST } from "@/lib/dateUtils";
 import { useCollectionRawWithLoading } from "@/lib/useCollection";
@@ -913,6 +914,7 @@ export default function DieselPage() {
           )}
         </p>
         <div className="flex items-center gap-2">
+          <PlantaFilter />
           <button onClick={exportXLSX} disabled={filtered.length === 0}
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-400 bg-[#242424] border border-[#3A3A3A] rounded-lg hover:border-[#4A4A4A] transition-colors disabled:opacity-40 shadow-sm cursor-pointer">
             <Download size={13} /> Excel

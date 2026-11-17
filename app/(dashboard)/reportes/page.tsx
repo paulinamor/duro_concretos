@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { getCollectionDocs, COLLECTIONS, where } from "@/lib/db";
 import AppSelect from "@/components/AppSelect";
+import PlantaFilter from "@/components/PlantaFilter";
 import { filterByPlanta } from "@/lib/auth";
 import { todayCST } from "@/lib/dateUtils";
 import { currencyRounded as currency } from "@/lib/formatters";
@@ -491,6 +492,7 @@ export default function ReportesPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-gray-500">Análisis operativo y gerencial</p>
         <div className="flex flex-wrap items-center gap-2">
+          <PlantaFilter />
           <div className="flex bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg p-0.5">
             {(["semana","mes","mes-anterior","trimestre","año","personalizado"] as Period[]).map((p) => (
               <button key={p} onClick={() => setPeriod(p)}
