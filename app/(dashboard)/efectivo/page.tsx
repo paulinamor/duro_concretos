@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle, ArrowDownCircle, Check, ChevronLeft, ChevronRight,
-  ClipboardList, DollarSign, Package, Pencil, Plus, Printer, Search,
+  ClipboardList, DollarSign, FileSpreadsheet, Package, Pencil, Plus, Printer, Search,
   Trash2, X,
 } from "lucide-react";
 import { deleteDocument, getCollectionDocs, upsertDocument, COLLECTIONS } from "@/lib/db";
@@ -970,6 +970,38 @@ export default function EfectivoPage() {
   const totalM3 = useMemo(() => filtered.reduce((s, r) => s + (r.metros ?? 0), 0), [filtered]);
   const pendientes = useMemo(() => filtered.filter((r) => !r.entregado).length, [filtered]);
 
+  function exportXLSX() {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const XLSX = require("xlsx");
+    const wb = XLSX.utils.book_new();
+
+    const recibosData = filtered.map((r) => {
+      const cobrado = r.origenConcreto
+        ? (r.reciboConcreteId ? (remisionAnticipo.get(r.reciboConcreteId) ?? r.montoCobrado ?? r.importe ?? 0) : (r.montoCobrado ?? r.importe ?? 0))
+        : (r.importe ?? 0);
+      return {
+        "Folio": r.folio,
+        "Fecha": r.fecha,
+        "Cliente": r.cliente,
+        "Importe total": r.importe ?? 0,
+        "Cobrado (anticipo)": cobrado,
+        "M³": r.metros ?? "",
+        "Precio/m³": r.precio ?? "",
+        "Cemento": r.cemento,
+        "Resistencia": r.resistencia,
+        "Tipo tiro": r.tipoDeTiro,
+        "Dirección obra": r.direccionObra,
+        "Entregado": r.entregado ? "Sí" : "No",
+        "Notas": r.notas ?? "",
+        "Origen": r.origenConcreto ? "Concreto" : "Manual",
+      };
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(recibosData), "Recibos");
+
+    const label = filtroPeriodo === "mes" ? mes : "todo";
+    XLSX.writeFile(wb, `efectivo-${label}-${todayCST()}.xlsx`);
+  }
+
   async function handleSave(r: Recibo) {
     const isNew = !editing;
     const id = editing?.id ?? `rec-${r.folio}-${Date.now()}`;
@@ -1014,15 +1046,21 @@ export default function EfectivoPage() {
         </div>
 
         {mainTab === "recibos" && (
-          <PlantaRequired>
-            {(ok) => (
-              <button onClick={() => ok && openNew()} disabled={!ok}
-                title={!ok ? "Selecciona Allende o Pesquería primero" : undefined}
-                className={`flex items-center gap-2 bg-[#CC2229] text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors shadow-md shadow-[#CC2229]/20 ${ok ? "hover:bg-[#B01E24] cursor-pointer" : "opacity-40 cursor-not-allowed"}`}>
-                <Plus size={16} /> Nuevo recibo
-              </button>
-            )}
-          </PlantaRequired>
+          <div className="flex items-center gap-2">
+            <button onClick={exportXLSX} disabled={filtered.length === 0}
+              className="flex items-center gap-2 bg-[#242424] border border-[#3A3A3A] text-gray-300 hover:text-white hover:border-gray-500 px-3 py-2 rounded-xl text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
+              <FileSpreadsheet size={15} /> Excel
+            </button>
+            <PlantaRequired>
+              {(ok) => (
+                <button onClick={() => ok && openNew()} disabled={!ok}
+                  title={!ok ? "Selecciona Allende o Pesquería primero" : undefined}
+                  className={`flex items-center gap-2 bg-[#CC2229] text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors shadow-md shadow-[#CC2229]/20 ${ok ? "hover:bg-[#B01E24] cursor-pointer" : "opacity-40 cursor-not-allowed"}`}>
+                  <Plus size={16} /> Nuevo recibo
+                </button>
+              )}
+            </PlantaRequired>
+          </div>
         )}
 
         {mainTab === "salidas" && (
