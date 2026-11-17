@@ -13,7 +13,8 @@ import {
   makeProducto, makeExtraLibre, migrateReceipt, syncReceiptWithTrip,
 } from "@/lib/concreteReceipts";
 import { upsertDocument, deleteDocument, COLLECTIONS, getCollectionDocs } from "@/lib/db";
-import { withPlantaTag } from "@/lib/auth";
+import { withPlantaTag, getActivePlanta, getCapturePlanta } from "@/lib/auth";
+import type { Planta } from "@/lib/auth";
 import { useConfirmDelete } from "@/lib/delete-context";
 import { todayCST } from "@/lib/dateUtils";
 import { useCollectionWithLoading, useCollectionRawWithLoading } from "@/lib/useCollection";
@@ -75,7 +76,16 @@ export default function RecibosConcretoPage() {
   const savedReceipts = useMemo(() => allRemisiones.filter((r) => r.receiptNumber != null), [allRemisiones]);
   const { data: allRemisionesGlobal } = useCollectionRawWithLoading<ConcreteReceipt>(COLLECTIONS.remisiones);
 
+  const [plantaFilter, setPlantaFilter] = useState<Planta>(() => getActivePlanta());
+
+  useEffect(() => {
+    const sync = () => setPlantaFilter(getActivePlanta());
+    window.addEventListener("duro:session-updated", sync);
+    return () => window.removeEventListener("duro:session-updated", sync);
+  }, []);
+
   const [receipt, setReceipt] = useState<ConcreteReceipt>(() => createReceipt([]));
+  const [receiptPlanta, setReceiptPlanta] = useState<"Allende" | "Pesquería">(() => getCapturePlanta());
   const [isLoadedReceipt, setIsLoadedReceipt] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const confirmDelete = useConfirmDelete();
@@ -118,10 +128,14 @@ export default function RecibosConcretoPage() {
   }, [savedReceipts, receipt.cliente, isLoadedReceipt, receipt.id]);
 
   const filteredReceipts = useMemo(() => {
-    const sorted = [...savedReceipts].sort((a, b) => b.receiptNumber - a.receiptNumber);
+    let sorted = [...savedReceipts].sort((a, b) => b.receiptNumber - a.receiptNumber);
+    if (plantaFilter !== "Todas") {
+      if (plantaFilter === "Allende") sorted = sorted.filter((r) => !r.planta || r.planta === "Allende" || r.planta === "Todas");
+      else sorted = sorted.filter((r) => r.planta === plantaFilter);
+    }
     if (!search.trim()) return sorted;
     return sorted.filter((r) => matchesQuery(search, [r.receiptNumber, r.cliente, r.direccionObra]));
-  }, [savedReceipts, search]);
+  }, [savedReceipts, search, plantaFilter]);
 
   const [pageSize, setPageSize] = useState(50);
   const [currentPage, setCurrentPage] = useState(0);
@@ -252,6 +266,7 @@ export default function RecibosConcretoPage() {
   // ── Form actions ──────────────────────────────────────────────────────────
   function openNew() {
     setReceipt(createReceipt([]));
+    setReceiptPlanta(getCapturePlanta());
     setIsLoadedReceipt(false);
     setShowForm(true);
     setAbonoReceiptId(null);
@@ -293,7 +308,7 @@ export default function RecibosConcretoPage() {
       precioPorM3: firstProd?.precioPorM3 ?? 0,
     };
     const { id: docId, ...saveData } = nextReceipt;
-    await upsertDocument(COLLECTIONS.remisiones, docId, withPlantaTag(saveData));
+    await upsertDocument(COLLECTIONS.remisiones, docId, { ...withPlantaTag(saveData), planta: receiptPlanta });
     syncReceiptWithTrip(nextReceipt).catch((err) => console.error("syncTrip:", err));
 
     const progId = `recibo-${docId}`;
@@ -477,6 +492,7 @@ export default function RecibosConcretoPage() {
 
   function loadSavedReceipt(savedReceipt: ConcreteReceipt) {
     setReceipt(migrateReceipt({ ...savedReceipt }));
+    setReceiptPlanta(((savedReceipt as unknown as { planta?: string }).planta === "Pesquería") ? "Pesquería" : "Allende");
     setIsLoadedReceipt(true);
     setShowForm(true);
   }
@@ -565,6 +581,19 @@ export default function RecibosConcretoPage() {
             <h3 className="font-semibold text-white">Recibos guardados</h3>
             <p className="mt-0.5 text-xs text-gray-500">Consulta, edita, imprime o manda por WhatsApp.</p>
           </div>
+          {/* Plant filter pills */}
+          <div className="flex items-center gap-1 bg-[#1A1A1A] rounded-xl p-1 border border-[#3A3A3A]">
+            {(["Todas", "Allende", "Pesquería"] as Planta[]).map((p) => (
+              <button key={p} type="button" onClick={() => setPlantaFilter(p)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold tracking-wide transition-all cursor-pointer ${
+                  plantaFilter === p
+                    ? p === "Allende" ? "bg-blue-600 text-white shadow" : p === "Pesquería" ? "bg-emerald-600 text-white shadow" : "bg-[#CC2229] text-white shadow"
+                    : "text-gray-500 hover:text-white"
+                }`}>
+                {p}
+              </button>
+            ))}
+          </div>
           <div className="ml-auto relative min-w-[200px]">
             <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
             <input type="text" placeholder="Buscar folio, cliente, obra…" value={search} onChange={(e) => setSearch(e.target.value)}
@@ -601,7 +630,20 @@ export default function RecibosConcretoPage() {
                   const { total, resta } = getTicketAmounts(savedReceipt);
                   return (
                     <tr key={savedReceipt.id} className="hover:bg-white/5 transition-colors">
-                      <td className="px-4 py-3 font-mono text-xs font-semibold text-[#CC2229]">#{String(savedReceipt.receiptNumber).padStart(4, "0")}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-mono text-xs font-semibold text-[#CC2229]">#{String(savedReceipt.receiptNumber).padStart(4, "0")}</span>
+                          {plantaFilter === "Todas" && (
+                            <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full w-fit ${
+                              (savedReceipt as unknown as { planta?: string }).planta === "Pesquería"
+                                ? "bg-emerald-500/15 text-emerald-400"
+                                : "bg-blue-500/15 text-blue-400"
+                            }`}>
+                              {(savedReceipt as unknown as { planta?: string }).planta === "Pesquería" ? "Pesquería" : "Allende"}
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
                         {savedReceipt.fecha ? new Date(savedReceipt.fecha + "T12:00:00").toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
                       </td>
@@ -697,6 +739,26 @@ export default function RecibosConcretoPage() {
               {/* ── Datos generales ── */}
               <section className="space-y-3">
                 <p className={lbl + " border-b border-gray-100 pb-1.5 !mb-0"}>Datos generales</p>
+
+                {/* Planta selector */}
+                <div>
+                  <label className={lbl}>Planta</label>
+                  <div className="flex gap-2">
+                    {(["Allende", "Pesquería"] as const).map((p) => (
+                      <button key={p} type="button" onClick={() => setReceiptPlanta(p)}
+                        className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border-2 transition-all cursor-pointer ${
+                          receiptPlanta === p
+                            ? p === "Allende"
+                              ? "border-blue-500 bg-blue-50 text-blue-700"
+                              : "border-emerald-500 bg-emerald-50 text-emerald-700"
+                            : "border-gray-200 bg-white text-gray-400 hover:border-gray-300"
+                        }`}>
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={lbl}>No. recibo</label>
