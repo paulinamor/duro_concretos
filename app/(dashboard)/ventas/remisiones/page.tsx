@@ -851,8 +851,8 @@ export default function RemisionesPage() {
       Operador: r.operador,
       "m³": r.m3,
       "CR/Resistencia": r.cr,
-      "Dirección obra": r.direccionObra,
-      Estatus: r.status,
+      Obra: r.obra,
+      Estatus: r.status ?? "",
       Planta: r.planta ?? "",
     }));
     const ws = XLSX.utils.json_to_sheet(rows);

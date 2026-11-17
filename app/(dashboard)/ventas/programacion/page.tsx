@@ -1462,7 +1462,7 @@ export default function VentasProgramacionPage() {
       Total: p.total ?? "",
       Pagado: p.pagado ?? "",
       "Monto pagado": p.montoPagado ?? "",
-      Estatus: p.status ?? "",
+      Estatus: p.fase ?? "",
       Planta: p.planta ?? "",
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
