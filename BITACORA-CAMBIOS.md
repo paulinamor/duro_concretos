@@ -7,6 +7,15 @@
 
 ## Noviembre 2026
 
+### 2026-11-17 (sesión 18) — Horómetro al estilo TMS profesional
+
+#### ✨ Mejora — Horómetro: validación, referencia histórica y delta automático (SAP/TMS style)
+- **Archivos:** `app/(dashboard)/transporte/mantenimiento/page.tsx`
+- **Descripción:** El campo Horómetro ahora se comporta como un contador de medición profesional: (1) muestra el último valor registrado para esa unidad como referencia ("Último: 17,876.8 h · 01/10/2026"), (2) calcula y muestra el delta automáticamente ("Δ +245.3 h") cuando el valor es válido, (3) muestra aviso rojo si el valor capturado es menor al último registro, (4) bloquea el guardado si se intenta capturar un horómetro inferior al máximo histórico de esa unidad. `allEventos` se pasa al drawer como prop; `lastHorometroInfo` se calcula con `useMemo` tomando el máximo horómetro registrado para la unidad (excluyendo el registro en edición).
+- **Horas estimadas:** 0.5 h
+
+---
+
 ### 2026-11-17 (sesión 17) — Audit logs globales + modal confirmación + selector de planta unificado
 
 #### ✨ Mejora — Audit log automático en todas las eliminaciones

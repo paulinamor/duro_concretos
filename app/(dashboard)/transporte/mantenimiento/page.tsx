@@ -560,6 +560,7 @@ function RegistroDrawer({
   onSave,
   editing,
   samsaraNameByUnidad,
+  allEventos,
 }: {
   open: boolean;
   unidadesList: string[];
@@ -568,6 +569,7 @@ function RegistroDrawer({
   onSave: (ev: EventoRaw) => Promise<void>;
   editing?: Evento | null;
   samsaraNameByUnidad?: Map<string, string>;
+  allEventos?: Evento[];
 }) {
   const [tipo, setTipo] = useState<EventoTipo>("Mantenimiento");
   const [form, setForm] = useState<Record<string, string>>({});
@@ -581,6 +583,16 @@ function RegistroDrawer({
   const [samsaraKm, setSamsaraKm] = useState<number | null>(null);
   const [samsaraFound, setSamsaraFound] = useState<boolean | null>(null);
   const [fetchingSamsara, setFetchingSamsara] = useState(false);
+
+  // Último horómetro registrado para la unidad seleccionada (excluyendo el registro en edición)
+  const lastHorometroInfo = useMemo(() => {
+    if (!form.unidad || !allEventos?.length) return null;
+    const candidates = allEventos
+      .filter((e) => e.unidad === form.unidad && e.horometro != null && e.id !== editing?.id)
+      .sort((a, b) => (b.horometro ?? 0) - (a.horometro ?? 0));
+    if (!candidates.length) return null;
+    return { value: candidates[0].horometro as number, fecha: candidates[0].fecha };
+  }, [form.unidad, allEventos, editing?.id]);
 
   async function loadSamsaraKm(unidad: string) {
     if (!unidad) return;
@@ -684,6 +696,15 @@ function RegistroDrawer({
 
   async function handleSave() {
     if (!form.unidad || !form.descripcion) return;
+    if (form.horometro && lastHorometroInfo) {
+      const nuevo = parseFloat(form.horometro);
+      if (nuevo < lastHorometroInfo.value) {
+        window.dispatchEvent(new CustomEvent("duro:toast", {
+          detail: { type: "error", message: `Horómetro inválido: ${nuevo.toLocaleString("es-MX")} h es menor al último registro (${lastHorometroInfo.value.toLocaleString("es-MX")} h).` }
+        }));
+        return;
+      }
+    }
     setSaving(true);
     try {
       const costoFinal = conceptos.length > 0
@@ -822,13 +843,30 @@ function RegistroDrawer({
               <label className={lbl}>Horómetro (h)</label>
               <input
                 type="number"
-                min={0}
+                min={lastHorometroInfo?.value ?? 0}
                 step={0.1}
                 value={form.horometro ?? ""}
                 onChange={(e) => set("horometro", e.target.value)}
                 placeholder="Ej. 4500"
                 className={inp}
               />
+              {lastHorometroInfo && (
+                <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                  <span className="flex items-center gap-1 text-[10px] bg-violet-50 border border-violet-200 text-violet-700 rounded-full px-2.5 py-1 font-semibold">
+                    Último: {lastHorometroInfo.value.toLocaleString("es-MX")} h · {lastHorometroInfo.fecha}
+                  </span>
+                  {form.horometro && parseFloat(form.horometro) >= lastHorometroInfo.value && (
+                    <span className="text-[10px] bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-full px-2.5 py-1 font-semibold">
+                      Δ +{(parseFloat(form.horometro) - lastHorometroInfo.value).toLocaleString("es-MX", { maximumFractionDigits: 1 })} h
+                    </span>
+                  )}
+                  {form.horometro && parseFloat(form.horometro) < lastHorometroInfo.value && (
+                    <span className="text-[10px] bg-red-50 border border-red-200 text-red-600 rounded-full px-2.5 py-1 font-semibold">
+                      ⚠ Menor al último registro
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -1566,6 +1604,7 @@ export default function MantenimientoPage() {
         onSave={handleSave}
         editing={editingEvento}
         samsaraNameByUnidad={samsaraNameByUnidad}
+        allEventos={eventos}
       />
 
       {confirmDeleteEvento && (
