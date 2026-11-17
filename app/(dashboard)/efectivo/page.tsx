@@ -12,7 +12,6 @@ import { todayCST } from "@/lib/dateUtils";
 import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
 import PlantaRequired from "@/components/PlantaRequired";
-import PlantaFilter from "@/components/PlantaFilter";
 import type { Cliente } from "@/lib/crmClientes";
 import { currency } from "@/lib/formatters";
 
@@ -990,16 +989,13 @@ export default function EfectivoPage() {
     <div className="space-y-6">
       {/* Header con tabs principales */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <PlantaFilter />
-          <div className="flex items-center gap-1.5 bg-[#2A2A2A] rounded-xl p-1">
+        <div className="flex items-center gap-1.5 bg-[#2A2A2A] rounded-xl p-1">
           <button onClick={() => setMainTab("recibos")} className={tabCls(mainTab === "recibos")}>
             Recibos concreto
           </button>
           <button onClick={() => setMainTab("salidas")} className={tabCls(mainTab === "salidas")}>
             Salidas de efectivo
           </button>
-          </div>
         </div>
 
         {mainTab === "recibos" && (

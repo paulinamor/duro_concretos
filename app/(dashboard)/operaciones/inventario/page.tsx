@@ -13,7 +13,6 @@ import ModuleLoading from "@/components/ModuleLoading";
 import AppSelect from "@/components/AppSelect";
 import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS, type SolicitudAutorizacion } from "@/lib/db";
 import { filterByPlanta, getActivePlanta, getStoredSession } from "@/lib/auth";
-import PlantaFilter from "@/components/PlantaFilter";
 import { todayCST, currentMonthCST } from "@/lib/dateUtils";
 import { storage } from "@/lib/firebase";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -862,6 +861,15 @@ export default function InventarioPage() {
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   useEffect(() => { setIsSuperAdmin(getStoredSession()?.email?.toLowerCase() === SUPERADMIN); }, []);
 
+  useEffect(() => {
+    const sync = () => {
+      const ap = getActivePlanta();
+      if (ap !== "Todas") setLocalPlanta(ap);
+    };
+    window.addEventListener("duro:session-updated", sync);
+    return () => window.removeEventListener("duro:session-updated", sync);
+  }, []);
+
   // ── Data ─────────────────────────────────────────────────────────────────────
   const [remisionesDespacho, setRemisionesDespacho] = useState<RemisionDespacho[]>([]);
   const [entradasMaterial, setEntradasMaterial] = useState<EntradaMaterial[]>([]);
@@ -1206,12 +1214,6 @@ export default function InventarioPage() {
           <button onClick={() => setPeriodo(adjMonth(periodo, +1))} className="px-3 py-2 text-gray-400 hover:text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer text-lg leading-none">›</button>
         </div>
 
-        {/* Plant selector */}
-        <PlantaFilter
-          value={localPlanta}
-          onChange={(p) => setLocalPlanta(p as "Allende" | "Pesquería")}
-          showTodas={false}
-        />
 
         <div className="ml-auto flex items-center gap-2">
           {tab === "stock" && (

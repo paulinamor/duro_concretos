@@ -10,7 +10,6 @@ import AppSelect from "@/components/AppSelect";
 import { upsertDocument, deleteDocument, getCollectionDocs, COLLECTIONS, subscribeToCollection, where } from "@/lib/db";
 import { currency } from "@/lib/formatters";
 import { filterByPlanta, withPlantaTag, getStoredSession } from "@/lib/auth";
-import PlantaFilter from "@/components/PlantaFilter";
 import { todayCST } from "@/lib/dateUtils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -360,12 +359,9 @@ export default function CobrosPage() {
   // ── LIST ──────────────────────────────────────────────────────────────────
   return (
     <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Cobros</h1>
-          <p className="text-xs text-gray-400 mt-0.5">Estado de cuenta por cliente</p>
-        </div>
-        <PlantaFilter />
+      <div>
+        <h1 className="text-xl font-bold text-gray-900">Cobros</h1>
+        <p className="text-xs text-gray-400 mt-0.5">Estado de cuenta por cliente</p>
       </div>
 
       <CuentaClienteView

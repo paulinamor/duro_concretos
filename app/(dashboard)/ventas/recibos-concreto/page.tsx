@@ -22,7 +22,6 @@ import type { Cliente } from "@/lib/crmClientes";
 import { matchesQuery } from "@/lib/search";
 import KPICard from "@/components/KPICard";
 import AppSelect from "@/components/AppSelect";
-import PlantaFilter from "@/components/PlantaFilter";
 
 interface Obra { id: string; cliente: string; nombre: string; direccion: string; }
 
@@ -563,7 +562,6 @@ export default function RecibosConcretoPage() {
             <h3 className="font-semibold text-white">Recibos guardados</h3>
             <p className="mt-0.5 text-xs text-gray-500">Consulta, edita, imprime o manda por WhatsApp.</p>
           </div>
-          <PlantaFilter value={plantaFilter} onChange={setPlantaFilter} global={false} />
           <div className="ml-auto relative min-w-[200px]">
             <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
             <input type="text" placeholder="Buscar folio, cliente, obra…" value={search} onChange={(e) => setSearch(e.target.value)}

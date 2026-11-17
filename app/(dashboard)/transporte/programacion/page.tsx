@@ -13,7 +13,6 @@ import KPICard from "@/components/KPICard";
 import ModuleLoading from "@/components/ModuleLoading";
 import { getCollectionDocs, getDocument, subscribeToCollection, upsertDocument, deleteDocument, COLLECTIONS, type SolicitudAutorizacion, type Notificacion, getAllUserProfiles, where } from "@/lib/db";
 import { filterByPlanta, getStoredSession, withPlantaTag, getCapturePlanta } from "@/lib/auth";
-import PlantaFilter from "@/components/PlantaFilter";
 import { tdBomToBombeo, normalizeTdBom } from "@/lib/sgp";
 import { todayCST, localISODate } from "@/lib/dateUtils";
 import type { Operador } from "@/lib/operadores";
@@ -2858,7 +2857,6 @@ export default function ProgramacionPage() {
             ))}
           </div>
           <div className="flex items-center gap-2">
-            <PlantaFilter />
             {/* Rastreo — separado visualmente de las vistas de fecha */}
             <button
               onClick={() => {

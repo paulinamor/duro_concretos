@@ -11,7 +11,6 @@ import ModuleLoading from "@/components/ModuleLoading";
 import AppSelect from "@/components/AppSelect";
 import { getCollectionDocs, getDocument, upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
 import DuplicateWarningModal from "@/components/DuplicateWarningModal";
-import PlantaFilter from "@/components/PlantaFilter";
 import { filterByPlanta, getActivePlanta, withPlantaTag } from "@/lib/auth";
 import { todayCST, currentMonthCST } from "@/lib/dateUtils";
 import type { Cliente } from "@/lib/crmClientes";
@@ -871,7 +870,6 @@ export default function RemisionesPage() {
           <button onClick={() => setMonth(adjMonth(month, +1))} className="px-3 py-2 text-gray-500 hover:text-white hover:bg-white/10 transition-colors cursor-pointer text-lg leading-none">›</button>
         </div>
 
-        <PlantaFilter value={plantaFilter} onChange={setPlantaFilter} global={false} />
 
         <div className="ml-auto flex items-center gap-2">
           <button
