@@ -901,6 +901,7 @@ type MainTab = "recibos" | "salidas";
 export default function EfectivoPage() {
   const [mainTab, setMainTab]         = useState<MainTab>("recibos");
   const [recibos, setRecibos]         = useState<Recibo[]>([]);
+  const [remisionAnticipo, setRemisionAnticipo] = useState<Map<string, number>>(new Map());
   const [clientesList, setClientesList] = useState<string[]>([]);
   const [catalogoClientes, setCatalogoClientes] = useState<Set<string>>(new Set());
   const [loading, setLoading]         = useState(true);
@@ -926,8 +927,15 @@ export default function EfectivoPage() {
       getCollectionDocs<Recibo>(COLLECTIONS.efectivo),
       getCollectionDocs<Cliente>(COLLECTIONS.clientes),
       getCollectionDocs<{ cliente?: string }>(COLLECTIONS.programaciones),
-    ]).then(([docs, clientes, progs]) => {
+      getCollectionDocs<{ id: string; anticipo?: number }>(COLLECTIONS.remisiones),
+    ]).then(([docs, clientes, progs, remisiones]) => {
       setRecibos(filterByPlanta(docs).sort((a, b) => b.folio - a.folio));
+      // Mapa id → anticipo para cruzar con registros origenConcreto
+      const aMap = new Map<string, number>();
+      for (const r of remisiones) {
+        if (r.id) aMap.set(r.id, r.anticipo ?? 0);
+      }
+      setRemisionAnticipo(aMap);
       const fromClientes = clientes.flatMap((c) => [c.razonSocial, c.nombreComercial].filter(Boolean));
       const fromProgs = progs.map((p) => p.cliente).filter(Boolean) as string[];
       setClientesList(Array.from(new Set([...fromClientes, ...fromProgs])).sort());
@@ -952,11 +960,13 @@ export default function EfectivoPage() {
     });
   }, [recibos, search, filterEntregado, filtroPeriodo, mes]);
 
-  // Para registros de concreto usamos montoCobrado (anticipo real recibido); para manuales usamos importe completo
+  // Para registros de concreto: anticipo real desde remisiones (fuente autoritativa); para manuales: importe completo
   const totalImporte = useMemo(() => filtered.reduce((s, r) => {
-    const cobrado = r.origenConcreto ? (r.montoCobrado ?? r.importe ?? 0) : (r.importe ?? 0);
+    const cobrado = r.origenConcreto
+      ? (r.reciboConcreteId ? (remisionAnticipo.get(r.reciboConcreteId) ?? r.montoCobrado ?? r.importe ?? 0) : (r.montoCobrado ?? r.importe ?? 0))
+      : (r.importe ?? 0);
     return s + cobrado;
-  }, 0), [filtered]);
+  }, 0), [filtered, remisionAnticipo]);
   const totalM3 = useMemo(() => filtered.reduce((s, r) => s + (r.metros ?? 0), 0), [filtered]);
   const pendientes = useMemo(() => filtered.filter((r) => !r.entregado).length, [filtered]);
 
