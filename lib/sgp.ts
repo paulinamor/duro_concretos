@@ -142,6 +142,21 @@ export interface SgpProgramacion {
   planta: string;
 }
 
+/**
+ * Normaliza el campo tdBom a su forma canónica antes de guardar en Firestore.
+ * Evita duplicados por mayúsculas/minúsculas o abreviaciones distintas.
+ */
+export function normalizeTdBom(raw: string): string {
+  const v = raw.trim();
+  if (!v) return "";
+  const up = v.toUpperCase();
+  if (up.includes("BOM")) return "Bomba";
+  if (["D", "T", "TD", "DIRECTO", "TIRO", "TIRO DIRECTO"].includes(up)) return "Directo";
+  if (up === "MAQUILA") return "Maquila";
+  // Valor no reconocido: Title Case para consistencia visual
+  return v.charAt(0).toUpperCase() + v.slice(1).toLowerCase();
+}
+
 /** Deriva bombeoPropio/bombeoCliente del campo tdBom del ERP */
 export function tdBomToBombeo(tdBom: string): { bombeoPropio: "S" | "N"; bombeoCliente: "S" | "N" } {
   const v = tdBom.toUpperCase();

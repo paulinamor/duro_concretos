@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle, Download, Loader2, Upload, X } from "lucide-react";
 import { upsertDocument, COLLECTIONS } from "@/lib/db";
 import { withPlantaTag, getStoredSession } from "@/lib/auth";
+import { normalizeTdBom } from "@/lib/sgp";
 
 // ─── Template columns ─────────────────────────────────────────────────────────
 
@@ -312,7 +313,7 @@ function parseFile(buffer: ArrayBuffer, existing: ExistingProg[]): ParsedRow[] {
       tiempoExtraDescarga: "",
       m3Totales: m3,
       extras: col(row, "EXTRAS"),
-      tdBom: col(row, "T/D BOM"),
+      tdBom: normalizeTdBom(col(row, "T/D BOM")),
       resistencia: col(row, "RESISTENCIA"),
       color: "",
       m3Vacios: null, precioM3Vacio: null,

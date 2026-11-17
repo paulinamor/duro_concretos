@@ -13,7 +13,7 @@ import KPICard from "@/components/KPICard";
 import ModuleLoading from "@/components/ModuleLoading";
 import { getCollectionDocs, getDocument, subscribeToCollection, upsertDocument, deleteDocument, COLLECTIONS, type SolicitudAutorizacion, type Notificacion, getAllUserProfiles, where } from "@/lib/db";
 import { filterByPlanta, getStoredSession, withPlantaTag, getCapturePlanta } from "@/lib/auth";
-import { tdBomToBombeo } from "@/lib/sgp";
+import { tdBomToBombeo, normalizeTdBom } from "@/lib/sgp";
 import { todayCST, localISODate } from "@/lib/dateUtils";
 import type { Operador } from "@/lib/operadores";
 import type { Cliente } from "@/lib/crmClientes";
@@ -867,7 +867,7 @@ function FormDrawer({
         tiempoExtraDescarga: (form.tiempoExtraDescarga ?? "").trim(),
         m3Totales: m3TotalesAuto,
         extras: (form.extras ?? "").trim(),
-        tdBom: (form.tdBom ?? "").trim(),
+        tdBom: normalizeTdBom(form.tdBom ?? ""),
         resistencia: (form.resistencia ?? "").trim(),
         color: (form.color ?? "").trim(),
         m3Vacios: n(form.m3Vacios),

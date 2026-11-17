@@ -11,6 +11,7 @@ import PlantaRequired from "@/components/PlantaRequired";
 import { upsertDocument, getCollectionDocs, COLLECTIONS, orderBy, limit, where, type SolicitudAutorizacion } from "@/lib/db";
 import { withPlantaTag, getStoredSession, getActivePlanta } from "@/lib/auth";
 import { todayCST, localISODate } from "@/lib/dateUtils";
+import { normalizeTdBom } from "@/lib/sgp";
 import { useCollection } from "@/lib/useCollection";
 import { tiposCliente, type Cliente, type TipoCliente } from "@/lib/crmClientes";
 import { matchesQuery } from "@/lib/search";
@@ -1341,7 +1342,7 @@ export default function VentasProgramacionPage() {
         telefono: form.telefono.trim(), direccion: form.direccion.trim(),
         m3Totales: m3, m3Vacios, paraUso: form.paraUso.trim(),
         resistencia: form.resistencia.trim(), extras: form.extras.trim(),
-        tdBom: form.tdBom.trim(), hora: form.horaEntrega.trim(), precioM3, precioM3Bomba,
+        tdBom: normalizeTdBom(form.tdBom), hora: form.horaEntrega.trim(), precioM3, precioM3Bomba,
         kiloFibra, m3Imper, tuberiaExtra, permisosOC, tiempoExtraCosto,
         total: calcTotal(),
         nombreObra: form.obraNombre.trim() || rest.nombreObra || "",
@@ -1386,7 +1387,7 @@ export default function VentasProgramacionPage() {
         m3Totales: m3,
         resistencia: form.resistencia.trim(),
         extras: form.extras.trim(),
-        tdBom: form.tdBom.trim(),
+        tdBom: normalizeTdBom(form.tdBom),
         hora: form.horaEntrega.trim(), hsr: "", muestras: "", tiempoExtraDescarga: "",
         color: "", paraUso: form.paraUso.trim(), aditivo: "", credito: "",
         recibo: "", fact: "", pagado: "",
