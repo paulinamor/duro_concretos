@@ -18,6 +18,7 @@ import { normalizeKey } from "@/lib/duplicateCheck";
 import DuplicateWarningModal from "@/components/DuplicateWarningModal";
 import { matchesQuery } from "@/lib/search";
 import EmptyState from "@/components/EmptyState";
+import { useConfirmDelete } from "@/lib/delete-context";
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
@@ -611,7 +612,7 @@ export default function EmpleadosPage() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Operador | null>(null);
   const [profileOp, setProfileOp] = useState<Operador | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<Operador | null>(null);
+  const confirmDelete = useConfirmDelete();
   const [puestosList, setPuestosList] = useState<string[]>(DEFAULT_PUESTOS);
   const [showPuestosModal, setShowPuestosModal] = useState(false);
   const [puestosListDraft, setPuestosListDraft] = useState<string[]>([]);
@@ -682,10 +683,17 @@ export default function EmpleadosPage() {
 
   async function handleDelete(op: Operador) {
     setOperadores((c) => c.filter((x) => x.id !== op.id));
-    await deleteDocument(COLLECTIONS.operadores, op.id);
-    setConfirmDelete(null);
+    await deleteDocument(COLLECTIONS.operadores, op.id, `Operador eliminado: ${op.apodo || op.nombre}`);
     if (profileOp?.id === op.id) setProfileOp(null);
     window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `${op.apodo || op.nombre} eliminado.` } }));
+  }
+
+  function requestDeleteOp(op: Operador) {
+    confirmDelete({
+      title: `Eliminar operador: ${op.apodo || op.nombre}`,
+      description: "Se eliminará el operador de forma permanente. Esta acción no se puede deshacer.",
+      onConfirm: () => handleDelete(op),
+    });
   }
 
   async function handleSave(f: FormState, docs: DocEmpleado[], force = false) {
@@ -905,7 +913,7 @@ export default function EmpleadosPage() {
                             className="rounded-lg p-2 text-gray-400 hover:bg-[#1A1A1A] hover:text-white transition-colors cursor-pointer">
                             <Pencil size={14} />
                           </button>
-                          <button onClick={() => setConfirmDelete(op)}
+                          <button onClick={() => requestDeleteOp(op)}
                             className="rounded-lg p-2 text-gray-400 hover:bg-[#1A1A1A] hover:text-[#CC2229] transition-colors cursor-pointer">
                             <Trash2 size={14} />
                           </button>
@@ -974,22 +982,6 @@ export default function EmpleadosPage() {
           onCancel={() => setDuplicateWarn(null)} onConfirm={duplicateWarn.proceed} />
       )}
 
-      {/* Confirmación eliminar */}
-      {confirmDelete && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
-          <button className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setConfirmDelete(null)} />
-          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
-            <h3 className="text-base font-semibold text-gray-900 mb-1">¿Eliminar empleado?</h3>
-            <p className="text-sm text-gray-500 mb-5">
-              Se eliminará <strong>{confirmDelete.apodo || confirmDelete.nombre}</strong> de forma permanente. Esta acción no se puede deshacer.
-            </p>
-            <div className="flex justify-end gap-3">
-              <button onClick={() => setConfirmDelete(null)} className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 cursor-pointer">Cancelar</button>
-              <button onClick={() => void handleDelete(confirmDelete)} className="px-4 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl cursor-pointer">Eliminar</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

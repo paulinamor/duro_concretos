@@ -171,7 +171,7 @@ export default function CobrosPage() {
           setProgs((prev) => prev.map((p) => p.id === abono.programacionId ? { ...p, montoPagado: nuevo } : p));
         })
       );
-      await deleteDocument(COLLECTIONS.pagos, pago.id);
+      await deleteDocument(COLLECTIONS.pagos, pago.id, `Pago eliminado: ${pago.id} — ${pago.cliente ?? ""}`);
       setPagos((prev) => prev.filter((p) => p.id !== pago.id));
       setPagoAElim(null);
     } finally {
@@ -322,7 +322,7 @@ export default function CobrosPage() {
   }
 
   async function handleDeleteRecibo(r: ConcreteReceipt) {
-    await deleteDocument(COLLECTIONS.remisiones, r.id!);
+    await deleteDocument(COLLECTIONS.remisiones, r.id!, `Recibo eliminado desde cobros: ${r.id} — ${r.cliente ?? ""}`);
     setCuentaRecibos((prev) => prev.filter((x) => x.id !== r.id));
     setTodosRecibos((prev) => prev.filter((x) => x.id !== r.id));
   }

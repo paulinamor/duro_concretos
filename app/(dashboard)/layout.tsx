@@ -7,6 +7,7 @@ import Sidebar from "@/components/Sidebar";
 import Header from "@/components/Header";
 import DevToolsOverlay from "@/components/DevToolsOverlay";
 import ErrorCaptureProvider from "@/components/ErrorCaptureProvider";
+import { DeleteProvider } from "@/lib/delete-context";
 import SupportFloatingButton from "@/components/SupportFloatingButton";
 import {
   getAllowedModuleSet,
@@ -255,27 +256,29 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const isStatusBlocked = !isDeveloper && (moduleStatus === "dev" || moduleStatus === "wip");
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background text-foreground">
-      <Sidebar mobileOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <div className="flex min-h-0 flex-1 flex-col min-w-0">
-        <ErrorCaptureProvider />
-        <DevToolsOverlay />
-        <Header title={title} section={section} onMobileMenu={() => setSidebarOpen(true)} />
-        <main id="duro-module-content" className="min-h-0 flex-1 overflow-y-auto bg-[#1A1A1A] p-3 lg:p-5">
-          <div className="w-full min-w-0">
-            {isStatusBlocked ? (
-              <ModuleBlockedScreen
-                status={moduleStatus as "dev" | "wip"}
-                title={title}
-                onBack={() => router.push("/dashboard")}
-              />
-            ) : (
-              children
-            )}
-          </div>
-        </main>
-        <SupportFloatingButton />
+    <DeleteProvider>
+      <div className="flex h-screen overflow-hidden bg-background text-foreground">
+        <Sidebar mobileOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+        <div className="flex min-h-0 flex-1 flex-col min-w-0">
+          <ErrorCaptureProvider />
+          <DevToolsOverlay />
+          <Header title={title} section={section} onMobileMenu={() => setSidebarOpen(true)} />
+          <main id="duro-module-content" className="min-h-0 flex-1 overflow-y-auto bg-[#1A1A1A] p-3 lg:p-5">
+            <div className="w-full min-w-0">
+              {isStatusBlocked ? (
+                <ModuleBlockedScreen
+                  status={moduleStatus as "dev" | "wip"}
+                  title={title}
+                  onBack={() => router.push("/dashboard")}
+                />
+              ) : (
+                children
+              )}
+            </div>
+          </main>
+          <SupportFloatingButton />
+        </div>
       </div>
-    </div>
+    </DeleteProvider>
   );
 }

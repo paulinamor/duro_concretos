@@ -19,6 +19,7 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 import type { Planta } from "./auth";
+import { logAudit } from "./errorLogger";
 
 // ---------- generic helpers ----------
 
@@ -59,8 +60,23 @@ export async function upsertDocument<T extends WithFieldValue<DocumentData>>(
 export async function deleteDocument(
   collectionName: string,
   id: string,
+  auditSummary?: string,
 ): Promise<void> {
+  let before: Record<string, unknown> | undefined;
+  try {
+    const snap = await getDoc(doc(getDb(), collectionName, id));
+    if (snap.exists()) before = { id: snap.id, ...snap.data() } as Record<string, unknown>;
+  } catch { /* silent — don't block deletion */ }
+
   await deleteDoc(doc(getDb(), collectionName, id));
+
+  logAudit({
+    action: "delete",
+    collection: collectionName,
+    documentId: id,
+    summary: auditSummary ?? `Eliminado: ${collectionName}/${id}`,
+    before,
+  }).catch(() => {});
 }
 
 // ---------- user profiles ----------

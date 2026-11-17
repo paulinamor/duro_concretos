@@ -6,6 +6,7 @@ import * as XLSX from "xlsx";
 import { upsertDocument, deleteDocument, COLLECTIONS } from "@/lib/db";
 import { withPlantaTag, getStoredSession } from "@/lib/auth";
 import { useCollectionWithLoading } from "@/lib/useCollection";
+import { useConfirmDelete } from "@/lib/delete-context";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -213,7 +214,7 @@ export default function ProductosPage() {
   const [catFilter, setCatFilter]   = useState("Todas");
   const [modalOpen, setModalOpen]   = useState(false);
   const [editTarget, setEditTarget] = useState<Producto | null>(null);
-  const [deleteId, setDeleteId]     = useState<string | null>(null);
+  const confirmDeleteModal = useConfirmDelete();
   const [importing, setImporting]   = useState(false);
   const [importMsg, setImportMsg]   = useState("");
   const fileRef                     = useRef<HTMLInputElement>(null);
@@ -270,9 +271,8 @@ export default function ProductosPage() {
   }
 
 
-  async function handleDelete(id: string) {
-    await deleteDocument(COLLECTIONS.productos, id);
-    setDeleteId(null);
+  async function handleDelete(id: string, codigo?: string) {
+    await deleteDocument(COLLECTIONS.productos, id, `Producto eliminado: ${codigo ?? id}`);
     window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "info", message: "Producto eliminado." } }));
   }
 
@@ -428,7 +428,7 @@ export default function ProductosPage() {
                       </button>
                       {isSuperadmin && (
                         <button
-                          onClick={() => setDeleteId(p.id)}
+                          onClick={() => confirmDeleteModal({ title: `Eliminar producto: ${p.codigo ?? p.id}`, description: "Esta acción no se puede deshacer.", onConfirm: () => handleDelete(p.id, p.codigo) })}
                           className="rounded-lg p-1.5 text-gray-500 hover:text-[#CC2229] hover:bg-[#CC2229]/10 transition-colors cursor-pointer"
                           title="Eliminar"
                         >
@@ -455,26 +455,6 @@ export default function ProductosPage() {
       />
 
       {/* Delete confirm */}
-      {deleteId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setDeleteId(null)} />
-          <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-gray-200 p-6 space-y-4" style={{ colorScheme: 'light' }}>
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-50 text-red-600">
-                <AlertTriangle size={20} />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-gray-900">Eliminar producto</p>
-                <p className="text-xs text-gray-500 mt-0.5">Esta acción no se puede deshacer.</p>
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <button onClick={() => setDeleteId(null)} className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 cursor-pointer">Cancelar</button>
-              <button onClick={() => handleDelete(deleteId)} className="flex-1 px-4 py-2.5 text-sm font-semibold bg-red-600 hover:bg-red-700 text-white rounded-xl transition-colors cursor-pointer">Eliminar</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

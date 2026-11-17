@@ -68,6 +68,7 @@ export const DEV_ONLY_ROUTES = new Set([
   "/configuracion/sat-descarga",
   "/transporte/samsara-test",
   "/dev",
+  "/dev-recover",
 ]);
 
 // Email con acceso completo a herramientas de desarrollo en el sidebar

@@ -21,6 +21,7 @@ import { currency } from "@/lib/formatters";
 import DuplicateWarningModal from "@/components/DuplicateWarningModal";
 import EmptyState from "@/components/EmptyState";
 import type { Unidad } from "@/lib/unidades";
+import { useConfirmDelete } from "@/lib/delete-context";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -721,7 +722,7 @@ function naturalCmp(a: string, b: string) {
 export default function DieselPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingCarga, setEditingCarga] = useState<CargaDiesel | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<CargaDiesel | null>(null);
+  const confirmDeleteModal = useConfirmDelete();
   const [filterUnidad, setFilterUnidad] = useState("Todas");
   const [filterCombustible, setFilterCombustible] = useState("Todos");
   const [filtroPeriodo, setFiltroPeriodo] = useState<"todo" | "mes">("mes");
@@ -891,8 +892,7 @@ export default function DieselPage() {
 
   async function handleDelete(carga: CargaDiesel) {
     try {
-      await deleteDocument(COLLECTIONS.diesel, carga.id!);
-      setConfirmDelete(null);
+      await deleteDocument(COLLECTIONS.diesel, carga.id!, `Carga diesel eliminada: ${carga.unidad} — ${carga.fecha}`);
       window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `Carga de ${carga.unidad} eliminada.` } }));
     } catch (e) {
       console.error(e);
@@ -1100,7 +1100,7 @@ export default function DieselPage() {
                 filtered.map((c) => (
                   <TableRow key={c.id ?? c.recibo + c.fecha} carga={c}
                     onEdit={(c) => { setEditingCarga(c); setShowForm(true); }}
-                    onDelete={setConfirmDelete} />
+                    onDelete={(c) => confirmDeleteModal({ title: `Eliminar carga: ${c.unidad} — ${c.fecha}`, description: "Esta acción no se puede deshacer.", onConfirm: () => handleDelete(c) })} />
                 ))
               )}
             </tbody>
@@ -1116,28 +1116,6 @@ export default function DieselPage() {
         lastKmByUnidad={lastKmByUnidad}
         samsaraNameByUnidad={samsaraNameByUnidad} />
 
-      {confirmDelete && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center">
-          <button className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setConfirmDelete(null)} />
-          <div className="relative bg-[#242424] border border-[#3A3A3A] rounded-2xl p-6 w-full max-w-sm shadow-2xl">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-500/15 mb-4">
-              <Trash2 size={20} className="text-red-400" />
-            </div>
-            <h3 className="text-sm font-semibold text-white mb-1">Eliminar carga</h3>
-            <p className="text-xs text-gray-400 mb-5">
-              ¿Eliminar la carga de <span className="text-gray-200 font-medium">{confirmDelete.unidad}</span> del {confirmDelete.fecha}? Esta acción no se puede deshacer.
-            </p>
-            <div className="flex gap-3">
-              <button onClick={() => setConfirmDelete(null)} className="flex-1 px-4 py-2.5 text-sm text-gray-400 border border-[#3A3A3A] rounded-xl hover:border-[#4A4A4A] transition-colors cursor-pointer">
-                Cancelar
-              </button>
-              <button onClick={() => handleDelete(confirmDelete)} className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors cursor-pointer">
-                Eliminar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {duplicateWarn && (
         <DuplicateWarningModal

@@ -306,7 +306,8 @@ export default function CatalogoObrasPage() {
 
   async function handleDelete(id: string) {
     try {
-      await deleteDocument(COLLECTIONS.obras, id);
+      const obra = obras.find((o) => o.id === id);
+      await deleteDocument(COLLECTIONS.obras, id, `Obra eliminada: ${obra?.nombre ?? id} — ${obra?.cliente ?? ""}`);
       setConfirmDeleteId(null);
       window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: "Obra eliminada." } }));
     } catch (e) {

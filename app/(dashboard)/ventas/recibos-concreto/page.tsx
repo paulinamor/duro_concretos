@@ -14,6 +14,7 @@ import {
 } from "@/lib/concreteReceipts";
 import { upsertDocument, deleteDocument, COLLECTIONS, getCollectionDocs } from "@/lib/db";
 import { withPlantaTag } from "@/lib/auth";
+import { useConfirmDelete } from "@/lib/delete-context";
 import { todayCST } from "@/lib/dateUtils";
 import { useCollectionWithLoading, useCollectionRawWithLoading } from "@/lib/useCollection";
 import type { Cliente } from "@/lib/crmClientes";
@@ -77,7 +78,7 @@ export default function RecibosConcretoPage() {
   const [receipt, setReceipt] = useState<ConcreteReceipt>(() => createReceipt([]));
   const [isLoadedReceipt, setIsLoadedReceipt] = useState(false);
   const [showForm, setShowForm] = useState(false);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const confirmDelete = useConfirmDelete();
   const [saving, setSaving] = useState(false);
   const [clienteSuggestions, setClienteSuggestions] = useState<string[]>([]);
   const [rawClientes, setRawClientes] = useState<{ razonSocial?: string; nombreComercial?: string }[]>([]);
@@ -461,9 +462,17 @@ export default function RecibosConcretoPage() {
   }
 
   async function deleteReceipt(id: string) {
-    await deleteDocument(COLLECTIONS.remisiones, id);
-    deleteDocument(COLLECTIONS.programaciones, `recibo-${id}`).catch(() => {});
+    await deleteDocument(COLLECTIONS.remisiones, id, `Recibo eliminado: ${id}`);
+    deleteDocument(COLLECTIONS.programaciones, `recibo-${id}`, `Programación de recibo eliminada: recibo-${id}`).catch(() => {});
     window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: "Recibo eliminado." } }));
+  }
+
+  function requestDeleteReceipt(id: string, folio?: string) {
+    confirmDelete({
+      title: `Eliminar recibo ${folio ?? id}`,
+      description: "Se eliminarán permanentemente el recibo y su registro en programación.",
+      onConfirm: () => deleteReceipt(id),
+    });
   }
 
   function loadSavedReceipt(savedReceipt: ConcreteReceipt) {
@@ -615,7 +624,7 @@ export default function RecibosConcretoPage() {
                             className="rounded-lg p-2 text-gray-400 hover:bg-[#1A1A1A] hover:text-green-400 transition-colors cursor-pointer" aria-label="WhatsApp PDF">
                             <MessageCircle size={14} />
                           </button>
-                          <button type="button" onClick={() => setConfirmDeleteId(savedReceipt.id)}
+                          <button type="button" onClick={() => requestDeleteReceipt(savedReceipt.id, `#${String(savedReceipt.receiptNumber).padStart(4, "0")}`)}
                             className="rounded-lg p-2 text-gray-400 hover:bg-[#1A1A1A] hover:text-[#CC2229] transition-colors cursor-pointer" aria-label="Eliminar">
                             <Trash2 size={14} />
                           </button>
@@ -1476,28 +1485,6 @@ export default function RecibosConcretoPage() {
       })()}
 
       {/* ── Delete confirm modal ──────────────────────────────────────────── */}
-      {confirmDeleteId && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center print:hidden">
-          <button className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setConfirmDeleteId(null)} />
-          <div className="relative bg-[#1A1A1A] border border-[#3A3A3A] rounded-2xl p-6 w-full max-w-sm shadow-2xl">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-500/10 mb-4">
-              <Trash2 size={20} className="text-red-400" />
-            </div>
-            <h3 className="text-sm font-semibold text-white mb-1">Eliminar recibo</h3>
-            <p className="text-xs text-gray-500 mb-5">¿Eliminar este recibo? Esta acción no se puede deshacer.</p>
-            <div className="flex gap-3">
-              <button onClick={() => setConfirmDeleteId(null)}
-                className="flex-1 px-4 py-2.5 text-sm text-gray-400 border border-[#3A3A3A] rounded-xl hover:border-gray-500 transition-colors cursor-pointer">
-                Cancelar
-              </button>
-              <button onClick={() => { deleteReceipt(confirmDeleteId); setConfirmDeleteId(null); }}
-                className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors cursor-pointer">
-                Eliminar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

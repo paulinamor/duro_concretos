@@ -2747,7 +2747,8 @@ export default function ProgramacionPage() {
 
   async function handleDeleteConfirmado(id: string) {
     setProgramaciones((prev) => prev.filter((p) => p.id !== id));
-    await deleteDocument(COLLECTIONS.programaciones, id);
+    const prog = programaciones.find((p) => p.id === id);
+    await deleteDocument(COLLECTIONS.programaciones, id, `Programación eliminada: ${prog?.folio ?? id} — ${prog?.cliente ?? ""}`);
     window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: "Programación eliminada." } }));
   }
 
