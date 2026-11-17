@@ -1003,7 +1003,7 @@ export default function RemisionesPage() {
           </table>
         </div>
         {filtered.length > 0 && (
-          <div className="flex items-center justify-between px-5 py-3 border-t border-[#3A3A3A] bg-[#1E1E1E]">
+          <div className="flex items-center justify-between px-5 py-3 border-t border-[#3A3A3A] bg-[#242424]">
             <div className="flex items-center gap-2 text-xs text-gray-500">
               <span>Filas por página:</span>
               <select
