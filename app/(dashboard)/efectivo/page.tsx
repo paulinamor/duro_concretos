@@ -607,6 +607,23 @@ function SalidasTab({ formOpen, onFormClose }: { formOpen: boolean; onFormClose:
   const tabCls = (active: boolean) =>
     `px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${active ? "bg-[#CC2229] text-white" : "text-gray-400 hover:text-white hover:bg-[#3A3A3A]"}`;
 
+  function exportXLSX() {
+    const XLSX = require("xlsx");
+    const rows = filtered.map((s) => ({
+      Folio: `SE-${String(s.folio).padStart(4, "0")}`,
+      Fecha: s.fecha,
+      Proveedor: s.proveedor,
+      Rubro: s.rubro,
+      Importe: s.importe,
+      Concepto: s.concepto,
+      Notas: s.notas,
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Salidas");
+    XLSX.writeFile(wb, "salidas-efectivo.xlsx");
+  }
+
   return (
     <div className="space-y-5">
       {/* KPIs */}
@@ -643,6 +660,10 @@ function SalidasTab({ formOpen, onFormClose }: { formOpen: boolean; onFormClose:
             <button onClick={() => setMes((m) => adjMonth(m, 1))} disabled={mes >= currentMonth()} className="px-2.5 py-2 text-gray-400 hover:text-white hover:bg-white/5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"><ChevronRight size={15} /></button>
           </div>
         )}
+        <button onClick={exportXLSX} disabled={filtered.length === 0}
+          className="flex items-center gap-2 border border-[#3A3A3A] bg-[#242424] px-3 py-2 text-sm text-gray-300 hover:border-emerald-500/50 hover:text-emerald-300 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
+          <FileSpreadsheet size={15} /> Excel
+        </button>
       </div>
 
       {/* Tabla */}
@@ -1029,6 +1050,27 @@ export default function EfectivoPage() {
   function openNew() { setEditing(undefined); setShowForm(true); }
   function openEdit(r: Recibo) { setEditing(r); setShowForm(true); }
 
+  function exportRecibosXLSX() {
+    const XLSX = require("xlsx");
+    const rows = filtered.map((r) => ({
+      Folio: `#${String(r.folio).padStart(4, "0")}`,
+      Fecha: r.fecha,
+      Cliente: r.cliente,
+      Importe: r.importe,
+      "m³": r.metros,
+      "Precio/m³": r.precio,
+      Resistencia: r.resistencia,
+      "Tipo tiro": r.tipoDeTiro,
+      "Dirección obra": r.direccionObra,
+      Notas: r.notas,
+      Entregado: r.entregado ? "Sí" : "No",
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Recibos");
+    XLSX.writeFile(wb, "recibos-efectivo.xlsx");
+  }
+
   const tabCls = (active: boolean) =>
     `px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${active ? "bg-[#CC2229] text-white" : "text-gray-400 hover:text-white hover:bg-[#3A3A3A]"}`;
 
@@ -1110,6 +1152,10 @@ export default function EfectivoPage() {
                 </button>
               ))}
             </div>
+            <button onClick={exportRecibosXLSX} disabled={filtered.length === 0}
+              className="flex items-center gap-2 border border-[#3A3A3A] bg-[#242424] px-3 py-2 text-sm text-gray-300 hover:border-emerald-500/50 hover:text-emerald-300 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
+              <FileSpreadsheet size={15} /> Excel
+            </button>
           </div>
 
           <div className="bg-[#242424] border border-[#3A3A3A] rounded-xl overflow-hidden">

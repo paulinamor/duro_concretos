@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle, ArrowDownToLine, ArrowLeftRight, ArrowUpToLine,
-  BarChart2, Camera, Edit2,
+  BarChart2, Camera, Edit2, FileSpreadsheet,
   Info, Package, Plus, Search, Trash2, X,
   Layers, TrendingDown, CheckCircle2, Shield, XCircle,
 } from "lucide-react";
@@ -1222,11 +1222,28 @@ export default function InventarioPage() {
             </button>
           )}
           {tab === "movimientos" && (
-            <button
-              onClick={() => setShowEntradaForm(true)}
-              className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#B01E24] text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors shadow-lg shadow-[#CC2229]/20 cursor-pointer">
-              <Plus size={15} /> Registrar entrada
-            </button>
+            <>
+              <button onClick={() => {
+                const XLSX = require("xlsx");
+                const rows = filteredMovimientos.map((row) => {
+                  if (row._source === "existencia") return { Tipo: "Existencia inicial", Material: row.label, Cantidad: row.cantidad, Unidad: row.unidad, Fecha: row.fecha };
+                  const e = row.data;
+                  return { Tipo: e.tipo, Material: e.material, Cantidad: e.cantidad, Unidad: e.unidad, Fecha: e.fecha, Proveedor: e.proveedor ?? "", Factura: e.noFactura ?? "", Categoría: e.categoria };
+                });
+                const ws = XLSX.utils.json_to_sheet(rows);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "Movimientos");
+                XLSX.writeFile(wb, `inventario-movimientos-${periodo}.xlsx`);
+              }} disabled={filteredMovimientos.length === 0}
+                className="flex items-center gap-2 border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600 hover:border-emerald-500/50 hover:text-emerald-600 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
+                <FileSpreadsheet size={15} /> Excel
+              </button>
+              <button
+                onClick={() => setShowEntradaForm(true)}
+                className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#B01E24] text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors shadow-lg shadow-[#CC2229]/20 cursor-pointer">
+                <Plus size={15} /> Registrar entrada
+              </button>
+            </>
           )}
           {tab === "traspasos" && (
             <button

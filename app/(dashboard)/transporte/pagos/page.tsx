@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, DollarSign, ExternalLink, FileText, Loader2, TrendingUp, Upload, Users } from "lucide-react";
+import { CheckCircle2, DollarSign, ExternalLink, FileSpreadsheet, FileText, Loader2, TrendingUp, Upload, Users } from "lucide-react";
 import KPICard from "@/components/KPICard";
 import { getCollectionDocs, COLLECTIONS } from "@/lib/db";
 import { parseViajeDate, type Viaje } from "@/lib/viajes";
@@ -153,6 +153,29 @@ export default function PagosPage() {
           <p className="text-gray-500 text-sm mt-0.5">Cálculo automático desde viajes completados</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => {
+              const XLSX = require("xlsx");
+              const rows = operadoresData.map((o) => ({
+                Chofer: o.nombre,
+                Viajes: o.viajes,
+                "m³ total": o.m3Total,
+                "Tarifa/m³": o.tarifaM3,
+                Subtotal: o.subtotal,
+                Bonos: o.bonos,
+                Deducciones: o.deducciones,
+                "Total a pagar": o.total,
+              }));
+              const ws = XLSX.utils.json_to_sheet(rows);
+              const wb = XLSX.utils.book_new();
+              XLSX.utils.book_append_sheet(wb, ws, "Pagos Operadores");
+              XLSX.writeFile(wb, `pagos-operadores-${period}.xlsx`);
+            }}
+            disabled={operadoresData.length === 0}
+            className="flex items-center gap-2 border border-[#3A3A3A] bg-[#242424] px-3 py-2 text-sm text-gray-300 hover:border-emerald-500/50 hover:text-emerald-300 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+          >
+            <FileSpreadsheet size={15} /> Excel
+          </button>
           <div className="flex gap-1 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg p-1">
             {(["todos", "semanal", "quincenal", "mensual"] as Period[]).map((p) => (
               <button

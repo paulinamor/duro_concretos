@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle, CalendarDays, Check, ChevronLeft, ChevronRight, Clock,
-  Download, Loader2, Moon, Pencil, ShieldOff, Stethoscope, Umbrella,
+  FileSpreadsheet, Loader2, Moon, Pencil, ShieldOff, Stethoscope, Umbrella,
   UserCheck, UserMinus, Users, X, BarChart3, ListChecks,
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
@@ -276,8 +276,9 @@ export default function AsistenciaPage() {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-gray-500">Control de asistencia · {operadores.length} empleados activos</p>
-        <button onClick={exportXLSX} className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-300 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg hover:border-[#CC2229]/60 transition-colors cursor-pointer">
-          <Download size={13} /> Exportar mes
+        <button onClick={exportXLSX}
+          className="flex items-center gap-2 border border-[#3A3A3A] bg-[#242424] px-3 py-2 text-sm text-gray-300 hover:border-emerald-500/50 hover:text-emerald-300 rounded-lg transition-colors cursor-pointer">
+          <FileSpreadsheet size={15} /> Excel
         </button>
       </div>
 

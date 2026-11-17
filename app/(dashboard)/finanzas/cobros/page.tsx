@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronRight, GitMerge, Link2, Loader2, Pencil, Plus, Search, Shield, Trash2, X, XCircle } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronRight, FileSpreadsheet, GitMerge, Link2, Loader2, Pencil, Plus, Search, Shield, Trash2, X, XCircle } from "lucide-react";
 import type { SolicitudAutorizacion } from "@/lib/db";
 import type { ConcreteReceipt } from "@/lib/concreteReceipts";
 import { calculateConcreteReceiptTotal } from "@/lib/concreteReceipts";
@@ -356,12 +356,37 @@ export default function CobrosPage() {
     <DetallePagoView pago={selected} progs={progs} onBack={() => setView("list")} onUpdated={onAbonosUpdated} />
   );
 
+  function exportXLSX() {
+    const XLSX = require("xlsx");
+    const rows = pagos.map((p) => ({
+      Folio: p.id,
+      Fecha: p.fecha,
+      Cliente: p.cliente,
+      Total: p.cantidad,
+      "Saldo aplicado": p.saldoAplicado,
+      Pendiente: Math.max(0, p.cantidad - p.saldoAplicado),
+      "Tipo de pago": p.tipoPago,
+      Banco: p.banco,
+      Observaciones: p.observaciones,
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Cobros");
+    XLSX.writeFile(wb, "cobros.xlsx");
+  }
+
   // ── LIST ──────────────────────────────────────────────────────────────────
   return (
     <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
-      <div>
-        <h1 className="text-xl font-bold text-gray-900">Cobros</h1>
-        <p className="text-xs text-gray-400 mt-0.5">Estado de cuenta por cliente</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Cobros</h1>
+          <p className="text-xs text-gray-400 mt-0.5">Estado de cuenta por cliente</p>
+        </div>
+        <button onClick={exportXLSX} disabled={pagos.length === 0}
+          className="flex items-center gap-2 border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600 hover:border-emerald-500/50 hover:text-emerald-600 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
+          <FileSpreadsheet size={15} /> Excel
+        </button>
       </div>
 
       <CuentaClienteView

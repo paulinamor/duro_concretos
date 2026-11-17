@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle, CalendarDays, ChevronDown, ChevronLeft, ChevronRight,
-  Clock, Copy, ExternalLink, MapPin, Package, Phone, Plus, Search, Truck, X,
+  Clock, Copy, ExternalLink, FileSpreadsheet, MapPin, Package, Phone, Plus, Search, Truck, X,
 } from "lucide-react";
 import AppSelect from "@/components/AppSelect";
 import ModuleLoading from "@/components/ModuleLoading";
@@ -1449,6 +1449,28 @@ export default function VentasProgramacionPage() {
     }
   }
 
+  function exportXLSX() {
+    const XLSX = require("xlsx");
+    const rows = pedidosFiltrados.map((p) => ({
+      Folio: p.folio ?? "",
+      Día: p.dia,
+      Cliente: p.cliente,
+      Vendedor: p.vendedor ?? "",
+      Dirección: p.direccion ?? "",
+      "m³": p.m3Totales ?? "",
+      "Precio/m³": p.precioM3 ?? "",
+      Total: p.total ?? "",
+      Pagado: p.pagado ?? "",
+      "Monto pagado": p.montoPagado ?? "",
+      Estatus: p.status ?? "",
+      Planta: p.planta ?? "",
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Programación");
+    XLSX.writeFile(wb, "ventas-programacion.xlsx");
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -1459,18 +1481,27 @@ export default function VentasProgramacionPage() {
             : <span>Tus pedidos · <span className="text-white font-medium">{vendedorNombre}</span></span>
           }
         </p>
-        <PlantaRequired>
-          {(ok) => (
-            <button
-              onClick={() => { if (!ok) return; setEditing(null); setShowDrawer(true); }}
-              disabled={!ok}
-              title={!ok ? "Selecciona Allende o Pesquería primero" : undefined}
-              className={`flex items-center gap-2 bg-[#CC2229] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-[#CC2229]/20 ${ok ? "hover:bg-[#B01E24] cursor-pointer" : "opacity-40 cursor-not-allowed"}`}
-            >
-              <Plus size={15} /> Nuevo pedido
-            </button>
-          )}
-        </PlantaRequired>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={exportXLSX}
+            disabled={pedidosFiltrados.length === 0}
+            className="flex items-center gap-2 border border-[#3A3A3A] bg-[#242424] px-3 py-2 text-sm text-gray-300 hover:border-emerald-500/50 hover:text-emerald-300 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+          >
+            <FileSpreadsheet size={15} /> Excel
+          </button>
+          <PlantaRequired>
+            {(ok) => (
+              <button
+                onClick={() => { if (!ok) return; setEditing(null); setShowDrawer(true); }}
+                disabled={!ok}
+                title={!ok ? "Selecciona Allende o Pesquería primero" : undefined}
+                className={`flex items-center gap-2 bg-[#CC2229] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-[#CC2229]/20 ${ok ? "hover:bg-[#B01E24] cursor-pointer" : "opacity-40 cursor-not-allowed"}`}
+              >
+                <Plus size={15} /> Nuevo pedido
+              </button>
+            )}
+          </PlantaRequired>
+        </div>
       </div>
 
       {/* Selector de día + disponibilidad */}

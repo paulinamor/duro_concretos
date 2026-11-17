@@ -7,7 +7,7 @@ import {
 } from "recharts";
 import {
   AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
-  DollarSign, Download, Fuel, Gauge, Loader2, MapPin, MessageSquare,
+  DollarSign, FileSpreadsheet, Fuel, Gauge, Loader2, MapPin, MessageSquare,
   Pencil, Plus, Receipt, Satellite, Search, Shield, Trash2, Truck, X,
 } from "lucide-react";
 import AppSelect from "@/components/AppSelect";
@@ -914,8 +914,8 @@ export default function DieselPage() {
         </p>
         <div className="flex items-center gap-2">
           <button onClick={exportXLSX} disabled={filtered.length === 0}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-400 bg-[#242424] border border-[#3A3A3A] rounded-lg hover:border-[#4A4A4A] transition-colors disabled:opacity-40 shadow-sm cursor-pointer">
-            <Download size={13} /> Excel
+            className="flex items-center gap-2 border border-[#3A3A3A] bg-[#242424] px-3 py-2 text-sm text-gray-300 hover:border-emerald-500/50 hover:text-emerald-300 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
+            <FileSpreadsheet size={15} /> Excel
           </button>
           <button onClick={() => setShowForm(true)}
             className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#B01E24] text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors shadow-md shadow-[#CC2229]/20 cursor-pointer">

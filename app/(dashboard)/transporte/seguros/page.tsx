@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertTriangle, CheckCircle2, Clock, Download, Eye, File, FileText,
+  AlertTriangle, CheckCircle2, Clock, Download, Eye, File, FileSpreadsheet, FileText,
   FolderOpen, Image, Loader2, Plus, Satellite, Search, Shield, ShieldOff,
   Trash2, Upload, X, XCircle,
 } from "lucide-react";
@@ -1181,10 +1181,10 @@ export default function SegurosPage() {
           <button
             onClick={() => exportXLSX(seguros)}
             disabled={seguros.length === 0}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-300 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg hover:border-[#CC2229]/60 transition-colors disabled:opacity-40"
+            className="flex items-center gap-2 border border-[#3A3A3A] bg-[#242424] px-3 py-2 text-sm text-gray-300 hover:border-emerald-500/50 hover:text-emerald-300 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
           >
-            <Download size={14} />
-            Exportar Excel
+            <FileSpreadsheet size={15} />
+            Excel
           </button>
           <PlantaRequired>
             {(ok) => (

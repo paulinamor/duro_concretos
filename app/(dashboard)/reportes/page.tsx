@@ -8,7 +8,7 @@ import {
   ComposedChart, Line,
 } from "recharts";
 import {
-  TrendingUp, Package, CheckCircle2, Download, Search,
+  TrendingUp, Package, CheckCircle2, FileSpreadsheet, Search,
   ArrowUpRight, ArrowDownRight, Minus, ClipboardList, CalendarRange,
   AlertCircle, DollarSign, Users, Zap, BarChart3, Banknote, FileWarning, X,
   Fuel, Wrench, Truck, SlidersHorizontal,
@@ -500,8 +500,8 @@ export default function ReportesPage() {
             ))}
           </div>
           <button onClick={exportXLSX} disabled={filtered.length === 0}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-300 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg hover:border-[#CC2229]/60 transition-colors disabled:opacity-40">
-            <Download size={13} /> Exportar Excel
+            className="flex items-center gap-2 border border-[#3A3A3A] bg-[#242424] px-3 py-2 text-sm text-gray-300 hover:border-emerald-500/50 hover:text-emerald-300 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
+            <FileSpreadsheet size={15} /> Excel
           </button>
         </div>
       </div>
@@ -1032,8 +1032,8 @@ export default function ReportesPage() {
                 {dieselFiltrado.length} cargas · {mantFiltrado.length} eventos
               </span>
               <button onClick={exportFlotaXLSX} disabled={dieselFiltrado.length === 0 && mantFiltrado.length === 0}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-300 bg-[#242424] border border-[#3A3A3A] rounded-lg hover:border-[#CC2229]/60 transition-colors disabled:opacity-40 cursor-pointer">
-                <Download size={13} /> Exportar Excel
+                className="flex items-center gap-2 border border-[#3A3A3A] bg-[#242424] px-3 py-2 text-sm text-gray-300 hover:border-emerald-500/50 hover:text-emerald-300 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
+                <FileSpreadsheet size={15} /> Excel
               </button>
             </div>
 

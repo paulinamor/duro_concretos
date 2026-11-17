@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import {
-  Calculator, ChevronDown, ChevronLeft, ChevronRight, DollarSign, MessageCircle, Package,
-  Plus, Printer, ReceiptText, Save, Search, Trash2, X,
+  Calculator, ChevronDown, ChevronLeft, ChevronRight, DollarSign, FileSpreadsheet,
+  MessageCircle, Package, Plus, Printer, ReceiptText, Save, Search, Trash2, X,
 } from "lucide-react";
 import {
   calculateConcreteReceiptTotal, ConcreteReceipt, ConcreteProducto,
@@ -484,6 +484,30 @@ export default function RecibosConcretoPage() {
     setShowPrintDialog(true);
   }
 
+  function exportXLSX() {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const XLSX = require("xlsx");
+    const rows = filteredReceipts.map((r) => {
+      const { total, resta } = calculateConcreteReceiptTotal(r);
+      return {
+        Folio: `#${String(r.receiptNumber).padStart(4, "0")}`,
+        Fecha: r.fecha,
+        Cliente: r.cliente,
+        "Total facturado": total,
+        "Anticipo cobrado": r.anticipo ?? 0,
+        Resta: resta,
+        "m³ total": getTotalM3(r),
+        "Dirección obra": r.direccionObra,
+        Nota: r.nota ?? "",
+        Planta: r.planta ?? "",
+      };
+    });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Recibos Concreto");
+    XLSX.writeFile(wb, `recibos-concreto-${todayCST()}.xlsx`);
+  }
+
+  // ─── Shared input class ───────────────────────────────────────────────────────
   const lbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5";
   const inp = "w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-900 text-sm placeholder-gray-400 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-colors";
   const inpSm = "bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 text-sm focus:outline-none focus:border-[#CC2229]/60 transition-colors";
@@ -541,6 +565,10 @@ export default function RecibosConcretoPage() {
       <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
         <p className="text-sm text-gray-500">Recibo de concreto premezclado — múltiples productos por recibo</p>
         <div className="flex items-center gap-2">
+          <button type="button" onClick={exportXLSX} disabled={filteredReceipts.length === 0}
+            className="flex items-center gap-2 border border-[#3A3A3A] bg-[#242424] px-3 py-2 text-sm text-gray-300 hover:border-emerald-500/50 hover:text-emerald-300 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
+            <FileSpreadsheet size={15} /> Excel
+          </button>
           <button type="button" onClick={openNew}
             className="flex items-center gap-2 bg-[#CC2229] text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-[#B01E24] transition-colors shadow-md shadow-[#CC2229]/20 cursor-pointer">
             <Plus size={16} /> Nuevo recibo

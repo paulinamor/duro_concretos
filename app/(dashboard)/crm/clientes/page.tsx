@@ -1060,10 +1060,10 @@ export default function CrmClientesPage() {
         <button
           type="button"
           onClick={exportExcel}
-          className="flex items-center gap-2 rounded-lg border border-[#3A3A3A] px-3 py-2 text-sm text-gray-300 hover:border-green-500/50 hover:text-green-300 transition-colors"
+          disabled={filtered.length === 0}
+          className="flex items-center gap-2 border border-[#3A3A3A] bg-[#242424] px-3 py-2 text-sm text-gray-300 hover:border-emerald-500/50 hover:text-emerald-300 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
         >
-          <FileSpreadsheet size={15} />
-          Excel
+          <FileSpreadsheet size={15} /> Excel
         </button>
         <PlantaRequired>
           {(ok) => (

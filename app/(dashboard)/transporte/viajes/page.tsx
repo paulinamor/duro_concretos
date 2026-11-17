@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Truck, Package, Calendar, Filter } from "lucide-react";
+import { FileSpreadsheet, Plus, Truck, Package, Calendar, Filter } from "lucide-react";
 import StatusBadge from "@/components/StatusBadge";
 import KPICard from "@/components/KPICard";
 import FormModal from "@/components/FormModal";
@@ -89,13 +89,39 @@ export default function ViajesPage() {
         <div>
           <p className="text-gray-500 text-sm mt-0.5">Registro y seguimiento de viajes</p>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#991A1E] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-        >
-          <Plus size={16} />
-          Registrar Viaje
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              const XLSX = require("xlsx");
+              const rows = filtered.map((v) => ({
+                Folio: v.folio,
+                Fecha: v.fecha,
+                Unidad: v.unidad,
+                Operador: v.operador,
+                Destino: v.destino,
+                "m³": v.m3,
+                "Precio/m³": v.precioPorM3,
+                Total: v.total,
+                Estado: v.estado,
+              }));
+              const ws = XLSX.utils.json_to_sheet(rows);
+              const wb = XLSX.utils.book_new();
+              XLSX.utils.book_append_sheet(wb, ws, "Viajes");
+              XLSX.writeFile(wb, "viajes.xlsx");
+            }}
+            disabled={filtered.length === 0}
+            className="flex items-center gap-2 border border-[#3A3A3A] bg-[#242424] px-3 py-2 text-sm text-gray-300 hover:border-emerald-500/50 hover:text-emerald-300 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+          >
+            <FileSpreadsheet size={15} /> Excel
+          </button>
+          <button
+            onClick={() => setShowForm(true)}
+            className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#991A1E] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+          >
+            <Plus size={16} />
+            Registrar Viaje
+          </button>
+        </div>
       </div>
 
       {/* Stats */}

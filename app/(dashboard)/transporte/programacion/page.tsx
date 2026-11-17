@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle, CalendarDays, ChevronDown, ChevronLeft, ChevronRight,
-  Clock, Download, Expand, ExternalLink, History, Loader2, MapPin, MessageSquare, Navigation, Palette, Plus, Search, Send, Shrink, Upload, UserRound, Wifi, X,
+  Clock, Expand, ExternalLink, FileSpreadsheet, History, Loader2, MapPin, MessageSquare, Navigation, Palette, Plus, Search, Send, Shrink, Upload, UserRound, Wifi, X,
 } from "lucide-react";
 import ExcelView from "./ExcelView";
 import CargaMasivaModal from "./CargaMasivaModal";
@@ -2888,9 +2888,9 @@ export default function ProgramacionPage() {
             <button
               onClick={() => filtered.length > 0 && exportXLSX(filtered)}
               disabled={filtered.length === 0}
-              className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-300 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg hover:border-[#CC2229]/60 transition-colors disabled:opacity-40"
+              className="flex items-center gap-2 border border-[#3A3A3A] bg-[#242424] px-3 py-2 text-sm text-gray-300 hover:border-emerald-500/50 hover:text-emerald-300 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
             >
-              <Download size={13} />
+              <FileSpreadsheet size={15} />
               Excel
             </button>
             <button

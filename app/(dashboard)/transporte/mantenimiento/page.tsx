@@ -7,7 +7,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
-  Download,
+
   DollarSign,
   FileSpreadsheet,
   ImagePlus,
@@ -1417,8 +1417,8 @@ export default function MantenimientoPage() {
         )}
         <div className="ml-auto flex items-center gap-2">
           <button onClick={exportExcel} disabled={filteredEventos.length === 0}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-300 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg hover:border-gray-500 transition-colors cursor-pointer disabled:opacity-40">
-            <FileSpreadsheet size={13} /> Excel
+            className="flex items-center gap-2 border border-[#3A3A3A] bg-[#242424] px-3 py-2 text-sm text-gray-300 hover:border-emerald-500/50 hover:text-emerald-300 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
+            <FileSpreadsheet size={15} /> Excel
           </button>
         </div>
       </div>

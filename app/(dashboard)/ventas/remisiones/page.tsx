@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import {
-  ChevronLeft, ChevronRight, Download, FileText, Info, Link as LinkIcon, Pencil, Printer, Save, Search, Settings, Trash2, X,
+  ChevronLeft, ChevronRight, Download, FileSpreadsheet, FileText, Info, Link as LinkIcon, Pencil, Printer, Save, Search, Settings, Trash2, X,
 } from "lucide-react";
 import Link from "next/link";
 import KPICard from "@/components/KPICard";
@@ -842,6 +842,25 @@ export default function RemisionesPage() {
     }
   };
 
+  function exportXLSX() {
+    const XLSX = require("xlsx");
+    const rows = filtered.map((r) => ({
+      "No. Remisión": r.noRemision,
+      Fecha: r.fecha,
+      Cliente: r.cliente,
+      Operador: r.operador,
+      "m³": r.m3,
+      "CR/Resistencia": r.cr,
+      "Dirección obra": r.direccionObra,
+      Estatus: r.status,
+      Planta: r.planta ?? "",
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Remisiones");
+    XLSX.writeFile(wb, "remisiones.xlsx");
+  }
+
   return (
     <div className="space-y-5">
       <style jsx global>{`
@@ -872,6 +891,13 @@ export default function RemisionesPage() {
 
 
         <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={exportXLSX}
+            disabled={filtered.length === 0}
+            className="flex items-center gap-2 border border-[#3A3A3A] bg-[#242424] px-3 py-2 text-sm text-gray-300 hover:border-emerald-500/50 hover:text-emerald-300 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+          >
+            <FileSpreadsheet size={15} /> Excel
+          </button>
           <button
             onClick={() => { setEmpresaForm(empresa); setEmpresaModal(true); }}
             title="Datos de empresa para PDF"

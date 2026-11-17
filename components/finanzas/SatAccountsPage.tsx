@@ -11,7 +11,6 @@ import {
   ChevronUp,
   Clock,
   DollarSign,
-  FileDown,
   FileSpreadsheet,
   FileText,
   Link2,
@@ -2409,10 +2408,10 @@ export default function SatAccountsPage({ kind }: { kind: SatDownloadKind }) {
           <button
             onClick={exportXLSX}
             disabled={filtered.length === 0}
-            className="flex items-center gap-2 border border-[#3A3A3A] bg-[#1A1A1A] hover:border-emerald-500/50 hover:text-emerald-300 text-gray-300 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 border border-[#3A3A3A] bg-[#242424] px-3 py-2 text-sm text-gray-300 hover:border-emerald-500/50 hover:text-emerald-300 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
           >
-            <FileDown size={15} />
-            Exportar Excel
+            <FileSpreadsheet size={15} />
+            Excel
           </button>
           <button
             onClick={() => setShowCargaMasiva(true)}
