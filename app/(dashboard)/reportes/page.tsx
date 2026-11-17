@@ -83,6 +83,17 @@ const PERIOD_LABELS: Record<Period, string> = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// Normaliza tdBom a forma canónica para evitar duplicados por mayúsculas/minúsculas
+function normTdBom(raw?: string): string {
+  const v = (raw ?? "").trim();
+  if (!v) return "Directo";
+  const up = v.toUpperCase();
+  if (up.includes("BOM")) return "Bomba";
+  if (["D", "T", "TD", "DIRECTO", "TIRO", "TIRO DIRECTO"].includes(up)) return "Directo";
+  if (up === "MAQUILA") return "Maquila";
+  return v.charAt(0).toUpperCase() + v.slice(1).toLowerCase();
+}
+
 function parseDia(dia: string): Date {
   if (!dia) return new Date(0);
   if (dia.includes("-")) return new Date(dia + "T12:00:00");
@@ -401,7 +412,7 @@ export default function ReportesPage() {
   const porBomba = useMemo(() => {
     const map = new Map<string, { m3: number; pedidos: number; ingresos: number }>();
     filtered.forEach((r) => {
-      const key = r.tdBom?.trim() || "Directo";
+      const key = normTdBom(r.tdBom);
       const curr = map.get(key) ?? { m3: 0, pedidos: 0, ingresos: 0 };
       map.set(key, { m3: curr.m3 + (r.m3Totales ?? 0), pedidos: curr.pedidos + 1, ingresos: curr.ingresos + (r.total ?? 0) });
     });
@@ -432,7 +443,7 @@ export default function ReportesPage() {
       .filter((r) => filterCliente === "todos"     || r.cliente === filterCliente)
       .filter((r) => filterVendedor === "todos"    || (r.vendedor?.trim() || "Sin asignar") === filterVendedor)
       .filter((r) => filterResistencia === "todos" || (r.resistencia || "Sin especificar") === filterResistencia)
-      .filter((r) => filterBomba === "todos"       || (r.tdBom?.trim() || "Directo") === filterBomba)
+      .filter((r) => filterBomba === "todos"       || normTdBom(r.tdBom) === filterBomba)
       .filter((r) => !q || r.cliente?.toLowerCase().includes(q) || r.recibo?.toLowerCase().includes(q) || r.resistencia?.toLowerCase().includes(q) || r.vendedor?.toLowerCase().includes(q))
       .sort((a, b) => {
         if (sortBy === "total") return (b.total ?? 0) - (a.total ?? 0);
@@ -468,7 +479,7 @@ export default function ReportesPage() {
   const clienteOpts     = useMemo(() => Array.from(new Set(filtered.map((r) => r.cliente))).filter(Boolean).sort((a, b) => a.localeCompare(b, "es")), [filtered]);
   const vendedorOpts    = useMemo(() => Array.from(new Set(filtered.map((r) => r.vendedor?.trim() || "Sin asignar"))).filter(Boolean).sort((a, b) => a.localeCompare(b, "es")), [filtered]);
   const resistenciaOpts = useMemo(() => Array.from(new Set(filtered.map((r) => r.resistencia || "Sin especificar"))).filter(Boolean).sort((a, b) => a.localeCompare(b, "es")), [filtered]);
-  const bombaOpts       = useMemo(() => Array.from(new Set(filtered.map((r) => r.tdBom?.trim() || "Directo"))).filter(Boolean).sort((a, b) => a.localeCompare(b, "es")), [filtered]);
+  const bombaOpts       = useMemo(() => Array.from(new Set(filtered.map((r) => normTdBom(r.tdBom)))).filter(Boolean).sort((a, b) => a.localeCompare(b, "es")), [filtered]);
   const activeFilterCount = [filterCliente, filterVendedor, filterResistencia, filterBomba].filter((f) => f !== "todos").length;
   function clearFilters() { setFilterCliente("todos"); setFilterVendedor("todos"); setFilterResistencia("todos"); setFilterBomba("todos"); }
 
@@ -1290,7 +1301,7 @@ export default function ReportesPage() {
                     <td className="px-4 py-2.5 text-gray-500 text-xs tabular-nums">{r.precioM3 != null ? currency(r.precioM3) : "—"}</td>
                     <td className="px-4 py-2.5 text-white font-semibold text-xs tabular-nums">{r.total != null ? currency(r.total) : "—"}</td>
                     <td className="px-4 py-2.5 text-gray-400 text-xs">{r.resistencia || "—"}</td>
-                    <td className="px-4 py-2.5 text-gray-400 text-xs">{r.tdBom || "—"}</td>
+                    <td className="px-4 py-2.5 text-gray-400 text-xs">{normTdBom(r.tdBom)}</td>
                     <td className="px-4 py-2.5">
                       <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${isPagado(r.pagado) ? "bg-emerald-500/15 text-emerald-300" : isParcial(r.pagado) ? "bg-blue-500/15 text-blue-300" : "bg-amber-500/15 text-amber-300"}`}>
                         {isPagado(r.pagado) ? "Pagado" : isParcial(r.pagado) ? "Parcial" : "Pendiente"}
