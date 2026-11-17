@@ -7,6 +7,15 @@
 
 ## Noviembre 2026
 
+### 2026-11-17 (sesión 18-b) — Fix: KPI "Total cobrado" en efectivo
+
+#### 🐛 Fix — Total importe efectivo sumaba monto completo del recibo en lugar de lo cobrado
+- **Archivos:** `app/(dashboard)/ventas/recibos-concreto/page.tsx`, `app/(dashboard)/efectivo/page.tsx`
+- **Descripción:** El sync de recibos-concreto a efectivo guardaba `importe: realTotal` (monto total facturado), pero el KPI sumaba ese total sin considerar que solo el `anticipo` había sido cobrado. Fix: el sync ahora también guarda `montoCobrado: nextReceipt.anticipo ?? 0`. El KPI usa `montoCobrado` para registros de origen concreto y `importe` para registros manuales. KPI renombrado de "Total importe" a "Total cobrado" para mayor claridad.
+- **Horas estimadas:** 0.5 h
+
+---
+
 ### 2026-11-17 (sesión 18) — Horómetro al estilo TMS profesional
 
 #### ✨ Mejora — Horómetro: validación, referencia histórica y delta automático (SAP/TMS style)

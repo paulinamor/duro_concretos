@@ -22,6 +22,7 @@ interface Recibo {
   folio: number;
   cliente: string;
   importe: number | null;
+  montoCobrado?: number;
   fecha: string;
   cemento: string;
   metros: number | null;
@@ -951,7 +952,11 @@ export default function EfectivoPage() {
     });
   }, [recibos, search, filterEntregado, filtroPeriodo, mes]);
 
-  const totalImporte = useMemo(() => filtered.reduce((s, r) => s + (r.importe ?? 0), 0), [filtered]);
+  // Para registros de concreto usamos montoCobrado (anticipo real recibido); para manuales usamos importe completo
+  const totalImporte = useMemo(() => filtered.reduce((s, r) => {
+    const cobrado = r.origenConcreto ? (r.montoCobrado ?? r.importe ?? 0) : (r.importe ?? 0);
+    return s + cobrado;
+  }, 0), [filtered]);
   const totalM3 = useMemo(() => filtered.reduce((s, r) => s + (r.metros ?? 0), 0), [filtered]);
   const pendientes = useMemo(() => filtered.filter((r) => !r.entregado).length, [filtered]);
 
@@ -1029,7 +1034,7 @@ export default function EfectivoPage() {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <KPICard title="Total recibos" value={String(filtered.length)} icon={ClipboardList} iconColor="text-[#CC2229]" iconBg="bg-[#CC2229]/10" active={filterEntregado === "todos"} onClick={() => setFilterEntregado("todos")} />
             <KPICard title="Total m³" value={`${totalM3.toLocaleString("es-MX", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} m³`} icon={Package} iconColor="text-blue-400" iconBg="bg-blue-500/10" active={filterEntregado === "todos"} onClick={() => setFilterEntregado("todos")} />
-            <KPICard title="Total importe" value={currency(totalImporte)} icon={DollarSign} iconColor="text-emerald-400" iconBg="bg-emerald-500/10" active={filterEntregado === "entregado"} onClick={() => setFilterEntregado("entregado")} />
+            <KPICard title="Total cobrado" value={currency(totalImporte)} icon={DollarSign} iconColor="text-emerald-400" iconBg="bg-emerald-500/10" active={filterEntregado === "entregado"} onClick={() => setFilterEntregado("entregado")} />
             <KPICard title="Pendientes entrega" value={String(pendientes)} icon={AlertTriangle} iconColor={pendientes > 0 ? "text-amber-400" : "text-emerald-400"} iconBg={pendientes > 0 ? "bg-amber-500/10" : "bg-emerald-500/10"} active={filterEntregado === "pendiente"} onClick={() => setFilterEntregado("pendiente")} />
           </div>
 

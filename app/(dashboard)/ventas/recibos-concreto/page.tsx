@@ -325,6 +325,7 @@ export default function RecibosConcretoPage() {
 
     upsertDocument(COLLECTIONS.efectivo, `ef-${docId}`, {
       folio: num, cliente: nextReceipt.cliente, importe: realTotal,
+      montoCobrado: nextReceipt.anticipo ?? 0,
       fecha: nextReceipt.fecha, cemento: "Concreto premezclado",
       metros: m3total, precio: firstProd?.precioPorM3 ?? 0,
       resistencia: firstProd?.resistencia ?? "", tipoDeTiro: firstProd?.supplyType ?? "",
