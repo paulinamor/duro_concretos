@@ -13,7 +13,7 @@ import {
   makeProducto, makeExtraLibre, migrateReceipt, syncReceiptWithTrip,
 } from "@/lib/concreteReceipts";
 import { upsertDocument, deleteDocument, COLLECTIONS, getCollectionDocs } from "@/lib/db";
-import { withPlantaTag, getActivePlanta, getCapturePlanta } from "@/lib/auth";
+import { getActivePlanta, getCapturePlanta } from "@/lib/auth";
 import type { Planta } from "@/lib/auth";
 import { useConfirmDelete } from "@/lib/delete-context";
 import { todayCST } from "@/lib/dateUtils";
@@ -309,29 +309,29 @@ export default function RecibosConcretoPage() {
       precioPorM3: firstProd?.precioPorM3 ?? 0,
     };
     const { id: docId, ...saveData } = nextReceipt;
-    await upsertDocument(COLLECTIONS.remisiones, docId, { ...withPlantaTag(saveData), planta: receiptPlanta });
+    await upsertDocument(COLLECTIONS.remisiones, docId, { ...saveData, planta: receiptPlanta });
     syncReceiptWithTrip(nextReceipt).catch((err) => console.error("syncTrip:", err));
 
     const progId = `recibo-${docId}`;
     if (nextReceipt.enviarACobros !== false) {
-      upsertDocument(COLLECTIONS.programaciones, progId, withPlantaTag({
+      upsertDocument(COLLECTIONS.programaciones, progId, {
         dia: nextReceipt.fecha, cliente: nextReceipt.cliente,
         reciboFolio: `#${String(num).padStart(4, "0")}`, total: realTotal,
         montoPagado: nextReceipt.anticipo ?? 0, nombreObra: nextReceipt.direccionObra,
-        origenRecibo: true, reciboId: docId,
-      })).catch((err) => console.error("syncCobros:", err));
+        origenRecibo: true, reciboId: docId, planta: receiptPlanta,
+      }).catch((err) => console.error("syncCobros:", err));
     } else {
       deleteDocument(COLLECTIONS.programaciones, progId).catch(() => {});
     }
 
-    upsertDocument(COLLECTIONS.efectivo, `ef-${docId}`, withPlantaTag({
+    upsertDocument(COLLECTIONS.efectivo, `ef-${docId}`, {
       folio: num, cliente: nextReceipt.cliente, importe: realTotal,
       fecha: nextReceipt.fecha, cemento: "Concreto premezclado",
       metros: m3total, precio: firstProd?.precioPorM3 ?? 0,
       resistencia: firstProd?.resistencia ?? "", tipoDeTiro: firstProd?.supplyType ?? "",
       direccionObra: nextReceipt.direccionObra, notas: nextReceipt.nota ?? "",
-      entregado: false, origenConcreto: true, reciboConcreteId: docId,
-    })).catch((err) => console.error("syncEfectivo:", err));
+      entregado: false, origenConcreto: true, reciboConcreteId: docId, planta: receiptPlanta,
+    }).catch((err) => console.error("syncEfectivo:", err));
 
     if (!isLoadedReceipt && abonoReceiptId) {
       const montoAbono = parseFloat(abonoMonto);
@@ -341,27 +341,8 @@ export default function RecibosConcretoPage() {
           const nuevoAbono = { fecha: nextReceipt.fecha, monto: montoAbono, reciboOrigenId: nextReceipt.id };
           const updatedAbonos = [...(target.abonos ?? []), nuevoAbono];
           const { resta: nuevaResta } = calculateConcreteReceiptTotal({ ...target, abonos: updatedAbonos });
-          const { id: _tid, planta: _tp, ...targetSaveData } = target as ConcreteReceipt & { planta?: string };
-          await upsertDocument(COLLECTIONS.remisiones, abonoReceiptId, withPlantaTag({ ...targetSaveData, abonos: updatedAbonos, resta: nuevaResta }));
-        }
-      }
-    }
-
-    // Apply abono to a previous receipt if the user registered one
-    if (!isLoadedReceipt && abonoReceiptId) {
-      const montoAbono = parseFloat(abonoMonto);
-      if (montoAbono > 0) {
-        const target = savedReceipts.find((r) => r.id === abonoReceiptId);
-        if (target) {
-          const nuevoAbono = { fecha: nextReceipt.fecha, monto: montoAbono, reciboOrigenId: nextReceipt.id };
-          const updatedAbonos = [...(target.abonos ?? []), nuevoAbono];
-          const { resta: nuevaResta } = calculateConcreteReceiptTotal({ ...target, abonos: updatedAbonos });
-          const { id: _tid, planta: _tp, ...targetSaveData } = target as ConcreteReceipt & { planta?: string };
-          await upsertDocument(COLLECTIONS.remisiones, abonoReceiptId, withPlantaTag({
-            ...targetSaveData,
-            abonos: updatedAbonos,
-            resta: nuevaResta,
-          }));
+          const { id: _tid, planta: targetPlanta, ...targetSaveData } = target as ConcreteReceipt & { planta?: string };
+          await upsertDocument(COLLECTIONS.remisiones, abonoReceiptId, { ...targetSaveData, abonos: updatedAbonos, resta: nuevaResta, planta: targetPlanta ?? receiptPlanta });
         }
       }
     }
