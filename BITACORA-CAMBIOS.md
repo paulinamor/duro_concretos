@@ -7,6 +7,15 @@
 
 ## Noviembre 2026
 
+### 2026-11-18 (sesión 19-b) — ✨ Auto-marcar entregado al capturar remisión
+
+#### ✨ Mejora — Programación se marca "Entregado" automáticamente al guardar con remisión
+- **Archivos:** `app/(dashboard)/transporte/programacion/page.tsx`
+- **Descripción:** Al guardar una programación desde el drawer "Completar programación", si algún chofer tiene número de remisión capturado y la programación aún no está en fase "Entregado", el sistema la marca automáticamente como entregada y registra entrada en historial. Elimina la necesidad de hacer el paso manual "Marcar como entregado" cuando ya se capturó la remisión de entrega.
+- **Horas estimadas:** 0.25 h
+
+---
+
 ### 2026-11-18 (sesión 19) — ✨ Calizas CXP en Inventario
 
 #### ✨ Nueva tab "Calizas CXP" en módulo Inventario

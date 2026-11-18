@@ -956,6 +956,16 @@ function FormDrawer({
       }
       newProg.historial = hist;
 
+      // Auto-mark as Entregado when at least one chofer has a remisión captured
+      if (choferes.some((c) => c.remision.trim()) && initial?.fase !== "Entregado") {
+        newProg.fase = "Entregado";
+        newProg.historial = [...(newProg.historial ?? []), {
+          fase: "Entregado",
+          fecha: nowISO,
+          nota: "Marcado automáticamente al capturar remisión",
+        }];
+      }
+
       await onSave(newProg);
 
       // Auto-create RemisionDespacho pendiente for each chofer with a remision number
