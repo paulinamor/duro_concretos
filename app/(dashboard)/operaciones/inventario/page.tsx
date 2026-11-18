@@ -238,9 +238,10 @@ function MaterialCard({ row }: { row: StockRow }) {
 
 function emptyMaterialRow(): MaterialRow { return { material: "", cantidad: "", unidad: "" }; }
 
-function EntradaDrawer({ open, onClose, onSave, remisionesDespacho }: {
+function EntradaDrawer({ open, onClose, onSave, remisionesDespacho, almacenMateriales }: {
   open: boolean; onClose: () => void; onSave: (entries: EntradaMaterial[]) => Promise<void>;
   remisionesDespacho: RemisionDespacho[];
+  almacenMateriales?: string[];
 }) {
   const emptyForm = (): EntradaFormState => ({
     fecha: todayISO(), categoria: "inventario", tipo: "entrada",
@@ -250,8 +251,9 @@ function EntradaDrawer({ open, onClose, onSave, remisionesDespacho }: {
   const [form, setForm] = useState<EntradaFormState>(emptyForm);
   const [selectedRemisionId, setSelectedRemisionId] = useState("");
   const [saving, setSaving] = useState(false);
+  const [otroModes, setOtroModes] = useState<boolean[]>([false]);
 
-  useEffect(() => { if (open) { setForm(emptyForm()); setSelectedRemisionId(""); } }, [open]);
+  useEffect(() => { if (open) { setForm(emptyForm()); setSelectedRemisionId(""); setOtroModes([false]); } }, [open]);
 
   const setHeader = (k: Exclude<keyof EntradaFormState, "materiales">, v: string) =>
     setForm((p) => ({ ...p, [k]: v }));
@@ -267,8 +269,14 @@ function EntradaDrawer({ open, onClose, onSave, remisionesDespacho }: {
       return { ...p, materiales: mats };
     });
 
-  const addRow = () => setForm((p) => ({ ...p, materiales: [...p.materiales, emptyMaterialRow()] }));
-  const removeRow = (i: number) => setForm((p) => ({ ...p, materiales: p.materiales.filter((_, j) => j !== i) }));
+  const addRow = () => {
+    setForm((p) => ({ ...p, materiales: [...p.materiales, emptyMaterialRow()] }));
+    setOtroModes((prev) => [...prev, false]);
+  };
+  const removeRow = (i: number) => {
+    setForm((p) => ({ ...p, materiales: p.materiales.filter((_, j) => j !== i) }));
+    setOtroModes((prev) => prev.filter((_, j) => j !== i));
+  };
 
   const fileInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -356,6 +364,7 @@ function EntradaDrawer({ open, onClose, onSave, remisionesDespacho }: {
                         materiales: p.materiales.map(() => emptyMaterialRow()),
                       }));
                       setSelectedRemisionId("");
+                      setOtroModes((prev) => prev.map(() => false));
                     }}
                     className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${form.categoria === c ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
                     {c === "inventario" ? "Producción" : "Almacén"}
@@ -398,7 +407,36 @@ function EntradaDrawer({ open, onClose, onSave, remisionesDespacho }: {
                         {INVENTARIO_MATERIALES.map((m) => <option key={m.key} value={m.key}>{m.label}{m.unidad ? ` (${m.unidad})` : ""}</option>)}
                       </AppSelect>
                     ) : (
-                      <input type="text" value={row.material} onChange={(e) => setRow(i, { material: e.target.value })} placeholder="Ej: Diesel, Lubricante…" className={inp} />
+                      <>
+                        {almacenMateriales && almacenMateriales.length > 0 ? (
+                          <AppSelect
+                            value={otroModes[i] ? "__otro__" : row.material}
+                            onChange={(e) => {
+                              if (e.target.value === "__otro__") {
+                                setOtroModes((prev) => { const n = [...prev]; n[i] = true; return n; });
+                                setRow(i, { material: "" });
+                              } else {
+                                setOtroModes((prev) => { const n = [...prev]; n[i] = false; return n; });
+                                setRow(i, { material: e.target.value });
+                              }
+                            }}
+                          >
+                            <option value="">Seleccionar material…</option>
+                            {almacenMateriales.map((m) => <option key={m} value={m}>{m}</option>)}
+                            <option value="__otro__">Otro…</option>
+                          </AppSelect>
+                        ) : null}
+                        {(!almacenMateriales || almacenMateriales.length === 0 || otroModes[i]) && (
+                          <input
+                            type="text"
+                            value={row.material}
+                            onChange={(e) => setRow(i, { material: e.target.value })}
+                            placeholder="Ej: Diesel, Calizas…"
+                            className={inp}
+                            autoFocus={otroModes[i]}
+                          />
+                        )}
+                      </>
                     )}
                     <div className={`grid gap-2 ${form.categoria === "almacen" ? "grid-cols-2" : "grid-cols-1"}`}>
                       <div className="flex items-end gap-2">
@@ -434,10 +472,10 @@ function EntradaDrawer({ open, onClose, onSave, remisionesDespacho }: {
                         <input type="text" value={row.remision ?? ""} onChange={(e) => setRow(i, { remision: e.target.value })} placeholder="—" className={inp} />
                       </div>
                     </div>
-                    {/* Precio unitario — calizas */}
-                    {row.material.toLowerCase().includes("caliz") && form.tipo === "entrada" && (
+                    {/* Precio unitario */}
+                    {form.tipo === "entrada" && (
                       <div>
-                        <label className={lbl}>Precio por tonelada ($)</label>
+                        <label className={lbl}>Precio unitario ($) <span className="font-normal normal-case text-gray-400">(opcional)</span></label>
                         <input type="number" min={0} step="0.01" value={row.precioUnitario ?? ""} onChange={(e) => setRow(i, { precioUnitario: e.target.value })} placeholder="0.00" className={inp} onWheel={(e) => e.currentTarget.blur()} />
                         {row.precioUnitario && row.cantidad && (
                           <p className="mt-1 text-[11px] text-emerald-600 font-semibold">
@@ -1268,6 +1306,19 @@ export default function InventarioPage() {
     [traspasos, localPlanta],
   );
 
+  // ── Almacén — materiales frecuentes para dropdown ────────────────────────────
+  const almacenMaterialesFrecuentes = useMemo(() => {
+    const counts = new Map<string, number>();
+    entradasMaterial.filter((e) => e.categoria === "almacen").forEach((e) => {
+      const mat = e.material?.trim();
+      if (mat) counts.set(mat, (counts.get(mat) ?? 0) + 1);
+    });
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([mat]) => mat)
+      .slice(0, 20);
+  }, [entradasMaterial]);
+
   // ── Calizas CXP ───────────────────────────────────────────────────────────────
   const calizaEntradas = useMemo(
     () => entByPlanta
@@ -1973,7 +2024,7 @@ export default function InventarioPage() {
       )}
 
       {/* ── Drawers & Modals ───────────────────────────────────────────────────── */}
-      <EntradaDrawer open={showEntradaForm} onClose={() => setShowEntradaForm(false)} onSave={handleSaveEntrada} remisionesDespacho={remisionesDespacho} />
+      <EntradaDrawer open={showEntradaForm} onClose={() => setShowEntradaForm(false)} onSave={handleSaveEntrada} remisionesDespacho={remisionesDespacho} almacenMateriales={almacenMaterialesFrecuentes} />
       <TraspasoDrawer open={showTraspasoForm} onClose={() => setShowTraspasoForm(false)} localPlanta={localPlanta} onSave={handleSaveTraspaso} />
       {isSuperAdmin && <ExistenciaModal open={showExistenciaForm} onClose={() => setShowExistenciaForm(false)} periodo={periodo} planta={localPlanta} current={existenciaInicial} onSave={handleSaveExistencia} />}
       <EditInventarioModal open={!!editTarget} onClose={() => setEditTarget(null)} entry={editTarget} onSubmit={handleSubmitEdicion} />
