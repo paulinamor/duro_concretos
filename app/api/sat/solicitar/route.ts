@@ -21,6 +21,12 @@ export async function POST(req: NextRequest) {
     if (!password || !certB64 || !keyB64 || !fechaInicio || !fechaFin) {
       return NextResponse.json({ error: "Faltan campos requeridos." }, { status: 400 });
     }
+    if (direccion !== "emitidos" && direccion !== "recibidos") {
+      return NextResponse.json({ error: "direccion debe ser 'emitidos' o 'recibidos'." }, { status: 400 });
+    }
+    if (tipo !== "cfdi" && tipo !== "metadata") {
+      return NextResponse.json({ error: "tipo debe ser 'cfdi' o 'metadata'." }, { status: 400 });
+    }
 
     const service = await buildSatService(certB64, keyB64, password);
 
