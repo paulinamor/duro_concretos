@@ -2681,7 +2681,12 @@ export default function FacturacionPage() {
 
       {tab === "complemento" && <ComplementoPagoTab cfdiList={cfdiList} onEmitido={(cfdi) => setCfdiList((prev) => [cfdi, ...prev])} />}
       {tab === "emisores" && <EmisorasTab />}
-      {tab === "descarga" && <DescargaFacturamaTab />}
+      {tab === "descarga" && (
+        <div className="space-y-6">
+          <DescargaSATTab />
+          <DescargaFacturamaTab />
+        </div>
+      )}
       {tab === "folios"   && isDev && <FoliosDevTab cfdiList={cfdiList} />}
 
       {/* Drawer emitir */}

@@ -7,6 +7,15 @@
 
 ## Noviembre 2026
 
+### 2026-11-18 (sesión 19-c) — 🐛 Fix SAT Descarga Masiva no funcionaba
+
+#### 🐛 Fix — Descarga SAT nunca enviaba credenciales a las APIs
+- **Archivos:** `app/(dashboard)/configuracion/sat-descarga/page.tsx`, `app/(dashboard)/facturacion/page.tsx`
+- **Descripción:** Tres bugs críticos: (1) La página `/configuracion/sat-descarga` cargaba config desde `/api/sat/config-status` que ya solo devuelve `{ok:true}` — nunca obtenía `certB64`/`keyB64`. (2) `handleSolicitar`, `verificar` y `descargarPaquete` no pasaban `certB64`/`keyB64` a las APIs del SAT que los requerían. (3) `DescargaSATTab` en facturación nunca se renderizaba — la tab "Descarga CFDI" solo mostraba la consulta de Facturama. Fixes: cargar config completa desde Firestore, pasar credenciales a todas las llamadas API, y agregar `DescargaSATTab` a la tab de Descarga CFDI.
+- **Horas estimadas:** 1 h
+
+---
+
 ### 2026-11-18 (sesión 19-b) — ✨ Auto-marcar entregado al capturar remisión
 
 #### ✨ Mejora — Programación se marca "Entregado" automáticamente al guardar con remisión

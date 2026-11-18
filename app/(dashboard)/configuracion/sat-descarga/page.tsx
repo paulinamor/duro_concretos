@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { CheckCircle2, ChevronDown, CloudDownload, Eye, EyeOff, FileKey2, FileText, Loader2, RefreshCw, ShieldCheck, Upload, X } from "lucide-react";
 import { useCollectionRaw } from "@/lib/useCollection";
-import { upsertDocument, COLLECTIONS } from "@/lib/db";
+import { upsertDocument, getDocument, COLLECTIONS } from "@/lib/db";
 import AppSelect from "@/components/AppSelect";
 
 interface DescargaSAT {
@@ -22,6 +22,8 @@ interface DescargaSAT {
 interface SatConfig {
   rfc?: string;
   activo?: boolean;
+  certB64?: string;
+  keyB64?: string;
 }
 
 const inp = "w-full bg-[#1A1A1A] border border-[#3A3A3A] rounded-xl px-3.5 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-[#CC2229]/60 focus:ring-1 focus:ring-[#CC2229]/20 transition-all";
@@ -66,11 +68,10 @@ export default function SatDescargaPage() {
   // ── Historial ───────────────────────────────────────────────────────────────
   const historial = useCollectionRaw<DescargaSAT>(COLLECTIONS.descargasSAT ?? "descargasSAT");
 
-  // Cargar config existente
+  // Cargar config existente (certB64/keyB64 desde Firestore)
   useEffect(() => {
-    fetch("/api/sat/config-status")
-      .then((r) => r.json())
-      .then((d) => setSatConfig(d.config ?? null))
+    getDocument<SatConfig>(COLLECTIONS.configuracion, "sat_efirma")
+      .then((d) => setSatConfig(d?.certB64 && d?.keyB64 ? d : null))
       .catch(() => setSatConfig(null))
       .finally(() => setLoadingConfig(false));
   }, []);
@@ -93,7 +94,7 @@ export default function SatDescargaPage() {
           certB64: data.certB64, keyB64: data.keyB64, rfc: data.rfc, activo: true,
         });
         setConfigMsg({ type: "ok", text: `e.firma configurada. RFC: ${data.rfc}` });
-        setSatConfig({ rfc: data.rfc, activo: true });
+        setSatConfig({ rfc: data.rfc, activo: true, certB64: data.certB64, keyB64: data.keyB64 });
         setCerFile(null); setKeyFile(null); setConfigPwd("");
       }
     } catch {
@@ -104,14 +105,14 @@ export default function SatDescargaPage() {
   }
 
   async function handleSolicitar() {
-    if (!sessionPwd || !fechaInicio || !fechaFin) return;
+    if (!sessionPwd || !fechaInicio || !fechaFin || !satConfig?.certB64 || !satConfig?.keyB64) return;
     setSolicitando(true);
     setSolicitudMsg(null);
     try {
       const resp = await fetch("/api/sat/solicitar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: sessionPwd, fechaInicio, fechaFin, direccion, tipo: tipoSolicitud, tipoDocumento: tipoDoc || undefined }),
+        body: JSON.stringify({ password: sessionPwd, certB64: satConfig.certB64, keyB64: satConfig.keyB64, fechaInicio, fechaFin, direccion, tipo: tipoSolicitud, tipoDocumento: tipoDoc || undefined }),
       });
       const data = await resp.json();
       if (!resp.ok) {
@@ -141,12 +142,12 @@ export default function SatDescargaPage() {
   }
 
   async function verificar(requestId: string) {
-    if (!sessionPwd) return;
+    if (!sessionPwd || !satConfig?.certB64 || !satConfig?.keyB64) return;
     try {
       const resp = await fetch("/api/sat/verificar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requestId, password: sessionPwd }),
+        body: JSON.stringify({ requestId, password: sessionPwd, certB64: satConfig.certB64, keyB64: satConfig.keyB64 }),
       });
       const data = await resp.json();
       if (data.status) {
@@ -162,13 +163,13 @@ export default function SatDescargaPage() {
   }
 
   async function descargarPaquete(packageId: string) {
-    if (!sessionPwd) return;
+    if (!sessionPwd || !satConfig?.certB64 || !satConfig?.keyB64) return;
     setDescargandoPkg(packageId);
     try {
       const resp = await fetch("/api/sat/descargar-paquete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ packageId, password: sessionPwd }),
+        body: JSON.stringify({ packageId, password: sessionPwd, certB64: satConfig.certB64, keyB64: satConfig.keyB64 }),
       });
       if (!resp.ok) {
         const e = await resp.json();
