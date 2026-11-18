@@ -197,10 +197,26 @@ export default function DashboardPage() {
 
   const diasTranscurridos = now.getDate();
   const diasDelMes = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  const promDiarioConcreto = diasTranscurridos > 0 ? m3Concreto / diasTranscurridos : 0;
-  const promDiarioBomba = diasTranscurridos > 0 ? m3Bomba / diasTranscurridos : 0;
-  const tendenciaConcreto = promDiarioConcreto * diasDelMes;
-  const tendenciaBomba = promDiarioBomba * diasDelMes;
+
+  // Días con despachos reales (no días de calendario) — igual que el sistema de referencia
+  const diasConProduccion = useMemo(() => {
+    const s = new Set(progsEntregadasDelMes.map((p) => p.dia ?? "").filter(Boolean));
+    return Math.max(s.size, 1);
+  }, [progsEntregadasDelMes]);
+
+  // Días laborables del mes (Lun–Sab, sin domingos) — base de proyección
+  const diasLaborablesDelMes = useMemo(() => {
+    let count = 0;
+    for (let d = 1; d <= diasDelMes; d++) {
+      if (new Date(now.getFullYear(), now.getMonth(), d).getDay() !== 0) count++;
+    }
+    return count;
+  }, [diasDelMes, now]);
+
+  const promDiarioConcreto = m3Concreto / diasConProduccion;
+  const promDiarioBomba   = m3Bomba   / diasConProduccion;
+  const tendenciaConcreto = promDiarioConcreto * diasLaborablesDelMes;
+  const tendenciaBomba    = promDiarioBomba    * diasLaborablesDelMes;
   // Ticket = $/m³ promedio por tipo de despacho
   const ticketConcreto = m3Concreto > 0 ? ventasConcreto / m3Concreto : 0;
   const ticketBomba = m3Bomba > 0 ? ventasBomba / m3Bomba : 0;
@@ -487,7 +503,7 @@ export default function DashboardPage() {
       <div className="bg-[#242424] border border-white/10 rounded-2xl overflow-hidden">
         <div className="px-5 py-3 border-b border-white/10 flex items-center justify-between">
           <h3 className="text-white font-semibold text-sm">Indicadores del mes — {MES_LABELS[now.getMonth()]} {now.getFullYear()}</h3>
-          <span className="text-xs text-gray-500">{progsEntregadasDelMes.length} pedidos · {diasTranscurridos}/{diasDelMes} días transcurridos</span>
+          <span className="text-xs text-gray-500">{progsEntregadasDelMes.length} pedidos · {diasTranscurridos}/{diasDelMes} días transcurridos · {diasConProduccion} días con prod.</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
