@@ -6,6 +6,7 @@ import {
   BarChart2, Camera, Edit2, FileSpreadsheet,
   Info, Package, Plus, Search, Trash2, X,
   Layers, TrendingDown, CheckCircle2, Shield, XCircle,
+  Mountain, Wallet,
 } from "lucide-react";
 import Link from "next/link";
 import KPICard from "@/components/KPICard";
@@ -46,10 +47,21 @@ interface EntradaMaterial {
   categoria: "inventario" | "almacen"; planta?: string;
   remisionId?: string; noRemisionRef?: string;
   remision?: string;
+  precioUnitario?: number;
+  costoTotal?: number;
   fotoUrl?: string;   // legacy — single photo (backward compat)
   fotoPath?: string;
   fotoUrls?: string[]; // multi-photo (new)
   fotoPaths?: string[];
+}
+
+interface PagoProveedorMat {
+  id?: string;
+  fecha: string;
+  proveedor: string;
+  monto: number;
+  referencia?: string;
+  nota?: string;
 }
 interface ExistenciaInicial {
   id?: string; periodo: string;
@@ -66,6 +78,7 @@ interface MaterialRow {
   remision?: string;
   proveedor?: string;
   noFactura?: string;
+  precioUnitario?: string;
   fotoUrl?: string;
   fotoPath?: string;
   uploading?: boolean;
@@ -304,6 +317,10 @@ function EntradaDrawer({ open, onClose, onSave, remisionesDespacho }: {
         ...(row.fotoPath        ? { fotoPath:  row.fotoPath }        : {}),
         ...(selectedRemision?.id         ? { remisionId:    selectedRemision.id }          : {}),
         ...(selectedRemision?.noRemision ? { noRemisionRef: selectedRemision.noRemision } : {}),
+        ...(row.precioUnitario ? {
+          precioUnitario: num(row.precioUnitario),
+          costoTotal: num(row.precioUnitario) * num(row.cantidad),
+        } : {}),
       }));
       await onSave(entries);
       onClose();
@@ -417,6 +434,18 @@ function EntradaDrawer({ open, onClose, onSave, remisionesDespacho }: {
                         <input type="text" value={row.remision ?? ""} onChange={(e) => setRow(i, { remision: e.target.value })} placeholder="—" className={inp} />
                       </div>
                     </div>
+                    {/* Precio unitario — calizas */}
+                    {row.material.toLowerCase().includes("caliz") && form.tipo === "entrada" && (
+                      <div>
+                        <label className={lbl}>Precio por tonelada ($)</label>
+                        <input type="number" min={0} step="0.01" value={row.precioUnitario ?? ""} onChange={(e) => setRow(i, { precioUnitario: e.target.value })} placeholder="0.00" className={inp} onWheel={(e) => e.currentTarget.blur()} />
+                        {row.precioUnitario && row.cantidad && (
+                          <p className="mt-1 text-[11px] text-emerald-600 font-semibold">
+                            Total: ${(parseFloat(row.precioUnitario || "0") * parseFloat(row.cantidad || "0")).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </p>
+                        )}
+                      </div>
+                    )}
                     {/* Foto */}
                     <div>
                       <label className={lbl}>Foto</label>
@@ -847,9 +876,84 @@ function TraspasoDrawer({
   );
 }
 
+// ─── PagoDrawer ───────────────────────────────────────────────────────────────
+
+function PagoDrawer({ open, onClose, onSave }: {
+  open: boolean; onClose: () => void;
+  onSave: (pago: Omit<PagoProveedorMat, "id">) => Promise<void>;
+}) {
+  const [fecha, setFecha] = useState(todayISO());
+  const [monto, setMonto] = useState("");
+  const [referencia, setReferencia] = useState("");
+  const [nota, setNota] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) { setFecha(todayISO()); setMonto(""); setReferencia(""); setNota(""); }
+  }, [open]);
+
+  const canSave = num(monto) > 0;
+
+  const handleSave = async () => {
+    if (!canSave) return;
+    setSaving(true);
+    try {
+      await onSave({
+        fecha: isoToDisplay(fecha),
+        proveedor: "Calizas",
+        monto: num(monto),
+        ...(referencia.trim() ? { referencia: referencia.trim() } : {}),
+        ...(nota.trim()       ? { nota: nota.trim() }             : {}),
+      });
+      onClose();
+    } finally { setSaving(false); }
+  };
+
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[100] flex">
+      <button className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative ml-auto flex h-full w-full max-w-sm flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden">
+        <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-4 shrink-0">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600"><Wallet size={18} /></div>
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">Registrar pago</h2>
+            <p className="text-xs text-gray-500">Aplica un pago a Calizas</p>
+          </div>
+          <button onClick={onClose} className="ml-auto rounded-xl p-2 text-gray-400 hover:bg-gray-100 cursor-pointer"><X size={16} /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+          <div>
+            <label className={lbl}>Fecha</label>
+            <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className={inp} />
+          </div>
+          <div>
+            <label className={lbl}>Monto ($)</label>
+            <input type="number" min={0} step="0.01" value={monto} onChange={(e) => setMonto(e.target.value)} placeholder="0.00" className={inp} onWheel={(e) => e.currentTarget.blur()} />
+          </div>
+          <div>
+            <label className={lbl}>Referencia <span className="font-normal normal-case text-gray-400">(opcional)</span></label>
+            <input type="text" value={referencia} onChange={(e) => setReferencia(e.target.value)} placeholder="No. cheque, transferencia…" className={inp} />
+          </div>
+          <div>
+            <label className={lbl}>Nota <span className="font-normal normal-case text-gray-400">(opcional)</span></label>
+            <textarea rows={2} value={nota} onChange={(e) => setNota(e.target.value)} className={`${inp} resize-none`} />
+          </div>
+        </div>
+        <div className="shrink-0 border-t border-gray-100 px-6 py-4 flex gap-3">
+          <button onClick={onClose} className="flex-1 px-4 py-2.5 text-sm text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 cursor-pointer">Cancelar</button>
+          <button onClick={handleSave} disabled={saving || !canSave} className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors disabled:opacity-40 cursor-pointer">
+            {saving ? "Guardando…" : "Registrar pago"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-type Tab = "stock" | "remisiones" | "movimientos" | "traspasos";
+type Tab = "stock" | "remisiones" | "movimientos" | "traspasos" | "calizas";
 
 export default function InventarioPage() {
   const [tab, setTab] = useState<Tab>("stock");
@@ -879,6 +983,10 @@ export default function InventarioPage() {
   const [traspasos, setTraspasos] = useState<Traspaso[]>([]);
   const [showTraspasoForm, setShowTraspasoForm] = useState(false);
 
+  const [pagosProveedorMat, setPagosProveedorMat] = useState<PagoProveedorMat[]>([]);
+  const [showPagoCaliza, setShowPagoCaliza] = useState(false);
+  const [confirmDeletePago, setConfirmDeletePago] = useState<PagoProveedorMat | null>(null);
+
   // ── UI ───────────────────────────────────────────────────────────────────────
   const [showEntradaForm, setShowEntradaForm] = useState(false);
   const [showExistenciaForm, setShowExistenciaForm] = useState(false);
@@ -900,12 +1008,14 @@ export default function InventarioPage() {
       getCollectionDocs<ExistenciaInicial>(COLLECTIONS.existenciasIniciales),
       getCollectionDocs<SolicitudAutorizacion>(COLLECTIONS.solicitudesAutorizacion),
       getCollectionDocs<Traspaso>(COLLECTIONS.traspasos),
-    ]).then(([rem, ent, exi, sols, tras]) => {
+      getCollectionDocs<PagoProveedorMat>(COLLECTIONS.pagosProveedorMat),
+    ]).then(([rem, ent, exi, sols, tras, pagos]) => {
       setRemisionesDespacho(filterByPlanta(rem).filter((r) => r.tipo === "despacho"));
       setEntradasMaterial(filterByPlanta(ent));
       setExistenciasIniciales(filterByPlanta(exi));
       setSolicitudesEdicion(sols.filter((s) => s.tipo === "editar_inventario"));
       setTraspasos(tras);
+      setPagosProveedorMat(pagos.filter((p) => p.proveedor === "Calizas"));
     }).finally(() => setLoading(false));
   }, []);
 
@@ -1158,6 +1268,53 @@ export default function InventarioPage() {
     [traspasos, localPlanta],
   );
 
+  // ── Calizas CXP ───────────────────────────────────────────────────────────────
+  const calizaEntradas = useMemo(
+    () => entByPlanta
+      .filter((e) => e.tipo === "entrada" && e.material.toLowerCase().includes("caliz"))
+      .sort((a, b) => {
+        const ia = a.fecha?.includes("/") ? displayToISO(a.fecha) : (a.fecha ?? "");
+        const ib = b.fecha?.includes("/") ? displayToISO(b.fecha) : (b.fecha ?? "");
+        return ib.localeCompare(ia);
+      }),
+    [entByPlanta],
+  );
+
+  const calizaKPIs = useMemo(() => {
+    const periodEntradas = calizaEntradas.filter((e) => inPeriod(e.fecha, periodo));
+    const totalTonsPeriodo  = periodEntradas.reduce((s, e) => s + e.cantidad, 0);
+    const totalCostoPeriodo = periodEntradas.reduce((s, e) => s + (e.costoTotal ?? 0), 0);
+    const totalCostoTotal   = calizaEntradas.reduce((s, e) => s + (e.costoTotal ?? 0), 0);
+    const totalPagado       = pagosProveedorMat.reduce((s, p) => s + p.monto, 0);
+    return { totalTonsPeriodo, totalCostoPeriodo, totalCostoTotal, totalPagado, saldo: totalCostoTotal - totalPagado };
+  }, [calizaEntradas, periodo, pagosProveedorMat]);
+
+  const pagosCalizaOrdenados = useMemo(
+    () => [...pagosProveedorMat].sort((a, b) => {
+      const ia = a.fecha?.includes("/") ? displayToISO(a.fecha) : (a.fecha ?? "");
+      const ib = b.fecha?.includes("/") ? displayToISO(b.fecha) : (b.fecha ?? "");
+      return ib.localeCompare(ia);
+    }),
+    [pagosProveedorMat],
+  );
+
+  const handleSavePago = async (pago: Omit<PagoProveedorMat, "id">) => {
+    const id = `pago-cal-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    await upsertDocument(COLLECTIONS.pagosProveedorMat, id, pago);
+    setPagosProveedorMat((prev) => [{ ...pago, id }, ...prev]);
+    window.dispatchEvent(new CustomEvent("duro:toast", {
+      detail: { type: "success", message: `Pago de $${pago.monto.toLocaleString("es-MX", { minimumFractionDigits: 2 })} registrado.` },
+    }));
+  };
+
+  const handleDeletePago = async (pago: PagoProveedorMat) => {
+    if (!pago.id) return;
+    setPagosProveedorMat((prev) => prev.filter((p) => p.id !== pago.id));
+    await deleteDocument(COLLECTIONS.pagosProveedorMat, pago.id);
+    setConfirmDeletePago(null);
+    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: "Pago eliminado." } }));
+  };
+
   // ── Filtered lists ────────────────────────────────────────────────────────────
   const filteredRemisionesDespacho = useMemo(() => {
     let rows = remByPlanta.filter((r) => inPeriod(r.fecha, periodo));
@@ -1252,6 +1409,34 @@ export default function InventarioPage() {
               <Plus size={15} /> Nuevo traspaso
             </button>
           )}
+          {tab === "calizas" && (
+            <>
+              <button
+                onClick={() => {
+                  const XLSX = require("xlsx");
+                  const entRows = calizaEntradas.map((e) => ({
+                    Fecha: e.fecha, "No. Factura": e.noFactura ?? "", Proveedor: e.proveedor ?? "",
+                    Toneladas: e.cantidad, "Precio/Ton ($)": e.precioUnitario ?? 0, "Total ($)": e.costoTotal ?? 0,
+                  }));
+                  const pagoRows = pagosCalizaOrdenados.map((p) => ({
+                    Fecha: p.fecha, "Monto ($)": p.monto, Referencia: p.referencia ?? "", Nota: p.nota ?? "",
+                  }));
+                  const wb = XLSX.utils.book_new();
+                  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(entRows), "Entradas");
+                  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(pagoRows), "Pagos");
+                  XLSX.writeFile(wb, `calizas-${periodo}.xlsx`);
+                }}
+                disabled={calizaEntradas.length === 0}
+                className="flex items-center gap-2 bg-[#242424] border border-[#3A3A3A] px-3 py-2 text-sm text-gray-300 hover:border-emerald-500/50 hover:text-emerald-300 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
+                <FileSpreadsheet size={15} /> Excel
+              </button>
+              <button
+                onClick={() => setShowPagoCaliza(true)}
+                className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#B01E24] text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors shadow-lg shadow-[#CC2229]/20 cursor-pointer">
+                <Plus size={15} /> Registrar pago
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -1278,6 +1463,7 @@ export default function InventarioPage() {
           { key: "remisiones" as Tab,  label: "Remisiones",          icon: ArrowUpToLine,   badge: remisionesPeriodo.length || undefined },
           { key: "movimientos" as Tab, label: "Movimientos",          icon: ArrowDownToLine, badge: solicitudesEdicionPendientes.length || undefined },
           { key: "traspasos" as Tab,   label: "Traspasos",            icon: ArrowLeftRight,  badge: traspasosFiltrados.length || undefined },
+          { key: "calizas" as Tab,     label: "Calizas CXP",          icon: Mountain,        badge: undefined },
         ].map(({ key, label, icon: Icon, badge }) => (
           <button key={key} onClick={() => setTab(key)}
             className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap cursor-pointer ${tab === key ? "border-[#CC2229] text-gray-900" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
@@ -1637,11 +1823,161 @@ export default function InventarioPage() {
         </div>
       )}
 
+      {/* ── Tab: Calizas CXP ──────────────────────────────────────────────────── */}
+      {!loading && tab === "calizas" && (
+        <div className="space-y-5">
+          {/* KPIs */}
+          <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+            <KPICard
+              title="Toneladas (período)"
+              value={`${fmt(calizaKPIs.totalTonsPeriodo)} t`}
+              icon={Mountain} iconColor="text-stone-400" iconBg="bg-stone-500/10"
+              subtitle={`${periodLabel(periodo)}`}
+            />
+            <KPICard
+              title="Costo del período"
+              value={`$${calizaKPIs.totalCostoPeriodo.toLocaleString("es-MX", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+              icon={BarChart2} iconColor="text-blue-400" iconBg="bg-blue-500/10"
+              subtitle={`${periodLabel(periodo)}`}
+            />
+            <KPICard
+              title="Total pagado"
+              value={`$${calizaKPIs.totalPagado.toLocaleString("es-MX", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+              icon={Wallet} iconColor="text-emerald-400" iconBg="bg-emerald-500/10"
+              subtitle="Acumulado histórico"
+            />
+            <KPICard
+              title="Saldo pendiente"
+              value={`$${calizaKPIs.saldo.toLocaleString("es-MX", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+              icon={AlertTriangle}
+              iconColor={calizaKPIs.saldo > 0 ? "text-amber-400" : "text-emerald-400"}
+              iconBg={calizaKPIs.saldo > 0 ? "bg-amber-500/10" : "bg-emerald-500/10"}
+              subtitle="Costo total − pagos"
+            />
+          </div>
+
+          {/* Deliveries table */}
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+            <div className="px-5 py-4 border-b border-gray-100 flex flex-wrap items-center gap-3">
+              <div>
+                <p className="text-sm font-semibold text-gray-900">Entradas de calizas · {periodLabel(periodo)}</p>
+                <p className="text-xs text-gray-500">{calizaEntradas.filter((e) => inPeriod(e.fecha, periodo)).length} registros en el período</p>
+              </div>
+              <button
+                onClick={() => setShowEntradaForm(true)}
+                className="ml-auto flex items-center gap-2 bg-[#CC2229] hover:bg-[#B01E24] text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors shadow-lg shadow-[#CC2229]/20 cursor-pointer">
+                <Plus size={15} /> Registrar entrada
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-100">
+                    {["Fecha", "No. Factura", "Proveedor", "Toneladas", "Precio/Ton", "Total"].map((h) => (
+                      <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {calizaEntradas.filter((e) => inPeriod(e.fecha, periodo)).length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-14 text-center">
+                        <Mountain size={28} className="mx-auto mb-2 text-gray-300" />
+                        <p className="text-sm text-gray-400">Sin entradas de calizas en {periodLabel(periodo)}</p>
+                        <p className="text-xs text-gray-400 mt-1">Regístralas en Movimientos → Almacén → material &ldquo;Calizas&rdquo;</p>
+                      </td>
+                    </tr>
+                  ) : (
+                    calizaEntradas.filter((e) => inPeriod(e.fecha, periodo)).map((e) => (
+                      <tr key={e.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-3 text-xs font-mono text-gray-500">{e.fecha}</td>
+                        <td className="px-4 py-3 text-xs text-gray-700 font-mono">{e.noFactura || <span className="text-gray-400">—</span>}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700">{e.proveedor || <span className="text-gray-400">—</span>}</td>
+                        <td className="px-4 py-3 font-mono font-bold text-gray-900">{fmt(e.cantidad)} t</td>
+                        <td className="px-4 py-3 font-mono text-gray-700">
+                          {e.precioUnitario ? `$${e.precioUnitario.toLocaleString("es-MX", { minimumFractionDigits: 2 })}` : <span className="text-gray-400">—</span>}
+                        </td>
+                        <td className="px-4 py-3 font-mono font-bold text-emerald-700">
+                          {e.costoTotal ? `$${e.costoTotal.toLocaleString("es-MX", { minimumFractionDigits: 2 })}` : <span className="text-gray-400">—</span>}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                {calizaEntradas.filter((e) => inPeriod(e.fecha, periodo)).length > 0 && (
+                  <tfoot>
+                    <tr className="border-t border-gray-200 bg-gray-50">
+                      <td colSpan={3} className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Total período</td>
+                      <td className="px-4 py-3 font-mono font-bold text-gray-900">
+                        {fmt(calizaEntradas.filter((e) => inPeriod(e.fecha, periodo)).reduce((s, e) => s + e.cantidad, 0))} t
+                      </td>
+                      <td />
+                      <td className="px-4 py-3 font-mono font-bold text-emerald-700">
+                        ${calizaEntradas.filter((e) => inPeriod(e.fecha, periodo)).reduce((s, e) => s + (e.costoTotal ?? 0), 0).toLocaleString("es-MX", { minimumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          </div>
+
+          {/* Payments table */}
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+            <div className="px-5 py-4 border-b border-gray-100 flex flex-wrap items-center gap-3">
+              <div>
+                <p className="text-sm font-semibold text-gray-900">Pagos registrados</p>
+                <p className="text-xs text-gray-500">Histórico · {pagosCalizaOrdenados.length} pago{pagosCalizaOrdenados.length !== 1 ? "s" : ""}</p>
+              </div>
+              <button
+                onClick={() => setShowPagoCaliza(true)}
+                className="ml-auto flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors cursor-pointer">
+                <Plus size={15} /> Registrar pago
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-100">
+                    {["Fecha", "Monto", "Referencia", "Nota", ""].map((h) => (
+                      <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {pagosCalizaOrdenados.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-14 text-center">
+                        <Wallet size={28} className="mx-auto mb-2 text-gray-300" />
+                        <p className="text-sm text-gray-400">Sin pagos registrados</p>
+                      </td>
+                    </tr>
+                  ) : (
+                    pagosCalizaOrdenados.map((p) => (
+                      <tr key={p.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-3 text-xs font-mono text-gray-500">{p.fecha}</td>
+                        <td className="px-4 py-3 font-mono font-bold text-emerald-700">${p.monto.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</td>
+                        <td className="px-4 py-3 text-xs text-gray-600">{p.referencia || <span className="text-gray-400">—</span>}</td>
+                        <td className="px-4 py-3 text-xs text-gray-500 max-w-[200px] truncate">{p.nota || <span className="text-gray-400">—</span>}</td>
+                        <td className="px-4 py-3">
+                          <button onClick={() => setConfirmDeletePago(p)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"><Trash2 size={12} /></button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Drawers & Modals ───────────────────────────────────────────────────── */}
       <EntradaDrawer open={showEntradaForm} onClose={() => setShowEntradaForm(false)} onSave={handleSaveEntrada} remisionesDespacho={remisionesDespacho} />
       <TraspasoDrawer open={showTraspasoForm} onClose={() => setShowTraspasoForm(false)} localPlanta={localPlanta} onSave={handleSaveTraspaso} />
       {isSuperAdmin && <ExistenciaModal open={showExistenciaForm} onClose={() => setShowExistenciaForm(false)} periodo={periodo} planta={localPlanta} current={existenciaInicial} onSave={handleSaveExistencia} />}
       <EditInventarioModal open={!!editTarget} onClose={() => setEditTarget(null)} entry={editTarget} onSubmit={handleSubmitEdicion} />
+      <PagoDrawer open={showPagoCaliza} onClose={() => setShowPagoCaliza(false)} onSave={handleSavePago} />
 
       {confirmDeleteMovimiento && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center">
@@ -1653,6 +1989,21 @@ export default function InventarioPage() {
             <div className="flex gap-3">
               <button onClick={() => setConfirmDeleteMovimiento(null)} className="flex-1 px-4 py-2.5 text-sm text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors cursor-pointer">Cancelar</button>
               <button onClick={() => handleDeleteMovimiento(confirmDeleteMovimiento)} className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors cursor-pointer">Eliminar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDeletePago && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center">
+          <button className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setConfirmDeletePago(null)} />
+          <div className="relative bg-white border border-gray-200 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-50 mb-4"><Trash2 size={20} className="text-red-500" /></div>
+            <h3 className="text-sm font-semibold text-gray-900 mb-1">Eliminar pago</h3>
+            <p className="text-xs text-gray-500 mb-5">¿Eliminar pago de <span className="text-gray-900 font-semibold">${confirmDeletePago.monto.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</span> del {confirmDeletePago.fecha}?</p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmDeletePago(null)} className="flex-1 px-4 py-2.5 text-sm text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors cursor-pointer">Cancelar</button>
+              <button onClick={() => handleDeletePago(confirmDeletePago)} className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-colors cursor-pointer">Eliminar</button>
             </div>
           </div>
         </div>

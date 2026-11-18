@@ -241,6 +241,7 @@ export const COLLECTIONS = {
   cajasDistribuciones:  "cajasDistribuciones",
   traspasos:            "traspasos",
   tickets:              "tickets",
+  pagosProveedorMat:    "pagosProveedorMat",
 } as const;
 
 export type TicketTipo     = "bug" | "mejora" | "pregunta" | "otro";

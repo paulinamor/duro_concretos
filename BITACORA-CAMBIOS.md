@@ -7,6 +7,15 @@
 
 ## Noviembre 2026
 
+### 2026-11-18 (sesión 19) — ✨ Calizas CXP en Inventario
+
+#### ✨ Nueva tab "Calizas CXP" en módulo Inventario
+- **Archivos:** `lib/db.ts`, `app/(dashboard)/operaciones/inventario/page.tsx`
+- **Descripción:** Nuevo módulo de cuentas por pagar a proveedor de calizas. Incluye: (1) campo `precioUnitario` y `costoTotal` en EntradaMaterial — aparece automáticamente al registrar material que contiene "caliz" en almacén; (2) tab "Calizas CXP" con 4 KPIs (toneladas período, costo período, total pagado, saldo pendiente); (3) tabla de entregas filtrada por período; (4) tabla histórica de pagos; (5) drawer "Registrar pago" (fecha, monto, referencia, nota); (6) export a Excel con dos hojas (Entradas + Pagos); (7) nueva colección Firestore `pagosProveedorMat`. Permite cuadrar contra estados de cuenta del proveedor.
+- **Horas estimadas:** 2.5 h
+
+---
+
 ### 2026-11-17 (sesión 18-b) — Fix: KPI "Total cobrado" en efectivo
 
 #### 🐛 Fix — Total importe efectivo sumaba monto completo del recibo en lugar de lo cobrado
