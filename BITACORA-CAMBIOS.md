@@ -7,6 +7,15 @@
 
 ## Noviembre 2026
 
+### 2026-11-19 (sesión 19-n) — 🐛 Caja Chica: tab mostraba total recibido en vez de saldo real
+
+#### 🐛 Bug — Chip del tab mostraba monto recibido, no saldo disponible
+- **Archivo:** `app/(dashboard)/operaciones/caja-chica/page.tsx`
+- **Descripción:** El chip de cada caja calculaba `rec - gas` (distribuciones menos gastos aprobados) pero no restaba `salidasCaja` (devoluciones ni transferencias). La fórmula correcta es `rec - gas - outs`, igual que `saldoCaja`.
+- **Horas estimadas:** 0.1 hrs
+
+---
+
 ### 2026-11-19 (sesión 19-m) — 🐛 Caja Chica: devolución a caja principal no funcionaba
 
 #### 🐛 Bug — Modal "Devolver fondos" no procesaba el monto

@@ -811,7 +811,8 @@ export default function CajaChicaPage() {
         {cajasConfig.map(c => {
           const rec  = distribuciones.filter(d => d.cajaId === c.id).reduce((s, d) => s + d.monto, 0);
           const gas  = gastos.filter(g => g.cajaId === c.id && g.estado === "Aprobado").reduce((s, g) => s + g.monto, 0);
-          const sal  = rec - gas;
+          const outs = salidasCaja.filter(s => s.cajaId === c.id).reduce((s, x) => s + x.monto, 0);
+          const sal  = rec - gas - outs;
           const pend = gastos.filter(g => g.cajaId === c.id && g.estado === "Revision").length;
           return (
             <button
