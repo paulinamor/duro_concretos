@@ -202,6 +202,10 @@ export default function CobrosPage() {
       await deleteDocument(COLLECTIONS.pagos, pago.id, `Pago eliminado: ${pago.id} — ${pago.cliente ?? ""}`);
       setPagos((prev) => prev.filter((p) => p.id !== pago.id));
       setPagoAElim(null);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: "Pago eliminado correctamente." } }));
+    } catch (err) {
+      console.error("handleEliminar:", err);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al eliminar el pago. Intenta de nuevo." } }));
     } finally {
       setEliminando(false);
     }
@@ -240,12 +244,17 @@ export default function CobrosPage() {
 
   async function handleAprobarpagosol(sol: SolicitudAutorizacion) {
     if (!sol.id || !sol.documentoId) return;
-    await upsertDocument(COLLECTIONS.pagos, sol.documentoId, sol.camposPropuestos as Record<string, unknown>);
-    setPagos((prev) => prev.map((p) => p.id === sol.documentoId ? { ...p, ...sol.camposPropuestos } : p));
-    const upd = { status: "aprobada" as const, resueltoPor: getStoredSession()?.email ?? "", resueltaEn: new Date().toISOString() };
-    await upsertDocument(COLLECTIONS.solicitudesAutorizacion, sol.id, upd);
-    setSolicitudesPagos((prev) => prev.map((s) => s.id === sol.id ? { ...s, ...upd } : s));
-    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: "Edición de pago aprobada." } }));
+    try {
+      await upsertDocument(COLLECTIONS.pagos, sol.documentoId, sol.camposPropuestos as Record<string, unknown>);
+      setPagos((prev) => prev.map((p) => p.id === sol.documentoId ? { ...p, ...sol.camposPropuestos } : p));
+      const upd = { status: "aprobada" as const, resueltoPor: getStoredSession()?.email ?? "", resueltaEn: new Date().toISOString() };
+      await upsertDocument(COLLECTIONS.solicitudesAutorizacion, sol.id, upd);
+      setSolicitudesPagos((prev) => prev.map((s) => s.id === sol.id ? { ...s, ...upd } : s));
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: "Edición de pago aprobada." } }));
+    } catch (err) {
+      console.error("handleAprobarpagosol:", err);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al aprobar la solicitud. Intenta de nuevo." } }));
+    }
   }
 
   async function handleRechazarPagosol(sol: SolicitudAutorizacion) {
@@ -271,29 +280,35 @@ export default function CobrosPage() {
     const sources = fuentes.filter((f) => norm(f) !== norm(canonico));
     if (sources.length === 0) return;
 
-    const updates: Promise<void>[] = [];
+    try {
+      const updates: Promise<void>[] = [];
 
-    progs
-      .filter((p) => sources.some((s) => norm(p.cliente) === norm(s)))
-      .forEach((p) => updates.push(upsertDocument(COLLECTIONS.programaciones, p.id, { cliente: canonico })));
+      progs
+        .filter((p) => sources.some((s) => norm(p.cliente) === norm(s)))
+        .forEach((p) => updates.push(upsertDocument(COLLECTIONS.programaciones, p.id, { cliente: canonico })));
 
-    pagos
-      .filter((p) => sources.some((s) => norm(p.cliente) === norm(s)))
-      .forEach((p) => updates.push(upsertDocument(COLLECTIONS.pagos, p.id, { cliente: canonico })));
+      pagos
+        .filter((p) => sources.some((s) => norm(p.cliente) === norm(s)))
+        .forEach((p) => updates.push(upsertDocument(COLLECTIONS.pagos, p.id, { cliente: canonico })));
 
-    // Fetch all remisiones (recibos + despachos) for each source and update
-    const fetches = await Promise.all(
-      sources.map((src) => getCollectionDocs<{ id?: string }>(COLLECTIONS.remisiones, [where("cliente", "==", src)]))
-    );
-    fetches.flat().forEach((d) => {
-      if (d.id) updates.push(upsertDocument(COLLECTIONS.remisiones, d.id, { cliente: canonico }));
-    });
+      // Fetch all remisiones (recibos + despachos) for each source and update
+      const fetches = await Promise.all(
+        sources.map((src) => getCollectionDocs<{ id?: string }>(COLLECTIONS.remisiones, [where("cliente", "==", src)]))
+      );
+      fetches.flat().forEach((d) => {
+        if (d.id) updates.push(upsertDocument(COLLECTIONS.remisiones, d.id, { cliente: canonico }));
+      });
 
-    await Promise.all(updates);
+      await Promise.all(updates);
 
-    setTodosRecibos((prev) =>
-      prev.map((r) => (sources.some((s) => norm(r.cliente) === norm(s)) ? { ...r, cliente: canonico } : r))
-    );
+      setTodosRecibos((prev) =>
+        prev.map((r) => (sources.some((s) => norm(r.cliente) === norm(s)) ? { ...r, cliente: canonico } : r))
+      );
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `Clientes unificados en "${canonico}".` } }));
+    } catch (err) {
+      console.error("handleMergeClientes:", err);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al unificar clientes. Intenta de nuevo." } }));
+    }
   }
 
   async function handleReconciliarAbonos() {

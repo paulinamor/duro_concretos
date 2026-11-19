@@ -824,9 +824,15 @@ export default function CrmClientesPage() {
   function openEdit(c: Cliente) { setSaveError(""); setDetail(null); setEditing(c); setShowForm(true); }
 
   async function handleDelete(id: string) {
-    setClientes((current) => current.filter((c) => c.id !== id));
-    if (detail?.id === id) setDetail(null);
-    await deleteDocument(COLLECTIONS.clientes, id);
+    try {
+      await deleteDocument(COLLECTIONS.clientes, id);
+      setClientes((current) => current.filter((c) => c.id !== id));
+      if (detail?.id === id) setDetail(null);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: "Cliente eliminado." } }));
+    } catch (err) {
+      console.error("handleDelete cliente:", err);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al eliminar el cliente. Intenta de nuevo." } }));
+    }
   }
 
   async function handleSave(f: ClienteForm): Promise<string | false | void> {

@@ -7,6 +7,40 @@
 
 ## Noviembre 2026
 
+### 2026-11-19 (sesión 19-k) — 🐛 Auditoría: manejo de errores en handlers críticos
+
+#### 🐛 Bug — Cobros: `handleEliminar` sin catch ni toast de éxito
+- **Archivo:** `app/(dashboard)/finanzas/cobros/page.tsx`
+- **Descripción:** El handler usaba `try/finally` pero sin `catch`, por lo que un error en Firestore se propagaba silenciosamente sin notificar al usuario. Se agregó bloque `catch` con toast de error y toast de éxito al completar.
+- **Horas estimadas:** 0.2 hrs
+
+#### 🐛 Bug — Cobros: `handleAprobarpagosol` sin try/catch
+- **Archivo:** `app/(dashboard)/finanzas/cobros/page.tsx`
+- **Descripción:** Handler de aprobación de solicitudes de pago sin manejo de errores. Se envolvió en try/catch con toast de error.
+- **Horas estimadas:** 0.1 hrs
+
+#### 🐛 Bug — Cobros: `handleMergeClientes` sin try/catch ni toast
+- **Archivo:** `app/(dashboard)/finanzas/cobros/page.tsx`
+- **Descripción:** Unificación de clientes sin manejo de errores ni confirmación visual de éxito. Se agregó try/catch y toasts de éxito/error.
+- **Horas estimadas:** 0.1 hrs
+
+#### 🐛 Bug — Transporte Programación: `handleDeleteConfirmado` actualizaba estado antes del write
+- **Archivo:** `app/(dashboard)/transporte/programacion/page.tsx`
+- **Descripción:** El state se eliminaba antes de completar el `deleteDocument`. Si el write fallaba, la programación desaparecía de la UI sin ser eliminada en Firestore. Se corrigió el orden y se agregó try/catch.
+- **Horas estimadas:** 0.2 hrs
+
+#### 🐛 Bug — CRM Clientes: `handleDelete` sin try/catch, sin toast, estado antes del write
+- **Archivo:** `app/(dashboard)/crm/clientes/page.tsx`
+- **Descripción:** Eliminación de cliente sin manejo de errores, sin feedback al usuario y con state actualizado optimistamente antes del write. Se corrigió el orden y se agregó try/catch con toasts.
+- **Horas estimadas:** 0.2 hrs
+
+#### 🐛 Bug — Ventas Programación: `syncClienteM3` sin try/catch
+- **Archivo:** `app/(dashboard)/ventas/programacion/page.tsx`
+- **Descripción:** La sincronización de m³ acumulados del cliente se llamaba como fire-and-forget sin manejar errores. Se agregó try/catch para no romper silenciosamente la actualización.
+- **Horas estimadas:** 0.1 hrs
+
+---
+
 ### 2026-11-19 (sesión 19-j) — 🐛 Configuración: aprobar editar_pago ahora aplica el cambio
 
 #### 🐛 Bug — Configuración > Autorizaciones: aprobación de pagos no aplicaba el cambio

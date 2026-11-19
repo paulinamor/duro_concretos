@@ -1241,10 +1241,14 @@ export default function VentasProgramacionPage() {
     );
     if (!found?.id) return;
     const nuevosM3 = Math.max(0, (found.m3Acumulados ?? 0) + deltam3);
-    await upsertDocument(COLLECTIONS.clientes, found.id, { m3Acumulados: nuevosM3, ultimaCompra: dia });
-    setRawClientes((prev) =>
-      prev.map((c) => (c.id === found.id ? { ...c, m3Acumulados: nuevosM3, ultimaCompra: dia } : c)),
-    );
+    try {
+      await upsertDocument(COLLECTIONS.clientes, found.id, { m3Acumulados: nuevosM3, ultimaCompra: dia });
+      setRawClientes((prev) =>
+        prev.map((c) => (c.id === found.id ? { ...c, m3Acumulados: nuevosM3, ultimaCompra: dia } : c)),
+      );
+    } catch (err) {
+      console.error("syncClienteM3:", err);
+    }
   }
 
   async function handleSaveCliente(f: NuevoClienteForm): Promise<string | null> {
