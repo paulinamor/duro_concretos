@@ -9,8 +9,8 @@ import {
   XCircle, Zap,
 } from "lucide-react";
 import {
-  COLLECTIONS, type SolicitudAutorizacion, type AppError, type AuditEntry,
-  getCollectionDocs, countCollectionDocs, limit, orderBy,
+  COLLECTIONS, type SolicitudAutorizacion, type AppError, type AuditEntry, type Notificacion,
+  getCollectionDocs, countCollectionDocs, limit, orderBy, upsertDocument, getAllUserProfiles,
 } from "@/lib/db";
 import { INTEGRITY_CHECKS, type IntegrityResult } from "@/lib/integrityChecks";
 import {
@@ -1083,6 +1083,51 @@ function TabHerramientas() {
   const [lsKeys, setLsKeys] = useState<string[]>([]);
   const [showLs, setShowLs] = useState(false);
 
+  // Notification tester state
+  const [notifDestinatario, setNotifDestinatario] = useState("todos");
+  const [notifTitulo, setNotifTitulo] = useState("Notificación de prueba");
+  const [notifDetalle, setNotifDetalle] = useState("Esta es una notificación enviada desde Dev Tools.");
+  const [notifTipo, setNotifTipo] = useState<Notificacion["tipo"]>("autorizacion");
+  const [notifEnviando, setNotifEnviando] = useState(false);
+  const [userEmails, setUserEmails] = useState<string[]>([]);
+
+  useEffect(() => {
+    getAllUserProfiles().then((profiles) =>
+      setUserEmails(profiles.filter((p) => p.status === "Activo").map((p) => p.email))
+    ).catch(() => {});
+  }, []);
+
+  async function handleEnviarNotif() {
+    setNotifEnviando(true);
+    try {
+      const destinatarios = notifDestinatario === "todos" ? userEmails : [notifDestinatario];
+      if (destinatarios.length === 0) {
+        toast("error", "Sin destinatarios", "No se encontraron usuarios activos.");
+        return;
+      }
+      const id = `notif_dev_${Date.now()}`;
+      await Promise.all(destinatarios.map((email, i) => {
+        const notif: Omit<Notificacion, "id"> = {
+          titulo: notifTitulo,
+          detalle: notifDetalle,
+          href: "/dev",
+          tag: "Dev",
+          tipo: notifTipo,
+          prioridad: "alta",
+          destinatarioEmail: email,
+          leidoPor: [],
+          creadoEn: new Date().toISOString(),
+        };
+        return upsertDocument(COLLECTIONS.notificaciones, `${id}_${i}`, notif);
+      }));
+      toast("success", "Notificación enviada", `A ${destinatarios.length} usuario(s): ${destinatarios.join(", ")}`);
+    } catch (err) {
+      toast("error", "Error", String(err));
+    } finally {
+      setNotifEnviando(false);
+    }
+  }
+
   function loadLs() {
     setLsKeys(Object.keys(localStorage).sort());
     setShowLs(true);
@@ -1176,6 +1221,45 @@ function TabHerramientas() {
               <span className="text-[10px] font-mono text-gray-600 truncate">{v}</span>
             </div>
           ))}
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Tester de notificaciones">
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Destinatario</label>
+            <select value={notifDestinatario} onChange={(e) => setNotifDestinatario(e.target.value)} className={inp}>
+              <option value="todos">Todos los usuarios activos</option>
+              {userEmails.map((e) => <option key={e} value={e}>{e}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Tipo</label>
+            <select value={notifTipo} onChange={(e) => setNotifTipo(e.target.value as Notificacion["tipo"])} className={inp}>
+              <option value="autorizacion">autorizacion</option>
+              <option value="sistema">sistema</option>
+              <option value="finanzas">finanzas</option>
+              <option value="operaciones">operaciones</option>
+              <option value="transporte">transporte</option>
+              <option value="rrhh">rrhh</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Título</label>
+            <input value={notifTitulo} onChange={(e) => setNotifTitulo(e.target.value)} className={inp} />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Detalle</label>
+            <input value={notifDetalle} onChange={(e) => setNotifDetalle(e.target.value)} className={inp} />
+          </div>
+          <button
+            onClick={handleEnviarNotif}
+            disabled={notifEnviando}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold bg-[#CC2229] text-white rounded-xl hover:bg-[#B01E24] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Zap size={14} /> {notifEnviando ? "Enviando…" : "Enviar notificación de prueba"}
+          </button>
+          <p className="text-[11px] text-gray-400">La notificación aparecerá en la campana del header del destinatario.</p>
         </div>
       </SectionCard>
     </div>

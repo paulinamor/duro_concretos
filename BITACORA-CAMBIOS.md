@@ -7,6 +7,15 @@
 
 ## Noviembre 2026
 
+### 2026-11-19 (sesión 19-q) — ✨ Dev Tools: tester de notificaciones
+
+#### ✨ Mejora — Enviar notificaciones de prueba desde Dev Tools
+- **Archivo:** `app/(dashboard)/dev/page.tsx`
+- **Descripción:** Se agregó una nueva tarjeta "Tester de notificaciones" en la pestaña Herramientas de `/dev`. Permite seleccionar destinatario (todos o un usuario específico por email), tipo de notificación, título y detalle. Al disparar, escribe documentos reales en la colección `notificaciones` de Firestore que el header del destinatario recibe en tiempo real vía la campana. Útil para verificar que el sistema de notificaciones de autorizaciones funciona correctamente.
+- **Horas estimadas:** 0.3 hrs
+
+---
+
 ### 2026-11-19 (sesión 19-p) — ✨ Caja Chica: control de acceso por rol
 
 #### ✨ Mejora — Operadores solo ven y operan su propia caja
