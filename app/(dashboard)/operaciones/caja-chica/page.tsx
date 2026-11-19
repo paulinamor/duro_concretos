@@ -350,6 +350,11 @@ export default function CajaChicaPage() {
   const [showCajasInactivas, setShowCajasInactivas] = useState(false);
   const [showTransferir, setShowTransferir]   = useState(false);
   const [showDevolver, setShowDevolver]       = useState(false);
+  const [devolverMonto, setDevolverMonto]     = useState("");
+  const [devolverFecha, setDevolverFecha]     = useState("");
+  const [devolverAutoriza, setDevolverAutoriza] = useState("");
+  const [devolverConcepto, setDevolverConcepto] = useState("Devolución a caja principal");
+  const [devolverGuardando, setDevolverGuardando] = useState(false);
   const [showEditarGasto, setShowEditarGasto] = useState<GastoCajaChica | null>(null);
   const [showEditarDist, setShowEditarDist]   = useState<DistribucionCaja | null>(null);
 
@@ -543,28 +548,46 @@ export default function CajaChicaPage() {
     window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `$${monto.toLocaleString()} transferidos a ${cajaDestinoObj.nombre}.` } }));
   }
 
-  async function handleDevolver(values: Record<string, string>) {
-    const monto = Number(values.Monto || 0);
-    if (monto <= 0) return;
+  async function handleDevolver() {
+    const monto = parseFloat(devolverMonto) || 0;
+    if (monto <= 0) {
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Ingresa un monto válido mayor a $0." } }));
+      return;
+    }
     if (monto > saldoCaja) {
       window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "El monto supera el saldo disponible de esta caja." } }));
       return;
     }
-    const salida: SalidaCaja = {
-      id: `dev-${Date.now()}`,
-      fecha:         values.Fecha || todayCST().slice(0, 10),
-      monto,
-      cajaId:        vistaActiva,
-      cajaNombre:    cajaActual?.nombre ?? vistaActiva,
-      tipo:          "devolucion_principal",
-      concepto:      values.Concepto?.trim() || "Devolución a caja principal",
-      autorizadoPor: values.Autoriza?.trim() || "",
-      creadoEn:      isoNow(),
-    };
-    setSalidasCaja(prev => [salida, ...prev]);
-    await upsertDocument(COLLECTIONS.cajasSalidas, salida.id, salida);
-    setShowDevolver(false);
-    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `$${monto.toLocaleString()} devueltos a Caja Principal.` } }));
+    if (!devolverAutoriza.trim()) {
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Falta el nombre de quien autoriza." } }));
+      return;
+    }
+    setDevolverGuardando(true);
+    try {
+      const salida: SalidaCaja = {
+        id: `dev-${Date.now()}`,
+        fecha:         devolverFecha || todayCST().slice(0, 10),
+        monto,
+        cajaId:        vistaActiva,
+        cajaNombre:    cajaActual?.nombre ?? vistaActiva,
+        tipo:          "devolucion_principal",
+        concepto:      devolverConcepto.trim() || "Devolución a caja principal",
+        autorizadoPor: devolverAutoriza.trim(),
+        creadoEn:      isoNow(),
+      };
+      await upsertDocument(COLLECTIONS.cajasSalidas, salida.id, salida);
+      setSalidasCaja(prev => [salida, ...prev]);
+      setShowDevolver(false);
+      setDevolverMonto("");
+      setDevolverAutoriza("");
+      setDevolverConcepto("Devolución a caja principal");
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `$${monto.toLocaleString("es-MX", { minimumFractionDigits: 2 })} devueltos a Caja Principal.` } }));
+    } catch (err) {
+      console.error("handleDevolver:", err);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al registrar la devolución. Intenta de nuevo." } }));
+    } finally {
+      setDevolverGuardando(false);
+    }
   }
 
   async function handleEditarGasto(values: Record<string, string>) {
@@ -725,7 +748,7 @@ export default function CajaChicaPage() {
           ) : (
             <>
               <button
-                onClick={() => setShowDevolver(true)}
+                onClick={() => { setDevolverMonto(""); setDevolverFecha(""); setDevolverAutoriza(""); setDevolverConcepto("Devolución a caja principal"); setShowDevolver(true); }}
                 disabled={saldoCaja <= 0}
                 title="Devolver fondos a caja principal"
                 className="flex items-center gap-2 bg-[#1A1A1A] border border-[#3A3A3A] hover:border-blue-500 text-gray-400 hover:text-blue-400 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-2 rounded-lg text-sm transition-colors"
@@ -1771,44 +1794,90 @@ export default function CajaChicaPage() {
       )}
 
       {/* Modal Devolver a caja principal */}
-      {vistaActiva !== "principal" && cajaActual && (
-        <FormModal
-          open={showDevolver} title={`Devolver fondos a Caja Principal`}
-          onClose={() => setShowDevolver(false)} onSave={handleDevolver}
-          footer={
-            <>
-              <button onClick={() => setShowDevolver(false)} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-900 border border-gray-200 rounded-lg transition-colors">Cancelar</button>
-              <button className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-2"><RotateCcw size={14} /> Devolver</button>
-            </>
-          }
-        >
-          <div className="mb-4 p-3 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-800">
-            Saldo disponible en <strong>{cajaActual.nombre}</strong>: <span className="font-bold">${saldoCaja.toLocaleString()}</span>
+      {showDevolver && vistaActiva !== "principal" && cajaActual && (() => {
+        const montoNum = parseFloat(devolverMonto) || 0;
+        const quedaría = saldoCaja - montoNum;
+        const excede = montoNum > saldoCaja;
+        return (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm">
+            <button type="button" aria-label="Cerrar" onClick={() => setShowDevolver(false)} className="absolute inset-0" />
+            <div className="relative z-10 w-full max-w-lg rounded-2xl border border-gray-100 bg-white shadow-2xl">
+              <div className="flex items-center justify-between gap-4 border-b border-gray-100 px-7 py-5">
+                <h3 className="text-[15px] font-semibold tracking-tight text-gray-900">Devolver fondos a Caja Principal</h3>
+                <button type="button" onClick={() => setShowDevolver(false)} className="rounded-xl p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors">
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="px-7 py-6 space-y-5">
+                {/* Saldo actual */}
+                <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-800">
+                  Saldo disponible en <strong>{cajaActual.nombre}</strong>:{" "}
+                  <span className="font-bold">${saldoCaja.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">Monto a devolver <span className="text-red-500">*</span></label>
+                    <input
+                      type="number" min="0.01" step="0.01" placeholder="0.00" max={saldoCaja}
+                      value={devolverMonto}
+                      onChange={e => setDevolverMonto(e.target.value)}
+                      autoFocus
+                      className={`w-full border rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 ${excede ? "border-red-400 focus:ring-red-400" : "border-gray-200 focus:ring-blue-400"}`}
+                    />
+                    {excede && <p className="text-xs text-red-500 mt-1">Supera el saldo disponible.</p>}
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">Fecha</label>
+                    <input type="date" value={devolverFecha || hoy}
+                      onChange={e => setDevolverFecha(e.target.value)}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">Autoriza <span className="text-red-500">*</span></label>
+                    <input type="text" placeholder="Nombre de quien autoriza"
+                      value={devolverAutoriza}
+                      onChange={e => setDevolverAutoriza(e.target.value)}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">Concepto</label>
+                    <input type="text" value={devolverConcepto}
+                      onChange={e => setDevolverConcepto(e.target.value)}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                  </div>
+                </div>
+                {/* Preview en tiempo real */}
+                {montoNum > 0 && !excede && (
+                  <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 grid grid-cols-3 gap-3 text-center text-sm">
+                    <div>
+                      <p className="text-gray-400 text-xs mb-1">Saldo actual</p>
+                      <p className="font-semibold text-gray-700">${saldoCaja.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400 text-xs mb-1">A devolver</p>
+                      <p className="font-semibold text-[#CC2229]">−${montoNum.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400 text-xs mb-1">Quedaría</p>
+                      <p className={`font-bold ${quedaría < 0 ? "text-red-500" : "text-green-600"}`}>${quedaría.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="flex justify-end gap-3 border-t border-gray-100 px-7 py-4">
+                <button onClick={() => setShowDevolver(false)} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-900 border border-gray-200 rounded-lg transition-colors">Cancelar</button>
+                <button
+                  onClick={handleDevolver}
+                  disabled={devolverGuardando || excede || montoNum <= 0}
+                  className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center gap-2"
+                >
+                  <RotateCcw size={14} /> {devolverGuardando ? "Guardando…" : "Devolver"}
+                </button>
+              </div>
+            </div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-gray-700 mb-1">Monto a devolver <span className="text-red-500">*</span></label>
-              <input type="number" min="0.01" step="0.01" placeholder="0.00" max={saldoCaja}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-400" />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-700 mb-1">Fecha</label>
-              <input type="date" defaultValue={hoy}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-400" />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-700 mb-1">Autoriza <span className="text-red-500">*</span></label>
-              <input type="text" placeholder="Nombre de quien autoriza"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-400" />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-700 mb-1">Concepto</label>
-              <input type="text" defaultValue="Devolución a caja principal"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-400" />
-            </div>
-          </div>
-        </FormModal>
-      )}
+        );
+      })()}
 
       {/* Modal Editar gasto */}
       <FormModal

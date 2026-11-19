@@ -7,6 +7,15 @@
 
 ## Noviembre 2026
 
+### 2026-11-19 (sesión 19-m) — 🐛 Caja Chica: devolución a caja principal no funcionaba
+
+#### 🐛 Bug — Modal "Devolver fondos" no procesaba el monto
+- **Archivo:** `app/(dashboard)/operaciones/caja-chica/page.tsx`
+- **Descripción:** El modal usaba `FormModal` con inputs sin `name` attr. `FormModal` lee valores por texto de `<label>`, así que la clave era `"Monto a devolver *"` pero `handleDevolver` leía `values.Monto` (undefined → 0 → retornaba sin hacer nada). Se reemplazó por modal controlado con estado React propio. Ahora muestra preview en tiempo real (saldo actual / a devolver / quedaría), valida antes de guardar, y el Firestore write ocurre antes de actualizar el state.
+- **Horas estimadas:** 0.5 hrs
+
+---
+
 ### 2026-11-19 (sesión 19-l) — ✨ Notificaciones en solicitudes de autorización
 
 #### ✨ Mejora — Todas las solicitudes de autorización notifican a los autorizadores
