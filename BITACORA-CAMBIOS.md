@@ -7,6 +7,15 @@
 
 ## Noviembre 2026
 
+### 2026-11-19 (sesión 19-j) — 🐛 Configuración: aprobar editar_pago ahora aplica el cambio
+
+#### 🐛 Bug — Configuración > Autorizaciones: aprobación de pagos no aplicaba el cambio
+- **Archivo:** `app/(dashboard)/configuracion/page.tsx`
+- **Descripción:** Las solicitudes de tipo `editar_pago` aparecían en Configuración con el label "Edición de inventario" y al aprobarlas desde ahí solo se marcaban como "aprobada" sin modificar el pago en Firestore. Se agregó el caso `editar_pago` al handler de aprobación, se corrigió el label a "Edición de pago" y se añade el desglose de campos cambiados (fecha, monto, tipo).
+- **Horas estimadas:** 0.5 hrs
+
+---
+
 ### 2026-11-19 (sesión 19-i) — ✨ Programación: buscador en vista tabla + folio visible
 
 #### ✨ Mejora — Programación: buscador por folio/cliente/vendedor en vista tabla

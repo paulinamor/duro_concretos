@@ -391,6 +391,9 @@ export default function ConfiguracionPage() {
       if (sol.tipo === "editar_inventario" && sol.documentoId && sol.camposPropuestos) {
         await upsertDocument(COLLECTIONS.entradasMaterial, sol.documentoId, sol.camposPropuestos as Record<string, unknown>);
       }
+      if (sol.tipo === "editar_pago" && sol.documentoId && sol.camposPropuestos) {
+        await upsertDocument(COLLECTIONS.pagos, sol.documentoId, sol.camposPropuestos as Record<string, unknown>);
+      }
       if (sol.tipo === "nuevo_cliente" && sol.clienteData) {
         const clienteId = `CL-${Date.now()}`;
         await upsertDocument(COLLECTIONS.clientes, clienteId, sol.clienteData as Record<string, unknown>);
@@ -408,6 +411,8 @@ export default function ConfiguracionPage() {
       } else if (sol.tipo === "nuevo_cliente") {
         const nombre = (sol.clienteData?.razonSocial as string) ?? "Cliente";
         showToast("success", "Aprobada", `Cliente "${nombre}" registrado correctamente.`);
+      } else if (sol.tipo === "editar_pago") {
+        showToast("success", "Aprobada", `Edición de pago aplicada.`);
       } else {
         showToast("success", "Aprobada", `Edición de inventario aplicada.`);
       }
@@ -656,6 +661,21 @@ export default function ConfiguracionPage() {
                           <>
                             <p className="text-sm font-semibold text-white">Nuevo cliente · {(sol.clienteData?.razonSocial as string) ?? "—"}</p>
                             <p className="text-xs text-gray-500">RFC: {(sol.clienteData?.rfc as string) ?? "—"} · {(sol.clienteData?.tipoCliente as string) ?? "—"}</p>
+                          </>
+                        ) : sol.tipo === "editar_pago" ? (
+                          <>
+                            <p className="text-sm font-semibold text-white">Edición de pago · {sol.materialLabel ?? sol.documentoId}</p>
+                            <p className="text-xs text-gray-500">
+                              {(() => {
+                                const act = sol.camposActuales as Record<string, unknown> | undefined;
+                                const prop = sol.camposPropuestos as Record<string, unknown> | undefined;
+                                const parts: string[] = [];
+                                if (prop?.fecha) parts.push(`Fecha: ${act?.fecha} → ${prop.fecha}`);
+                                if (prop?.cantidad !== undefined) parts.push(`Monto: ${act?.cantidad} → ${prop.cantidad}`);
+                                if (prop?.tipoPago) parts.push(`Tipo: ${act?.tipoPago} → ${prop.tipoPago}`);
+                                return parts.join(" · ") || "Corrección de datos";
+                              })()}
+                            </p>
                           </>
                         ) : (
                           <>
