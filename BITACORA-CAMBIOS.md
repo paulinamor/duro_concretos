@@ -7,6 +7,15 @@
 
 ## Noviembre 2026
 
+### 2026-11-19 (sesión 19-e) — 🐛 Caja Principal: corregir fórmula totalDistribuido
+
+#### 🐛 Bug — Saldo de Caja Principal inflado por transferencias entre cajas
+- **Archivos:** `app/(dashboard)/operaciones/caja-chica/page.tsx`
+- **Descripción:** La fórmula `totalDistribuido` sumaba TODOS los docs en `cajasDistribuciones`, incluyendo entradas de tipo `transferencia_entrada` (movimientos inter-caja). Esto inflaba incorrectamente el total distribuido del principal en el monto de cada transferencia entre cajas, mostrando un saldo de Principal más negativo de lo real. Fix: filtrar `tipo !== "transferencia_entrada"` antes de sumar.
+- **Horas estimadas:** 0.25 h
+
+---
+
 ### 2026-11-18 (sesión 19-d) — ✨ Cajas Chicas: transferencias, devoluciones, inactivas y edición
 
 #### ✨ Mejora — Transferencia entre cajas chicas

@@ -386,7 +386,8 @@ export default function CajaChicaPage() {
   // Solo recibos con entregado=true (dinero físicamente cobrado)
   const totalEfectivoEntradas = useMemo(() => recibosEfectivo.filter(r => r.entregado).reduce((s, r) => s + (r.importe ?? 0), 0), [recibosEfectivo]);
   const totalEfectivoSalidas  = useMemo(() => salidasEfectivo.reduce((s, r) => s + (r.importe ?? 0), 0), [salidasEfectivo]);
-  const totalDistribuido      = useMemo(() => distribuciones.reduce((s, d) => s + d.monto, 0), [distribuciones]);
+  // Excluir transferencias_entrada: son movimientos inter-caja, no distribuidos desde principal
+  const totalDistribuido      = useMemo(() => distribuciones.filter(d => d.tipo !== "transferencia_entrada").reduce((s, d) => s + d.monto, 0), [distribuciones]);
   const totalDevoluciones     = useMemo(() => salidasCaja.filter(s => s.tipo === "devolucion_principal").reduce((s, x) => s + x.monto, 0), [salidasCaja]);
   const saldoPrincipal        = totalEfectivoEntradas - totalEfectivoSalidas - totalDistribuido + totalDevoluciones;
 
