@@ -7,6 +7,20 @@
 
 ## Noviembre 2026
 
+### 2026-11-19 (sesión 19-g) — ✨🐛 Cobros: reconciliación de abonos + solicitudes globales
+
+#### ✨ Mejora — Herramienta de reconciliación de abonos (superadmin)
+- **Archivos:** `app/(dashboard)/finanzas/cobros/page.tsx`
+- **Descripción:** Función `handleReconciliarAbonos` que recalcula `montoPagado` de cada programación sumando los abonos reales de todos los pagos. Detecta discrepancias (ej. residuales de $0.59 de distribuciones antiguas) y las corrige en Firestore. Botón "Reconciliar datos" visible en el landing del módulo solo para superadmin. Permite corregir todos los clientes en un solo clic.
+- **Horas estimadas:** 0.5 h
+
+#### ✨ Mejora — Solicitudes de edición de pagos en landing global
+- **Archivos:** `app/(dashboard)/finanzas/cobros/page.tsx`
+- **Descripción:** Panel en el landing del módulo (sin cliente seleccionado) que muestra todas las solicitudes de edición pendientes con aprobar/rechazar, sin necesidad de navegar al tab Pagos de cada cliente. Se complementa con la carga inicial desde Firestore (fix anterior).
+- **Horas estimadas:** 0.25 h
+
+---
+
 ### 2026-11-19 (sesión 19-f) — 🐛🐛 Cobros: auto-asociar abonos + cargar solicitudes pendientes
 
 #### 🐛 Bug — Coladas seleccionadas al crear pago se ignoraban

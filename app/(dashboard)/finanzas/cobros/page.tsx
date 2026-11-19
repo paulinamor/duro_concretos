@@ -285,6 +285,36 @@ export default function CobrosPage() {
     );
   }
 
+  async function handleReconciliarAbonos() {
+    // Recalcula montoPagado de cada programación desde la suma real de abonos
+    const reconMap = new Map<string, number>();
+    for (const pago of pagos) {
+      for (const abono of pago.abonos ?? []) {
+        if (!abono.programacionId) continue;
+        reconMap.set(abono.programacionId, parseFloat(((reconMap.get(abono.programacionId) ?? 0) + abono.monto).toFixed(2)));
+      }
+    }
+    const saves: Promise<void>[] = [];
+    const updatedProgs: { id: string; montoPagado: number }[] = [];
+    for (const prog of progs) {
+      const correcto = reconMap.get(prog.id) ?? 0;
+      if (Math.abs((prog.montoPagado ?? 0) - correcto) > 0.001) {
+        saves.push(upsertDocument(COLLECTIONS.programaciones, prog.id, { montoPagado: correcto }));
+        updatedProgs.push({ id: prog.id, montoPagado: correcto });
+      }
+    }
+    if (saves.length === 0) {
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: "Todo consistente — no hay discrepancias en los abonos." } }));
+      return;
+    }
+    await Promise.all(saves);
+    setProgs((prev) => prev.map((p) => {
+      const upd = updatedProgs.find((u) => u.id === p.id);
+      return upd ? { ...p, montoPagado: upd.montoPagado } : p;
+    }));
+    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `Reconciliación completa — ${saves.length} programación${saves.length !== 1 ? "es" : ""} corregida${saves.length !== 1 ? "s" : ""}.` } }));
+  }
+
   async function handleVincularCliente(nombre: string, clienteId: string, newDoc?: ClienteDoc) {
     const progTargets = progs.filter((p) => norm(p.cliente) === norm(nombre));
     const pagoTargets = pagos.filter((p) => norm(p.cliente) === norm(nombre));
@@ -430,6 +460,7 @@ export default function CobrosPage() {
         onRechazarPagosol={handleRechazarPagosol}
         onVincular={handleVincularCliente}
         onDeleteRecibo={handleDeleteRecibo}
+        onReconciliar={handleReconciliarAbonos}
       />
       {saldarRemision && (
         <SaldarRemisionModal
@@ -582,7 +613,7 @@ function SaldarRemisionModal({
 function CuentaClienteView({
   clientesList, progs, pagos, todosRecibos, cuentaCliente, cuentaRecibos, cuentaRemisiones, cuentaLoading,
   cuentaTab, onSelectCliente, onCuentaTab, onNuevoPago, onSaldarRemision, onMerge,
-  isSuperAdmin, solicitudesPagos, onEditPago, onDetallePago, onEliminarPago, onAprobarpagosol, onRechazarPagosol, onVincular, onDeleteRecibo,
+  isSuperAdmin, solicitudesPagos, onEditPago, onDetallePago, onEliminarPago, onAprobarpagosol, onRechazarPagosol, onVincular, onDeleteRecibo, onReconciliar,
 }: {
   clientesList: ClienteDoc[];
   progs: Prog[];
@@ -607,6 +638,7 @@ function CuentaClienteView({
   onRechazarPagosol: (sol: SolicitudAutorizacion) => Promise<void>;
   onVincular: (nombre: string, clienteId: string, newDoc?: ClienteDoc) => Promise<void>;
   onDeleteRecibo: (r: ConcreteReceipt) => Promise<void>;
+  onReconciliar: () => Promise<void>;
 }) {
   const [search, setSearch] = useState("");
   const [saldoFilter, setSaldoFilter] = useState<"todos" | "pendiente" | "al_corriente" | "a_favor">("todos");
@@ -615,6 +647,12 @@ function CuentaClienteView({
   const [vincularOpen, setVincularOpen] = useState(false);
   const [reciboAElim, setReciboAElim] = useState<ConcreteReceipt | null>(null);
   const [eliminandoRecibo, setEliminandoRecibo] = useState(false);
+  const [reconciliando, setReconciliando] = useState(false);
+
+  async function doReconciliar() {
+    setReconciliando(true);
+    try { await onReconciliar(); } finally { setReconciliando(false); }
+  }
 
   function toggleSel(nombre: string) {
     setSeleccionados((prev) => {
@@ -825,6 +863,59 @@ function CuentaClienteView({
               className="p-1.5 text-gray-400 hover:text-white transition-colors cursor-pointer">
               <X size={14} />
             </button>
+          </div>
+        )}
+
+        {/* Panel superadmin: solicitudes pendientes + reconciliación */}
+        {isSuperAdmin && (
+          <div className="space-y-3">
+            {/* Solicitudes de edición de pagos pendientes */}
+            {solicitudesPagos.filter((s) => s.status === "pendiente").length > 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl overflow-hidden">
+                <div className="flex items-center gap-2 px-5 py-3 border-b border-amber-200">
+                  <Shield size={14} className="text-amber-600" />
+                  <p className="text-sm font-semibold text-amber-900">Solicitudes de edición pendientes</p>
+                  <span className="ml-auto text-xs font-bold px-2 py-0.5 rounded-full bg-amber-200 text-amber-800">
+                    {solicitudesPagos.filter((s) => s.status === "pendiente").length}
+                  </span>
+                </div>
+                {solicitudesPagos.filter((s) => s.status === "pendiente").map((sol) => {
+                  const act  = sol.camposActuales as Record<string, unknown> | undefined;
+                  const prop = sol.camposPropuestos as Record<string, unknown> | undefined;
+                  return (
+                    <div key={sol.id} className="px-5 py-4 flex items-start justify-between gap-3 border-b border-amber-100 last:border-0">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900">{sol.materialLabel}</p>
+                        <p className="text-xs text-gray-500 mt-0.5 font-mono">
+                          {prop?.fecha != null && <span>Fecha: <span className="line-through text-gray-400">{String(act?.fecha ?? "—")}</span> → <span className="text-amber-700 font-semibold">{String(prop.fecha)}</span> · </span>}
+                          {prop?.cantidad != null && <span>Monto: <span className="line-through text-gray-400">{currency(Number(act?.cantidad ?? 0))}</span> → <span className="text-amber-700 font-semibold">{currency(Number(prop.cantidad))}</span></span>}
+                        </p>
+                        <p className="text-xs text-gray-600 mt-1 italic">"{sol.motivo}"</p>
+                        <p className="text-[10px] text-gray-400 mt-1">Por {sol.solicitanteNombre}</p>
+                      </div>
+                      <div className="flex gap-2 shrink-0">
+                        <button onClick={() => onAprobarpagosol(sol)} className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 rounded-lg transition-colors cursor-pointer"><CheckCircle2 size={12} /> Aprobar</button>
+                        <button onClick={() => onRechazarPagosol(sol)} className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-red-600 bg-white border border-red-200 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"><XCircle size={12} /> Rechazar</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {/* Reconciliación de abonos */}
+            <div className="bg-gray-50 border border-gray-200 rounded-xl px-5 py-3 flex items-center justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold text-gray-700">Reconciliación de abonos</p>
+                <p className="text-[11px] text-gray-400 mt-0.5">Recalcula montoPagado de cada programación a partir de los abonos reales registrados en los pagos.</p>
+              </div>
+              <button
+                onClick={doReconciliar}
+                disabled={reconciliando}
+                className="shrink-0 flex items-center gap-2 px-4 py-2 text-xs font-semibold text-gray-700 bg-white border border-gray-300 hover:border-gray-400 hover:bg-gray-50 rounded-xl transition-colors cursor-pointer disabled:opacity-60 whitespace-nowrap">
+                {reconciliando ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+                {reconciliando ? "Reconciliando…" : "Reconciliar datos"}
+              </button>
+            </div>
           </div>
         )}
 
