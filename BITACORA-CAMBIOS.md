@@ -7,6 +7,25 @@
 
 ## Noviembre 2026
 
+### 2026-11-19 (sesión 19-f) — 🐛🐛 Cobros: auto-asociar abonos + cargar solicitudes pendientes
+
+#### 🐛 Bug — Coladas seleccionadas al crear pago se ignoraban
+- **Archivos:** `app/(dashboard)/finanzas/cobros/page.tsx`
+- **Descripción:** Al crear un pago, el usuario seleccionaba coladas pendientes y el sistema las descartaba (guardaba `abonos: []`). Ahora `handleSave` auto-distribuye el monto entre las programaciones seleccionadas en orden (más antigua a más reciente), actualiza `montoPagado` en cada una y guarda los abonos correctamente. Se propagó `progUpdates` al padre para actualizar `progs` sin esperar la suscripción.
+- **Horas estimadas:** 0.5 h
+
+#### 🐛 Bug — Pagos anteriores sin asociar: banner de recuperación
+- **Archivos:** `app/(dashboard)/finanzas/cobros/page.tsx`
+- **Descripción:** Pagos registrados antes del fix (con `abonos: []`) muestran un banner amarillo "Pago sin asociar a coladas" con botón "Aplicar automáticamente". Al hacer clic, `handleAutoAplicar` distribuye el saldo del pago en las coladas pendientes del cliente (mismo algoritmo que la creación) y persiste en Firestore.
+- **Horas estimadas:** 0.25 h
+
+#### 🐛 Bug — Solicitudes de edición de pagos no se cargaban al entrar al módulo
+- **Archivos:** `app/(dashboard)/finanzas/cobros/page.tsx`
+- **Descripción:** `solicitudesPagos` arrancaba vacío y solo se llenaba con solicitudes creadas en la misma sesión. El superadmin no veía solicitudes pendientes de sesiones anteriores. Se agregó `getCollectionDocs` con filtro `tipo === "editar_pago"` en el `useEffect` inicial, filtrando `status === "pendiente"` en cliente.
+- **Horas estimadas:** 0.25 h
+
+---
+
 ### 2026-11-19 (sesión 19-e) — 🐛 Caja Principal: corregir fórmula totalDistribuido
 
 #### 🐛 Bug — Saldo de Caja Principal inflado por transferencias entre cajas

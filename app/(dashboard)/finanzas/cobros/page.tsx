@@ -148,12 +148,29 @@ export default function CobrosPage() {
       );
     });
 
+    // Cargar solicitudes de edición de pagos pendientes
+    getCollectionDocs<SolicitudAutorizacion>(COLLECTIONS.solicitudesAutorizacion, [
+      where("tipo", "==", "editar_pago"),
+    ]).then((docs) => {
+      setSolicitudesPagos(
+        docs
+          .filter((d) => d.status === "pendiente")
+          .sort((a, b) => (b.creadoEn ?? "").localeCompare(a.creadoEn ?? ""))
+      );
+    });
+
     return () => { unsubPagos(); unsubProgs(); };
   }, []);
 
 
-  function onPagoCreated(pago: Pago) {
+  function onPagoCreated(pago: Pago, progUpdates?: { id: string; montoPagado: number }[]) {
     setPagos((prev) => [pago, ...prev].sort((a, b) => b.fecha.localeCompare(a.fecha)));
+    if (progUpdates?.length) {
+      setProgs((prev) => prev.map((p) => {
+        const upd = progUpdates.find((u) => u.id === p.id);
+        return upd ? { ...p, montoPagado: upd.montoPagado } : p;
+      }));
+    }
     setSelected(pago);
     setView("detail");
   }
@@ -1553,7 +1570,7 @@ function NuevoPagoView({ clientesList, progs, prefillClienteId, prefillClienteNo
   prefillClienteId?: string;
   prefillClienteNombre?: string;
   onBack: () => void;
-  onCreated: (pago: Pago) => void;
+  onCreated: (pago: Pago, progUpdates?: { id: string; montoPagado: number }[]) => void;
 }) {
   const [fecha, setFecha]               = useState(todayCST());
   const [clienteId, setClienteId]       = useState(prefillClienteId ?? "");
@@ -1617,24 +1634,50 @@ function NuevoPagoView({ clientesList, progs, prefillClienteId, prefillClienteNo
     setErr("");
     try {
       const id = `PAGO-${Date.now()}`;
-      // Construir sin undefined — Firestore rechaza campos undefined
+      const montoTotal = parseFloat(cantidad);
+
+      // Auto-aplicar a coladas seleccionadas en orden (más antiguas primero)
+      const abonos: AbonoAplicado[] = [];
+      const progUpdates: { id: string; montoPagado: number }[] = [];
+      let remaining = montoTotal;
+      for (const prog of progsSeleccionadas) {
+        if (remaining <= 0.001) break;
+        const sp = saldoPendiente(prog);
+        if (sp <= 0.001) continue;
+        const monto = parseFloat(Math.min(sp, remaining).toFixed(2));
+        abonos.push({ programacionId: prog.id, folio: prog.folio ?? prog.id.slice(-6), monto });
+        progUpdates.push({ id: prog.id, montoPagado: parseFloat(((prog.montoPagado ?? 0) + monto).toFixed(2)) });
+        remaining = parseFloat((remaining - monto).toFixed(2));
+      }
+      const saldoAplicado = parseFloat((montoTotal - remaining).toFixed(2));
+
       const doc = {
         id,
         fecha,
         cliente: norm(cliente),
         ...(clienteId ? { clienteId } : {}),
-        cantidad: parseFloat(cantidad),
+        cantidad: montoTotal,
         tipoPago,
         banco: banco || "",
         anticipo,
         observaciones: observaciones.trim(),
-        abonos: [] as AbonoAplicado[],
-        saldoAplicado: 0,
+        abonos,
+        saldoAplicado,
         creadoEn: new Date().toISOString(),
       };
       const pago: Pago = withPlantaTag(doc);
-      await upsertDocument(COLLECTIONS.pagos, id, pago);
-      onCreated(pago);
+
+      // Guardar pago y actualizar programaciones en paralelo
+      const saves: Promise<unknown>[] = [upsertDocument(COLLECTIONS.pagos, id, pago)];
+      for (const upd of progUpdates) {
+        saves.push(upsertDocument(COLLECTIONS.programaciones, upd.id, {
+          montoPagado: upd.montoPagado,
+          fechaPago: fecha,
+          metodoPago: tipoPago,
+        }));
+      }
+      await Promise.all(saves);
+      onCreated(pago, progUpdates);
     } catch (e) {
       setErr("Error al guardar. Intenta de nuevo.");
       console.error(e);
@@ -1830,6 +1873,51 @@ function DetallePagoView({ pago, progs, onBack, onUpdated }: {
   const saldoRem     = selectedProg ? saldoPendiente(selectedProg) : 0;
   const restante     = pagoLocal.cantidad - pagoLocal.saldoAplicado;
 
+  // Pago registrado sin asociaciones — ofrece aplicar automáticamente
+  const puedeAutoAplicar = pagoLocal.abonos.length === 0 && pagoLocal.saldoAplicado === 0 && pendientes.length > 0 && !pagoLocal._isRecibo;
+
+  async function handleAutoAplicar() {
+    setSaving(true);
+    try {
+      const abonos: AbonoAplicado[] = [];
+      const progUpdates: { id: string; montoPagado: number }[] = [];
+      let remaining = pagoLocal.cantidad;
+      for (const prog of pendientes) {
+        if (remaining <= 0.001) break;
+        const sp = saldoPendiente(prog);
+        if (sp <= 0.001) continue;
+        const monto = parseFloat(Math.min(sp, remaining).toFixed(2));
+        abonos.push({ programacionId: prog.id, folio: prog.folio ?? prog.id.slice(-6), monto });
+        progUpdates.push({ id: prog.id, montoPagado: parseFloat(((prog.montoPagado ?? 0) + monto).toFixed(2)) });
+        remaining = parseFloat((remaining - monto).toFixed(2));
+      }
+      if (abonos.length === 0) return;
+      const nuevoSaldo = parseFloat((pagoLocal.cantidad - remaining).toFixed(2));
+      const updatedPago = { ...pagoLocal, abonos, saldoAplicado: nuevoSaldo };
+
+      const saves: Promise<unknown>[] = [
+        upsertDocument(COLLECTIONS.pagos, pagoLocal.id, { abonos, saldoAplicado: nuevoSaldo }),
+      ];
+      for (const upd of progUpdates) {
+        saves.push(upsertDocument(COLLECTIONS.programaciones, upd.id, {
+          montoPagado: upd.montoPagado,
+          fechaPago: pagoLocal.fecha,
+          metodoPago: pagoLocal.tipoPago,
+        }));
+      }
+      await Promise.all(saves);
+
+      setProgsLocal((prev) => prev.map((p) => {
+        const upd = progUpdates.find((u) => u.id === p.id);
+        return upd ? { ...p, montoPagado: upd.montoPagado } : p;
+      }));
+      setPagoLocal(updatedPago);
+      onUpdated(updatedPago, progUpdates);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function handleSelectProg(id: string) {
     setSelectedId(id);
     const prog = progsCliente.find((p) => p.id === id);
@@ -1925,6 +2013,28 @@ function DetallePagoView({ pago, progs, onBack, onUpdated }: {
           <div className="h-1.5 rounded-full bg-[#CC2229] transition-all" style={{ width: `${Math.min(pct, 100)}%` }} />
         </div>
       </div>
+
+      {/* Banner: pago sin asociar — aplicar automáticamente */}
+      {puedeAutoAplicar && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4 flex items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-amber-900">Pago sin asociar a coladas</p>
+              <p className="text-xs text-amber-700 mt-0.5">
+                Este pago no tiene abonos registrados. Se puede aplicar automáticamente a las {pendientes.length} colada{pendientes.length !== 1 ? "s" : ""} pendientes (de la más antigua a la más reciente).
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleAutoAplicar}
+            disabled={saving}
+            className="shrink-0 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-xl transition-colors cursor-pointer disabled:opacity-60 flex items-center gap-2 whitespace-nowrap">
+            {saving ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+            Aplicar automáticamente
+          </button>
+        </div>
+      )}
 
       {/* Registro de pago */}
       {restante > 0.01 && (
