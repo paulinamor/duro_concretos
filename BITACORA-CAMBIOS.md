@@ -7,6 +7,15 @@
 
 ## Noviembre 2026
 
+### 2026-11-19 (sesión 19-o) — 🐛 Caja Chica: modal Transferir tenía el mismo bug que Devolver
+
+#### 🐛 Bug — Modal "Transferir" no procesaba los valores del formulario
+- **Archivo:** `app/(dashboard)/operaciones/caja-chica/page.tsx`
+- **Descripción:** Mismo bug que Devolver: `FormModal` guarda valores con la clave `"Caja destino *"` / `"Monto *"` (textContent incluye el span *), pero el handler leía `values["Caja destino"]` y `values.Monto` → undefined → monto=0 → salía sin hacer nada. Se reemplazó por modal controlado con estado React propio, preview en tiempo real (quedaría X, destino recibirá Y), select nativo para caja destino, validaciones antes del write, Firestore write antes del setState, try/catch.
+- **Horas estimadas:** 0.5 hrs
+
+---
+
 ### 2026-11-19 (sesión 19-n) — 🐛 Caja Chica: tab mostraba total recibido en vez de saldo real
 
 #### 🐛 Bug — Chip del tab mostraba monto recibido, no saldo disponible

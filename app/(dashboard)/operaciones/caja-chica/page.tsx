@@ -349,6 +349,12 @@ export default function CajaChicaPage() {
   const [cajasInactivas, setCajasInactivas]   = useState<CajaChicaConfig[]>([]);
   const [showCajasInactivas, setShowCajasInactivas] = useState(false);
   const [showTransferir, setShowTransferir]   = useState(false);
+  const [transferirDestino, setTransferirDestino] = useState("");
+  const [transferirMonto, setTransferirMonto]     = useState("");
+  const [transferirFecha, setTransferirFecha]     = useState("");
+  const [transferirAutoriza, setTransferirAutoriza] = useState("");
+  const [transferirConcepto, setTransferirConcepto] = useState("Transferencia entre cajas");
+  const [transferirGuardando, setTransferirGuardando] = useState(false);
   const [showDevolver, setShowDevolver]       = useState(false);
   const [devolverMonto, setDevolverMonto]     = useState("");
   const [devolverFecha, setDevolverFecha]     = useState("");
@@ -511,41 +517,60 @@ export default function CajaChicaPage() {
     }));
   }
 
-  async function handleTransferir(values: Record<string, string>) {
-    const cajaDestinoId  = values["Caja destino"] || "";
-    const cajaDestinoObj = cajasConfig.find(c => c.id === cajaDestinoId);
-    const monto          = Number(values.Monto || 0);
-    if (!cajaDestinoId || !cajaDestinoObj || monto <= 0) return;
-    if (cajaDestinoId === vistaActiva) return;
+  async function handleTransferir() {
+    const cajaDestinoObj = cajasConfig.find(c => c.id === transferirDestino);
+    const monto = parseFloat(transferirMonto) || 0;
+    if (!cajaDestinoObj) {
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Selecciona una caja destino." } }));
+      return;
+    }
+    if (monto <= 0) {
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Ingresa un monto válido mayor a $0." } }));
+      return;
+    }
     if (monto > saldoCaja) {
       window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "El monto supera el saldo disponible de esta caja." } }));
       return;
     }
-    const fecha    = values.Fecha || todayCST().slice(0, 10);
-    const concepto = values.Concepto?.trim() || "Transferencia entre cajas";
-    const autoriza = values.Autoriza?.trim() || "";
-    const now      = isoNow();
-    const salida: SalidaCaja = {
-      id: `trs-sal-${Date.now()}`, fecha, monto,
-      cajaId: vistaActiva, cajaNombre: cajaActual?.nombre ?? vistaActiva,
-      tipo: "transferencia_salida", cajaDestinoId, cajaDestinoNombre: cajaDestinoObj.nombre,
-      concepto, autorizadoPor: autoriza, creadoEn: now,
-    };
-    const entrada: DistribucionCaja = {
-      id: `trs-ent-${Date.now()}`, fecha, monto,
-      cajaId: cajaDestinoId, cajaNombre: cajaDestinoObj.nombre,
-      concepto, autorizadoPor: autoriza,
-      tipo: "transferencia_entrada", cajaOrigenId: vistaActiva,
-      cajaOrigenNombre: cajaActual?.nombre ?? vistaActiva, creadoEn: now,
-    };
-    setSalidasCaja(prev => [salida, ...prev]);
-    setDistribuciones(prev => [entrada, ...prev]);
-    await Promise.all([
-      upsertDocument(COLLECTIONS.cajasSalidas, salida.id, salida),
-      upsertDocument(COLLECTIONS.cajasDistribuciones, entrada.id, entrada),
-    ]);
-    setShowTransferir(false);
-    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `$${monto.toLocaleString()} transferidos a ${cajaDestinoObj.nombre}.` } }));
+    if (!transferirAutoriza.trim()) {
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Falta el nombre de quien autoriza." } }));
+      return;
+    }
+    setTransferirGuardando(true);
+    try {
+      const fecha    = transferirFecha || todayCST().slice(0, 10);
+      const concepto = transferirConcepto.trim() || "Transferencia entre cajas";
+      const now      = isoNow();
+      const salida: SalidaCaja = {
+        id: `trs-sal-${Date.now()}`, fecha, monto,
+        cajaId: vistaActiva, cajaNombre: cajaActual?.nombre ?? vistaActiva,
+        tipo: "transferencia_salida", cajaDestinoId: transferirDestino, cajaDestinoNombre: cajaDestinoObj.nombre,
+        concepto, autorizadoPor: transferirAutoriza.trim(), creadoEn: now,
+      };
+      const entrada: DistribucionCaja = {
+        id: `trs-ent-${Date.now()}`, fecha, monto,
+        cajaId: transferirDestino, cajaNombre: cajaDestinoObj.nombre,
+        concepto, autorizadoPor: transferirAutoriza.trim(),
+        tipo: "transferencia_entrada", cajaOrigenId: vistaActiva,
+        cajaOrigenNombre: cajaActual?.nombre ?? vistaActiva, creadoEn: now,
+      };
+      await Promise.all([
+        upsertDocument(COLLECTIONS.cajasSalidas, salida.id, salida),
+        upsertDocument(COLLECTIONS.cajasDistribuciones, entrada.id, entrada),
+      ]);
+      setSalidasCaja(prev => [salida, ...prev]);
+      setDistribuciones(prev => [entrada, ...prev]);
+      setShowTransferir(false);
+      setTransferirMonto("");
+      setTransferirAutoriza("");
+      setTransferirConcepto("Transferencia entre cajas");
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `$${monto.toLocaleString("es-MX", { minimumFractionDigits: 2 })} transferidos a ${cajaDestinoObj.nombre}.` } }));
+    } catch (err) {
+      console.error("handleTransferir:", err);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al registrar la transferencia. Intenta de nuevo." } }));
+    } finally {
+      setTransferirGuardando(false);
+    }
   }
 
   async function handleDevolver() {
@@ -757,7 +782,7 @@ export default function CajaChicaPage() {
                 Devolver
               </button>
               <button
-                onClick={() => setShowTransferir(true)}
+                onClick={() => { setTransferirDestino(""); setTransferirMonto(""); setTransferirFecha(""); setTransferirAutoriza(""); setTransferirConcepto("Transferencia entre cajas"); setShowTransferir(true); }}
                 disabled={cajasConfig.filter(c => c.id !== vistaActiva).length === 0 || saldoCaja <= 0}
                 title="Transferir fondos a otra caja"
                 className="flex items-center gap-2 bg-[#1A1A1A] border border-[#3A3A3A] hover:border-purple-500 text-gray-400 hover:text-purple-400 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-2 rounded-lg text-sm transition-colors"
@@ -1747,52 +1772,106 @@ export default function CajaChicaPage() {
       )}
 
       {/* Modal Transferir entre cajas */}
-      {vistaActiva !== "principal" && cajaActual && (
-        <FormModal
-          open={showTransferir} title={`Transferir desde ${cajaActual.nombre}`}
-          onClose={() => setShowTransferir(false)} onSave={handleTransferir}
-          footer={
-            <>
-              <button onClick={() => setShowTransferir(false)} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-900 border border-gray-200 rounded-lg transition-colors">Cancelar</button>
-              <button className="px-4 py-2 text-sm bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors flex items-center gap-2"><ArrowLeftRight size={14} /> Transferir</button>
-            </>
-          }
-        >
-          <div className="mb-4 p-3 rounded-lg bg-purple-50 border border-purple-200 text-sm text-purple-800">
-            Saldo disponible en <strong>{cajaActual.nombre}</strong>: <span className="font-bold">${saldoCaja.toLocaleString()}</span>
+      {showTransferir && vistaActiva !== "principal" && cajaActual && (() => {
+        const montoNum = parseFloat(transferirMonto) || 0;
+        const quedaría = saldoCaja - montoNum;
+        const excede = montoNum > saldoCaja;
+        const destObj = cajasConfig.find(c => c.id === transferirDestino);
+        return (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm">
+            <button type="button" aria-label="Cerrar" onClick={() => setShowTransferir(false)} className="absolute inset-0" />
+            <div className="relative z-10 w-full max-w-lg rounded-2xl border border-gray-100 bg-white shadow-2xl">
+              <div className="flex items-center justify-between gap-4 border-b border-gray-100 px-7 py-5">
+                <h3 className="text-[15px] font-semibold tracking-tight text-gray-900">Transferir desde {cajaActual.nombre}</h3>
+                <button type="button" onClick={() => setShowTransferir(false)} className="rounded-xl p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors">
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="px-7 py-6 space-y-5">
+                <div className="p-3 rounded-lg bg-purple-50 border border-purple-200 text-sm text-purple-800">
+                  Saldo disponible en <strong>{cajaActual.nombre}</strong>:{" "}
+                  <span className="font-bold">${saldoCaja.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="sm:col-span-2">
+                    <label className="block text-sm text-gray-700 mb-1">Caja destino <span className="text-red-500">*</span></label>
+                    <select
+                      value={transferirDestino}
+                      onChange={e => setTransferirDestino(e.target.value)}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-purple-400 bg-white"
+                    >
+                      <option value="">Selecciona una caja…</option>
+                      {cajasConfig.filter(c => c.id !== vistaActiva).map(c => (
+                        <option key={c.id} value={c.id}>{c.nombre} — {c.planta}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">Monto <span className="text-red-500">*</span></label>
+                    <input
+                      type="number" min="0.01" step="0.01" placeholder="0.00" max={saldoCaja}
+                      value={transferirMonto}
+                      onChange={e => setTransferirMonto(e.target.value)}
+                      autoFocus
+                      className={`w-full border rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 ${excede ? "border-red-400 focus:ring-red-400" : "border-gray-200 focus:ring-purple-400"}`}
+                    />
+                    {excede && <p className="text-xs text-red-500 mt-1">Supera el saldo disponible.</p>}
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">Fecha</label>
+                    <input type="date" value={transferirFecha || hoy}
+                      onChange={e => setTransferirFecha(e.target.value)}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-purple-400" />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">Autoriza <span className="text-red-500">*</span></label>
+                    <input type="text" placeholder="Nombre de quien autoriza"
+                      value={transferirAutoriza}
+                      onChange={e => setTransferirAutoriza(e.target.value)}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-purple-400" />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">Concepto</label>
+                    <input type="text" value={transferirConcepto}
+                      onChange={e => setTransferirConcepto(e.target.value)}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-purple-400" />
+                  </div>
+                </div>
+                {/* Preview en tiempo real */}
+                {montoNum > 0 && !excede && (
+                  <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 grid grid-cols-3 gap-3 text-center text-sm">
+                    <div>
+                      <p className="text-gray-400 text-xs mb-1">{cajaActual.nombre}</p>
+                      <p className="font-semibold text-gray-700">${saldoCaja.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400 text-xs mb-1">Transferencia</p>
+                      <p className="font-semibold text-[#CC2229]">−${montoNum.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400 text-xs mb-1">Quedaría</p>
+                      <p className={`font-bold ${quedaría < 0 ? "text-red-500" : "text-green-600"}`}>${quedaría.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                    </div>
+                  </div>
+                )}
+                {montoNum > 0 && !excede && destObj && (
+                  <p className="text-xs text-gray-400 text-center">+${montoNum.toLocaleString("es-MX", { minimumFractionDigits: 2 })} llegarán a <strong className="text-gray-600">{destObj.nombre}</strong></p>
+                )}
+              </div>
+              <div className="flex justify-end gap-3 border-t border-gray-100 px-7 py-4">
+                <button onClick={() => setShowTransferir(false)} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-900 border border-gray-200 rounded-lg transition-colors">Cancelar</button>
+                <button
+                  onClick={handleTransferir}
+                  disabled={transferirGuardando || excede || montoNum <= 0 || !transferirDestino}
+                  className="px-4 py-2 text-sm bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center gap-2"
+                >
+                  <ArrowLeftRight size={14} /> {transferirGuardando ? "Guardando…" : "Transferir"}
+                </button>
+              </div>
+            </div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="sm:col-span-2">
-              <label className="block text-sm text-gray-700 mb-1">Caja destino <span className="text-red-500">*</span></label>
-              <AppSelect>
-                {cajasConfig.filter(c => c.id !== vistaActiva).map(c => (
-                  <option key={c.id} value={c.id}>{c.nombre} — {c.planta}</option>
-                ))}
-              </AppSelect>
-            </div>
-            <div>
-              <label className="block text-sm text-gray-700 mb-1">Monto <span className="text-red-500">*</span></label>
-              <input type="number" min="0.01" step="0.01" placeholder="0.00" max={saldoCaja}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-purple-400" />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-700 mb-1">Fecha</label>
-              <input type="date" defaultValue={hoy}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-purple-400" />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-700 mb-1">Autoriza <span className="text-red-500">*</span></label>
-              <input type="text" placeholder="Nombre de quien autoriza"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-purple-400" />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-700 mb-1">Concepto</label>
-              <input type="text" defaultValue="Transferencia entre cajas"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-purple-400" />
-            </div>
-          </div>
-        </FormModal>
-      )}
+        );
+      })()}
 
       {/* Modal Devolver a caja principal */}
       {showDevolver && vistaActiva !== "principal" && cajaActual && (() => {
