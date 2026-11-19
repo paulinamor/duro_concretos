@@ -7,6 +7,30 @@
 
 ## Noviembre 2026
 
+### 2026-11-18 (sesión 19-d) — ✨ Cajas Chicas: transferencias, devoluciones, inactivas y edición
+
+#### ✨ Mejora — Transferencia entre cajas chicas
+- **Archivos:** `app/(dashboard)/operaciones/caja-chica/page.tsx`, `lib/db.ts`
+- **Descripción:** Desde cualquier caja chica (botón "Transferir" en el header) se puede enviar fondos a otra caja con monto, caja destino, concepto, fecha y autorización. Crea una SalidaCaja en la caja origen y una DistribucionCaja de tipo "transferencia_entrada" en la caja destino. Ambas cajas reflejan el movimiento en su saldo y bitácora.
+- **Horas estimadas:** 0.5 h
+
+#### ✨ Mejora — Devolución de caja chica a caja principal
+- **Archivos:** `app/(dashboard)/operaciones/caja-chica/page.tsx`
+- **Descripción:** Botón "Devolver" en el header de cada caja chica. Registra una SalidaCaja de tipo "devolucion_principal" que reduce el saldo de la caja y suma de vuelta al saldo de Caja Principal. El KPI de saldo en Caja Principal ahora muestra la línea de devoluciones.
+- **Horas estimadas:** 0.25 h
+
+#### ✨ Mejora — Ver y reactivar cajas desactivadas
+- **Archivos:** `app/(dashboard)/operaciones/caja-chica/page.tsx`
+- **Descripción:** Tab "Inactivas (N)" en las pestañas de cajas. Al expandir muestra todas las cajas desactivadas con su saldo histórico, planta y responsable. Botón "Reactivar" las devuelve a la vista activa.
+- **Horas estimadas:** 0.25 h
+
+#### ✨ Mejora — Editar movimientos (gastos y distribuciones)
+- **Archivos:** `app/(dashboard)/operaciones/caja-chica/page.tsx`
+- **Descripción:** Botón "Editar" en gastos con estado Revisión (edita fecha, monto, descripción, categoría, no. ticket y autoriza). Botón lápiz en cada fila de la tabla de distribuciones/historial (edita fecha, monto, concepto y autoriza). Cambios persisten en Firestore.
+- **Horas estimadas:** 0.5 h
+
+---
+
 ### 2026-11-18 (sesión 19-c) — 🐛 Fix SAT Descarga Masiva no funcionaba
 
 #### 🐛 Fix — Descarga SAT nunca enviaba credenciales a las APIs

@@ -239,6 +239,7 @@ export const COLLECTIONS = {
   auditLog:  "auditLog",
   cajasConfig:          "cajasConfig",
   cajasDistribuciones:  "cajasDistribuciones",
+  cajasSalidas:         "cajasSalidas",
   traspasos:            "traspasos",
   tickets:              "tickets",
   pagosProveedorMat:    "pagosProveedorMat",

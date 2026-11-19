@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertTriangle, ArrowRight, Camera, CheckCircle2, Clock, Download,
-  Edit2, FileText, Loader2, Plus, Receipt, RefreshCw, Search, Settings,
+  AlertTriangle, Archive, ArrowLeftRight, ArrowRight, Camera, CheckCircle2, Clock, Download,
+  Edit2, FileText, Loader2, Pencil, Plus, Receipt, RefreshCw, RotateCcw, Search, Settings,
   ShieldCheck, Trash2, Wallet, X, XCircle,
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
@@ -40,6 +40,24 @@ interface DistribucionCaja {
   cajaNombre: string;
   concepto: string;
   autorizadoPor: string;
+  tipo?: "distribucion" | "transferencia_entrada";
+  cajaOrigenId?: string;
+  cajaOrigenNombre?: string;
+  creadoEn?: string;
+}
+
+interface SalidaCaja {
+  id: string;
+  fecha: string;
+  monto: number;
+  cajaId: string;
+  cajaNombre: string;
+  tipo: "transferencia_salida" | "devolucion_principal";
+  cajaDestinoId?: string;
+  cajaDestinoNombre?: string;
+  concepto: string;
+  autorizadoPor: string;
+  creadoEn: string;
 }
 
 type EstadoGasto = "Revision" | "Aprobado" | "Rechazado";
@@ -327,6 +345,13 @@ export default function CajaChicaPage() {
     field: string; value: string; detail?: string; proceed: () => void;
   } | null>(null);
   const [fotoModal, setFotoModal]             = useState<string | null>(null);
+  const [salidasCaja, setSalidasCaja]         = useState<SalidaCaja[]>([]);
+  const [cajasInactivas, setCajasInactivas]   = useState<CajaChicaConfig[]>([]);
+  const [showCajasInactivas, setShowCajasInactivas] = useState(false);
+  const [showTransferir, setShowTransferir]   = useState(false);
+  const [showDevolver, setShowDevolver]       = useState(false);
+  const [showEditarGasto, setShowEditarGasto] = useState<GastoCajaChica | null>(null);
+  const [showEditarDist, setShowEditarDist]   = useState<DistribucionCaja | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -336,19 +361,23 @@ export default function CajaChicaPage() {
       getCollectionDocs<ReciboEfectivo>(COLLECTIONS.efectivo),
       getCollectionDocs<SalidaEfectivo>(COLLECTIONS.salidasEfectivo),
       getAllUserProfiles(),
-    ]).then(([configs, dists, gsts, recibos, salidas, users]) => {
+      getCollectionDocs<SalidaCaja>(COLLECTIONS.cajasSalidas),
+    ]).then(([configs, dists, gsts, recibos, salidas, users, salsCaja]) => {
       const isAdmin = session?.role === "admin";
       const myEmail = session?.email ?? "";
+      const allConfigs = configs as CajaChicaConfig[];
       // Admin ve todas las cajas; operador solo las asignadas a su cuenta
-      const visibleConfigs = (configs as CajaChicaConfig[]).filter(c =>
+      const visibleConfigs = allConfigs.filter(c =>
         c.activa && (isAdmin || !c.responsableEmail || c.responsableEmail === myEmail)
       );
       setCajasConfig(visibleConfigs);
+      setCajasInactivas(allConfigs.filter(c => !c.activa));
       setDistribuciones(dists);
       setGastos(gsts);
       setRecibosEfectivo(filterByPlanta(recibos));
       setSalidasEfectivo(filterByPlanta(salidas));
       setUsuarios((users as UserProfile[]).filter(u => u.status === "Activo"));
+      setSalidasCaja(salsCaja as SalidaCaja[]);
     }).finally(() => setLoading(false));
   }, []);
 
@@ -358,16 +387,19 @@ export default function CajaChicaPage() {
   const totalEfectivoEntradas = useMemo(() => recibosEfectivo.filter(r => r.entregado).reduce((s, r) => s + (r.importe ?? 0), 0), [recibosEfectivo]);
   const totalEfectivoSalidas  = useMemo(() => salidasEfectivo.reduce((s, r) => s + (r.importe ?? 0), 0), [salidasEfectivo]);
   const totalDistribuido      = useMemo(() => distribuciones.reduce((s, d) => s + d.monto, 0), [distribuciones]);
-  const saldoPrincipal        = totalEfectivoEntradas - totalEfectivoSalidas - totalDistribuido;
+  const totalDevoluciones     = useMemo(() => salidasCaja.filter(s => s.tipo === "devolucion_principal").reduce((s, x) => s + x.monto, 0), [salidasCaja]);
+  const saldoPrincipal        = totalEfectivoEntradas - totalEfectivoSalidas - totalDistribuido + totalDevoluciones;
 
   // ── Caja activa ────────────────────────────────────────────────────────────
 
   const cajaActual        = cajasConfig.find(c => c.id === vistaActiva);
   const cajaGastos        = useMemo(() => gastos.filter(g => g.cajaId === vistaActiva), [gastos, vistaActiva]);
   const cajaDistribuciones = useMemo(() => distribuciones.filter(d => d.cajaId === vistaActiva), [distribuciones, vistaActiva]);
+  const cajaSalidas       = useMemo(() => salidasCaja.filter(s => s.cajaId === vistaActiva), [salidasCaja, vistaActiva]);
   const totalRecibidoCaja = cajaDistribuciones.reduce((s, d) => s + d.monto, 0);
   const totalGastadoCaja  = cajaGastos.filter(g => g.estado === "Aprobado").reduce((s, g) => s + g.monto, 0);
-  const saldoCaja         = totalRecibidoCaja - totalGastadoCaja;
+  const totalSalidasCaja  = cajaSalidas.reduce((s, x) => s + x.monto, 0);
+  const saldoCaja         = totalRecibidoCaja - totalGastadoCaja - totalSalidasCaja;
   const enRevision        = cajaGastos.filter(g => g.estado === "Revision");
   const enRechazo         = cajaGastos.filter(g => g.estado === "Rechazado");
   const compPendientes    = cajaGastos.filter(g => g.comprobanteEstado === "Pendiente" && g.estado === "Aprobado").length;
@@ -471,6 +503,111 @@ export default function CajaChicaPage() {
     window.dispatchEvent(new CustomEvent("duro:toast", {
       detail: { type: "success", message: `$${monto.toLocaleString()} distribuidos a ${cajaNombre}.` },
     }));
+  }
+
+  async function handleTransferir(values: Record<string, string>) {
+    const cajaDestinoId  = values["Caja destino"] || "";
+    const cajaDestinoObj = cajasConfig.find(c => c.id === cajaDestinoId);
+    const monto          = Number(values.Monto || 0);
+    if (!cajaDestinoId || !cajaDestinoObj || monto <= 0) return;
+    if (cajaDestinoId === vistaActiva) return;
+    if (monto > saldoCaja) {
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "El monto supera el saldo disponible de esta caja." } }));
+      return;
+    }
+    const fecha    = values.Fecha || todayCST().slice(0, 10);
+    const concepto = values.Concepto?.trim() || "Transferencia entre cajas";
+    const autoriza = values.Autoriza?.trim() || "";
+    const now      = isoNow();
+    const salida: SalidaCaja = {
+      id: `trs-sal-${Date.now()}`, fecha, monto,
+      cajaId: vistaActiva, cajaNombre: cajaActual?.nombre ?? vistaActiva,
+      tipo: "transferencia_salida", cajaDestinoId, cajaDestinoNombre: cajaDestinoObj.nombre,
+      concepto, autorizadoPor: autoriza, creadoEn: now,
+    };
+    const entrada: DistribucionCaja = {
+      id: `trs-ent-${Date.now()}`, fecha, monto,
+      cajaId: cajaDestinoId, cajaNombre: cajaDestinoObj.nombre,
+      concepto, autorizadoPor: autoriza,
+      tipo: "transferencia_entrada", cajaOrigenId: vistaActiva,
+      cajaOrigenNombre: cajaActual?.nombre ?? vistaActiva, creadoEn: now,
+    };
+    setSalidasCaja(prev => [salida, ...prev]);
+    setDistribuciones(prev => [entrada, ...prev]);
+    await Promise.all([
+      upsertDocument(COLLECTIONS.cajasSalidas, salida.id, salida),
+      upsertDocument(COLLECTIONS.cajasDistribuciones, entrada.id, entrada),
+    ]);
+    setShowTransferir(false);
+    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `$${monto.toLocaleString()} transferidos a ${cajaDestinoObj.nombre}.` } }));
+  }
+
+  async function handleDevolver(values: Record<string, string>) {
+    const monto = Number(values.Monto || 0);
+    if (monto <= 0) return;
+    if (monto > saldoCaja) {
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "El monto supera el saldo disponible de esta caja." } }));
+      return;
+    }
+    const salida: SalidaCaja = {
+      id: `dev-${Date.now()}`,
+      fecha:         values.Fecha || todayCST().slice(0, 10),
+      monto,
+      cajaId:        vistaActiva,
+      cajaNombre:    cajaActual?.nombre ?? vistaActiva,
+      tipo:          "devolucion_principal",
+      concepto:      values.Concepto?.trim() || "Devolución a caja principal",
+      autorizadoPor: values.Autoriza?.trim() || "",
+      creadoEn:      isoNow(),
+    };
+    setSalidasCaja(prev => [salida, ...prev]);
+    await upsertDocument(COLLECTIONS.cajasSalidas, salida.id, salida);
+    setShowDevolver(false);
+    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `$${monto.toLocaleString()} devueltos a Caja Principal.` } }));
+  }
+
+  async function handleEditarGasto(values: Record<string, string>) {
+    if (!showEditarGasto) return;
+    const rawDate = values.Fecha || todayCST().slice(0, 10);
+    const fecha   = rawDate.includes("/") ? rawDate : isoToDisplay(rawDate);
+    const updated: GastoCajaChica = {
+      ...showEditarGasto,
+      fecha,
+      monto:         Number(values.Monto)       || showEditarGasto.monto,
+      descripcion:   values.Descripción?.trim() || showEditarGasto.descripcion,
+      categoria:     values.Categoría           || showEditarGasto.categoria,
+      autorizadoPor: values.Autoriza?.trim()    || showEditarGasto.autorizadoPor,
+      noComprobante: values["No. Ticket"]?.trim() || showEditarGasto.noComprobante,
+    };
+    setGastos(prev => prev.map(g => g.folio === showEditarGasto.folio ? updated : g));
+    const docId = showEditarGasto.folio.slice(showEditarGasto.folio.lastIndexOf("-") + 1);
+    await upsertDocument(COLLECTIONS.cajaChica, docId, updated);
+    setShowEditarGasto(null);
+    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `Gasto ${showEditarGasto.folio} actualizado.` } }));
+  }
+
+  async function handleEditarDistribucion(values: Record<string, string>) {
+    if (!showEditarDist) return;
+    const updated: DistribucionCaja = {
+      ...showEditarDist,
+      monto:        Number(values.Monto)      || showEditarDist.monto,
+      concepto:     values.Concepto?.trim()   || showEditarDist.concepto,
+      autorizadoPor: values.Autoriza?.trim()  || showEditarDist.autorizadoPor,
+      fecha:        values.Fecha              || showEditarDist.fecha,
+    };
+    setDistribuciones(prev => prev.map(d => d.id === showEditarDist.id ? updated : d));
+    await upsertDocument(COLLECTIONS.cajasDistribuciones, showEditarDist.id, updated);
+    setShowEditarDist(null);
+    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: "Movimiento actualizado." } }));
+  }
+
+  async function handleReactivarCaja(caja: CajaChicaConfig) {
+    const updated = { ...caja, activa: true };
+    setCajasInactivas(prev => prev.filter(c => c.id !== caja.id));
+    setCajasConfig(prev => [...prev, updated]);
+    await upsertDocument(COLLECTIONS.cajasConfig, caja.id, updated);
+    setVistaActiva(caja.id);
+    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `Caja "${caja.nombre}" reactivada.` } }));
   }
 
   async function handleSaveGasto(data: GastoFormData, force = false) {
@@ -587,6 +724,24 @@ export default function CajaChicaPage() {
           ) : (
             <>
               <button
+                onClick={() => setShowDevolver(true)}
+                disabled={saldoCaja <= 0}
+                title="Devolver fondos a caja principal"
+                className="flex items-center gap-2 bg-[#1A1A1A] border border-[#3A3A3A] hover:border-blue-500 text-gray-400 hover:text-blue-400 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-2 rounded-lg text-sm transition-colors"
+              >
+                <RotateCcw size={14} />
+                Devolver
+              </button>
+              <button
+                onClick={() => setShowTransferir(true)}
+                disabled={cajasConfig.filter(c => c.id !== vistaActiva).length === 0 || saldoCaja <= 0}
+                title="Transferir fondos a otra caja"
+                className="flex items-center gap-2 bg-[#1A1A1A] border border-[#3A3A3A] hover:border-purple-500 text-gray-400 hover:text-purple-400 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-2 rounded-lg text-sm transition-colors"
+              >
+                <ArrowLeftRight size={14} />
+                Transferir
+              </button>
+              <button
                 onClick={() => exportCSV(filteredGastos, cajaActual?.nombre ?? "caja")}
                 title="Exportar gastos a CSV"
                 className="flex items-center gap-2 bg-[#1A1A1A] border border-[#3A3A3A] hover:border-green-600 text-gray-400 hover:text-green-400 px-3 py-2 rounded-lg text-sm transition-colors"
@@ -663,7 +818,62 @@ export default function CajaChicaPage() {
           <Plus size={14} />
           Nueva caja
         </button>
+
+        {cajasInactivas.length > 0 && (
+          <button
+            onClick={() => setShowCajasInactivas(v => !v)}
+            className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl border text-sm transition-all ${
+              showCajasInactivas
+                ? "bg-[#242424] border-[#555] text-gray-300"
+                : "border-dashed border-[#3A3A3A] text-gray-600 hover:border-gray-500 hover:text-gray-400"
+            }`}
+          >
+            <Archive size={13} />
+            Inactivas ({cajasInactivas.length})
+          </button>
+        )}
       </div>
+
+      {/* Panel cajas inactivas */}
+      {showCajasInactivas && cajasInactivas.length > 0 && (
+        <div className="bg-[#1A1A1A] border border-[#3A3A3A] rounded-xl p-4">
+          <p className="text-xs text-gray-500 uppercase tracking-wider mb-3">Cajas desactivadas</p>
+          <div className="space-y-2">
+            {cajasInactivas.map(c => {
+              const rec  = distribuciones.filter(d => d.cajaId === c.id).reduce((s, d) => s + d.monto, 0);
+              const gas  = gastos.filter(g => g.cajaId === c.id && g.estado === "Aprobado").reduce((s, g) => s + g.monto, 0);
+              const sal  = salidasCaja.filter(s => s.cajaId === c.id).reduce((s, x) => s + x.monto, 0);
+              const saldo = rec - gas - sal;
+              return (
+                <div key={c.id} className="flex items-center justify-between gap-3 bg-[#242424] rounded-lg px-4 py-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Archive size={14} className="text-gray-500 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-gray-300 text-sm font-medium truncate">{c.nombre}</p>
+                      <p className="text-gray-600 text-xs">{c.planta} · {c.responsable || "Sin responsable"} · Desactivada: {c.fechaCreacion}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4 shrink-0">
+                    <div className="text-right">
+                      <p className={`text-sm font-mono font-semibold ${saldo < 0 ? "text-red-400" : saldo > 0 ? "text-orange-300" : "text-gray-500"}`}>
+                        ${saldo.toLocaleString()}
+                      </p>
+                      <p className="text-gray-600 text-xs">saldo al desactivar</p>
+                    </div>
+                    <button
+                      onClick={() => handleReactivarCaja(c)}
+                      className="flex items-center gap-1.5 text-xs bg-[#1A1A1A] border border-[#3A3A3A] hover:border-green-500 hover:text-green-400 text-gray-400 px-3 py-1.5 rounded-lg transition-colors"
+                    >
+                      <RotateCcw size={12} />
+                      Reactivar
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ── Vista Principal ─────────────────────────────────────────────────── */}
       {vistaActiva === "principal" && (
@@ -797,6 +1007,12 @@ export default function CajaChicaPage() {
                       <span className="text-gray-400">Distribuido a cajas chicas</span>
                       <span className="text-red-400 font-semibold">− ${totalDistribuido.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
+                    {totalDevoluciones > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-400">Devoluciones de cajas</span>
+                        <span className="text-green-400 font-semibold">+ ${totalDevoluciones.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </div>
+                    )}
                     <div className="border-t border-[#3A3A3A] pt-3 flex items-center justify-between">
                       <span className="text-white font-bold">Saldo disponible en caja principal</span>
                       <span className={`font-bold text-lg ${saldoPrincipal < 0 ? "text-red-400" : "text-white"}`}>
@@ -890,7 +1106,7 @@ export default function CajaChicaPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-[#1A1A1A] border-b border-[#3A3A3A]">
-                      {["Fecha", "Caja destino", "Planta", "Monto", "Concepto", "Autoriza"].map(h => (
+                      {["Fecha", "Caja destino", "Planta", "Tipo", "Monto", "Concepto", "Autoriza", ""].map(h => (
                         <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -900,10 +1116,28 @@ export default function CajaChicaPage() {
                       <tr key={d.id} className="hover:bg-[#2A2A2A] transition-colors">
                         <td className="px-4 py-3 text-gray-400 text-xs">{d.fecha}</td>
                         <td className="px-4 py-3 text-white">{d.cajaNombre}</td>
-                        <td className="px-4 py-3 text-gray-400 text-xs">{cajasConfig.find(c => c.id === d.cajaId)?.planta ?? "—"}</td>
+                        <td className="px-4 py-3 text-gray-400 text-xs">{cajasConfig.find(c => c.id === d.cajaId)?.planta ?? (cajasInactivas.find(c => c.id === d.cajaId)?.planta ?? "—")}</td>
+                        <td className="px-4 py-3">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                            d.tipo === "transferencia_entrada"
+                              ? "bg-purple-900/30 text-purple-300 border border-purple-800/40"
+                              : "bg-green-900/30 text-green-300 border border-green-800/40"
+                          }`}>
+                            {d.tipo === "transferencia_entrada" ? "Transferencia" : "Distribución"}
+                          </span>
+                          {d.tipo === "transferencia_entrada" && d.cajaOrigenNombre && (
+                            <p className="text-gray-600 text-[10px] mt-0.5">de {d.cajaOrigenNombre}</p>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-green-400 font-semibold">${d.monto.toLocaleString()}</td>
                         <td className="px-4 py-3 text-gray-300">{d.concepto}</td>
                         <td className="px-4 py-3 text-gray-400 text-xs">{d.autorizadoPor}</td>
+                        <td className="px-4 py-3">
+                          <button onClick={() => setShowEditarDist(d)} title="Editar movimiento"
+                            className="text-gray-600 hover:text-blue-400 transition-colors cursor-pointer p-1 rounded">
+                            <Pencil size={13} />
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -934,7 +1168,7 @@ export default function CajaChicaPage() {
                   {" · "}Creada: {cajaActual.fechaCreacion}
                 </p>
               </div>
-              <div className="flex gap-6 text-center">
+              <div className="flex gap-6 text-center flex-wrap">
                 <div>
                   <p className="text-green-400 font-bold text-xl">${totalRecibidoCaja.toLocaleString()}</p>
                   <p className="text-gray-500 text-xs">Recibido</p>
@@ -943,6 +1177,12 @@ export default function CajaChicaPage() {
                   <p className="text-red-400 font-bold text-xl">${totalGastadoCaja.toLocaleString()}</p>
                   <p className="text-gray-500 text-xs">Gastado</p>
                 </div>
+                {totalSalidasCaja > 0 && (
+                  <div>
+                    <p className="text-orange-400 font-bold text-xl">${totalSalidasCaja.toLocaleString()}</p>
+                    <p className="text-gray-500 text-xs">Transferido / Dev.</p>
+                  </div>
+                )}
                 <div>
                   <p className={`font-bold text-xl ${saldoCaja < 0 ? "text-red-400" : "text-white"}`}>
                     ${saldoCaja.toLocaleString()}
@@ -1199,6 +1439,12 @@ export default function CajaChicaPage() {
                               >
                                 ✗ Rechazar
                               </button>
+                              <button
+                                onClick={() => setShowEditarGasto(g)}
+                                className="text-xs bg-[#1A1A1A] border border-[#3A3A3A] hover:border-blue-500 hover:text-blue-400 text-gray-500 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 justify-center"
+                              >
+                                <Pencil size={10} /> Editar
+                              </button>
                             </div>
                           )}
                         </td>
@@ -1224,11 +1470,31 @@ export default function CajaChicaPage() {
           {/* ── Bitácora de movimientos ──────────────────────────────────────── */}
           {(() => {
             // Construir timeline unificado: distribuciones + gastos con sus eventos
-            type Evento = { ts: string; tipo: "distribucion" | "gasto_creado" | "gasto_aprobado" | "gasto_rechazado"; label: string; monto: number; detalle?: string; color: string; };
+            type Evento = { ts: string; tipo: "distribucion" | "transferencia_entrada" | "transferencia_salida" | "devolucion_principal" | "gasto_creado" | "gasto_aprobado" | "gasto_rechazado"; label: string; monto: number; detalle?: string; color: string; };
             const eventos: Evento[] = [];
 
             cajaDistribuciones.forEach(d => {
-              eventos.push({ ts: d.fecha, tipo: "distribucion", label: `Fondos recibidos de Caja Principal`, monto: d.monto, detalle: d.concepto ? `Concepto: ${d.concepto}` : undefined, color: "text-green-400" });
+              const esTrf = d.tipo === "transferencia_entrada";
+              eventos.push({
+                ts:     d.creadoEn || d.fecha,
+                tipo:   esTrf ? "transferencia_entrada" : "distribucion",
+                label:  esTrf ? `Transferencia recibida de ${d.cajaOrigenNombre ?? "otra caja"}` : "Fondos recibidos de Caja Principal",
+                monto:  d.monto,
+                detalle: d.concepto ? `Concepto: ${d.concepto}` : undefined,
+                color:  esTrf ? "text-purple-300" : "text-green-400",
+              });
+            });
+            cajaSalidas.forEach(s => {
+              eventos.push({
+                ts:     s.creadoEn || s.fecha,
+                tipo:   s.tipo,
+                label:  s.tipo === "transferencia_salida"
+                          ? `Transferencia enviada a ${s.cajaDestinoNombre ?? "otra caja"}`
+                          : "Devolución a Caja Principal",
+                monto:  s.monto,
+                detalle: s.concepto ? `Concepto: ${s.concepto} · Autoriza: ${s.autorizadoPor || "—"}` : undefined,
+                color:  s.tipo === "transferencia_salida" ? "text-purple-400" : "text-blue-300",
+              });
             });
             cajaGastos.forEach(g => {
               if (g.creadoEn) eventos.push({ ts: g.creadoEn, tipo: "gasto_creado",    label: `Gasto registrado — ${g.folio}`, monto: g.monto, detalle: g.descripcion, color: "text-gray-400" });
@@ -1240,10 +1506,13 @@ export default function CajaChicaPage() {
             if (eventos.length === 0) return null;
 
             const iconoEvento = (tipo: Evento["tipo"]) => {
-              if (tipo === "distribucion")     return <span className="text-green-400 text-base">↓</span>;
-              if (tipo === "gasto_creado")     return <span className="text-gray-400 text-base">·</span>;
-              if (tipo === "gasto_aprobado")   return <span className="text-blue-400 text-base">✓</span>;
-              if (tipo === "gasto_rechazado")  return <span className="text-red-400 text-base">✗</span>;
+              if (tipo === "distribucion")          return <span className="text-green-400 text-base">↓</span>;
+              if (tipo === "transferencia_entrada") return <span className="text-purple-300 text-base">⇐</span>;
+              if (tipo === "transferencia_salida")  return <span className="text-purple-400 text-base">⇒</span>;
+              if (tipo === "devolucion_principal")  return <span className="text-blue-300 text-base">↑</span>;
+              if (tipo === "gasto_creado")          return <span className="text-gray-400 text-base">·</span>;
+              if (tipo === "gasto_aprobado")        return <span className="text-blue-400 text-base">✓</span>;
+              if (tipo === "gasto_rechazado")       return <span className="text-red-400 text-base">✗</span>;
             };
 
             return (
@@ -1264,8 +1533,12 @@ export default function CajaChicaPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-2">
                             <span className={`text-xs font-medium ${ev.color}`}>{ev.label}</span>
-                            <span className={`text-xs font-semibold shrink-0 ${ev.tipo === "distribucion" ? "text-green-400" : "text-gray-300"}`}>
-                              {ev.tipo === "distribucion" ? "+" : "−"}${ev.monto.toLocaleString("es-MX", { minimumFractionDigits: 2 })}
+                            <span className={`text-xs font-semibold shrink-0 ${
+                              ev.tipo === "distribucion" || ev.tipo === "transferencia_entrada" ? "text-green-400"
+                              : ev.tipo === "transferencia_salida" || ev.tipo === "devolucion_principal" ? "text-orange-400"
+                              : "text-gray-300"
+                            }`}>
+                              {ev.tipo === "distribucion" || ev.tipo === "transferencia_entrada" ? "+" : "−"}${ev.monto.toLocaleString("es-MX", { minimumFractionDigits: 2 })}
                             </span>
                           </div>
                           {ev.detalle && <p className="text-gray-600 text-xs mt-0.5 truncate">{ev.detalle}</p>}
@@ -1447,6 +1720,198 @@ export default function CajaChicaPage() {
           </div>
         </FormModal>
       )}
+
+      {/* Modal Transferir entre cajas */}
+      {vistaActiva !== "principal" && cajaActual && (
+        <FormModal
+          open={showTransferir} title={`Transferir desde ${cajaActual.nombre}`}
+          onClose={() => setShowTransferir(false)} onSave={handleTransferir}
+          footer={
+            <>
+              <button onClick={() => setShowTransferir(false)} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-900 border border-gray-200 rounded-lg transition-colors">Cancelar</button>
+              <button className="px-4 py-2 text-sm bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors flex items-center gap-2"><ArrowLeftRight size={14} /> Transferir</button>
+            </>
+          }
+        >
+          <div className="mb-4 p-3 rounded-lg bg-purple-50 border border-purple-200 text-sm text-purple-800">
+            Saldo disponible en <strong>{cajaActual.nombre}</strong>: <span className="font-bold">${saldoCaja.toLocaleString()}</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2">
+              <label className="block text-sm text-gray-700 mb-1">Caja destino <span className="text-red-500">*</span></label>
+              <AppSelect>
+                {cajasConfig.filter(c => c.id !== vistaActiva).map(c => (
+                  <option key={c.id} value={c.id}>{c.nombre} — {c.planta}</option>
+                ))}
+              </AppSelect>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-700 mb-1">Monto <span className="text-red-500">*</span></label>
+              <input type="number" min="0.01" step="0.01" placeholder="0.00" max={saldoCaja}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-purple-400" />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-700 mb-1">Fecha</label>
+              <input type="date" defaultValue={hoy}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-purple-400" />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-700 mb-1">Autoriza <span className="text-red-500">*</span></label>
+              <input type="text" placeholder="Nombre de quien autoriza"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-purple-400" />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-700 mb-1">Concepto</label>
+              <input type="text" defaultValue="Transferencia entre cajas"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-purple-400" />
+            </div>
+          </div>
+        </FormModal>
+      )}
+
+      {/* Modal Devolver a caja principal */}
+      {vistaActiva !== "principal" && cajaActual && (
+        <FormModal
+          open={showDevolver} title={`Devolver fondos a Caja Principal`}
+          onClose={() => setShowDevolver(false)} onSave={handleDevolver}
+          footer={
+            <>
+              <button onClick={() => setShowDevolver(false)} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-900 border border-gray-200 rounded-lg transition-colors">Cancelar</button>
+              <button className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-2"><RotateCcw size={14} /> Devolver</button>
+            </>
+          }
+        >
+          <div className="mb-4 p-3 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-800">
+            Saldo disponible en <strong>{cajaActual.nombre}</strong>: <span className="font-bold">${saldoCaja.toLocaleString()}</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-gray-700 mb-1">Monto a devolver <span className="text-red-500">*</span></label>
+              <input type="number" min="0.01" step="0.01" placeholder="0.00" max={saldoCaja}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-700 mb-1">Fecha</label>
+              <input type="date" defaultValue={hoy}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-700 mb-1">Autoriza <span className="text-red-500">*</span></label>
+              <input type="text" placeholder="Nombre de quien autoriza"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-700 mb-1">Concepto</label>
+              <input type="text" defaultValue="Devolución a caja principal"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+            </div>
+          </div>
+        </FormModal>
+      )}
+
+      {/* Modal Editar gasto */}
+      <FormModal
+        open={!!showEditarGasto}
+        title={`Editar gasto ${showEditarGasto?.folio ?? ""}`}
+        onClose={() => setShowEditarGasto(null)}
+        onSave={handleEditarGasto}
+        footer={
+          <>
+            <button onClick={() => setShowEditarGasto(null)} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-900 border border-gray-200 rounded-lg transition-colors">Cancelar</button>
+            <button className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-2"><Pencil size={13} /> Guardar cambios</button>
+          </>
+        }
+      >
+        {showEditarGasto && (
+          <div className="space-y-4">
+            <div className="p-3 rounded-lg bg-orange-50 border border-orange-200 text-xs text-orange-700">
+              Solo se pueden editar gastos en estado <strong>Revisión</strong>. Los cambios quedan registrados.
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-gray-700 mb-1">Fecha</label>
+                <input type="date" defaultValue={showEditarGasto.fecha.includes("/") ? displayToIso(showEditarGasto.fecha) : showEditarGasto.fecha}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-700 mb-1">Monto</label>
+                <input type="number" min="0.01" step="0.01" defaultValue={showEditarGasto.monto}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-700 mb-1">Descripción</label>
+              <input type="text" defaultValue={showEditarGasto.descripcion}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-gray-700 mb-1">Categoría</label>
+                <AppSelect defaultValue={showEditarGasto.categoria}>
+                  {CATEGORIAS.map(c => <option key={c}>{c}</option>)}
+                </AppSelect>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-700 mb-1">No. Ticket</label>
+                <input type="text" defaultValue={showEditarGasto.noComprobante}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-700 mb-1">Autoriza</label>
+              <input type="text" defaultValue={showEditarGasto.autorizadoPor}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+            </div>
+          </div>
+        )}
+      </FormModal>
+
+      {/* Modal Editar distribución */}
+      <FormModal
+        open={!!showEditarDist}
+        title="Editar distribución / transferencia"
+        onClose={() => setShowEditarDist(null)}
+        onSave={handleEditarDistribucion}
+        footer={
+          <>
+            <button onClick={() => setShowEditarDist(null)} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-900 border border-gray-200 rounded-lg transition-colors">Cancelar</button>
+            <button className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-2"><Pencil size={13} /> Guardar cambios</button>
+          </>
+        }
+      >
+        {showEditarDist && (
+          <div className="space-y-4">
+            <div className="p-3 rounded-lg bg-gray-50 border border-gray-200 text-sm text-gray-700">
+              <span className="font-semibold">Caja:</span> {showEditarDist.cajaNombre}
+              {showEditarDist.tipo === "transferencia_entrada" && showEditarDist.cajaOrigenNombre && (
+                <span className="ml-2 text-purple-600">· Origen: {showEditarDist.cajaOrigenNombre}</span>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-gray-700 mb-1">Fecha</label>
+                <input type="date" defaultValue={showEditarDist.fecha}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-700 mb-1">Monto</label>
+                <input type="number" min="0.01" step="0.01" defaultValue={showEditarDist.monto}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-700 mb-1">Concepto</label>
+              <input type="text" defaultValue={showEditarDist.concepto}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-700 mb-1">Autoriza</label>
+              <input type="text" defaultValue={showEditarDist.autorizadoPor}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+            </div>
+          </div>
+        )}
+      </FormModal>
 
       {duplicateWarn && (
         <DuplicateWarningModal
