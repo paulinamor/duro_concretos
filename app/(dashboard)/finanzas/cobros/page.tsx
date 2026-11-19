@@ -79,6 +79,15 @@ const BANCOS  = ["Banamex", "Banregio", "BBVA", "HSBC", "Otro", "Santander"] as 
 
 type View = "list" | "new" | "detail";
 
+interface DiscrepanciaAbono {
+  id: string;
+  folio: string;
+  cliente: string;
+  nombreObra?: string;
+  actual: number;
+  correcto: number;
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function CobrosPage() {
@@ -96,6 +105,8 @@ export default function CobrosPage() {
   const [editPago, setEditPago]     = useState<Pago | null>(null);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [solicitudesPagos, setSolicitudesPagos] = useState<SolicitudAutorizacion[]>([]);
+  const [reconcilPreview, setReconcilPreview] = useState<DiscrepanciaAbono[] | null>(null);
+  const [aplicandoReconcil, setAplicandoReconcil] = useState(false);
   useEffect(() => {
     const session = getStoredSession();
     setIsSuperAdmin(session?.email?.toLowerCase() === "leonardo@lpsoft.mx");
@@ -286,7 +297,7 @@ export default function CobrosPage() {
   }
 
   async function handleReconciliarAbonos() {
-    // Recalcula montoPagado de cada programación desde la suma real de abonos
+    // Solo calcula diferencias y abre el modal de vista previa — sin escribir a Firestore
     const reconMap = new Map<string, number>();
     for (const pago of pagos) {
       for (const abono of pago.abonos ?? []) {
@@ -294,25 +305,43 @@ export default function CobrosPage() {
         reconMap.set(abono.programacionId, parseFloat(((reconMap.get(abono.programacionId) ?? 0) + abono.monto).toFixed(2)));
       }
     }
-    const saves: Promise<void>[] = [];
-    const updatedProgs: { id: string; montoPagado: number }[] = [];
+    const diff: DiscrepanciaAbono[] = [];
     for (const prog of progs) {
       const correcto = reconMap.get(prog.id) ?? 0;
-      if (Math.abs((prog.montoPagado ?? 0) - correcto) > 0.001) {
-        saves.push(upsertDocument(COLLECTIONS.programaciones, prog.id, { montoPagado: correcto }));
-        updatedProgs.push({ id: prog.id, montoPagado: correcto });
+      const actual   = prog.montoPagado ?? 0;
+      if (Math.abs(actual - correcto) > 0.001) {
+        diff.push({
+          id: prog.id,
+          folio: prog.folio || prog.id.slice(-8),
+          cliente: prog.cliente,
+          nombreObra: prog.nombreObra,
+          actual,
+          correcto,
+        });
       }
     }
-    if (saves.length === 0) {
+    if (diff.length === 0) {
       window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: "Todo consistente — no hay discrepancias en los abonos." } }));
       return;
     }
-    await Promise.all(saves);
-    setProgs((prev) => prev.map((p) => {
-      const upd = updatedProgs.find((u) => u.id === p.id);
-      return upd ? { ...p, montoPagado: upd.montoPagado } : p;
-    }));
-    window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `Reconciliación completa — ${saves.length} programación${saves.length !== 1 ? "es" : ""} corregida${saves.length !== 1 ? "s" : ""}.` } }));
+    setReconcilPreview(diff);
+  }
+
+  async function handleConfirmarReconciliacion(diff: DiscrepanciaAbono[]) {
+    setAplicandoReconcil(true);
+    try {
+      await Promise.all(diff.map((d) =>
+        upsertDocument(COLLECTIONS.programaciones, d.id, { montoPagado: d.correcto })
+      ));
+      setProgs((prev) => prev.map((p) => {
+        const d = diff.find((x) => x.id === p.id);
+        return d ? { ...p, montoPagado: d.correcto } : p;
+      }));
+      setReconcilPreview(null);
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: `Reconciliación completa — ${diff.length} programación${diff.length !== 1 ? "es" : ""} corregida${diff.length !== 1 ? "s" : ""}.` } }));
+    } finally {
+      setAplicandoReconcil(false);
+    }
   }
 
   async function handleVincularCliente(nombre: string, clienteId: string, newDoc?: ClienteDoc) {
@@ -513,6 +542,102 @@ export default function CobrosPage() {
           </div>
         </div>
       )}
+
+      {/* Modal vista previa reconciliación */}
+      {reconcilPreview && (
+        <ReconciliacionModal
+          diff={reconcilPreview}
+          aplicando={aplicandoReconcil}
+          onClose={() => setReconcilPreview(null)}
+          onConfirmar={() => handleConfirmarReconciliacion(reconcilPreview)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Reconciliación Modal ────────────────────────────────────────────────────
+
+function ReconciliacionModal({
+  diff, aplicando, onClose, onConfirmar,
+}: {
+  diff: DiscrepanciaAbono[];
+  aplicando: boolean;
+  onClose: () => void;
+  onConfirmar: () => void;
+}) {
+  const aumentos  = diff.filter((d) => d.correcto > d.actual);
+  const reducciones = diff.filter((d) => d.correcto < d.actual);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => !aplicando && onClose()} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden" style={{ colorScheme: "light" }}>
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0">
+          <div>
+            <h2 className="text-sm font-bold text-gray-900">Vista previa — Reconciliación de abonos</h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {diff.length} programación{diff.length !== 1 ? "es" : ""} con discrepancia ·{" "}
+              {aumentos.length > 0 && <span className="text-green-700">{aumentos.length} corrección{aumentos.length !== 1 ? "es" : ""} al alza</span>}
+              {aumentos.length > 0 && reducciones.length > 0 && " · "}
+              {reducciones.length > 0 && <span className="text-amber-700">{reducciones.length} reducción{reducciones.length !== 1 ? "es" : ""}</span>}
+            </p>
+          </div>
+          <button onClick={() => !aplicando && onClose()} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl cursor-pointer transition-colors">
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Tabla */}
+        <div className="overflow-y-auto flex-1">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 bg-gray-50/95 backdrop-blur-sm">
+              <tr className="border-b border-gray-100">
+                <th className="px-4 py-2.5 text-left text-gray-400 font-semibold uppercase tracking-wide">Cliente</th>
+                <th className="px-4 py-2.5 text-left text-gray-400 font-semibold uppercase tracking-wide">Folio / Obra</th>
+                <th className="px-4 py-2.5 text-right text-gray-400 font-semibold uppercase tracking-wide">Actual</th>
+                <th className="px-4 py-2.5 text-right text-gray-400 font-semibold uppercase tracking-wide">Correcto</th>
+                <th className="px-4 py-2.5 text-right text-gray-400 font-semibold uppercase tracking-wide">Cambio</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {diff.map((d) => {
+                const delta = d.correcto - d.actual;
+                const sube  = delta > 0;
+                return (
+                  <tr key={d.id} className="hover:bg-gray-50/50 transition-colors">
+                    <td className="px-4 py-2.5 font-medium text-gray-800">{d.cliente}</td>
+                    <td className="px-4 py-2.5">
+                      <p className="font-semibold text-gray-700">{d.folio}</p>
+                      {d.nombreObra && <p className="text-gray-400 truncate max-w-[180px]">{d.nombreObra}</p>}
+                    </td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-gray-500">{currency(d.actual)}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-gray-900">{currency(d.correcto)}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">
+                      <span className={`font-bold ${sube ? "text-green-600" : "text-amber-600"}`}>
+                        {sube ? "+" : ""}{currency(delta)}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-gray-100 flex gap-3 shrink-0 bg-gray-50/50">
+          <button onClick={() => !aplicando && onClose()} disabled={aplicando}
+            className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-100 cursor-pointer transition-colors font-medium disabled:opacity-50">
+            Cancelar
+          </button>
+          <button onClick={onConfirmar} disabled={aplicando}
+            className="flex-1 py-2.5 rounded-xl bg-[#CC2229] text-white text-sm font-semibold hover:bg-[#B01E24] disabled:opacity-60 cursor-pointer transition-colors flex items-center justify-center gap-2">
+            {aplicando ? <><Loader2 size={14} className="animate-spin" /> Aplicando…</> : <><CheckCircle2 size={14} /> Aplicar {diff.length} cambio{diff.length !== 1 ? "s" : ""}</>}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
