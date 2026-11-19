@@ -2448,6 +2448,7 @@ export default function ProgramacionPage() {
   const [loading, setLoading] = useState(true);
   const [excelFullscreen, setExcelFullscreen] = useState(false);
   const [rastreoSearch, setRastreoSearch] = useState("");
+  const [tablaSearch, setTablaSearch] = useState("");
   const [prevViewMode, setPrevViewMode] = useState<Exclude<ViewMode, "rastreo">>("dia");
   const [timelineProg, setTimelineProg] = useState<Programacion | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -2596,11 +2597,20 @@ export default function ProgramacionPage() {
     } else {
       list = programaciones.filter((p) => (p.dia ?? "") >= rangoInicio && (p.dia ?? "") <= rangoFin);
     }
+    if (tablaSearch.trim()) {
+      const q = tablaSearch.toLowerCase().trim();
+      list = list.filter((p) =>
+        p.folio?.toLowerCase().includes(q) ||
+        p.cliente?.toLowerCase().includes(q) ||
+        p.vendedor?.toLowerCase().includes(q) ||
+        p.direccion?.toLowerCase().includes(q),
+      );
+    }
     return list.sort((a, b) => {
       const dc = (b.dia ?? "").localeCompare(a.dia ?? "");
       return dc !== 0 ? dc : (a.hora ?? "").localeCompare(b.hora ?? "");
     });
-  }, [programaciones, diaActivo, viewMode, prevViewMode, rangoInicio, rangoFin, rastreoSearch]);
+  }, [programaciones, diaActivo, viewMode, prevViewMode, rangoInicio, rangoFin, rastreoSearch, tablaSearch]);
 
   const totalM3 = filtered.reduce((s, p) => s + (p.m3Totales ?? 0), 0);
   const totalFacturado = filtered.reduce((s, p) => s + (p.total ?? 0), 0);
@@ -2952,6 +2962,17 @@ export default function ProgramacionPage() {
                 onChange={(e) => setRastreoSearch(e.target.value)}
                 placeholder="Buscar folio, cliente, vendedor…"
                 className="w-80 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg pl-9 pr-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
+              />
+            </div>
+          )}
+          {viewMode !== "rastreo" && (
+            <div className="relative">
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+              <input
+                value={tablaSearch}
+                onChange={(e) => setTablaSearch(e.target.value)}
+                placeholder="Buscar folio, cliente, vendedor…"
+                className="w-72 bg-[#1A1A1A] border border-[#3A3A3A] rounded-lg pl-9 pr-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#CC2229]"
               />
             </div>
           )}

@@ -22,6 +22,7 @@ export interface ChoferRow {
 
 export interface ExcelProg {
   id?: string;
+  folio?: string;
   dia: string;
   vendedor: string;
   diaHoraPedido: string;
@@ -340,7 +341,14 @@ export default function ExcelView({
                         className={`${td} sticky left-0 z-10 bg-[#242424] border-r border-[#3A3A3A] text-[10px] text-gray-400 font-medium leading-tight ${tx}`}
                         style={rc ? { backgroundColor: rc } : undefined}
                       >
-                        {isFirst ? formatDiaLong(prog.dia) : ""}
+                        {isFirst ? (
+                          <div className="flex flex-col gap-0.5">
+                            <span>{formatDiaLong(prog.dia)}</span>
+                            {prog.folio && (
+                              <span className="text-[9px] font-mono text-[#CC2229]/80 uppercase tracking-wide">{prog.folio}</span>
+                            )}
+                          </div>
+                        ) : ""}
                       </td>
 
                       {/* VENDEDOR — sticky col 2 */}

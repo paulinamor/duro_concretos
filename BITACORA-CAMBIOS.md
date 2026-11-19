@@ -7,6 +7,29 @@
 
 ## Noviembre 2026
 
+### 2026-11-19 (sesión 19-i) — ✨ Programación: buscador en vista tabla + folio visible
+
+#### ✨ Mejora — Programación: buscador por folio/cliente/vendedor en vista tabla
+- **Archivos:** `app/(dashboard)/transporte/programacion/page.tsx`, `ExcelView.tsx`
+- **Descripción:** Se agregó un campo de búsqueda en las vistas Día/Semana/Mes/Rango (igual al de Rastreo de viajes). Filtra por folio de programación, cliente, vendedor o dirección. También se muestra el folio (ej. PROG-2026-0518) debajo de la fecha en la columna DÍA de la tabla.
+- **Horas estimadas:** 0.5 hrs
+
+---
+
+### 2026-11-19 (sesión 19-h) — 🐛 Cobros: orden correcto de coladas y remisiones
+
+#### 🐛 Bug — Cobros: remisiones del cliente ordenadas por fecha correcta
+- **Archivo:** `app/(dashboard)/finanzas/cobros/page.tsx`
+- **Descripción:** Las remisiones en el estado de cuenta de un cliente se ordenaban con `localeCompare` sobre fechas en formato `DD/MM/YYYY`, lo que producía orden lexicográfico incorrecto (ej. marzo aparecía antes que septiembre). Se reemplazó por comparación de timestamps parseando el formato DD/MM/YYYY.
+- **Horas estimadas:** 0.25 hrs
+
+#### 🔧 Ajuste — Cobros: coladas pendientes ordenadas más recientes primero
+- **Archivo:** `app/(dashboard)/finanzas/cobros/page.tsx`
+- **Descripción:** En el formulario Nuevo Pago y el detalle de pago, las coladas pendientes se mostraban en orden ascendente (más antiguas primero). Ahora se muestran descendentes (más recientes primero) para facilitar la lectura. La lógica de auto-aplicación (FIFO) sigue aplicando de más antigua a más reciente internamente.
+- **Horas estimadas:** 0.25 hrs
+
+---
+
 ### 2026-11-19 (sesión 19-g) — ✨🐛 Cobros: reconciliación de abonos + solicitudes globales
 
 #### ✨ Mejora — Herramienta de reconciliación de abonos (superadmin)

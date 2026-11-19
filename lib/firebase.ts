@@ -1,6 +1,7 @@
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
-import { initializeFirestore, getFirestore, persistentLocalCache, persistentMultipleTabManager, type Firestore } from "firebase/firestore";
+import { initializeFirestore, getFirestore, connectFirestoreEmulator, persistentLocalCache, persistentMultipleTabManager, type Firestore } from "firebase/firestore";
+import { connectAuthEmulator } from "firebase/auth";
 import { getStorage, type FirebaseStorage } from "firebase/storage";
 
 // NEXT_PUBLIC_ vars are embedded at build time. If missing (e.g. Vercel env not set),
@@ -38,7 +39,12 @@ if (isFirebaseConfigured) {
 }
 
 export const auth: Auth | null = app ? getAuth(app) : null;
+const useEmulator = typeof process !== "undefined" && process.env.NEXT_PUBLIC_USE_EMULATOR === "true";
 function buildDb(a: FirebaseApp): Firestore {
+  if (useEmulator) {
+    // Emulator: sin caché persistente para evitar conflictos
+    try { return initializeFirestore(a, {}); } catch { return getFirestore(a); }
+  }
   try {
     return initializeFirestore(a, {
       localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
@@ -49,6 +55,10 @@ function buildDb(a: FirebaseApp): Firestore {
 }
 export const db: Firestore | null = app ? buildDb(app) : null;
 export const storage: FirebaseStorage | null = app ? getStorage(app) : null;
+
+// Conectar al emulador local solo cuando NEXT_PUBLIC_USE_EMULATOR=true
+if (useEmulator && db) { try { connectFirestoreEmulator(db, "127.0.0.1", 8080); } catch { /* ya conectado */ } }
+if (useEmulator && auth) { try { connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true }); } catch { /* ya conectado */ } }
 
 // Secondary app instance — used to create users without signing out the current admin
 export const authSecondary: Auth | null = secondaryApp ? getAuth(secondaryApp) : null;

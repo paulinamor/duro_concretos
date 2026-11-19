@@ -389,7 +389,8 @@ export default function CobrosPage() {
       const recibos = allDocs.filter((r) => typeof r.receiptNumber === "number" && r.receiptNumber >= 1) as unknown as ConcreteReceipt[];
       const remisiones = allDocs.filter((r) => r.tipo === "despacho") as unknown as RemisionDespacho[];
       setCuentaRecibos(recibos.sort((a, b) => b.receiptNumber - a.receiptNumber));
-      setCuentaRemisiones(remisiones.sort((a, b) => b.fecha.localeCompare(a.fecha)));
+      const fToMs = (f: string) => { const [d, m, y] = f.split("/").map(Number); return new Date(y, m - 1, d).getTime(); };
+      setCuentaRemisiones(remisiones.sort((a, b) => fToMs(b.fecha) - fToMs(a.fecha)));
     } catch (e) {
       console.error("loadCuentaCliente:", e);
     } finally {
@@ -1812,7 +1813,7 @@ function NuevoPagoView({ clientesList, progs, prefillClienteId, prefillClienteNo
     if (!cliente) return [];
     return progs
       .filter((p) => norm(p.cliente) === norm(cliente) && saldoPendiente(p) > 0.01)
-      .sort((a, b) => a.dia.localeCompare(b.dia));
+      .sort((a, b) => b.dia.localeCompare(a.dia));
   }, [progs, cliente]);
 
   // Al cambiar el cliente, seleccionar todas las coladas por defecto
@@ -1852,11 +1853,11 @@ function NuevoPagoView({ clientesList, progs, prefillClienteId, prefillClienteNo
       const id = `PAGO-${Date.now()}`;
       const montoTotal = parseFloat(cantidad);
 
-      // Auto-aplicar a coladas seleccionadas en orden (más antiguas primero)
+      // Auto-aplicar a coladas seleccionadas en orden (más antiguas primero, FIFO)
       const abonos: AbonoAplicado[] = [];
       const progUpdates: { id: string; montoPagado: number }[] = [];
       let remaining = montoTotal;
-      for (const prog of progsSeleccionadas) {
+      for (const prog of [...progsSeleccionadas].sort((a, b) => a.dia.localeCompare(b.dia))) {
         if (remaining <= 0.001) break;
         const sp = saldoPendiente(prog);
         if (sp <= 0.001) continue;
@@ -2068,7 +2069,7 @@ function DetallePagoView({ pago, progs, onBack, onUpdated }: {
   const [saving, setSaving]             = useState(false);
 
   const progsCliente = useMemo(
-    () => progsLocal.filter((p) => norm(p.cliente) === norm(pagoLocal.cliente)).sort((a, b) => a.dia.localeCompare(b.dia)),
+    () => progsLocal.filter((p) => norm(p.cliente) === norm(pagoLocal.cliente)).sort((a, b) => b.dia.localeCompare(a.dia)),
     [progsLocal, pagoLocal.cliente],
   );
 
@@ -2098,7 +2099,7 @@ function DetallePagoView({ pago, progs, onBack, onUpdated }: {
       const abonos: AbonoAplicado[] = [];
       const progUpdates: { id: string; montoPagado: number }[] = [];
       let remaining = pagoLocal.cantidad;
-      for (const prog of pendientes) {
+      for (const prog of [...pendientes].sort((a, b) => a.dia.localeCompare(b.dia))) {
         if (remaining <= 0.001) break;
         const sp = saldoPendiente(prog);
         if (sp <= 0.001) continue;
