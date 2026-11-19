@@ -11,7 +11,8 @@ import type { ExcelProg } from "./ExcelView";
 import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
 import ModuleLoading from "@/components/ModuleLoading";
-import { getCollectionDocs, getDocument, subscribeToCollection, upsertDocument, deleteDocument, COLLECTIONS, type SolicitudAutorizacion, type Notificacion, getAllUserProfiles, where } from "@/lib/db";
+import { getCollectionDocs, getDocument, subscribeToCollection, upsertDocument, deleteDocument, COLLECTIONS, type SolicitudAutorizacion, where } from "@/lib/db";
+import { notificarAutorizadores } from "@/lib/notificaciones";
 import { filterByPlanta, getStoredSession, withPlantaTag, getCapturePlanta } from "@/lib/auth";
 import { tdBomToBombeo, normalizeTdBom } from "@/lib/sgp";
 import { todayCST, localISODate } from "@/lib/dateUtils";
@@ -2734,26 +2735,12 @@ export default function ProgramacionPage() {
         planta: solicitudElim.planta,
       };
       await upsertDocument(COLLECTIONS.solicitudesAutorizacion, solicitudId, solicitud);
-
-      // Notificar a todos los usuarios con canAuthorize
-      const allUsers = await getAllUserProfiles();
-      const autorizadores = allUsers.filter((u) => u.canAuthorize && u.status === "Activo");
-      await Promise.all(autorizadores.map((u) => {
-        const notifId = `notif_autorizacion_${solicitudId}_${u.id}`;
-        const notif: Omit<import("@/lib/db").Notificacion, "id"> = {
-          titulo: "Solicitud de eliminación pendiente",
-          detalle: `${session?.name ?? "Un usuario"} solicita eliminar prog. ${solicitudElim.folio ?? solicitudElim.id} — ${solicitudElim.cliente}`,
-          href: "/configuracion?tab=autorizaciones",
-          tag: "Autorización",
-          tipo: "autorizacion",
-          prioridad: "alta",
-          destinatarioEmail: u.email,
-          leidoPor: [],
-          creadoEn: new Date().toISOString(),
-          planta: solicitudElim.planta,
-        };
-        return upsertDocument(COLLECTIONS.notificaciones, notifId, notif);
-      }));
+      void notificarAutorizadores({
+        solicitudId,
+        titulo: "Solicitud: eliminar programación",
+        detalle: `${session?.name ?? "Un usuario"} solicita eliminar prog. ${solicitudElim.folio ?? solicitudElim.id} — ${solicitudElim.cliente}`,
+        planta: solicitudElim.planta,
+      });
 
       setSolicitudElim(null);
       setMotivoElim("");

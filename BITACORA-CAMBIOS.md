@@ -7,6 +7,15 @@
 
 ## Noviembre 2026
 
+### 2026-11-19 (sesión 19-l) — ✨ Notificaciones en solicitudes de autorización
+
+#### ✨ Mejora — Todas las solicitudes de autorización notifican a los autorizadores
+- **Archivos:** `lib/notificaciones.ts` (nuevo), `crm/clientes`, `finanzas/cobros`, `operaciones/inventario`, `ventas/programacion`, `transporte/programacion`
+- **Descripción:** Se creó la función helper `notificarAutorizadores()` centralizada. Ahora cuando cualquier usuario genera una solicitud (nuevo cliente, editar pago, editar inventario, eliminar programación), todos los usuarios con `canAuthorize: true` reciben automáticamente una notificación en el bell del Header con link directo a Configuración > Autorizaciones. Transporte ya tenía la lógica inline; se migró al helper centralizado.
+- **Horas estimadas:** 1 hr
+
+---
+
 ### 2026-11-19 (sesión 19-k) — 🐛 Auditoría: manejo de errores en handlers críticos
 
 #### 🐛 Bug — Cobros: `handleEliminar` sin catch ni toast de éxito

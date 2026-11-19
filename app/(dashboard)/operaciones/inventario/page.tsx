@@ -17,6 +17,7 @@ import { filterByPlanta, getActivePlanta, getStoredSession } from "@/lib/auth";
 import { todayCST, currentMonthCST } from "@/lib/dateUtils";
 import { storage } from "@/lib/firebase";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
+import { notificarAutorizadores } from "@/lib/notificaciones";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -1232,6 +1233,12 @@ export default function InventarioPage() {
     };
     await upsertDocument(COLLECTIONS.solicitudesAutorizacion, id, { ...solicitud });
     setSolicitudesEdicion((prev) => [{ ...solicitud, id }, ...prev]);
+    void notificarAutorizadores({
+      solicitudId: id,
+      titulo: "Solicitud: edición de inventario",
+      detalle: `${session?.name ?? session?.email ?? "Un usuario"} solicita editar entrada de ${solicitud.materialLabel ?? solicitud.documentoId}.`,
+      planta: localPlanta,
+    });
     window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: "Solicitud enviada. Pendiente de autorización." } }));
   };
 

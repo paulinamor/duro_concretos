@@ -15,6 +15,7 @@ import { normalizeTdBom } from "@/lib/sgp";
 import { useCollection } from "@/lib/useCollection";
 import { tiposCliente, type Cliente, type TipoCliente } from "@/lib/crmClientes";
 import { matchesQuery } from "@/lib/search";
+import { notificarAutorizadores } from "@/lib/notificaciones";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1296,6 +1297,12 @@ export default function VentasProgramacionPage() {
       creadoEn: new Date().toISOString(),
     };
     await upsertDocument(COLLECTIONS.solicitudesAutorizacion, solId, withPlantaTag(solicitud as Record<string, unknown>));
+    void notificarAutorizadores({
+      solicitudId: solId,
+      titulo: "Solicitud: nuevo cliente",
+      detalle: `${session?.name ?? session?.email ?? "Un usuario"} solicita registrar al cliente ${razonSocial}.`,
+      planta: getActivePlanta() ?? undefined,
+    });
     window.dispatchEvent(new CustomEvent("duro:toast", {
       detail: { type: "info", title: "Solicitud enviada", message: `El registro de ${razonSocial} está pendiente de autorización.` },
     }));

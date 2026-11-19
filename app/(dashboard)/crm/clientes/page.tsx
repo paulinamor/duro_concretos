@@ -41,6 +41,7 @@ import { todayCST } from "@/lib/dateUtils";
 import { matchesQuery } from "@/lib/search";
 import { getStoredSession } from "@/lib/auth";
 import { REGIMEN_FISCAL, USO_CFDI } from "@/lib/sat-catalogs";
+import { notificarAutorizadores } from "@/lib/notificaciones";
 
 const DEDUP_STARTED_KEY = "duro_dedup_started_ts";
 const DEDUP_DONE_KEY = "duro_dedup_done_ts";
@@ -874,7 +875,13 @@ export default function CrmClientesPage() {
         status: "pendiente",
         creadoEn: new Date().toISOString(),
       };
-      await upsertDocument(COLLECTIONS.solicitudesAutorizacion, `sol-cl-${Date.now()}`, sol as Record<string, unknown>);
+      const solId = `sol-cl-${Date.now()}`;
+      await upsertDocument(COLLECTIONS.solicitudesAutorizacion, solId, sol as Record<string, unknown>);
+      void notificarAutorizadores({
+        solicitudId: solId,
+        titulo: "Solicitud: nuevo cliente",
+        detalle: `${session?.name ?? session?.email ?? "Un usuario"} solicita registrar al cliente ${razonSocial}.`,
+      });
       window.dispatchEvent(new CustomEvent("duro:toast", {
         detail: { type: "info", title: "Solicitud enviada", message: `El registro de ${razonSocial} está pendiente de autorización.` },
       }));

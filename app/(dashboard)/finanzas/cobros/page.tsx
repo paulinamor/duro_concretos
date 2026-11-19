@@ -11,6 +11,7 @@ import { upsertDocument, deleteDocument, getCollectionDocs, COLLECTIONS, subscri
 import { currency } from "@/lib/formatters";
 import { filterByPlanta, withPlantaTag, getStoredSession } from "@/lib/auth";
 import { todayCST } from "@/lib/dateUtils";
+import { notificarAutorizadores } from "@/lib/notificaciones";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -237,6 +238,11 @@ export default function CobrosPage() {
       };
       await upsertDocument(COLLECTIONS.solicitudesAutorizacion, id, sol);
       setSolicitudesPagos((prev) => [{ ...sol, id }, ...prev]);
+      void notificarAutorizadores({
+        solicitudId: id,
+        titulo: "Solicitud: edición de pago",
+        detalle: `${session?.name ?? session?.email ?? "Un usuario"} solicita editar ${sol.materialLabel}.`,
+      });
       window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", message: "Solicitud enviada. Pendiente de autorización." } }));
     }
     setEditPago(null);
