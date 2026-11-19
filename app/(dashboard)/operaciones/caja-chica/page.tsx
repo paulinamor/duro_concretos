@@ -325,6 +325,7 @@ export default function CajaChicaPage() {
   const [usuarios, setUsuarios]               = useState<UserProfile[]>([]);
   const [loading, setLoading]                 = useState(true);
   const session = getStoredSession();
+  const isAdmin = session?.role === "admin";
 
   const [vistaActiva, setVistaActiva]         = useState<"principal" | string>("principal");
   const [showNuevaCaja, setShowNuevaCaja]     = useState(false);
@@ -374,14 +375,17 @@ export default function CajaChicaPage() {
       getAllUserProfiles(),
       getCollectionDocs<SalidaCaja>(COLLECTIONS.cajasSalidas),
     ]).then(([configs, dists, gsts, recibos, salidas, users, salsCaja]) => {
-      const isAdmin = session?.role === "admin";
       const myEmail = session?.email ?? "";
       const allConfigs = configs as CajaChicaConfig[];
-      // Admin ve todas las cajas; operador solo las asignadas a su cuenta
+      // Admin ve todas las cajas activas; operador solo las asignadas a su cuenta
       const visibleConfigs = allConfigs.filter(c =>
-        c.activa && (isAdmin || !c.responsableEmail || c.responsableEmail === myEmail)
+        c.activa && (isAdmin || c.responsableEmail === myEmail)
       );
       setCajasConfig(visibleConfigs);
+      // Operador arranca directo en su caja, no en Principal
+      if (!isAdmin && visibleConfigs.length > 0) {
+        setVistaActiva(visibleConfigs[0].id);
+      }
       setCajasInactivas(allConfigs.filter(c => !c.activa));
       setDistribuciones(dists);
       setGastos(gsts);
@@ -762,34 +766,40 @@ export default function CajaChicaPage() {
         <p className="text-gray-500 text-sm">Control de efectivo y gastos menores</p>
         <div className="flex gap-2">
           {vistaActiva === "principal" ? (
-            <button
-              onClick={() => setShowDistribuir(true)}
-              disabled={cajasConfig.length === 0}
-              className="flex items-center gap-2 bg-[#1A1A1A] border border-[#3A3A3A] hover:border-[#CC2229] text-gray-300 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-            >
-              <ArrowRight size={14} />
-              Distribuir a caja
-            </button>
+            isAdmin && (
+              <button
+                onClick={() => setShowDistribuir(true)}
+                disabled={cajasConfig.length === 0}
+                className="flex items-center gap-2 bg-[#1A1A1A] border border-[#3A3A3A] hover:border-[#CC2229] text-gray-300 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              >
+                <ArrowRight size={14} />
+                Distribuir a caja
+              </button>
+            )
           ) : (
             <>
-              <button
-                onClick={() => { setDevolverMonto(""); setDevolverFecha(""); setDevolverAutoriza(""); setDevolverConcepto("Devolución a caja principal"); setShowDevolver(true); }}
-                disabled={saldoCaja <= 0}
-                title="Devolver fondos a caja principal"
-                className="flex items-center gap-2 bg-[#1A1A1A] border border-[#3A3A3A] hover:border-blue-500 text-gray-400 hover:text-blue-400 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-2 rounded-lg text-sm transition-colors"
-              >
-                <RotateCcw size={14} />
-                Devolver
-              </button>
-              <button
-                onClick={() => { setTransferirDestino(""); setTransferirMonto(""); setTransferirFecha(""); setTransferirAutoriza(""); setTransferirConcepto("Transferencia entre cajas"); setShowTransferir(true); }}
-                disabled={cajasConfig.filter(c => c.id !== vistaActiva).length === 0 || saldoCaja <= 0}
-                title="Transferir fondos a otra caja"
-                className="flex items-center gap-2 bg-[#1A1A1A] border border-[#3A3A3A] hover:border-purple-500 text-gray-400 hover:text-purple-400 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-2 rounded-lg text-sm transition-colors"
-              >
-                <ArrowLeftRight size={14} />
-                Transferir
-              </button>
+              {isAdmin && (
+                <button
+                  onClick={() => { setDevolverMonto(""); setDevolverFecha(""); setDevolverAutoriza(""); setDevolverConcepto("Devolución a caja principal"); setShowDevolver(true); }}
+                  disabled={saldoCaja <= 0}
+                  title="Devolver fondos a caja principal"
+                  className="flex items-center gap-2 bg-[#1A1A1A] border border-[#3A3A3A] hover:border-blue-500 text-gray-400 hover:text-blue-400 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-2 rounded-lg text-sm transition-colors"
+                >
+                  <RotateCcw size={14} />
+                  Devolver
+                </button>
+              )}
+              {isAdmin && (
+                <button
+                  onClick={() => { setTransferirDestino(""); setTransferirMonto(""); setTransferirFecha(""); setTransferirAutoriza(""); setTransferirConcepto("Transferencia entre cajas"); setShowTransferir(true); }}
+                  disabled={cajasConfig.filter(c => c.id !== vistaActiva).length === 0 || saldoCaja <= 0}
+                  title="Transferir fondos a otra caja"
+                  className="flex items-center gap-2 bg-[#1A1A1A] border border-[#3A3A3A] hover:border-purple-500 text-gray-400 hover:text-purple-400 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-2 rounded-lg text-sm transition-colors"
+                >
+                  <ArrowLeftRight size={14} />
+                  Transferir
+                </button>
+              )}
               <button
                 onClick={() => exportCSV(filteredGastos, cajaActual?.nombre ?? "caja")}
                 title="Exportar gastos a CSV"
@@ -797,13 +807,15 @@ export default function CajaChicaPage() {
               >
                 <Download size={14} />
               </button>
-              <button
-                onClick={() => setShowSettings(true)}
-                className="flex items-center gap-2 bg-[#1A1A1A] border border-[#3A3A3A] hover:border-[#3A3A3A] text-gray-400 hover:text-white px-3 py-2 rounded-lg text-sm transition-colors"
-                title="Configurar caja"
-              >
-                <Settings size={14} />
-              </button>
+              {isAdmin && (
+                <button
+                  onClick={() => setShowSettings(true)}
+                  className="flex items-center gap-2 bg-[#1A1A1A] border border-[#3A3A3A] hover:border-[#3A3A3A] text-gray-400 hover:text-white px-3 py-2 rounded-lg text-sm transition-colors"
+                  title="Configurar caja"
+                >
+                  <Settings size={14} />
+                </button>
+              )}
               <button
                 onClick={() => setShowFormGasto(true)}
                 className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#991A1E] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
@@ -818,7 +830,7 @@ export default function CajaChicaPage() {
 
       {/* Tabs de cajas */}
       <div className="flex flex-wrap items-center gap-2">
-        <button
+        {isAdmin && <button
           onClick={() => setVistaActiva("principal")}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-all ${
             vistaActiva === "principal"
@@ -831,7 +843,7 @@ export default function CajaChicaPage() {
           <span className={`text-xs rounded px-1.5 py-0.5 font-mono ${vistaActiva === "principal" ? "bg-white/20" : "bg-[#1A1A1A] text-gray-400"}`}>
             ${saldoPrincipal.toLocaleString()}
           </span>
-        </button>
+        </button>}
 
         {cajasConfig.map(c => {
           const rec  = distribuciones.filter(d => d.cajaId === c.id).reduce((s, d) => s + d.monto, 0);
@@ -861,15 +873,17 @@ export default function CajaChicaPage() {
           );
         })}
 
-        <button
-          onClick={() => setShowNuevaCaja(true)}
-          className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-dashed border-[#3A3A3A] text-gray-500 hover:border-[#CC2229]/60 hover:text-gray-300 text-sm transition-all"
-        >
-          <Plus size={14} />
-          Nueva caja
-        </button>
+        {isAdmin && (
+          <button
+            onClick={() => setShowNuevaCaja(true)}
+            className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-dashed border-[#3A3A3A] text-gray-500 hover:border-[#CC2229]/60 hover:text-gray-300 text-sm transition-all"
+          >
+            <Plus size={14} />
+            Nueva caja
+          </button>
+        )}
 
-        {cajasInactivas.length > 0 && (
+        {isAdmin && cajasInactivas.length > 0 && (
           <button
             onClick={() => setShowCajasInactivas(v => !v)}
             className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl border text-sm transition-all ${

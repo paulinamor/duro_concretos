@@ -7,6 +7,15 @@
 
 ## Noviembre 2026
 
+### 2026-11-19 (sesión 19-p) — ✨ Caja Chica: control de acceso por rol
+
+#### ✨ Mejora — Operadores solo ven y operan su propia caja
+- **Archivo:** `app/(dashboard)/operaciones/caja-chica/page.tsx`
+- **Descripción:** Se implementó restricción completa por rol. Operadores: solo ven cajas asignadas a su email (se eliminó el filtro que mostraba cajas sin responsable), arrancan directo en su caja (no en Principal), no ven tab Principal, no ven botones Nueva caja / Distribuir / Devolver / Transferir / Settings. Solo pueden registrar gastos y exportar CSV. Admins: comportamiento sin cambios, ven todo.
+- **Horas estimadas:** 0.5 hrs
+
+---
+
 ### 2026-11-19 (sesión 19-o) — 🐛 Caja Chica: modal Transferir tenía el mismo bug que Devolver
 
 #### 🐛 Bug — Modal "Transferir" no procesaba los valores del formulario
