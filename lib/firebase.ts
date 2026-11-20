@@ -1,5 +1,5 @@
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
-import { getAuth, type Auth } from "firebase/auth";
+import { getAuth, onAuthStateChanged, type Auth } from "firebase/auth";
 import { initializeFirestore, getFirestore, connectFirestoreEmulator, persistentLocalCache, persistentMultipleTabManager, type Firestore } from "firebase/firestore";
 import { connectAuthEmulator } from "firebase/auth";
 import { getStorage, type FirebaseStorage } from "firebase/storage";
@@ -62,3 +62,11 @@ if (useEmulator && auth) { try { connectAuthEmulator(auth, "http://127.0.0.1:909
 
 // Secondary app instance — used to create users without signing out the current admin
 export const authSecondary: Auth | null = secondaryApp ? getAuth(secondaryApp) : null;
+
+// Resolves once Firebase Auth has confirmed its initial state (signed-in or not).
+// Await this before making any Firestore call to avoid the race condition where
+// onSnapshot fires before request.auth is populated server-side.
+export const authReady: Promise<void> = new Promise((resolve) => {
+  if (!auth) { resolve(); return; }
+  const unsub = onAuthStateChanged(auth, () => { unsub(); resolve(); });
+});

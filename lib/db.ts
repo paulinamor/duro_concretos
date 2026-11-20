@@ -18,7 +18,7 @@ import {
   WithFieldValue,
   writeBatch,
 } from "firebase/firestore";
-import { db } from "./firebase";
+import { db, authReady } from "./firebase";
 import type { Planta } from "./auth";
 import { logAudit } from "./errorLogger";
 
@@ -35,6 +35,7 @@ export async function getCollectionDocs<T>(
   collectionName: string,
   constraints: QueryConstraint[] = [],
 ): Promise<T[]> {
+  await authReady;
   const ref = collection(getDb(), collectionName);
   const q = constraints.length ? query(ref, ...constraints) : ref;
   const snap = await getDocs(q);
@@ -292,13 +293,24 @@ export function subscribeToCollection<T>(
   constraints: QueryConstraint[] = [],
   onError?: (err: Error) => void,
 ): () => void {
-  const ref = collection(getDb(), collectionName);
-  const q = constraints.length ? query(ref, ...constraints) : ref;
-  return onSnapshot(
-    q,
-    (snap) => { onData(snap.docs.map((d) => ({ id: d.id, ...d.data() } as T))); },
-    onError ?? ((err) => console.error(`[Firestore] subscribeToCollection error (${collectionName}):`, err)),
-  );
+  let unsub: (() => void) | null = null;
+  let cancelled = false;
+
+  // Wait for Firebase Auth to confirm its initial state before opening the
+  // Firestore listener — prevents "Missing or insufficient permissions" errors
+  // that occur when onSnapshot fires before request.auth is populated server-side.
+  authReady.then(() => {
+    if (cancelled) return;
+    const ref = collection(getDb(), collectionName);
+    const q = constraints.length ? query(ref, ...constraints) : ref;
+    unsub = onSnapshot(
+      q,
+      (snap) => { onData(snap.docs.map((d) => ({ id: d.id, ...d.data() } as T))); },
+      onError ?? ((err) => console.error(`[Firestore] subscribeToCollection error (${collectionName}):`, err)),
+    );
+  });
+
+  return () => { cancelled = true; unsub?.(); };
 }
 
 // ---------- multi-tenant server-side helpers ----------

@@ -9,10 +9,10 @@
 
 ### 2026-11-20 (sesión 20-b) — 🐛 Cobros: spinner infinito en cuentas con primer login reciente
 
-#### 🐛 Bug — Cobros se quedaba cargando indefinidamente para ciertas cuentas
-- **Archivos:** `lib/db.ts`, `app/(dashboard)/finanzas/cobros/page.tsx`
-- **Descripción:** `subscribeToCollection` usaba `onSnapshot` sin error handler. Si Firestore rechazaba la suscripción (race condition de inicialización de Firebase Auth en el primer login), los callbacks nunca se disparaban, `loadedPagos`/`loadedProgs` quedaban en `false` y el spinner era infinito. Afectaba cuentas con token de Firebase recién emitido; la cuenta de Leonardo no lo mostraba porque su token siempre está cacheado. Se agregó parámetro opcional `onError` a `subscribeToCollection` en `lib/db.ts`. En cobros, se pasaron handlers que llaman `checkDone()` incluso en error, y se agregó `.catch()` al `getCollectionDocs(clientes)` que tampoco tenía manejo de error.
-- **Horas estimadas:** 0.4 hrs
+#### 🐛 Bug — Cobros (y cualquier módulo) se quedaba cargando indefinidamente en primer login
+- **Archivos:** `lib/firebase.ts`, `lib/db.ts`, `app/(dashboard)/finanzas/cobros/page.tsx`
+- **Descripción:** Race condition de Firebase Auth: `subscribeToCollection` y `getCollectionDocs` arrancaban suscripciones Firestore antes de que `onAuthStateChanged` confirmara la sesión. Firestore veía `request.auth = null` y rechazaba; sin error handler, `loading` nunca se quitaba. Afectaba solo a cuentas con token no cacheado (primer login, inactividad prolongada, nuevo dispositivo). La solución correcta (como lo haría un sistema enterprise): exportar `authReady` desde `lib/firebase.ts` — una promesa que se resuelve en el primer disparo de `onAuthStateChanged`. `subscribeToCollection` y `getCollectionDocs` ahora esperan `authReady` antes de hacer cualquier llamada a Firestore. Fix defensivo adicional en cobros: error handlers que liberan el loading como segunda línea de defensa.
+- **Horas estimadas:** 0.6 hrs
 
 ---
 
