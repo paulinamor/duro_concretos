@@ -137,18 +137,18 @@ export default function CobrosPage() {
     const plantaQ = planta === "Pesquería" ? [where("planta", "==", "Pesquería")] : [];
 
     const unsubPagos = subscribeToCollection<Pago>(COLLECTIONS.pagos, (docs) => {
-      setPagos(filterByPlanta(docs).sort((a, b) => b.fecha.localeCompare(a.fecha)));
       if (!loadedPagos) { loadedPagos = true; checkDone(); }
+      setPagos(filterByPlanta(docs).sort((a, b) => (b.fecha ?? "").localeCompare(a.fecha ?? "")));
     }, plantaQ, () => { if (!loadedPagos) { loadedPagos = true; checkDone(); } });
     const unsubProgs = subscribeToCollection<Prog>(COLLECTIONS.programaciones, (docs) => {
-      setProgs(filterByPlanta(docs));
       if (!loadedProgs) { loadedProgs = true; checkDone(); }
+      setProgs(filterByPlanta(docs));
     }, plantaQ, () => { if (!loadedProgs) { loadedProgs = true; checkDone(); } });
 
     getCollectionDocs<ClienteDoc>(COLLECTIONS.clientes).then((cl) => {
-      setClientesList(cl.sort((a, b) => a.razonSocial.localeCompare(b.razonSocial, "es")));
       loadedClientes = true;
       checkDone();
+      setClientesList(cl.sort((a, b) => (a.razonSocial ?? "").localeCompare(b.razonSocial ?? "", "es")));
     }).catch(() => { loadedClientes = true; checkDone(); });
 
     // Carga en background — recibos de concreto para calcular saldo real en el landing

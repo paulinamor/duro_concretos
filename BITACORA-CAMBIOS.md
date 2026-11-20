@@ -11,8 +11,8 @@
 
 #### 🐛 Bug — Cobros (y cualquier módulo) se quedaba cargando indefinidamente en primer login
 - **Archivos:** `lib/firebase.ts`, `lib/db.ts`, `app/(dashboard)/finanzas/cobros/page.tsx`
-- **Descripción:** Race condition de Firebase Auth: `subscribeToCollection` y `getCollectionDocs` arrancaban suscripciones Firestore antes de que `onAuthStateChanged` confirmara la sesión. Firestore veía `request.auth = null` y rechazaba; sin error handler, `loading` nunca se quitaba. Afectaba solo a cuentas con token no cacheado (primer login, inactividad prolongada, nuevo dispositivo). La solución correcta (como lo haría un sistema enterprise): exportar `authReady` desde `lib/firebase.ts` — una promesa que se resuelve en el primer disparo de `onAuthStateChanged`. `subscribeToCollection` y `getCollectionDocs` ahora esperan `authReady` antes de hacer cualquier llamada a Firestore. Fix defensivo adicional en cobros: error handlers que liberan el loading como segunda línea de defensa.
-- **Horas estimadas:** 0.6 hrs
+- **Descripción:** Dos bugs independientes que producían el mismo síntoma. Bug A (login directo con token frío): race condition de Firebase Auth — `subscribeToCollection` y `getCollectionDocs` arrancaban antes de que `onAuthStateChanged` confirmara la sesión; Firestore veía `request.auth = null` y rechazaba. Solución: exportar `authReady` desde `lib/firebase.ts` (promesa que resuelve en el primer disparo de `onAuthStateChanged`); ambas funciones ahora la esperan. Bug B (impersonación): la línea `checkDone()` vivía DESPUÉS del `setPagos(...sort(...))` — si algún pago tenía `fecha: null`, el sort lanzaba un error silenciado y `loadedPagos` quedaba en false para siempre; con la cuenta de Allende afectaba documentos distintos a los de Pesquería. Solución: mover todos los `checkDone()` ANTES de la línea que procesa datos, y usar `?? ""` en todos los sorts para que un campo null no tire.
+- **Horas estimadas:** 0.8 hrs
 
 ---
 
