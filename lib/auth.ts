@@ -223,8 +223,8 @@ export function filterByPlanta<T extends { planta?: string }>(docs: T[]): T[] {
 
 /** Returns the concrete plant for a new record — never "Todas". */
 export function getCapturePlanta(): "Allende" | "Pesquería" {
-  const session = getStoredSession();
-  if (session?.planta && session.planta !== "Todas") return session.planta;
+  // Use plantaActiva (header selection) first, then profile planta — never default to profile
+  // when the user has explicitly switched plants via the header selector.
   const active = getActivePlanta();
   return active === "Todas" ? "Allende" : active;
 }

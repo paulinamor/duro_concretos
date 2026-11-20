@@ -12,6 +12,7 @@ import {
   startAfter,
   getCountFromServer,
   onSnapshot,
+  runTransaction,
   QueryConstraint,
   DocumentData,
   WithFieldValue,
@@ -364,4 +365,48 @@ export async function migrateLegacyPlanta(collectionName: string): Promise<{ mig
 
   if (batchCount > 0) await batch.commit();
   return { migrated, skipped };
+}
+
+/**
+ * Atomically returns the next folio number for programaciones.
+ * Uses a Firestore transaction on `counters/programaciones` to prevent
+ * duplicate folios when multiple users save simultaneously.
+ *
+ * Returns e.g. "PROG-2026-0051"
+ */
+export async function nextFolioProgramacion(): Promise<string> {
+  const database = getDb();
+  const year = new Date().getFullYear();
+  const counterRef = doc(database, "counters", `programaciones-${year}`);
+
+  // On first use, seed counter from existing max folio so we don't restart at 1
+  let seed = 0;
+  const counterSnap = await getDoc(counterRef);
+  if (!counterSnap.exists()) {
+    const existing = await getDocs(
+      query(
+        collection(database, "programaciones"),
+        where("folio", ">=", `PROG-${year}-`),
+        where("folio", "<", `PROG-${year + 1}-`),
+        orderBy("folio", "desc"),
+        limit(1),
+      ),
+    );
+    if (!existing.empty) {
+      const maxFolio = existing.docs[0].data().folio as string;
+      const m = maxFolio.match(/PROG-\d{4}-(\d+)/);
+      if (m) seed = parseInt(m[1]);
+    }
+  }
+
+  const nextNum = await runTransaction(database, async (tx) => {
+    const snap = await tx.get(counterRef);
+    // If another concurrent request already initialized the counter, use its value
+    const current = snap.exists() ? (snap.data().last as number) : seed;
+    const next = current + 1;
+    tx.set(counterRef, { last: next, year });
+    return next;
+  });
+
+  return `PROG-${year}-${String(nextNum).padStart(4, "0")}`;
 }

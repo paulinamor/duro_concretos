@@ -8,7 +8,7 @@ import {
 import AppSelect from "@/components/AppSelect";
 import ModuleLoading from "@/components/ModuleLoading";
 import PlantaRequired from "@/components/PlantaRequired";
-import { upsertDocument, getCollectionDocs, COLLECTIONS, orderBy, limit, where, type SolicitudAutorizacion } from "@/lib/db";
+import { upsertDocument, getCollectionDocs, COLLECTIONS, orderBy, limit, where, nextFolioProgramacion, type SolicitudAutorizacion } from "@/lib/db";
 import { withPlantaTag, getStoredSession, getActivePlanta } from "@/lib/auth";
 import { todayCST, localISODate } from "@/lib/dateUtils";
 import { normalizeTdBom } from "@/lib/sgp";
@@ -176,15 +176,6 @@ function extractCoordsFromUrl(url: string): { lat: number; lng: number } | null 
   return null;
 }
 
-function generarFolio(progs: Programacion[]): string {
-  const year = new Date().getFullYear();
-  const nums = progs
-    .map((p) => p.folio?.match(/PROG-\d{4}-(\d+)/)?.[1])
-    .filter(Boolean)
-    .map((n) => parseInt(n!));
-  const next = nums.length > 0 ? Math.max(...nums) + 1 : 1;
-  return `PROG-${year}-${String(next).padStart(4, "0")}`;
-}
 
 function addDays(iso: string, d: number) {
   const dt = new Date(iso + "T12:00:00"); dt.setDate(dt.getDate() + d); return localISODate(dt);
@@ -1385,7 +1376,7 @@ export default function VentasProgramacionPage() {
       window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", title: "Guardado", message: "Pedido actualizado." } }));
     } else {
       const id = `prog-v-${Date.now()}`;
-      const folio = generarFolio(allProgs);
+      const folio = await nextFolioProgramacion();
       const newProg: Omit<Programacion, "id"> = {
         dia: form.dia,
         vendedor: vendedorNombre,

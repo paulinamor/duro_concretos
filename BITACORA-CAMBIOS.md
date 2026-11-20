@@ -7,6 +7,20 @@
 
 ## Noviembre 2026
 
+### 2026-11-20 (sesión 20-a) — 🐛 Programación ventas: folios duplicados y planta incorrecta
+
+#### 🐛 Bug — `getCapturePlanta()` usaba planta de perfil en vez de selección activa del header
+- **Archivo:** `lib/auth.ts`
+- **Descripción:** `getCapturePlanta()` revisaba primero `session.planta` (planta del perfil del usuario) antes de `session.plantaActiva` (selección del header). Esto hacía que todos los documentos se guardaran con la planta del perfil aunque el usuario hubiera cambiado la planta activa en el selector del header. Se simplificó la función para usar directamente `getActivePlanta()`, que ya tiene la prioridad correcta: `plantaActiva ?? planta ?? "Todas"`.
+- **Horas estimadas:** 0.3 hrs
+
+#### 🐛 Bug — Folios duplicados en programaciones de ventas (race condition)
+- **Archivos:** `lib/db.ts`, `app/(dashboard)/ventas/programacion/page.tsx`
+- **Descripción:** `generarFolio(allProgs)` usaba el snapshot local de React (limitado a 400 docs y potencialmente desactualizado) para calcular el siguiente número de folio. Con dos usuarios guardando simultáneamente, ambos veían el mismo máximo y generaban el mismo folio. Se reemplazó por `nextFolioProgramacion()` en `lib/db.ts`: usa una transacción Firestore atómica sobre el documento `counters/programaciones-{año}` que incrementa y devuelve el siguiente número sin condición de carrera. En el primer uso (cuando el contador no existe), la función consulta el folio máximo existente en Firestore para inicializar el contador desde ahí y no reiniciar desde 1.
+- **Horas estimadas:** 0.8 hrs
+
+---
+
 ### 2026-11-19 (sesión 19-q) — ✨ Dev Tools: tester de notificaciones
 
 #### ✨ Mejora — Enviar notificaciones de prueba desde Dev Tools
