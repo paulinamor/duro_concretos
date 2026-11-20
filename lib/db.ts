@@ -290,12 +290,15 @@ export function subscribeToCollection<T>(
   collectionName: string,
   onData: (docs: T[]) => void,
   constraints: QueryConstraint[] = [],
+  onError?: (err: Error) => void,
 ): () => void {
   const ref = collection(getDb(), collectionName);
   const q = constraints.length ? query(ref, ...constraints) : ref;
-  return onSnapshot(q, (snap) => {
-    onData(snap.docs.map((d) => ({ id: d.id, ...d.data() } as T)));
-  });
+  return onSnapshot(
+    q,
+    (snap) => { onData(snap.docs.map((d) => ({ id: d.id, ...d.data() } as T))); },
+    onError ?? ((err) => console.error(`[Firestore] subscribeToCollection error (${collectionName}):`, err)),
+  );
 }
 
 // ---------- multi-tenant server-side helpers ----------

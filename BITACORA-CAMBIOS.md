@@ -7,6 +7,15 @@
 
 ## Noviembre 2026
 
+### 2026-11-20 (sesión 20-b) — 🐛 Cobros: spinner infinito en cuentas con primer login reciente
+
+#### 🐛 Bug — Cobros se quedaba cargando indefinidamente para ciertas cuentas
+- **Archivos:** `lib/db.ts`, `app/(dashboard)/finanzas/cobros/page.tsx`
+- **Descripción:** `subscribeToCollection` usaba `onSnapshot` sin error handler. Si Firestore rechazaba la suscripción (race condition de inicialización de Firebase Auth en el primer login), los callbacks nunca se disparaban, `loadedPagos`/`loadedProgs` quedaban en `false` y el spinner era infinito. Afectaba cuentas con token de Firebase recién emitido; la cuenta de Leonardo no lo mostraba porque su token siempre está cacheado. Se agregó parámetro opcional `onError` a `subscribeToCollection` en `lib/db.ts`. En cobros, se pasaron handlers que llaman `checkDone()` incluso en error, y se agregó `.catch()` al `getCollectionDocs(clientes)` que tampoco tenía manejo de error.
+- **Horas estimadas:** 0.4 hrs
+
+---
+
 ### 2026-11-20 (sesión 20-a) — 🐛 Programación ventas: folios duplicados y planta incorrecta
 
 #### 🐛 Bug — `getCapturePlanta()` usaba planta de perfil en vez de selección activa del header
