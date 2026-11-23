@@ -7,6 +7,15 @@
 
 ## Noviembre 2026
 
+### 2026-11-23 (sesión 23-a) — ✨ Diesel: horómetro en carga de combustible
+
+#### ✨ Mejora — Lectura de horómetro por carga (patrón SAP PM)
+- **Archivo:** `app/(dashboard)/transporte/diesel/page.tsx`
+- **Descripción:** Se agregaron campos de horómetro al registro de carga de combustible siguiendo el patrón de SAP Plant Maintenance. Al seleccionar una unidad el sistema auto-puebla "Lectura anterior" con el último horómetro registrado para esa unidad. El usuario captura la lectura nueva y el sistema calcula automáticamente horas transcurridas (readonly) y consumo en L/h (readonly). Validación secuencial: la lectura nueva debe ser mayor a la anterior (campo invalida si no). Alertas de consumo anormal: >20 L/h (elevado) y <0.5 L/h (inusualmente bajo). La fila expandida muestra tarjeta de horómetro con rango anterior→nuevo y L/h. El XLSX incluye 4 columnas nuevas: Horómetro Ant., Horómetro Nuevo, Horas Transcurridas, Consumo L/h.
+- **Horas estimadas:** 1.2 hrs
+
+---
+
 ### 2026-11-20 (sesión 20-b) — 🐛 Cobros: spinner infinito en cuentas con primer login reciente
 
 #### 🐛 Bug — Cobros (y cualquier módulo) se quedaba cargando indefinidamente en primer login

@@ -8,7 +8,7 @@ import {
 import {
   AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
   DollarSign, FileSpreadsheet, Fuel, Gauge, Loader2, MapPin, MessageSquare,
-  Pencil, Plus, Receipt, Satellite, Search, Shield, Trash2, Truck, X,
+  Pencil, Plus, Receipt, Satellite, Search, Shield, Timer, Trash2, Truck, X,
 } from "lucide-react";
 import AppSelect from "@/components/AppSelect";
 import KPICard from "@/components/KPICard";
@@ -37,6 +37,10 @@ interface CargaDiesel {
   kmNuevo: number | null;
   kmRecorridos: number | null;
   rendimiento: number | null;
+  horometroAnterior: number | null;
+  horometroNuevo: number | null;
+  horasTranscurridas: number | null;
+  consumoLH: number | null;
   precioL: number | null;
   total: number;
   recibo: string;
@@ -50,6 +54,7 @@ interface CargaDiesel {
 interface FormState {
   fecha: string; unidad: string; combustible: TipoCombustible;
   litros: string; kmAnterior: string; kmNuevo: string; kmRecorridos: string;
+  horometroAnterior: string; horometroNuevo: string;
   total: string; recibo: string; sellosAnt: string; sellosNuevo: string;
   lugar: string; comentarios: string;
 }
@@ -112,6 +117,7 @@ const TOOLTIP_STYLE = {
 const emptyForm = (): FormState => ({
   fecha: todayISO(), unidad: "", combustible: "DIESEL",
   litros: "", kmAnterior: "", kmNuevo: "", kmRecorridos: "",
+  horometroAnterior: "", horometroNuevo: "",
   total: "", recibo: "", sellosAnt: "", sellosNuevo: "",
   lugar: "", comentarios: "",
 });
@@ -120,17 +126,19 @@ const emptyForm = (): FormState => ({
 
 type UnidadGrupo = { tipo: string; label: string; items: string[] };
 
-function FormDrawer({ open, onClose, onSave, unidadesAgrupadas, editing, lastKmByUnidad, samsaraNameByUnidad }: {
+function FormDrawer({ open, onClose, onSave, unidadesAgrupadas, editing, lastKmByUnidad, lastHorometroByUnidad, samsaraNameByUnidad }: {
   open: boolean; onClose: () => void;
   onSave: (carga: CargaDiesel) => Promise<void>;
   unidadesAgrupadas: UnidadGrupo[]; editing?: CargaDiesel | null;
   lastKmByUnidad: Map<string, number>;
+  lastHorometroByUnidad: Map<string, number>;
   samsaraNameByUnidad: Map<string, string>;
 }) {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
   const [autoKm, setAutoKm] = useState<number | null>(null);
+  const [autoHorometro, setAutoHorometro] = useState<number | null>(null);
   const [samsaraKm, setSamsaraKm] = useState<number | null>(null);
   const [samsaraFound, setSamsaraFound] = useState<boolean | null>(null);
   const [fetchingSamsara, setFetchingSamsara] = useState(false);
@@ -201,6 +209,7 @@ function FormDrawer({ open, onClose, onSave, unidadesAgrupadas, editing, lastKmB
   useEffect(() => {
     if (!open) return;
     setAutoKm(null);
+    setAutoHorometro(null);
     if (editing) {
       const toISO = (f: string) => f.includes("/") ? f.split("/").reverse().join("-") : f;
       setForm({
@@ -209,6 +218,8 @@ function FormDrawer({ open, onClose, onSave, unidadesAgrupadas, editing, lastKmB
         kmAnterior: editing.kmAnterior != null ? String(editing.kmAnterior) : "",
         kmNuevo: editing.kmNuevo != null ? String(editing.kmNuevo) : "",
         kmRecorridos: editing.kmRecorridos != null ? String(editing.kmRecorridos) : "",
+        horometroAnterior: editing.horometroAnterior != null ? String(editing.horometroAnterior) : "",
+        horometroNuevo: editing.horometroNuevo != null ? String(editing.horometroNuevo) : "",
         total: String(editing.total), recibo: editing.recibo,
         sellosAnt: editing.sellosAnt, sellosNuevo: editing.sellosNuevo,
         lugar: editing.lugar, comentarios: editing.comentarios,
@@ -228,6 +239,12 @@ function FormDrawer({ open, onClose, onSave, unidadesAgrupadas, editing, lastKmB
   const kmRecN = parseNum(form.kmRecorridos) ?? kmRecAuto;
   const rendCalc = kmRecN && litrosN && litrosN > 0 ? kmRecN / litrosN : null;
 
+  const horAnt = parseNum(form.horometroAnterior);
+  const horNue = parseNum(form.horometroNuevo);
+  const horasAuto = horAnt != null && horNue != null && horNue > horAnt ? +(horNue - horAnt).toFixed(1) : null;
+  const consumoLHCalc = horasAuto != null && litrosN != null && horasAuto > 0 ? +(litrosN / horasAuto).toFixed(3) : null;
+  const horometroInvalido = horAnt != null && horNue != null && horNue <= horAnt;
+
   function set(field: keyof FormState, value: string) {
     setForm((f) => ({ ...f, [field]: value }));
     if (errors[field]) setErrors((e) => ({ ...e, [field]: undefined }));
@@ -236,14 +253,18 @@ function FormDrawer({ open, onClose, onSave, unidadesAgrupadas, editing, lastKmB
   function handleUnidadChange(value: string) {
     if (!editing && value) {
       const lastKm = lastKmByUnidad.get(value) ?? null;
+      const lastHor = lastHorometroByUnidad.get(value) ?? null;
       setAutoKm(lastKm);
+      setAutoHorometro(lastHor);
       setForm((f) => ({
         ...f,
         unidad: value,
         kmAnterior: lastKm != null ? String(lastKm) : f.kmAnterior,
+        horometroAnterior: lastHor != null ? String(lastHor) : f.horometroAnterior,
       }));
     } else {
       setAutoKm(null);
+      setAutoHorometro(null);
       setForm((f) => ({ ...f, unidad: value }));
     }
     if (errors.unidad) setErrors((e) => ({ ...e, unidad: undefined }));
@@ -255,6 +276,7 @@ function FormDrawer({ open, onClose, onSave, unidadesAgrupadas, editing, lastKmB
     if (!form.litros || parseNum(form.litros) == null) e.litros = "Requerido";
     if (!form.total || parseNum(form.total) == null) e.total = "Requerido";
     if (!form.recibo.trim()) e.recibo = "Requerido";
+    if (horometroInvalido) e.horometroNuevo = "Debe ser mayor al horómetro anterior";
     return e;
   }
 
@@ -267,6 +289,8 @@ function FormDrawer({ open, onClose, onSave, unidadesAgrupadas, editing, lastKmB
         ...(editing?.id ? { id: editing.id } : {}),
         fecha: isoToDisplay(form.fecha), unidad: form.unidad.trim(),
         combustible: form.combustible, litros: litrosN!,
+        horometroAnterior: horAnt, horometroNuevo: horNue,
+        horasTranscurridas: horasAuto, consumoLH: consumoLHCalc,
         kmAnterior: parseNum(form.kmAnterior), kmNuevo: parseNum(form.kmNuevo),
         kmRecorridos: parseNum(form.kmRecorridos) ?? kmRecAuto,
         rendimiento: rendCalc, precioL: precioLCalc, total: totalN!,
@@ -460,6 +484,48 @@ function FormDrawer({ open, onClose, onSave, unidadesAgrupadas, editing, lastKmB
           </fieldset>
 
           <fieldset>
+            <legend className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-gray-500">Horómetro</legend>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={lbl}>Lectura anterior (h)</label>
+                <input type="number" step="0.1" min="0" value={form.horometroAnterior}
+                  onChange={(e) => { set("horometroAnterior", e.target.value); setAutoHorometro(null); }}
+                  placeholder="0.0" className={inp()} onWheel={(e) => e.currentTarget.blur()} />
+                {autoHorometro != null && form.horometroAnterior === String(autoHorometro) && (
+                  <p className="mt-1 flex items-center gap-1 text-xs text-sky-500">
+                    <Timer size={10} /> Último registro de esta unidad
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className={lbl}>Lectura nueva (h)</label>
+                <input type="number" step="0.1" min="0" value={form.horometroNuevo}
+                  onChange={(e) => { set("horometroNuevo", e.target.value); if (errors.horometroNuevo) setErrors((er) => ({ ...er, horometroNuevo: undefined })); }}
+                  placeholder="0.0" className={inp("horometroNuevo")} onWheel={(e) => e.currentTarget.blur()} />
+                {errors.horometroNuevo && <p className="mt-1 text-xs text-red-400">{errors.horometroNuevo}</p>}
+              </div>
+              <div>
+                <label className={lbl}>Horas transcurridas (calc.)</label>
+                <div className={ro}>{horasAuto != null ? `${horasAuto.toLocaleString("es-MX", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h` : "—"}</div>
+              </div>
+              <div>
+                <label className={lbl}>Consumo (calc.)</label>
+                <div className={ro}>{consumoLHCalc != null ? `${consumoLHCalc.toFixed(3)} L/h` : "—"}</div>
+                {consumoLHCalc != null && consumoLHCalc > 20 && (
+                  <p className="mt-1 flex items-center gap-1 text-xs text-orange-500">
+                    <AlertTriangle size={11} /> Consumo elevado
+                  </p>
+                )}
+                {consumoLHCalc != null && consumoLHCalc < 0.5 && (
+                  <p className="mt-1 flex items-center gap-1 text-xs text-amber-500">
+                    <AlertTriangle size={11} /> Consumo inusualmente bajo
+                  </p>
+                )}
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset>
             <legend className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-gray-500">Sellos de odómetro</legend>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -580,6 +646,31 @@ function TableRow({ carga, onEdit, onDelete }: {
                   )}
                 </div>
               </div>
+              {/* Horómetro */}
+              {(carga.horometroNuevo != null || carga.horasTranscurridas != null) && (
+                <div className="flex items-center gap-3 rounded-xl bg-[#1A1A1A] border border-teal-500/20 px-4 py-2.5 min-w-[170px]">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-teal-500/10">
+                    <Timer size={14} className="text-teal-400" />
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-teal-400/70 mb-0.5">Horómetro</p>
+                    <p className="text-sm font-bold text-white">
+                      {carga.horasTranscurridas != null ? `${carga.horasTranscurridas.toLocaleString("es-MX", { minimumFractionDigits: 1 })} h` : `${carga.horometroNuevo?.toLocaleString("es-MX")} h`}
+                    </p>
+                    {carga.horometroAnterior != null && carga.horometroNuevo != null && (
+                      <p className="text-[10px] text-teal-400/60 font-mono mt-0.5">
+                        {carga.horometroAnterior.toLocaleString("es-MX")} → {carga.horometroNuevo.toLocaleString("es-MX")}
+                      </p>
+                    )}
+                    {carga.consumoLH != null && (
+                      <p className={`text-[10px] font-semibold mt-0.5 flex items-center gap-1 ${carga.consumoLH > 20 || carga.consumoLH < 0.5 ? "text-orange-400" : "text-teal-300"}`}>
+                        {(carga.consumoLH > 20 || carga.consumoLH < 0.5) && <AlertTriangle size={9} />}
+                        {carga.consumoLH.toFixed(3)} L/h
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
               {/* Recibo */}
               <div className="flex items-center gap-3 rounded-xl bg-[#1A1A1A] border border-violet-500/20 px-4 py-2.5 min-w-[160px]">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-500/10">
@@ -839,6 +930,19 @@ export default function DieselPage() {
     return map;
   }, [cargas]);
 
+  const lastHorometroByUnidad = useMemo(() => {
+    const toMs = (f: string) => {
+      const p = f.split("/");
+      if (p.length !== 3) return 0;
+      return new Date(`${p[2]}-${p[1]}-${p[0]}T00:00:00`).getTime();
+    };
+    const map = new Map<string, number>();
+    [...cargas]
+      .sort((a, b) => toMs(a.fecha) - toMs(b.fecha))
+      .forEach((c) => { if (c.horometroNuevo != null && c.horometroNuevo > 0) map.set(c.unidad, c.horometroNuevo); });
+    return map;
+  }, [cargas]);
+
   function exportXLSX() {
     const XLSX = require("xlsx");
     const rows = filtered.map((c) => ({
@@ -850,6 +954,10 @@ export default function DieselPage() {
       "Km Nuevo": c.kmNuevo ?? "",
       "Km Recorridos": c.kmRecorridos ?? "",
       "Rendimiento km/L": c.rendimiento != null ? parseFloat(c.rendimiento.toFixed(3)) : "",
+      "Horómetro Ant. (h)": c.horometroAnterior ?? "",
+      "Horómetro Nuevo (h)": c.horometroNuevo ?? "",
+      "Horas Transcurridas": c.horasTranscurridas ?? "",
+      "Consumo L/h": c.consumoLH != null ? parseFloat(c.consumoLH.toFixed(3)) : "",
       "Total $": c.total,
       "Precio/L": c.precioL != null ? parseFloat(c.precioL.toFixed(3)) : "",
       "Recibo": c.recibo,
@@ -1114,6 +1222,7 @@ export default function DieselPage() {
       <FormDrawer open={showForm} onClose={() => { setShowForm(false); setEditingCarga(null); }} onSave={handleSave} editing={editingCarga}
         unidadesAgrupadas={unidadesAgrupadas}
         lastKmByUnidad={lastKmByUnidad}
+        lastHorometroByUnidad={lastHorometroByUnidad}
         samsaraNameByUnidad={samsaraNameByUnidad} />
 
 
