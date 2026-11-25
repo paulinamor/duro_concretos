@@ -644,12 +644,13 @@ function HistorialDrawer({
 // ─── FormDrawer ───────────────────────────────────────────────────────────────
 
 function FormDrawer({
-  open, onClose, onSave, onDelete, initial, dia, operadoresList, clientesList, revolveList, obrasData, rawClientes, recibosDisponibles,
+  open, onClose, onSave, onDelete, onCambiarPlanta, initial, dia, operadoresList, clientesList, revolveList, obrasData, rawClientes, recibosDisponibles,
 }: {
   open: boolean;
   onClose: () => void;
   onSave: (p: Programacion) => Promise<void>;
   onDelete?: () => void;
+  onCambiarPlanta?: () => void;
   initial?: Programacion;
   dia: string;
   operadoresList: Pick<Operador, "id" | "nombre">[];
@@ -1820,6 +1821,14 @@ function FormDrawer({
 
         {/* Footer */}
         <div className="shrink-0 border-t border-gray-100 px-6 py-4 flex items-center gap-3">
+          {onCambiarPlanta && initial?.id && (
+            <button
+              onClick={() => { onCambiarPlanta(); onClose(); }}
+              className="px-3 py-2.5 text-sm font-medium text-blue-500 hover:text-blue-700 hover:bg-blue-50 border border-blue-200 rounded-xl transition-colors"
+            >
+              Cambiar planta
+            </button>
+          )}
           {onDelete && initial?.id && (
             <button
               onClick={() => { onDelete(); onClose(); }}
@@ -2462,6 +2471,9 @@ export default function ProgramacionPage() {
   // Solicitud de autorización para eliminar
   const [solicitudElim, setSolicitudElim] = useState<Programacion | null>(null);
   const [motivoElim, setMotivoElim] = useState("");
+  const [solicitudCambioPlanta, setSolicitudCambioPlanta] = useState<Programacion | null>(null);
+  const [plantaDestinoCambio, setPlantaDestinoCambio] = useState<"Allende" | "Pesquería">("Allende");
+  const [motivoCambioPlanta, setMotivoCambioPlanta] = useState("");
   const [enviandoSolicitud, setEnviandoSolicitud] = useState(false);
 
   const migrationRan = useRef(false);
@@ -2744,6 +2756,52 @@ export default function ProgramacionPage() {
 
       setSolicitudElim(null);
       setMotivoElim("");
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", title: "Solicitud enviada", message: "Los autorizadores recibirán una notificación." } }));
+    } catch {
+      window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al enviar la solicitud." } }));
+    } finally {
+      setEnviandoSolicitud(false);
+    }
+  }
+
+  function handleSolicitarCambioPlanta(prog: Programacion) {
+    const origen = (prog.planta ?? "Allende") as "Allende" | "Pesquería";
+    const destino: "Allende" | "Pesquería" = origen === "Allende" ? "Pesquería" : "Allende";
+    setSolicitudCambioPlanta(prog);
+    setPlantaDestinoCambio(destino);
+    setMotivoCambioPlanta("");
+  }
+
+  async function handleEnviarSolicitudCambioPlanta() {
+    if (!solicitudCambioPlanta || !motivoCambioPlanta.trim()) return;
+    setEnviandoSolicitud(true);
+    try {
+      const session = getStoredSession();
+      const solicitudId = `cambio_planta_${solicitudCambioPlanta.id}_${Date.now()}`;
+      const solicitud: Omit<SolicitudAutorizacion, "id"> = {
+        tipo: "cambio_planta_programacion",
+        programacionId: solicitudCambioPlanta.id!,
+        folio: solicitudCambioPlanta.folio ?? solicitudCambioPlanta.id!,
+        dia: solicitudCambioPlanta.dia,
+        cliente: solicitudCambioPlanta.cliente,
+        plantaOrigen: solicitudCambioPlanta.planta ?? "Allende",
+        plantaDestino: plantaDestinoCambio,
+        motivo: motivoCambioPlanta.trim(),
+        solicitanteNombre: session?.name ?? "Usuario",
+        solicitanteEmail: session?.email ?? "",
+        status: "pendiente",
+        creadoEn: new Date().toISOString(),
+        planta: solicitudCambioPlanta.planta,
+      };
+      await upsertDocument(COLLECTIONS.solicitudesAutorizacion, solicitudId, solicitud);
+      void notificarAutorizadores({
+        solicitudId,
+        titulo: "Solicitud: cambio de planta",
+        detalle: `${session?.name ?? "Un usuario"} solicita mover prog. ${solicitudCambioPlanta.folio ?? solicitudCambioPlanta.id} — ${solicitudCambioPlanta.cliente} de ${solicitudCambioPlanta.planta ?? "Allende"} → ${plantaDestinoCambio}`,
+        planta: solicitudCambioPlanta.planta,
+      });
+      setSolicitudCambioPlanta(null);
+      setMotivoCambioPlanta("");
       window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "success", title: "Solicitud enviada", message: "Los autorizadores recibirán una notificación." } }));
     } catch {
       window.dispatchEvent(new CustomEvent("duro:toast", { detail: { type: "error", message: "Error al enviar la solicitud." } }));
@@ -3264,13 +3322,22 @@ export default function ProgramacionPage() {
 
                   <div className="flex items-center gap-2">
                     {isAdmin && prog.id && (
-                      <button
-                        onClick={() => handleSolicitarEliminar(prog)}
-                        className="text-xs text-red-400 hover:text-red-600 transition-colors cursor-pointer px-2 py-1 rounded hover:bg-red-50"
-                        title="Solicitar eliminación"
-                      >
-                        Eliminar
-                      </button>
+                      <>
+                        <button
+                          onClick={() => handleSolicitarCambioPlanta(prog)}
+                          className="text-xs text-blue-400 hover:text-blue-600 transition-colors cursor-pointer px-2 py-1 rounded hover:bg-blue-50"
+                          title="Solicitar cambio de planta"
+                        >
+                          Cambiar planta
+                        </button>
+                        <button
+                          onClick={() => handleSolicitarEliminar(prog)}
+                          className="text-xs text-red-400 hover:text-red-600 transition-colors cursor-pointer px-2 py-1 rounded hover:bg-red-50"
+                          title="Solicitar eliminación"
+                        >
+                          Eliminar
+                        </button>
+                      </>
                     )}
 
                     <button
@@ -3383,6 +3450,7 @@ export default function ProgramacionPage() {
         onClose={() => setShowDrawer(false)}
         onSave={handleSave}
         onDelete={isAdmin && editing ? () => handleSolicitarEliminar(editing) : undefined}
+        onCambiarPlanta={isAdmin && editing ? () => handleSolicitarCambioPlanta(editing) : undefined}
         initial={editing}
         dia={diaActivo}
         operadoresList={operadoresList}
@@ -3468,6 +3536,88 @@ export default function ProgramacionPage() {
                 className="flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-red-600 hover:bg-red-700 text-white rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
                 {enviandoSolicitud ? <Clock size={14} className="animate-spin" /> : <AlertTriangle size={14} />}
+                {enviandoSolicitud ? "Enviando..." : "Enviar solicitud"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal cambio de planta ─────────────────────────────────────── */}
+      {solicitudCambioPlanta && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60" onClick={() => { setSolicitudCambioPlanta(null); setMotivoCambioPlanta(""); }} />
+          <div className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl overflow-hidden">
+            <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-4 bg-blue-50">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-100 text-blue-600">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-gray-900">Solicitar cambio de planta</p>
+                <p className="text-xs text-gray-500">Requiere autorización de un supervisor</p>
+              </div>
+            </div>
+
+            <div className="px-6 py-5 space-y-4">
+              {/* Info de la prog */}
+              <div className="rounded-xl bg-gray-50 border border-gray-200 px-4 py-3 space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">Programación</p>
+                <p className="text-sm font-semibold text-gray-900">{solicitudCambioPlanta.folio ?? solicitudCambioPlanta.id} — {solicitudCambioPlanta.cliente}</p>
+                <p className="text-xs text-gray-500">{solicitudCambioPlanta.dia} · {solicitudCambioPlanta.hora}</p>
+              </div>
+
+              {/* Flecha origen → destino */}
+              <div className="flex items-center justify-center gap-3">
+                <div className="flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-center">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-1">Planta actual</p>
+                  <p className="text-sm font-bold text-gray-700">{solicitudCambioPlanta.planta ?? "Allende"}</p>
+                </div>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                <div className="flex-1 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-center">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-blue-400 mb-1">Planta destino</p>
+                  <select
+                    value={plantaDestinoCambio}
+                    onChange={(e) => setPlantaDestinoCambio(e.target.value as "Allende" | "Pesquería")}
+                    className="text-sm font-bold text-blue-700 bg-transparent border-none focus:outline-none cursor-pointer text-center w-full"
+                  >
+                    {["Allende", "Pesquería"].filter((p) => p !== (solicitudCambioPlanta.planta ?? "Allende")).map((p) => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Motivo */}
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-widest text-gray-500 mb-1.5">
+                  Motivo del cambio <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={motivoCambioPlanta}
+                  onChange={(e) => setMotivoCambioPlanta(e.target.value)}
+                  placeholder="Explica por qué se necesita mover esta programación de planta..."
+                  rows={3}
+                  className="w-full resize-none rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors"
+                />
+              </div>
+              <p className="text-xs text-gray-400">
+                La solicitud será enviada a los supervisores autorizados. El cambio se ejecutará solo si es aprobado.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 border-t border-gray-100 px-6 py-4">
+              <button
+                onClick={() => { setSolicitudCambioPlanta(null); setMotivoCambioPlanta(""); }}
+                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 border border-gray-200 rounded-xl transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleEnviarSolicitudCambioPlanta}
+                disabled={!motivoCambioPlanta.trim() || enviandoSolicitud}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              >
+                {enviandoSolicitud ? <Clock size={14} className="animate-spin" /> : null}
                 {enviandoSolicitud ? "Enviando..." : "Enviar solicitud"}
               </button>
             </div>

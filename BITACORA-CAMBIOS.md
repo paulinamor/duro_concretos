@@ -7,6 +7,15 @@
 
 ## Noviembre 2026
 
+### 2026-11-25 (sesión 25-i) — ✨ Programación: cambio de planta con flujo de autorización
+
+#### ✨ Mejora — Solicitud de cambio de planta (SAP-style)
+- **Archivos:** `lib/db.ts`, `app/(dashboard)/transporte/programacion/page.tsx`, `app/(dashboard)/configuracion/page.tsx`
+- **Descripción:** Se implementó el flujo completo de cambio de planta para programaciones. El botón "Cambiar planta" aparece junto a "Eliminar" para administradores. Al hacer clic abre un modal SAP-style que muestra: planta origen (readonly), selector de planta destino (solo muestra opciones diferentes a la actual), y campo de motivo obligatorio. Al enviar, crea una solicitud en `solicitudesAutorizacion` con `tipo: "cambio_planta_programacion"`, `plantaOrigen`, `plantaDestino` y notifica a autorizadores. En Configuración → Autorizaciones, el supervisor ve el movimiento (Allende → Pesquería) con la flecha visual, puede aprobar (actualiza `planta` en Firestore) o rechazar. Se extendió `SolicitudAutorizacion` en `lib/db.ts` con los campos `plantaOrigen` y `plantaDestino`.
+- **Horas estimadas:** 1.0 hr
+
+---
+
 ### 2026-11-25 (sesión 25-h) — 🐛 Dashboard: filtro de canceladas nunca coincidía (typo masculino/femenino)
 
 #### 🐛 Bug — estadoSAT es "Cancelado" (masculino), el filtro buscaba "Cancelada" (femenino)

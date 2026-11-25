@@ -388,6 +388,9 @@ export default function ConfiguracionPage() {
       if (sol.tipo === "eliminar_programacion" && sol.programacionId) {
         await deleteDocument(COLLECTIONS.programaciones, sol.programacionId);
       }
+      if (sol.tipo === "cambio_planta_programacion" && sol.programacionId && sol.plantaDestino) {
+        await upsertDocument(COLLECTIONS.programaciones, sol.programacionId, { planta: sol.plantaDestino });
+      }
       if (sol.tipo === "editar_inventario" && sol.documentoId && sol.camposPropuestos) {
         await upsertDocument(COLLECTIONS.entradasMaterial, sol.documentoId, sol.camposPropuestos as Record<string, unknown>);
       }
@@ -408,6 +411,8 @@ export default function ConfiguracionPage() {
       setSolicitudes((prev) => prev.map((s) => s.id === sol.id ? { ...s, status: "aprobada" } : s));
       if (sol.tipo === "eliminar_programacion") {
         showToast("success", "Aprobada", `Programación ${sol.folio} eliminada correctamente.`);
+      } else if (sol.tipo === "cambio_planta_programacion") {
+        showToast("success", "Aprobada", `Prog. ${sol.folio} movida a planta ${sol.plantaDestino}.`);
       } else if (sol.tipo === "nuevo_cliente") {
         const nombre = (sol.clienteData?.razonSocial as string) ?? "Cliente";
         showToast("success", "Aprobada", `Cliente "${nombre}" registrado correctamente.`);
@@ -656,6 +661,13 @@ export default function ConfiguracionPage() {
                           <>
                             <p className="text-sm font-semibold text-white">Eliminar programación {sol.folio}</p>
                             <p className="text-xs text-gray-500">{sol.cliente} · {sol.dia}</p>
+                          </>
+                        ) : sol.tipo === "cambio_planta_programacion" ? (
+                          <>
+                            <p className="text-sm font-semibold text-white">Cambio de planta — {sol.folio}</p>
+                            <p className="text-xs text-gray-500">
+                              {sol.cliente} · {sol.dia} · <span className="text-blue-400 font-semibold">{sol.plantaOrigen ?? "—"} → {sol.plantaDestino ?? "—"}</span>
+                            </p>
                           </>
                         ) : sol.tipo === "nuevo_cliente" ? (
                           <>
