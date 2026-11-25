@@ -1,15 +1,30 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Download, FileText, RefreshCw, Search, UserRound } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Download, FileText, Loader2, RefreshCw, Search, UserRound } from "lucide-react";
 import KPICard from "@/components/KPICard";
-import { getCollectionDocs, COLLECTIONS } from "@/lib/db";
+import { getCollectionDocs, getDocument, COLLECTIONS } from "@/lib/db";
 import AppSelect from "@/components/AppSelect";
 import { filterByPlanta } from "@/lib/auth";
 import type { Cuenta } from "@/components/finanzas/SatAccountsPage";
 import type { Cliente } from "@/lib/crmClientes";
 import { todayCST } from "@/lib/dateUtils";
 import { matchesQuery } from "@/lib/search";
+
+interface EmpresaInfo {
+  nombre: string;
+  direccion: string;
+  cp: string;
+  telefono: string;
+  email: string;
+}
+const EMPRESA_DEFAULT: EmpresaInfo = {
+  nombre: "DURO CONCRETOS",
+  direccion: "LAZARO CARDENAS 2225 PISO3INT-B DEL VALLE ORIENTE",
+  cp: "66260",
+  telefono: "8120000852",
+  email: "Ofertas@duroconcretos.com",
+};
 
 function norm(s?: string | null) {
   return (s ?? "").trim().toUpperCase().replace(/\s+/g, " ");
@@ -52,7 +67,6 @@ export default function EstadoCuentaClientesPage() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [cuentas, setCuentas] = useState<Cuenta[]>([]);
   const [programaciones, setProgramaciones] = useState<Programacion[]>([]);
-  // Canonical display names for the dropdown — built from financial sources
   const [clientesLista, setClientesLista] = useState<string[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
   const [clienteNombre, setClienteNombre] = useState("");
@@ -60,6 +74,15 @@ export default function EstadoCuentaClientesPage() {
   const [fechaFin, setFechaFin] = useState(todayISO());
   const [query, setQuery] = useState("");
   const [generadoEn, setGeneradoEn] = useState("");
+  const [generatingPDF, setGeneratingPDF] = useState(false);
+  const [empresa, setEmpresa] = useState<EmpresaInfo>(EMPRESA_DEFAULT);
+  const printRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    getDocument<EmpresaInfo>(COLLECTIONS.configuracion, "empresa-remisiones")
+      .then((doc) => { if (doc) setEmpresa(doc); })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     Promise.all([
@@ -228,6 +251,61 @@ export default function EstadoCuentaClientesPage() {
     );
   }, [estadoCuenta.movimientos, query]);
 
+  async function generatePDF() {
+    if (!printRef.current || !clienteNombre) return;
+    setGeneratingPDF(true);
+    const ts = new Date().toLocaleString("es-MX");
+    setGeneradoEn(ts);
+    try {
+      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+        import("html2canvas"),
+        import("jspdf"),
+      ]);
+      const canvas = await html2canvas(printRef.current, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        logging: false,
+        // Tailwind v4 uses oklch()/lab() in CSS custom properties.
+        // html2canvas can't parse these modern color functions, so we strip
+        // any stylesheet rule that contains them before rendering.
+        onclone: (clonedDoc) => {
+          for (const sheet of Array.from(clonedDoc.styleSheets)) {
+            try {
+              const rules = Array.from(sheet.cssRules ?? []);
+              for (let i = rules.length - 1; i >= 0; i--) {
+                const css = rules[i].cssText;
+                if (css.includes("oklch") || css.includes("lab(") || css.includes("color(display-p3")) {
+                  sheet.deleteRule(i);
+                }
+              }
+            } catch {
+              // Skip cross-origin stylesheets
+            }
+          }
+        },
+      });
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "letter" });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const imgH = (canvas.height / canvas.width) * pageW;
+      let posY = 0;
+      let remaining = imgH;
+      while (remaining > 0) {
+        const sliceH = Math.min(remaining, pageH);
+        pdf.addImage(imgData, "PNG", 0, -posY, pageW, imgH);
+        remaining -= sliceH;
+        posY += sliceH;
+        if (remaining > 0) pdf.addPage();
+      }
+      const safeName = clienteNombre.replace(/[^a-zA-Z0-9]/g, "-").slice(0, 30);
+      pdf.save(`estado-cuenta-${safeName}-${fechaInicio}-${fechaFin}.pdf`);
+    } finally {
+      setGeneratingPDF(false);
+    }
+  }
+
   if (dataLoading) {
     return <div className="flex items-center justify-center py-32 text-gray-500 text-sm">Cargando datos…</div>;
   }
@@ -250,11 +328,12 @@ export default function EstadoCuentaClientesPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-gray-500 text-sm mt-0.5">Saldos, cargos, abonos y vencimientos de CxC</p>
         <button
-          onClick={() => setGeneradoEn(new Date().toLocaleString("es-MX"))}
-          className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#991A1E] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+          onClick={generatePDF}
+          disabled={generatingPDF || !clienteNombre}
+          className="flex items-center gap-2 bg-[#CC2229] hover:bg-[#991A1E] disabled:opacity-60 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer"
         >
-          <Download size={16} />
-          Generar estado
+          {generatingPDF ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+          {generatingPDF ? "Generando…" : "Generar estado"}
         </button>
       </div>
 
@@ -447,7 +526,308 @@ export default function EstadoCuentaClientesPage() {
           </table>
         </div>
       </div>
+
+      {/* ── PDF hidden template ─────────────────────────────────────────── */}
+      <div className="fixed left-[-9999px] top-0 w-[816px]" aria-hidden>
+        <div ref={printRef}>
+          <EstadoCuentaPDF
+            empresa={empresa}
+            cliente={clienteNombre}
+            rfcCliente={rfcCliente}
+            diasCred={diasCred}
+            limiteCred={limiteCred}
+            m3Acum={m3Acum}
+            fechaInicio={fechaInicio}
+            fechaFin={fechaFin}
+            generadoEn={generadoEn || new Date().toLocaleString("es-MX")}
+            saldoInicial={estadoCuenta.saldoInicial}
+            cargos={estadoCuenta.cargos}
+            abonos={estadoCuenta.abonos}
+            saldoFinal={estadoCuenta.saldoFinal}
+            vencido={estadoCuenta.vencido}
+            porVencer={estadoCuenta.porVencer}
+            movimientos={estadoCuenta.movimientos}
+          />
+        </div>
+      </div>
     </div>
+  );
+}
+
+// ─── PDF Template (SAP-style) ─────────────────────────────────────────────────
+
+function EstadoCuentaPDF({
+  empresa, cliente, rfcCliente, diasCred, limiteCred, m3Acum,
+  fechaInicio, fechaFin, generadoEn,
+  saldoInicial, cargos, abonos, saldoFinal, vencido, porVencer,
+  movimientos,
+}: {
+  empresa: EmpresaInfo;
+  cliente: string;
+  rfcCliente: string;
+  diasCred: number;
+  limiteCred: number;
+  m3Acum: number;
+  fechaInicio: string;
+  fechaFin: string;
+  generadoEn: string;
+  saldoInicial: number;
+  cargos: number;
+  abonos: number;
+  saldoFinal: number;
+  vencido: number;
+  porVencer: number;
+  movimientos: Movimiento[];
+}) {
+  const fmtDate = (iso: string) => {
+    if (!iso) return "—";
+    const [y, m, d] = iso.split("-");
+    return `${d}/${m}/${y}`;
+  };
+
+  const col = {
+    hdr: "#1f2937",
+    red: "#CC2229",
+    green: "#16a34a",
+    gray: "#6b7280",
+    lightGray: "#f9fafb",
+    border: "#e5e7eb",
+    white: "#ffffff",
+  };
+
+  const cell: React.CSSProperties = {
+    padding: "6px 10px",
+    borderBottom: `1px solid ${col.border}`,
+    fontSize: 10,
+    verticalAlign: "middle",
+  };
+
+  const thStyle: React.CSSProperties = {
+    padding: "8px 10px",
+    backgroundColor: col.hdr,
+    color: col.white,
+    fontSize: 9,
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.06em",
+    whiteSpace: "nowrap",
+  };
+
+  return (
+    <div style={{ fontFamily: "Arial, sans-serif", backgroundColor: col.white, color: col.hdr }}>
+      {/* ── Header band ── */}
+      <div style={{ backgroundColor: col.hdr, padding: "20px 32px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <div style={{ color: col.white, fontSize: 22, fontWeight: 900, letterSpacing: "0.08em" }}>
+            {empresa.nombre}
+          </div>
+          <div style={{ color: "#9ca3af", fontSize: 9, marginTop: 3 }}>
+            {empresa.direccion} · C.P. {empresa.cp}
+          </div>
+          <div style={{ color: "#9ca3af", fontSize: 9 }}>
+            Tel. {empresa.telefono} · {empresa.email}
+          </div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ color: col.red, fontSize: 18, fontWeight: 900, letterSpacing: "0.1em" }}>
+            ESTADO DE CUENTA
+          </div>
+          <div style={{ color: "#9ca3af", fontSize: 9, marginTop: 4 }}>
+            Período: {fmtDate(fechaInicio)} — {fmtDate(fechaFin)}
+          </div>
+          <div style={{ color: "#9ca3af", fontSize: 9 }}>
+            Generado: {generadoEn}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Red accent line ── */}
+      <div style={{ height: 4, backgroundColor: col.red }} />
+
+      {/* ── Client + summary info ── */}
+      <div style={{ display: "flex", gap: 0, borderBottom: `1px solid ${col.border}` }}>
+        {/* Client block */}
+        <div style={{ flex: 1, padding: "16px 32px", borderRight: `1px solid ${col.border}` }}>
+          <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: col.gray, marginBottom: 6 }}>
+            Datos del cliente
+          </div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: col.hdr, marginBottom: 8 }}>{cliente}</div>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <tbody>
+              {rfcCliente && rfcCliente !== "—" && (
+                <InfoRow label="RFC" value={rfcCliente} mono />
+              )}
+              {diasCred > 0 && <InfoRow label="Días de crédito" value={`${diasCred} días`} />}
+              {limiteCred > 0 && <InfoRow label="Límite de crédito" value={fmt(limiteCred)} />}
+              {m3Acum > 0 && <InfoRow label="m³ acumulados" value={`${m3Acum.toLocaleString("es-MX")} m³`} />}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Summary KPIs */}
+        <div style={{ width: 320, padding: "16px 24px" }}>
+          <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: col.gray, marginBottom: 10 }}>
+            Resumen del período
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+            {[
+              { label: "Saldo inicial", val: fmt(saldoInicial), color: "#1d4ed8" },
+              { label: "Cargos", val: fmt(cargos), color: col.red },
+              { label: "Abonos", val: fmt(abonos), color: col.green },
+              { label: "Saldo final", val: fmt(saldoFinal), color: saldoFinal > 0 ? col.red : col.green },
+            ].map(({ label, val, color }) => (
+              <div key={label} style={{ backgroundColor: col.lightGray, border: `1px solid ${col.border}`, borderRadius: 6, padding: "8px 12px" }}>
+                <div style={{ fontSize: 8, color: col.gray, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</div>
+                <div style={{ fontSize: 13, fontWeight: 800, color, marginTop: 2 }}>{val}</div>
+              </div>
+            ))}
+          </div>
+          {/* Vencido / Por vencer */}
+          <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ flex: 1, border: `1.5px solid ${vencido > 0 ? col.red : col.border}`, borderRadius: 6, padding: "6px 10px", backgroundColor: vencido > 0 ? "#fef2f2" : col.lightGray }}>
+              <div style={{ fontSize: 8, color: vencido > 0 ? col.red : col.gray, fontWeight: 700, textTransform: "uppercase" }}>Vencido</div>
+              <div style={{ fontSize: 12, fontWeight: 800, color: vencido > 0 ? col.red : col.gray }}>{fmt(vencido)}</div>
+            </div>
+            <div style={{ flex: 1, border: `1.5px solid ${porVencer > 0 ? col.green : col.border}`, borderRadius: 6, padding: "6px 10px", backgroundColor: porVencer > 0 ? "#f0fdf4" : col.lightGray }}>
+              <div style={{ fontSize: 8, color: porVencer > 0 ? col.green : col.gray, fontWeight: 700, textTransform: "uppercase" }}>Por vencer</div>
+              <div style={{ fontSize: 12, fontWeight: 800, color: porVencer > 0 ? col.green : col.gray }}>{fmt(porVencer)}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Movements table ── */}
+      <div style={{ padding: "0 0 32px" }}>
+        <div style={{ padding: "14px 32px 10px", borderBottom: `2px solid ${col.border}` }}>
+          <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: col.hdr }}>
+            Detalle de movimientos
+          </div>
+          <div style={{ fontSize: 9, color: col.gray, marginTop: 2 }}>
+            Período {fmtDate(fechaInicio)} al {fmtDate(fechaFin)} · {movimientos.length} movimiento{movimientos.length !== 1 ? "s" : ""}
+          </div>
+        </div>
+
+        {/* Opening balance row */}
+        {saldoInicial !== 0 && (
+          <div style={{ backgroundColor: "#eff6ff", padding: "6px 32px", borderBottom: `1px solid ${col.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 9, fontWeight: 700, color: "#1d4ed8", textTransform: "uppercase" }}>Saldo al inicio del período</span>
+            <span style={{ fontSize: 11, fontWeight: 800, color: "#1d4ed8" }}>{fmt(saldoInicial)}</span>
+          </div>
+        )}
+
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr>
+              {["Fecha", "Referencia", "Concepto", "Tipo", "Cargo", "Abono", "Vence", "Saldo"].map((h) => (
+                <th key={h} style={{ ...thStyle, textAlign: ["Cargo", "Abono", "Saldo"].includes(h) ? "right" : "left" }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {movimientos.length === 0 ? (
+              <tr>
+                <td colSpan={8} style={{ ...cell, textAlign: "center", color: col.gray, padding: "32px 10px" }}>
+                  Sin movimientos en el período seleccionado.
+                </td>
+              </tr>
+            ) : (
+              movimientos.map((m, i) => {
+                const isAbono = m.tipo === "abono";
+                const bg = i % 2 === 0 ? col.white : col.lightGray;
+                return (
+                  <tr key={m.id} style={{ backgroundColor: bg }}>
+                    <td style={{ ...cell, fontSize: 9, whiteSpace: "nowrap" }}>{fmtDate(m.fecha)}</td>
+                    <td style={{ ...cell, fontSize: 9, fontFamily: "monospace", color: col.red, whiteSpace: "nowrap" }}>{m.referencia}</td>
+                    <td style={{ ...cell, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.concepto}</td>
+                    <td style={{ ...cell }}>
+                      <span style={{
+                        fontSize: 8, fontWeight: 700, padding: "2px 7px", borderRadius: 10, whiteSpace: "nowrap",
+                        backgroundColor: m.fuente === "cxc" ? "#dbeafe" : "#f3f4f6",
+                        color: m.fuente === "cxc" ? "#1d4ed8" : col.gray,
+                      }}>
+                        {m.fuente === "cxc" ? "Factura" : "Pedido"}
+                      </span>
+                    </td>
+                    <td style={{ ...cell, textAlign: "right", fontWeight: isAbono ? 400 : 700, color: isAbono ? col.gray : col.hdr, whiteSpace: "nowrap" }}>
+                      {m.cargo ? fmt(m.cargo) : "—"}
+                    </td>
+                    <td style={{ ...cell, textAlign: "right", fontWeight: isAbono ? 700 : 400, color: isAbono ? col.green : col.gray, whiteSpace: "nowrap" }}>
+                      {m.abono ? fmt(m.abono) : "—"}
+                    </td>
+                    <td style={{ ...cell, fontSize: 9, whiteSpace: "nowrap", color: col.gray }}>{fmtDate(m.vencimiento)}</td>
+                    <td style={{
+                      ...cell, textAlign: "right", fontWeight: 700, whiteSpace: "nowrap",
+                      color: m.saldo > 0 ? col.red : col.green,
+                    }}>
+                      {fmt(m.saldo)}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+          {movimientos.length > 0 && (
+            <tfoot>
+              <tr style={{ backgroundColor: col.hdr }}>
+                <td colSpan={4} style={{ padding: "10px 10px 10px 32px", color: col.white, fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                  Saldo final del período
+                </td>
+                <td style={{ padding: "10px", textAlign: "right", color: "#fca5a5", fontSize: 10, fontWeight: 700, whiteSpace: "nowrap" }}>
+                  {fmt(cargos)}
+                </td>
+                <td style={{ padding: "10px", textAlign: "right", color: "#86efac", fontSize: 10, fontWeight: 700, whiteSpace: "nowrap" }}>
+                  {fmt(abonos)}
+                </td>
+                <td style={{ padding: "10px", color: col.white, fontSize: 9 }} />
+                <td style={{
+                  padding: "10px 10px 10px 10px", textAlign: "right", fontSize: 14, fontWeight: 900, whiteSpace: "nowrap",
+                  color: saldoFinal > 0 ? "#fca5a5" : "#86efac",
+                }}>
+                  {fmt(saldoFinal)}
+                </td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+
+      {/* ── Footer ── */}
+      <div style={{ borderTop: `2px solid ${col.border}`, padding: "20px 32px", backgroundColor: col.lightGray }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 32 }}>
+          {/* Instructions */}
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: col.gray, marginBottom: 6 }}>
+              Instrucciones de pago
+            </div>
+            <div style={{ fontSize: 9, color: col.gray, lineHeight: 1.6 }}>
+              Realizar transferencia o depósito a nombre de <strong>{empresa.nombre}</strong>.<br />
+              Incluir número de folio como referencia de pago.<br />
+              Consultas: {empresa.email} · Tel. {empresa.telefono}
+            </div>
+          </div>
+          {/* Signature */}
+          <div style={{ width: 200, textAlign: "center" }}>
+            <div style={{ borderTop: `1.5px solid ${col.hdr}`, paddingTop: 6, marginTop: 32 }}>
+              <div style={{ fontSize: 9, fontWeight: 700, color: col.hdr }}>Autorizado por</div>
+              <div style={{ fontSize: 8, color: col.gray }}>{empresa.nombre}</div>
+            </div>
+          </div>
+        </div>
+        <div style={{ marginTop: 16, paddingTop: 10, borderTop: `1px solid ${col.border}`, textAlign: "center", fontSize: 8, color: col.gray }}>
+          Este documento es informativo y no constituye un estado de cuenta oficial ante el SAT.
+          Generado el {generadoEn} · {empresa.nombre}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InfoRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <tr>
+      <td style={{ padding: "2px 0", fontSize: 9, color: "#6b7280", width: 120 }}>{label}</td>
+      <td style={{ padding: "2px 0", fontSize: 9, fontWeight: 600, color: "#1f2937", fontFamily: mono ? "monospace" : undefined }}>{value}</td>
+    </tr>
   );
 }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   AlertTriangle,
   Check,
@@ -249,10 +250,25 @@ function FormDrawer({
 
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
-  const rawProgs = useCollectionRaw<{ id: string; folio?: string; cliente?: string; fecha?: string }>(COLLECTIONS.programaciones);
+  const [progSearch, setProgSearch] = useState("");
+  const [progOpen, setProgOpen] = useState(false);
+  const progDropRef = useRef<HTMLDivElement>(null);
+  const progSearchRef = useRef<HTMLInputElement>(null);
+  const rawProgs = useCollectionRaw<{ id: string; folio?: string; cliente?: string; fecha?: string; total?: number; montoPagado?: number; nombreObra?: string }>(COLLECTIONS.programaciones);
 
   useEffect(() => {
-    if (!open) return;
+    if (!progOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (progDropRef.current && !progDropRef.current.contains(e.target as Node)) {
+        setProgOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [progOpen]);
+
+  useEffect(() => {
+    if (!open) { setProgSearch(""); setProgOpen(false); return; }
     if (initial) {
       setForm({
         estadoSAT: initial.estadoSAT ?? "Vigente",
@@ -333,7 +349,7 @@ function FormDrawer({
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative ml-auto flex h-full w-full max-w-lg flex-col bg-white border-l border-gray-200 shadow-2xl overflow-hidden">
@@ -487,19 +503,117 @@ function FormDrawer({
             <label className={lbl}>Notas</label>
             <input type="text" value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} placeholder="Opcional" className={inp} />
           </div>
-          {!isCxp && (
-            <div>
-              <label className={lbl}>Programación vinculada <span className="normal-case text-gray-400 font-normal">(opcional)</span></label>
-              <select value={form.progId} onChange={(e) => setForm({ ...form, progId: e.target.value })} className={inp}>
-                <option value="">— Sin vincular —</option>
-                {rawProgs.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.folio ? `#${p.folio}` : p.id.slice(-6)} · {p.cliente ?? "—"} · {p.fecha ?? ""}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+          {!isCxp && (() => {
+            const selectedProg = form.progId ? rawProgs.find((p) => p.id === form.progId) : null;
+            const filteredProgs = rawProgs
+              .filter((p) => {
+                if (!progSearch) return true;
+                const q = progSearch.toLowerCase();
+                return (
+                  (p.folio ?? "").toLowerCase().includes(q) ||
+                  (p.cliente ?? "").toLowerCase().includes(q) ||
+                  (p.nombreObra ?? "").toLowerCase().includes(q) ||
+                  String(p.total ?? "").includes(q)
+                );
+              })
+              .sort((a, b) => (b.folio ?? "").localeCompare(a.folio ?? ""));
+
+            const fmtMXN = (n?: number) => n != null
+              ? `$${n.toLocaleString("es-MX", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+              : null;
+
+            return (
+              <div ref={progDropRef}>
+                <label className={lbl}>Programación vinculada <span className="normal-case text-gray-400 font-normal">(opcional)</span></label>
+                {/* Trigger */}
+                <button
+                  type="button"
+                  onClick={() => { setProgOpen((o) => !o); setTimeout(() => progSearchRef.current?.focus(), 50); }}
+                  className="w-full flex items-center justify-between gap-2 px-3.5 py-2.5 text-sm border border-gray-200 rounded-xl bg-white hover:border-[#CC2229]/40 focus:outline-none focus:border-[#CC2229] focus:ring-1 focus:ring-[#CC2229]/20 transition-colors cursor-pointer"
+                >
+                  <span className={selectedProg ? "text-gray-900 truncate" : "text-gray-400"}>
+                    {selectedProg
+                      ? `${selectedProg.folio ? `#${selectedProg.folio}` : selectedProg.id.slice(-6)} · ${selectedProg.cliente ?? "—"}${selectedProg.nombreObra ? ` — ${selectedProg.nombreObra}` : ""}`
+                      : "— Sin vincular —"}
+                  </span>
+                  <ChevronDown size={14} className={`text-gray-400 shrink-0 transition-transform ${progOpen ? "rotate-180" : ""}`} />
+                </button>
+
+                {progOpen && (
+                  <div className="mt-1 border border-gray-200 rounded-xl bg-white shadow-sm overflow-hidden">
+                    {/* Search */}
+                    <div className="relative p-2 border-b border-gray-100">
+                      <Search size={13} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                      <input
+                        ref={progSearchRef}
+                        type="text"
+                        value={progSearch}
+                        onChange={(e) => setProgSearch(e.target.value)}
+                        placeholder="Buscar folio, cliente, obra o monto…"
+                        className="w-full pl-7 pr-3 py-1.5 text-sm bg-gray-50 border border-gray-100 rounded-lg focus:outline-none focus:border-[#CC2229] focus:ring-1 focus:ring-[#CC2229]/20 transition-colors"
+                      />
+                    </div>
+                    {/* List */}
+                    <div className="max-h-64 overflow-y-auto">
+                      <button
+                        type="button"
+                        onClick={() => { setForm({ ...form, progId: "" }); setProgOpen(false); setProgSearch(""); }}
+                        className={`w-full text-left px-4 py-2.5 text-sm transition-colors cursor-pointer ${!form.progId ? "bg-[#CC2229]/5 text-[#CC2229] font-semibold" : "text-gray-500 hover:bg-gray-50"}`}
+                      >
+                        — Sin vincular —
+                      </button>
+                      {filteredProgs.length === 0 ? (
+                        <p className="px-4 py-3 text-xs text-gray-400 text-center">Sin resultados</p>
+                      ) : (
+                        filteredProgs.map((p) => {
+                          const isSelected = form.progId === p.id;
+                          const saldo = p.total != null ? p.total - (p.montoPagado ?? 0) : null;
+                          const saldado = saldo != null && saldo <= 0;
+                          return (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onClick={() => { setForm({ ...form, progId: p.id }); setProgOpen(false); setProgSearch(""); }}
+                              className={`w-full text-left px-4 py-2 flex flex-col gap-0.5 transition-colors cursor-pointer border-b border-gray-50 last:border-b-0 ${isSelected ? "bg-[#CC2229]/5" : "hover:bg-gray-50"}`}
+                            >
+                              {/* Row 1: folio + fecha + status */}
+                              <div className="flex items-center justify-between gap-2">
+                                <span className={`font-mono text-xs font-semibold ${isSelected ? "text-[#CC2229]" : "text-gray-800"}`}>
+                                  {p.folio ? `#${p.folio}` : p.id.slice(-6)}
+                                </span>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[10px] text-gray-400">{p.fecha ?? ""}</span>
+                                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${saldado ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
+                                    {saldado ? "Saldado" : "Pendiente"}
+                                  </span>
+                                </div>
+                              </div>
+                              {/* Row 2: cliente + monto/saldo */}
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[11px] text-gray-600 truncate">{p.cliente ?? "—"}</span>
+                                {p.total != null && (
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <span className="text-[10px] text-gray-400">{fmtMXN(p.total)}</span>
+                                    {!saldado && saldo != null && saldo !== p.total && (
+                                      <span className="text-[10px] font-semibold text-amber-600">· {fmtMXN(saldo)} rest.</span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                              {/* Row 3: obra (si existe) */}
+                              {p.nombreObra && (
+                                <span className="text-[10px] text-gray-400 truncate">— {p.nombreObra}</span>
+                              )}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           {isCxp && (
             <div>
               <label className={lbl}>Categoría (Rubro)</label>
@@ -548,7 +662,8 @@ function FormDrawer({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -813,7 +928,7 @@ function AbonoDrawer({
   const actionLabel = kind === "cxc" ? "Registrar cobro" : "Registrar pago";
   const multi = exhibiciones.length > 1;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative ml-auto flex h-full w-full max-w-sm flex-col bg-white border-l border-gray-200 shadow-2xl">
@@ -964,7 +1079,8 @@ function AbonoDrawer({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -1026,7 +1142,7 @@ function EditAbonoDrawer({
   const lbl = "block text-[10px] font-semibold uppercase tracking-widest text-gray-500 mb-1.5";
   const actionLabel = kind === "cxc" ? "Editar cobro" : "Editar pago";
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative ml-auto flex h-full w-full max-w-sm flex-col bg-white border-l border-gray-200 shadow-2xl">
@@ -1092,7 +1208,8 @@ function EditAbonoDrawer({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

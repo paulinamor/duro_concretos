@@ -66,6 +66,7 @@ interface Cuenta {
   montoPagado: number;
   vencimiento: string;
   status: string;
+  estadoSAT?: string;
   planta?: string;
 }
 
@@ -147,8 +148,19 @@ export default function DashboardPage() {
   // Neto sin IVA: ventas entregadas sin el 16% de IVA (precios siempre incluyen IVA en este negocio)
   const ventasNetas = useMemo(() => ventasMes / 1.16, [ventasMes]);
 
+  // estadoSAT values: "Vigente" | "Cancelado" | "Sustituida"  — only "Vigente" counts financially
+  const cxcVigentes = useMemo(() =>
+    cxc.filter((c) => {
+      const st  = (c.status    ?? "").toLowerCase();
+      const sat = (c.estadoSAT ?? "Vigente");
+      return st !== "pagado" && sat === "Vigente";
+    }), [cxc]);
   const porCobrar = useMemo(() =>
-    cxc.filter((c) => c.status !== "Pagado").reduce((s, c) => s + (c.total - c.montoPagado), 0), [cxc]);
+    cxcVigentes.reduce((s, c) => s + ((c.total ?? 0) - (c.montoPagado ?? 0)), 0), [cxcVigentes]);
+  const cxcCanceladas = useMemo(() =>
+    cxc.filter((c) => (c.estadoSAT ?? "Vigente") !== "Vigente"), [cxc]);
+  const totalCancelado = useMemo(() =>
+    cxcCanceladas.reduce((s, c) => s + ((c.total ?? 0) - (c.montoPagado ?? 0)), 0), [cxcCanceladas]);
   const porPagar = useMemo(() =>
     cxp.filter((c) => c.status !== "Pagado").reduce((s, c) => s + (c.total - c.montoPagado), 0), [cxp]);
 
@@ -468,7 +480,13 @@ export default function DashboardPage() {
           icon={Banknote}
           iconColor="text-blue-400"
           iconBg="bg-blue-500/10"
-          subtitle={`${cxc.filter((c) => c.status !== "Pagado").length} facturas · todos los meses`}
+          subtitle={(() => {
+            const bruto = porCobrar + totalCancelado;
+            if (cxcCanceladas.length > 0) {
+              return `Bruto ${currency(bruto)} · Canceladas: −${currency(totalCancelado)} (${cxcCanceladas.length}) · ${cxcVigentes.length} vigentes`;
+            }
+            return `${cxcVigentes.length} vigentes · sin facturas canceladas`;
+          })()}
           onClick={() => router.push("/finanzas/cxc")}
         />
         <KPICard
@@ -575,8 +593,11 @@ export default function DashboardPage() {
 
       {/* ── Alerta cartera vencida ────────────────────────────────────── */}
       {(() => {
-        const vencidas = cxc.filter((c) => c.status !== "Pagado" && c.vencimiento && diasHasta(c.vencimiento) < 0);
-        const totalVencido = vencidas.reduce((s, c) => s + (c.total - c.montoPagado), 0);
+        const vencidas = cxc.filter((c) => {
+          const st = (c.status ?? "").toLowerCase();
+          return st !== "pagado" && (c.estadoSAT ?? "Vigente") === "Vigente" && c.vencimiento && diasHasta(c.vencimiento) < 0;
+        });
+        const totalVencido = vencidas.reduce((s, c) => s + ((c.total ?? 0) - (c.montoPagado ?? 0)), 0);
         if (vencidas.length === 0) return null;
         return (
           <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 bg-red-500/10 border border-red-500/20 rounded-xl">
@@ -814,7 +835,10 @@ export default function DashboardPage() {
             </div>
           </div>
           {(() => {
-            const pendientes = cxc.filter((c) => c.status !== "Pagado" && c.vencimiento);
+            const pendientes = cxc.filter((c) => {
+              const st = (c.status ?? "").toLowerCase();
+              return st !== "pagado" && (c.estadoSAT ?? "Vigente") === "Vigente" && c.vencimiento;
+            });
             const vencidas   = pendientes.filter((c) => diasHasta(c.vencimiento) < 0).sort((a, b) => diasHasta(a.vencimiento) - diasHasta(b.vencimiento));
             const proximas   = pendientes.filter((c) => diasHasta(c.vencimiento) >= 0).sort((a, b) => diasHasta(a.vencimiento) - diasHasta(b.vencimiento)).slice(0, 5);
             if (vencidas.length === 0 && proximas.length === 0) return (
@@ -864,7 +888,7 @@ export default function DashboardPage() {
             );
           })()}
           <div className="mt-4 pt-3 border-t border-white/10 flex justify-between text-xs">
-            <span className="text-gray-500">{cxc.filter((c) => c.status !== "Pagado").length} cuentas pendientes totales</span>
+            <span className="text-gray-500">{cxcVigentes.length} cuentas pendientes totales</span>
             <span className="text-white font-semibold">{currency(porCobrar)}</span>
           </div>
         </div>

@@ -7,6 +7,78 @@
 
 ## Noviembre 2026
 
+### 2026-11-25 (sesión 25-h) — 🐛 Dashboard: filtro de canceladas nunca coincidía (typo masculino/femenino)
+
+#### 🐛 Bug — estadoSAT es "Cancelado" (masculino), el filtro buscaba "Cancelada" (femenino)
+- **Archivo:** `app/(dashboard)/dashboard/page.tsx`
+- **Descripción:** El tipo real de `estadoSAT` en Firestore es `"Vigente" | "Cancelado" | "Sustituida"` (masculino, confirmado en línea 43 de SatAccountsPage.tsx). Los dos intentos anteriores fallaron porque filtraban `!== "Cancelada"` y `sat !== "cancelada"` — valores que nunca coinciden con `"Cancelado"`. Solución definitiva: el filtro solo acepta registros donde `estadoSAT === "Vigente"` (whitelist, no blacklist), lo que automáticamente excluye "Cancelado" y "Sustituida". Se aplicó en los 4 lugares: `cxcVigentes`, alerta cartera vencida, widget CxC por vencer y contador del pie. Se agregó `cxcCanceladas` y `totalCancelado` como memos para el desglose del subtitle: "Bruto $X · Canceladas: −$Y (N) · Z vigentes".
+- **Horas estimadas:** 0.4 hrs
+
+---
+
+### 2026-11-25 (sesión 25-g) — 🐛 Dashboard: KPI "Por cobrar" seguía incluyendo facturas canceladas
+
+#### 🐛 Bug — Filtro de canceladas incompleto en dashboard
+- **Archivo:** `app/(dashboard)/dashboard/page.tsx`
+- **Descripción:** El fix anterior solo excluía registros con `estadoSAT === "Cancelada"`, pero las facturas canceladas en Firestore usan `status === "Cancelado"` (no el campo `estadoSAT`). Se amplió el filtro de `cxcVigentes` para excluir cualquier registro donde `status` sea "pagado", "cancelado" o "cancelada" (comparación case-insensitive) O donde `estadoSAT === "cancelada"`. Se aplicó el mismo filtro consistente en: KPI subtitle, alerta de cartera vencida, widget CxC por vencer, y contador del pie. También se protegió `c.total ?? 0` para evitar NaN en registros incompletos.
+- **Horas estimadas:** 0.3 hrs
+
+---
+
+### 2026-11-25 (sesión 25-f) — 🐛 Estado de cuenta: error "unsupported color function lab" al generar PDF
+
+#### 🐛 Bug — html2canvas no podía parsear colores oklch/lab de Tailwind v4
+- **Archivo:** `app/(dashboard)/finanzas/estado-cuenta-clientes/page.tsx`
+- **Descripción:** Tailwind v4 define sus colores usando `oklch()`, `lab()` y `color(display-p3)` en CSS custom properties a nivel `:root`. html2canvas no soporta estas funciones de color modernas y lanzaba el error "Attempting to parse an unsupported color function 'lab'". Se agregó el callback `onclone` a html2canvas que recorre todas las hojas de estilo del clon y elimina las reglas que contienen estas funciones antes de que el motor de renderizado las intente parsear. El template PDF usa únicamente estilos inline con colores hex, por lo que eliminar esas reglas no tiene efecto visual.
+- **Horas estimadas:** 0.3 hrs
+
+---
+
+### 2026-11-25 (sesión 25-e) — ✨ CXC: combobox de programación mejorado con más datos
+
+#### ✨ Mejora — Combobox de programación muestra total, saldo pendiente y obra
+- **Archivo:** `components/finanzas/SatAccountsPage.tsx`
+- **Descripción:** Se mejoró el combobox de selección de programación en el modal "Editar cuenta por cobrar". Ahora cada item muestra: folio (en rojo si seleccionado), cliente, obra (`nombreObra`) si existe, total formateado, saldo restante cuando hay pagos parciales, y badge "Saldado/Pendiente". El filtro de búsqueda se amplió para incluir `nombreObra` y monto. El placeholder actualizado indica "folio, cliente, obra o monto". Altura de la lista aumentada a `max-h-64`.
+- **Horas estimadas:** 0.3 hrs
+
+---
+
+### 2026-11-25 (sesión 25-d) — 🐛 CXC: drawer no cubría el fondo completo (blur incompleto)
+
+#### 🐛 Bug — Overlay del drawer no cubría toda la pantalla
+- **Archivo:** `components/finanzas/SatAccountsPage.tsx`
+- **Descripción:** Los drawers de CXC/CXP (FormDrawer, AbonoDrawer, EditAbonoDrawer) usaban `fixed inset-0 z-50` pero al estar dentro del scroll container de `<main class="overflow-y-auto">`, Chrome los confinaba al painted area del contenedor y dejaba visible la fila inferior de la tabla sin blur. Se migró a `createPortal(jsx, document.body)` en los tres drawers para escapar cualquier stacking context y garantizar cobertura total del viewport.
+- **Horas estimadas:** 0.3 hrs
+
+---
+
+### 2026-11-25 (sesión 25-c) — 🐛 Dashboard: KPI "Por cobrar" incluía facturas canceladas
+
+#### 🐛 Bug — Monto incorrecto en KPI "Por cobrar" del dashboard
+- **Archivo:** `app/(dashboard)/dashboard/page.tsx`
+- **Descripción:** El filtro de `porCobrar` solo excluía `status !== "Pagado"` pero no excluía `estadoSAT === "Cancelada"`, por lo que las facturas canceladas sumaban al total y daban un monto incorrecto. Se agregó `cxcVigentes` como memo separado (excluye Pagadas y Canceladas) y se usa para calcular `porCobrar`. El subtitle del KPI ahora muestra "X vigentes · Y canceladas excluidas" cuando hay canceladas.
+- **Horas estimadas:** 0.2 hrs
+
+---
+
+### 2026-11-25 (sesión 25-b) — ✨ Estado de cuenta: generación de PDF profesional (SAP-style)
+
+#### ✨ Mejora — Botón "Generar estado" ahora genera PDF real
+- **Archivo:** `app/(dashboard)/finanzas/estado-cuenta-clientes/page.tsx`
+- **Descripción:** El botón "Generar estado" antes solo actualizaba un timestamp (no generaba nada). Se implementó generación completa de PDF SAP-style con html2canvas + jsPDF. El PDF incluye: (1) header oscuro con nombre de empresa y título "ESTADO DE CUENTA" con período; (2) bloque de datos del cliente (RFC, días crédito, límite, m³); (3) 4 KPIs de resumen (saldo inicial, cargos, abonos, saldo final) + badges de vencido/por vencer; (4) tabla de movimientos con filas alternadas, referencia en rojo, tipo badge, cargo/abono/saldo coloreados y fila de totales; (5) footer con instrucciones de pago y línea de autorización. Soporte multi-página. Archivo nombrado `estado-cuenta-{cliente}-{inicio}-{fin}.pdf`. Se cargan datos de empresa desde `configuracion/empresa-remisiones`.
+- **Horas estimadas:** 1.5 hrs
+
+---
+
+### 2026-11-25 (sesión 25-a) — ✨ CXC: buscador en selector de programación vinculada
+
+#### ✨ Mejora — Combobox con filtro en modal "Editar cuenta por cobrar"
+- **Archivo:** `components/finanzas/SatAccountsPage.tsx`
+- **Descripción:** El `<select>` nativo fue reemplazado por un combobox div-based profesional. Muestra el valor seleccionado como trigger, al hacer clic abre un panel inline (sin position:absolute — el modal tiene overflow-hidden que clippearía un dropdown flotante). El panel tiene búsqueda por folio o cliente, lista ordenada por folio desc (más recientes primero), opción "Sin vincular", ítems con folio monoespaciado + cliente + fecha. Click-outside cierra el panel. El filtro y estado se limpian al abrir/cerrar el modal.
+- **Horas estimadas:** 0.5 hrs
+
+---
+
 ### 2026-11-23 (sesión 23-a) — ✨ Diesel: horómetro en carga de combustible
 
 #### ✨ Mejora — Lectura de horómetro por carga (patrón SAP PM)
