@@ -64,6 +64,7 @@ interface Programacion {
   m3Totales: number | null;
   extras: string;
   tdBom: string;
+  operadorBomba?: string;
   resistencia: string;
   color: string;
   m3Vacios: number | null;
@@ -137,10 +138,11 @@ interface ChoferFormEntry {
 
 interface FormState {
   dia: string; vendedor: string; diaHoraPedido: string; muestras: string;
+  planta: "Allende" | "Pesquería";
   cliente: string; telefono: string; direccion: string; paraUso: string;
   hora: string; hsr: string; choferes: ChoferFormEntry[];
   tiempoExtraDescarga: string;
-  extras: string; tdBom: string; resistencia: string; color: string;
+  extras: string; tdBom: string; operadorBomba: string; resistencia: string; color: string;
   m3Vacios: string; precioM3Vacio: string; precioM3: string; precioM3Bomba: string;
   factorBomba: string; aplicarFactorBomba: boolean;
   ltoAcelr: string; kiloFibra: string; m3Imper: string;
@@ -264,10 +266,11 @@ function nowLocalISO(): string {
 function emptyForm(dia: string): FormState {
   return {
     dia, vendedor: "", diaHoraPedido: nowLocalISO(), muestras: "",
+    planta: getCapturePlanta(),
     cliente: "", telefono: "", direccion: "", paraUso: "",
     hora: "", hsr: "", choferes: [emptyChofer()],
     tiempoExtraDescarga: "",
-    extras: "", tdBom: "", resistencia: "", color: "", m3Vacios: "", precioM3Vacio: "",
+    extras: "", tdBom: "", operadorBomba: "", resistencia: "", color: "", m3Vacios: "", precioM3Vacio: "",
     precioM3: "", precioM3Bomba: "", factorBomba: "1.16", aplicarFactorBomba: false,
     ltoAcelr: "", kiloFibra: "", m3Imper: "",
     aditivo: "", tuberiaExtra: "", permisosOC: "",
@@ -310,11 +313,12 @@ function formFromProg(p: Programacion): FormState {
 
   return {
     dia: p.dia ?? "", vendedor: p.vendedor ?? "", diaHoraPedido: p.diaHoraPedido ?? "", muestras: p.muestras ?? "",
+    planta: (p.planta === "Pesquería" || p.planta === "Allende") ? (p.planta as "Allende" | "Pesquería") : getCapturePlanta(),
     cliente: p.cliente ?? "", telefono: p.telefono ?? "", direccion: p.direccion ?? "", paraUso: p.paraUso ?? "",
     obraNombre: p.nombreObra ?? "",
     hora: p.hora ?? "", hsr: p.hsr ?? "", choferes,
     tiempoExtraDescarga: p.tiempoExtraDescarga ?? "",
-    extras: p.extras ?? "", tdBom: p.tdBom ?? "", resistencia: p.resistencia ?? "", color: p.color ?? "",
+    extras: p.extras ?? "", tdBom: p.tdBom ?? "", operadorBomba: p.operadorBomba ?? "", resistencia: p.resistencia ?? "", color: p.color ?? "",
     m3Vacios: p.m3Vacios != null ? String(p.m3Vacios) : "",
     precioM3Vacio: p.precioM3Vacio != null ? String(p.precioM3Vacio) : "",
     precioM3: p.precioM3 != null ? String(p.precioM3) : "",
@@ -870,6 +874,7 @@ function FormDrawer({
         m3Totales: m3TotalesAuto,
         extras: (form.extras ?? "").trim(),
         tdBom: normalizeTdBom(form.tdBom ?? ""),
+        ...(normalizeTdBom(form.tdBom ?? "") === "Bomba" && (form.operadorBomba ?? "").trim() ? { operadorBomba: form.operadorBomba.trim() } : {}),
         resistencia: (form.resistencia ?? "").trim(),
         color: (form.color ?? "").trim(),
         m3Vacios: n(form.m3Vacios),
@@ -913,6 +918,7 @@ function FormDrawer({
         notasVendedor: (form.notasVendedor ?? "").trim(),
         ...(form.rowColor ? { rowColor: form.rowColor } : {}),
         ...((form.obraNombre ?? "").trim() ? { nombreObra: form.obraNombre.trim() } : {}),
+        planta: form.planta,
       };
 
       // ── Registro de historial ──────────────────────────────────────────────
@@ -928,6 +934,7 @@ function FormDrawer({
           ["hora",          "Hora"],
           ["resistencia",   "Resistencia"],
           ["tdBom",         "T/D BOM"],
+          ["operadorBomba", "Operador de Bomba"],
           ["m3Totales",     "M³ totales"],
           ["extras",        "Extras"],
           ["precioM3",      "Precio M³"],
@@ -1014,7 +1021,9 @@ function FormDrawer({
       const code = (err as { code?: string })?.code ?? "";
       const raw = err instanceof Error ? err.message : String(err);
       let msg: string;
-      if (code === "permission-denied" || raw.includes("permission-denied")) {
+      if (code === "PLANTA_REQUERIDA") {
+        msg = "Selecciona una planta (Allende o Pesquería) antes de guardar.";
+      } else if (code === "permission-denied" || raw.includes("permission-denied")) {
         const sinPlanta = !getStoredSession()?.planta;
         msg = sinPlanta
           ? "Sin planta seleccionada. Ve al menú lateral y elige tu planta activa antes de guardar."
@@ -1074,6 +1083,30 @@ function FormDrawer({
                     })
                   : <span className="text-gray-400">—</span>
                 }
+              </div>
+            </div>
+            {/* Planta selector — explicit, SAP-style */}
+            <div className="col-span-2">
+              <label className={lbl}>Planta <span className="text-[#CC2229]">*</span></label>
+              <div className="grid grid-cols-2 gap-2 mt-0.5">
+                {(["Allende", "Pesquería"] as const).map((p) => {
+                  const sel = form.planta === p;
+                  return (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setForm((f) => ({ ...f, planta: p }))}
+                      className={`flex items-center justify-center gap-2 rounded-lg border-2 py-2.5 text-sm font-semibold transition-all ${
+                        sel
+                          ? "border-[#CC2229] bg-[#CC2229]/5 text-[#CC2229]"
+                          : "border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:text-gray-700"
+                      }`}
+                    >
+                      <span className={`h-2.5 w-2.5 rounded-full ${sel ? "bg-[#CC2229]" : "bg-gray-300"}`} />
+                      {p}
+                    </button>
+                  );
+                })}
               </div>
             </div>
             <div>
@@ -1293,6 +1326,17 @@ function FormDrawer({
               <label className={lbl}>T/D BOM</label>
               <input type="text" value={form.tdBom} onChange={(e) => set("tdBom", e.target.value)} placeholder="Tipo / Diámetro" className={inp} />
             </div>
+            {normalizeTdBom(form.tdBom) === "Bomba" && (
+              <div>
+                <label className={lbl}>Operador de Bomba</label>
+                <AppSelect value={form.operadorBomba} onChange={(e) => set("operadorBomba", e.target.value)}>
+                  <option value="">Sin asignar</option>
+                  {operadoresList.map((o) => (
+                    <option key={o.id} value={o.nombre}>{o.nombre}</option>
+                  ))}
+                </AppSelect>
+              </div>
+            )}
             <div>
               <label className={lbl}>Color</label>
               <input type="text" value={form.color} onChange={(e) => set("color", e.target.value)} placeholder="Natural, gris, rojo…" className={inp} />

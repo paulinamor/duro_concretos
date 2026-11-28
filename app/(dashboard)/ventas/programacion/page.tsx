@@ -9,7 +9,7 @@ import AppSelect from "@/components/AppSelect";
 import ModuleLoading from "@/components/ModuleLoading";
 import PlantaRequired from "@/components/PlantaRequired";
 import { upsertDocument, getCollectionDocs, COLLECTIONS, orderBy, limit, where, nextFolioProgramacion, type SolicitudAutorizacion } from "@/lib/db";
-import { withPlantaTag, getStoredSession, getActivePlanta } from "@/lib/auth";
+import { withPlantaTag, getStoredSession, getActivePlanta, getCapturePlanta } from "@/lib/auth";
 import { todayCST, localISODate } from "@/lib/dateUtils";
 import { normalizeTdBom } from "@/lib/sgp";
 import { useCollection } from "@/lib/useCollection";
@@ -120,6 +120,7 @@ type VForm = {
   tuberiaExtra: string;
   permisosOC: string;
   tiempoExtraCosto: string;
+  planta: "Allende" | "Pesquería";
 };
 
 function emptyForm(dia: string): VForm {
@@ -129,6 +130,7 @@ function emptyForm(dia: string): VForm {
     m3Totales: "", m3Vacios: "", paraUso: "", resistencia: "", extras: "", tdBom: "",
     precioM3: "", precioM3Bomba: "",
     kiloFibra: "", m3Imper: "", tuberiaExtra: "", permisosOC: "", tiempoExtraCosto: "",
+    planta: getCapturePlanta(),
   };
 }
 
@@ -154,6 +156,9 @@ function formFromProg(p: Programacion): VForm {
     tuberiaExtra: p.tuberiaExtra != null ? String(p.tuberiaExtra) : "",
     permisosOC: p.permisosOC != null ? String(p.permisosOC) : "",
     tiempoExtraCosto: p.tiempoExtraCosto != null ? String(p.tiempoExtraCosto) : "",
+    planta: (p.planta === "Pesquería" || p.planta === "Allende")
+      ? (p.planta as "Allende" | "Pesquería")
+      : getCapturePlanta(),
   };
 }
 
@@ -456,6 +461,31 @@ function PedidoDrawer({
               {form.diaHoraPedido
                 ? new Date(form.diaHoraPedido).toLocaleString("es-MX", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
                 : <span className="text-gray-400">—</span>}
+            </div>
+          </div>
+
+          {/* Planta */}
+          <div>
+            <label className={lbl}>Planta <span className="text-[#CC2229]">*</span></label>
+            <div className="grid grid-cols-2 gap-2 mt-0.5">
+              {(["Allende", "Pesquería"] as const).map((p) => {
+                const sel = form.planta === p;
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => set("planta", p)}
+                    className={`flex items-center justify-center gap-2 rounded-lg border-2 py-2.5 text-sm font-semibold transition-all ${
+                      sel
+                        ? "border-[#CC2229] bg-[#CC2229]/5 text-[#CC2229]"
+                        : "border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:text-gray-700"
+                    }`}
+                  >
+                    <span className={`h-2.5 w-2.5 rounded-full ${sel ? "bg-[#CC2229]" : "bg-gray-300"}`} />
+                    {p}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -1348,6 +1378,7 @@ export default function VentasProgramacionPage() {
         kiloFibra, m3Imper, tuberiaExtra, permisosOC, tiempoExtraCosto,
         total: calcTotal(),
         nombreObra: form.obraNombre.trim() || rest.nombreObra || "",
+        planta: form.planta,
       };
       const cambios = TRACKED
         .filter(([k]) => String(rest[k] ?? "") !== String(newValues[k] ?? ""))
@@ -1403,6 +1434,7 @@ export default function VentasProgramacionPage() {
         totalXM3: null, total: calcTotal(),
         montoPagado: null,
         folio,
+        planta: form.planta,
         fase: "Creado",
         historial: [{ fase: "Creado", fecha: new Date().toISOString(), usuario: vendedorNombre }],
       };

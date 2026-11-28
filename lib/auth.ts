@@ -230,6 +230,13 @@ export function getCapturePlanta(): "Allende" | "Pesquería" {
 }
 
 export function withPlantaTag<T extends object>(data: T): T & { planta: string } {
+  // Preserve an existing concrete plant (not empty / "Todas") — prevents overwriting
+  // Pesquería records when an Allende user edits them or the auto-migration runs.
+  const existing = (data as Record<string, unknown>).planta as string | undefined;
+  if (existing && existing !== "Todas") {
+    return data as T & { planta: string };
+  }
+
   const active = getActivePlanta();
   if (active === "Todas") {
     if (typeof window !== "undefined") {

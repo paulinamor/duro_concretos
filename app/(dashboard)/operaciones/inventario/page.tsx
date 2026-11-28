@@ -12,8 +12,9 @@ import Link from "next/link";
 import KPICard from "@/components/KPICard";
 import ModuleLoading from "@/components/ModuleLoading";
 import AppSelect from "@/components/AppSelect";
-import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS, type SolicitudAutorizacion } from "@/lib/db";
+import { getCollectionDocs, upsertDocument, deleteDocument, COLLECTIONS, where, type SolicitudAutorizacion } from "@/lib/db";
 import { filterByPlanta, getActivePlanta, getStoredSession } from "@/lib/auth";
+import type { Operador } from "@/lib/operadores";
 import { todayCST, currentMonthCST } from "@/lib/dateUtils";
 import { storage } from "@/lib/firebase";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -45,7 +46,7 @@ interface EntradaMaterial {
   id?: string;
   fecha: string; material: string; cantidad: number; unidad: string;
   tipo: "entrada" | "salida"; proveedor: string; noFactura: string; observaciones: string;
-  categoria: "inventario" | "almacen"; planta?: string;
+  categoria: "inventario" | "almacen"; planta?: string; operador?: string;
   remisionId?: string; noRemisionRef?: string;
   remision?: string;
   precioUnitario?: number;
@@ -89,6 +90,7 @@ interface EntradaFormState {
   fecha: string; categoria: "inventario" | "almacen";
   tipo: "entrada" | "salida";
   observaciones: string;
+  operador: string;
   materiales: MaterialRow[];
 }
 type MovRow =
@@ -239,14 +241,15 @@ function MaterialCard({ row }: { row: StockRow }) {
 
 function emptyMaterialRow(): MaterialRow { return { material: "", cantidad: "", unidad: "" }; }
 
-function EntradaDrawer({ open, onClose, onSave, remisionesDespacho, almacenMateriales }: {
+function EntradaDrawer({ open, onClose, onSave, remisionesDespacho, almacenMateriales, operadoresList }: {
   open: boolean; onClose: () => void; onSave: (entries: EntradaMaterial[]) => Promise<void>;
   remisionesDespacho: RemisionDespacho[];
   almacenMateriales?: string[];
+  operadoresList: Pick<Operador, "id" | "nombre">[];
 }) {
   const emptyForm = (): EntradaFormState => ({
     fecha: todayISO(), categoria: "inventario", tipo: "entrada",
-    observaciones: "",
+    observaciones: "", operador: "",
     materiales: [emptyMaterialRow()],
   });
   const [form, setForm] = useState<EntradaFormState>(emptyForm);
@@ -321,6 +324,7 @@ function EntradaDrawer({ open, onClose, onSave, remisionesDespacho, almacenMater
         noFactura: (row.noFactura ?? "").trim(),
         observaciones: form.observaciones.trim(),
         categoria: form.categoria,
+        ...(form.operador.trim() ? { operador: form.operador.trim() } : {}),
         ...(row.remision?.trim() ? { remision:  row.remision.trim() } : {}),
         ...(row.fotoUrl         ? { fotoUrl:   row.fotoUrl }         : {}),
         ...(row.fotoPath        ? { fotoPath:  row.fotoPath }        : {}),
@@ -552,6 +556,17 @@ function EntradaDrawer({ open, onClose, onSave, remisionesDespacho, almacenMater
               )}
             </div>
           )}
+
+          {/* Operador */}
+          <div>
+            <label className={lbl}>Operador <span className="ml-1 text-gray-400 normal-case font-normal tracking-normal">(opcional)</span></label>
+            <AppSelect value={form.operador} onChange={(e) => setHeader("operador", e.target.value)}>
+              <option value="">Sin asignar</option>
+              {operadoresList.map((o) => (
+                <option key={o.id} value={o.nombre}>{o.nombre}</option>
+              ))}
+            </AppSelect>
+          </div>
 
           {/* Observaciones */}
           <div>
@@ -1029,6 +1044,7 @@ export default function InventarioPage() {
   // ── UI ───────────────────────────────────────────────────────────────────────
   const [showEntradaForm, setShowEntradaForm] = useState(false);
   const [showExistenciaForm, setShowExistenciaForm] = useState(false);
+  const [operadoresList, setOperadoresList] = useState<Pick<Operador, "id" | "nombre">[]>([]);
   const [confirmDeleteMovimiento, setConfirmDeleteMovimiento] = useState<EntradaMaterial | null>(null);
   const [editTarget, setEditTarget] = useState<EntradaMaterial | null>(null);
   const [search, setSearch] = useState("");
@@ -1048,13 +1064,15 @@ export default function InventarioPage() {
       getCollectionDocs<SolicitudAutorizacion>(COLLECTIONS.solicitudesAutorizacion),
       getCollectionDocs<Traspaso>(COLLECTIONS.traspasos),
       getCollectionDocs<PagoProveedorMat>(COLLECTIONS.pagosProveedorMat),
-    ]).then(([rem, ent, exi, sols, tras, pagos]) => {
+      getCollectionDocs<Operador>(COLLECTIONS.operadores, [where("baja", "==", "")]),
+    ]).then(([rem, ent, exi, sols, tras, pagos, ops]) => {
       setRemisionesDespacho(filterByPlanta(rem).filter((r) => r.tipo === "despacho"));
       setEntradasMaterial(filterByPlanta(ent));
       setExistenciasIniciales(filterByPlanta(exi));
       setSolicitudesEdicion(sols.filter((s) => s.tipo === "editar_inventario"));
       setTraspasos(tras);
       setPagosProveedorMat(pagos.filter((p) => p.proveedor === "Calizas"));
+      setOperadoresList(ops.map((o) => ({ id: o.id, nombre: o.nombre })));
     }).finally(() => setLoading(false));
   }, []);
 
@@ -1754,14 +1772,14 @@ export default function InventarioPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  {["Fecha", "Tipo", "Categoría", "Material", "Cantidad", "Proveedor", "Factura", "Foto", ""].map((h) => (
+                  {["Fecha", "Tipo", "Categoría", "Material", "Cantidad", "Proveedor", "Factura", "Operador", "Foto", ""].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filteredMovimientos.length === 0
-                  ? <tr><td colSpan={9} className="px-4 py-16 text-center text-sm text-gray-400">Sin movimientos en {periodLabel(periodo)}</td></tr>
+                  ? <tr><td colSpan={10} className="px-4 py-16 text-center text-sm text-gray-400">Sin movimientos en {periodLabel(periodo)}</td></tr>
                   : filteredMovimientos.map((row, idx) => {
                     if (row._source === "existencia") return (
                       <tr key={`exi-${row.material}`} className="hover:bg-gray-50 transition-colors">
@@ -1772,6 +1790,7 @@ export default function InventarioPage() {
                         <td className="px-4 py-3 text-gray-900 font-mono font-semibold">{fmt(row.cantidad)}{row.unidad ? ` ${row.unidad}` : ""}</td>
                         <td className="px-4 py-3 text-gray-400">—</td>
                         <td className="px-4 py-3 text-gray-400 text-xs capitalize">{periodLabel(periodo)}</td>
+                        <td className="px-4 py-3 text-gray-400">—</td>
                         <td className="px-4 py-3 text-gray-400">—</td>
                         <td className="px-4 py-3">
                           {(
@@ -1796,6 +1815,7 @@ export default function InventarioPage() {
                         <td className="px-4 py-3 text-gray-900 font-mono font-semibold">{fmt(e.cantidad)}{e.unidad ? ` ${e.unidad}` : ""}</td>
                         <td className="px-4 py-3 text-gray-500 text-sm">{e.proveedor || "—"}</td>
                         <td className="px-4 py-3 text-gray-400 text-xs font-mono">{e.noFactura || "—"}</td>
+                        <td className="px-4 py-3 text-gray-500 text-sm truncate max-w-[100px]">{e.operador || <span className="text-gray-300">—</span>}</td>
                         <td className="px-4 py-3">
                           {e.fotoUrl ? (
                             <a href={e.fotoUrl} target="_blank" rel="noopener noreferrer" title="Ver foto">
@@ -2031,7 +2051,7 @@ export default function InventarioPage() {
       )}
 
       {/* ── Drawers & Modals ───────────────────────────────────────────────────── */}
-      <EntradaDrawer open={showEntradaForm} onClose={() => setShowEntradaForm(false)} onSave={handleSaveEntrada} remisionesDespacho={remisionesDespacho} almacenMateriales={almacenMaterialesFrecuentes} />
+      <EntradaDrawer open={showEntradaForm} onClose={() => setShowEntradaForm(false)} onSave={handleSaveEntrada} remisionesDespacho={remisionesDespacho} almacenMateriales={almacenMaterialesFrecuentes} operadoresList={operadoresList} />
       <TraspasoDrawer open={showTraspasoForm} onClose={() => setShowTraspasoForm(false)} localPlanta={localPlanta} onSave={handleSaveTraspaso} />
       {isSuperAdmin && <ExistenciaModal open={showExistenciaForm} onClose={() => setShowExistenciaForm(false)} periodo={periodo} planta={localPlanta} current={existenciaInicial} onSave={handleSaveExistencia} />}
       <EditInventarioModal open={!!editTarget} onClose={() => setEditTarget(null)} entry={editTarget} onSubmit={handleSubmitEdicion} />

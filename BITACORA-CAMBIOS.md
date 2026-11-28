@@ -7,6 +7,61 @@
 
 ## Noviembre 2026
 
+### 2026-11-27 (sesión 27-e) — ✨ Selector Planta en Ventas + Operador AppSelect en Inventario
+
+#### ✨ Mejora — Selector Allende/Pesquería en Ventas/Programación
+- **Archivos:** `app/(dashboard)/ventas/programacion/page.tsx`
+- **Descripción:** Se agregó selector de planta tipo chip (Allende / Pesquería) en el drawer "Nuevo Pedido" / "Editar Pedido", idéntico al de Programación Transporte. Se inicializa con `getCapturePlanta()` en `emptyForm` y con la planta del registro en `formFromProg`. El campo `planta` se incluye explícitamente en `newProg` y `newValues` al guardar, antes de llamar `withPlantaTag`.
+- **Horas estimadas:** 0.5 hr
+
+#### ✨ Mejora — Operador en Inventario cambiado a AppSelect con lista precargada
+- **Archivos:** `app/(dashboard)/operaciones/inventario/page.tsx`
+- **Descripción:** El campo Operador (opcional) en EntradaDrawer se cambió de `<input type="text">` a `<AppSelect>` con operadores activos precargados desde Firestore (`COLLECTIONS.operadores`, filtrado `baja == ""`). Se agregó `operadoresList` al `useState`, se carga en el `useEffect` existente junto con las demás colecciones, y se pasa como prop a `EntradaDrawer`.
+- **Horas estimadas:** 0.25 hr
+
+---
+
+### 2026-11-27 (sesión 27-d) — ✨ Operador de Bomba en Programación + Operador en Inventario
+
+#### ✨ Mejora — Operador de Bomba en FormDrawer de Transporte
+- **Archivos:** `app/(dashboard)/transporte/programacion/page.tsx`
+- **Descripción:** Se agregó campo "Operador de Bomba" (AppSelect con lista de operadores de Firestore) en la sección Concreto del FormDrawer. El campo aparece condicionalmente solo cuando el T/D BOM normalizado es "Bomba". Se guarda como `operadorBomba` en Firestore y se rastrea en el historial de cambios. No se guarda si no hay valor seleccionado.
+- **Horas estimadas:** 0.25 hr
+
+#### ✨ Mejora — Nombre de Operador en Inventario de Materiales
+- **Archivos:** `app/(dashboard)/operaciones/inventario/page.tsx`
+- **Descripción:** Se agregó campo opcional "Operador" en el drawer de registro de movimientos de materiales (EntradaDrawer). El operador se guarda en el documento de Firestore si se llena. Se agregó columna "Operador" en la tabla de Movimientos. Verificación de Viajes (RemisionDespacho) ya mostraba el operador del chofer — sin cambios requeridos ahí.
+- **Horas estimadas:** 0.25 hr
+
+---
+
+### 2026-11-27 (sesión 27-c) — 🐛 Planta defaulteaba a Allende en registros sin planta definida
+
+#### 🐛 Bug — `formFromProg` usaba "Allende" hardcodeado como fallback de planta
+- **Archivos:** `app/(dashboard)/transporte/programacion/page.tsx`
+- **Descripción:** En `formFromProg`, registros sin campo `planta` definido (creados antes del selector de planta) siempre cargaban el chip "Allende" aunque el usuario estuviera en sesión Pesquería. Al guardar, el registro se sellaba con planta=Allende y desaparecía de la vista de Pesquería. El usuario lo percibía como "no se guardó". **Fix:** El fallback ahora usa `getCapturePlanta()` que respeta la planta activa del usuario. Registros con planta explícita (Allende/Pesquería) siguen preservando su valor original.
+- **Horas estimadas:** 0.25 hr
+
+---
+
+### 2026-11-27 (sesión 27-b) — ✨ Selector explícito de Planta en FormDrawer transporte
+
+#### ✨ Mejora — Selector visual de Planta (SAP-style)
+- **Archivos:** `app/(dashboard)/transporte/programacion/page.tsx`
+- **Descripción:** Se agregó un selector explícito de Planta en el FormDrawer de transporte (sección "Identificación del pedido"). Son dos botones tipo chip — Allende y Pesquería — con indicador circular de color marca. Por defecto carga la planta del registro en edición (`formFromProg`) o la planta activa de sesión en registros nuevos (`emptyForm`). El campo `planta` se agregó a `FormState`, `emptyForm` y `formFromProg`. `newProg` ahora usa `form.planta` explícitamente. Se agregó caso `PLANTA_REQUERIDA` en el catch con mensaje claro. Verificado con 7 casos en simulador: nuevos/edits/cambio manual/sesión Todas todos pasan.
+- **Horas estimadas:** 0.5 hr
+
+---
+
+### 2026-11-27 (sesión 27-a) — 🐛 Programaciones de Pesquería se movían a Allende al editar
+
+#### 🐛 Bug — `withPlantaTag` sobreescribía planta existente
+- **Archivos:** `lib/auth.ts`, `app/(dashboard)/transporte/programacion/page.tsx`
+- **Descripción:** `withPlantaTag()` siempre sellaba el campo `planta` con la planta activa de la sesión del usuario, sin importar si el documento ya tenía una planta concreta asignada. Al editar una programación de Pesquería desde una sesión de Allende, el campo `planta` se sobreescribía a "Allende". El mismo bug afectaba la auto-migración de totales (line 2567), el update de SGP (2695), el update de cxcId (2898) y los edits de ventas/programacion (1373). **Fix 1:** `withPlantaTag` ahora preserva `data.planta` si ya tiene un valor concreto distinto de "Todas". **Fix 2:** `newProg` en el FormDrawer de transporte ahora incluye `planta: initial?.planta` para que `withPlantaTag` lo vea al editar. Verificado con 6 casos en simulador de Node.js: nuevos registros se sellan correctamente, edits preservan la planta original, legacy con "Todas" se sella.
+- **Horas estimadas:** 0.5 hr
+
+---
+
 ### 2026-11-25 (sesión 25-i) — ✨ Programación: cambio de planta con flujo de autorización
 
 #### ✨ Mejora — Solicitud de cambio de planta (SAP-style)
